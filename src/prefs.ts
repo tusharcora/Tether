@@ -13,6 +13,14 @@ export interface Prefs {
   activity?: boolean;
   /** Cost, duration and stream-rate panel in the run view. Default on. */
   metrics?: boolean;
+  /** Mouse clicks and wheel in the terminal UI. Default on (hold shift to select text). */
+  mouse?: boolean;
+  /** Bots cheer, shake and hand over batons as steps finish. Default on. */
+  reactions?: boolean;
+  /** Side pane in the run view: auto = diff on wide terminals. */
+  split?: 'auto' | 'off' | 'diff' | 'events';
+  /** Timeline and cost charts drawn with half-block pixels. Default on. */
+  graphics?: boolean;
   /** Diff layout: auto picks side by side on wide terminals. */
   diff?: DiffLayout;
   /** Custom colour themes made in the theme editor, by name. Validated on load. */
@@ -28,6 +36,10 @@ export function loadPrefs(home: string): Prefs {
     if (typeof j.animate === 'boolean') out.animate = j.animate;
     if (typeof j.activity === 'boolean') out.activity = j.activity;
     if (typeof j.metrics === 'boolean') out.metrics = j.metrics;
+    if (typeof j.mouse === 'boolean') out.mouse = j.mouse;
+    if (typeof j.reactions === 'boolean') out.reactions = j.reactions;
+    if (j.split === 'auto' || j.split === 'off' || j.split === 'diff' || j.split === 'events') out.split = j.split;
+    if (typeof j.graphics === 'boolean') out.graphics = j.graphics;
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
     if (j.themes && typeof j.themes === 'object' && !Array.isArray(j.themes)) out.themes = j.themes as Record<string, unknown>;
     return out;

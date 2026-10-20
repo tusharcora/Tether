@@ -17,7 +17,8 @@ const webDir = resolve(here, '../web/dist');
 
 import { link, loadBindings, unlink } from './bindings.js';
 import { runTui } from './tui.js';
-import { composePipeline, diagnoseFailure } from './composer.js';
+import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.js';
+import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
 import { CREW_STYLES, crewStyle, setCrewStyle } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
@@ -39,6 +40,7 @@ Usage
   aorch                               interactive dashboard (runs, workflows, agent sessions)
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
   aorch bots [link <bot> <agent> [model] | unlink <bot> | gallery]   link crew members to Claude, Codex, OpenCode or a local model
+  aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
   aorch crew [classic|pebble]         bot style: classic, or minimal pebble bots
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
@@ -409,6 +411,32 @@ async function main() {
       }
       setTheme(pick ?? themeName);
       console.log(dim(`\n  switch with: aorch theme <name>   or per run: --theme <name> / AORCH_THEME`));
+      return;
+    }
+    case 'skills': {
+      const cfg = loadConfig(v);
+      const sub = pos[0];
+      const all = [...aorchSkills(cfg.home), ...claudeSkills(resolve(v.repo ?? '.'))];
+      if (sub === 'run') {
+        const name = pos[1] ?? fail('usage: aorch skills run <name> --task "<text>" [--repo <dir>]');
+        const task = v.task ?? fail('--task is required');
+        const repo = resolve(v.repo ?? '.');
+        const skill = all.find((k) => k.name === name) ?? fail(`unknown skill "${name}" — see: aorch skills`);
+        const pipeline = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(repo)) : claudeSkillPipeline(skill);
+        const ctx = open(v);
+        let id: string;
+        try {
+          id = await ctx.engine.start({ pipeline, task, repo, autoApprove: v['auto-approve'] });
+        } catch (e) {
+          fail((e as Error).message);
+        }
+        return drive(ctx, id, !!v.json);
+      }
+      if (sub) fail('usage: aorch skills [run <name> --task "<text>"] [--json]');
+      if (v.json) return console.log(JSON.stringify(all.map((k) => ({ name: k.name, source: k.source, description: k.description, steps: k.steps?.map((x) => x.role) }))));
+      await banner('skills');
+      for (const k of all) console.log(`  ${padEndV(bold(k.name), 22)} ${dim(padEndV(k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude·project' : 'claude', 15))} ${dim(k.description)}${k.steps ? '  ' + faint(k.steps.map((x) => x.role).join(' → ')) : ''}`);
+      console.log(dim(`\n  run one: aorch skills run <name> --task "…" --repo .   ·   add your own: ${join(cfg.home, 'skills')}/<name>.json`));
       return;
     }
     case 'init': {

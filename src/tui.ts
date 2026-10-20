@@ -20,6 +20,9 @@ import { contrast, nudge, parseHex, rgbToHsl, toHex } from './color.js';
 import { sampleRun } from './sample.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
 import { supervise } from './supervisor.js';
+import { rank } from './palette.js';
+import { costChart, timelineChart, toLines } from './raster.js';
+import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
 import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
@@ -42,6 +45,15 @@ export function parseKeys(s: string): string[] {
     const ch = s[i]!;
     if (ch === '\x1b') {
       const rest = s.slice(i + 1);
+      const m = /^\[<(\d+);(\d+);(\d+)([Mm])/.exec(rest);
+      if (m) {
+        const b = Number(m[1]);
+        const press = m[4] === 'M';
+        const kind = b & 64 ? ((b & 1) === 0 ? 'wheelup' : 'wheeldown') : press && !(b & 32) ? ((b & 3) === 0 ? 'left' : (b & 3) === 2 ? 'right' : '') : '';
+        if (kind) out.push(`mouse:${kind}:${m[2]}:${m[3]}`);
+        i += 1 + m[0].length;
+        continue;
+      }
       const hit = Object.keys(table)
         .sort((a, b) => b.length - a.length)
         .find((k) => rest.startsWith(k));
@@ -57,6 +69,7 @@ export function parseKeys(s: string): string[] {
     else if (ch === '\x7f' || ch === '\b') (out.push('backspace'), i++);
     else if (ch === '\x03') (out.push('ctrl-c'), i++);
     else if (ch === '\x15') (out.push('ctrl-u'), i++);
+    else if (ch === '\x0b') (out.push('ctrl-k'), i++);
     else {
       const cp = String.fromCodePoint(s.codePointAt(i)!);
       out.push(cp);
@@ -98,28 +111,77 @@ const VERB_COLOR: Record<Verb, RGB> = {
 };
 
 const CELL = 13;
-/** The crew laid out as a chain: one animated bot per step, with arrows between them. */
-export function crewStrip(nodes: PipelineNode[], statusOf: (n: PipelineNode) => string, sel: number, tick: number, width: number, annot?: (n: PipelineNode) => string): string[] {
+/** Which slice of the chain fits on screen, and how wide each cell is. */
+export function stripLayout(count: number, sel: number, width: number): { start: number; per: number } {
   const per = Math.max(1, Math.floor(width / CELL));
-  const start = Math.max(0, Math.min(Math.max(0, nodes.length - per), sel - Math.floor(per / 2)));
+  return { start: Math.max(0, Math.min(Math.max(0, count - per), sel - Math.floor(per / 2))), per };
+}
+
+/** Short-lived effects on a bot in the strip. */
+export interface Fx {
+  /** Just finished well: a sparkle and a happy face. */
+  cheer?: boolean;
+  /** Just failed: the bot shudders. */
+  shake?: boolean;
+  /** 0..1: the baton is travelling along the arrow into this step. */
+  baton?: number;
+  /** Maestro stepped in on this step (↻ retry, ⇧ escalate). */
+  tag?: string;
+}
+
+/** The crew laid out as a chain: one animated bot per step, with arrows between them. */
+export function crewStrip(nodes: PipelineNode[], statusOf: (n: PipelineNode) => string, sel: number, tick: number, width: number, annot?: (n: PipelineNode) => string, fx?: (n: PipelineNode, i: number) => Fx | undefined): string[] {
+  const { start, per } = stripLayout(nodes.length, sel, width);
   const view = nodes.slice(start, start + per);
   const rows: string[][] = [[], [], [], [], [], [], []];
   view.forEach((n, vi) => {
     const i = start + vi;
     const st = statusOf(n);
     const role = crewFor(n);
-    const bot = renderBot(role, moodFor(st), tick + i * 5);
+    const f = fx?.(n, i);
+    const bot = renderBot(role, f?.cheer ? 'happy' : f?.shake ? 'sad' : moodFor(st), tick + i * 5);
     const selected = i === sel;
     const last = vi === view.length - 1;
-    for (let r = 0; r < 4; r++) rows[r]!.push(bot[r]! + (last ? '   ' : r === 2 ? faint(' ━▸') : '   '));
+    for (let r = 0; r < 4; r++) {
+      let cell = bot[r]! + '   ';
+      if (r === 0 && f?.tag) cell = bot[r]! + ' ' + amber(f.tag) + ' ';
+      else if (r === 0 && f?.cheer && tick % 4 < 3) cell = bot[r]! + ' ' + paint(pal.amber, '✦') + ' ';
+      else if (r === 2 && !last) cell = bot[r]! + faint(' ━▸');
+      if (f?.shake && tick % 2 === 0) cell = ' ' + clip(padEnd(cell, CELL), CELL - 1);
+      rows[r]!.push(cell);
+    }
     const name = CREW[role]!.name;
     rows[4]!.push(padCenter(selected ? bold(paint(pal.cyan, `‹ ${name} ›`)) : bold(name), CELL));
     rows[5]!.push(padCenter(dim(n.title ?? n.role ?? n.kind), CELL));
     rows[6]!.push(padCenter(`${glyph(st, tick)} ${annot ? annot(n) : dim(st)}`, CELL));
   });
+  // baton: a dot sliding along the arrow that leads into the receiving step (row 2, last 3 cells of the previous one)
   const lines = rows.map((r) => r.join(''));
+  view.forEach((n, vi) => {
+    const bt = vi > 0 ? fx?.(n, start + vi)?.baton : undefined;
+    if (bt === undefined || bt < 0 || bt > 1) return;
+    const pos = vi * CELL - 3 + Math.min(2, Math.floor(bt * 3));
+    lines[2] = overlay(lines[2]!, pos, paint(pal.amber, '●'));
+  });
   if (start > 0) lines[2] = dim('◂') + lines[2]!.slice(1);
   return lines;
+}
+
+/** Replace the single visible cell at column `x` of an ANSI string. */
+function overlay(line: string, x: number, glyphStr: string): string {
+  let col = 0;
+  let i = 0;
+  while (i < line.length) {
+    const esc = /^\x1b\[[0-9;]*m/.exec(line.slice(i));
+    if (esc) {
+      i += esc[0].length;
+      continue;
+    }
+    if (col === x) return line.slice(0, i) + glyphStr + line.slice(i + String.fromCodePoint(line.codePointAt(i)!).length);
+    col++;
+    i += String.fromCodePoint(line.codePointAt(i)!).length;
+  }
+  return line;
 }
 
 // ---------- state ----------
@@ -129,11 +191,13 @@ const TABS: Tab[] = ['runs', 'workflows', 'crew', 'settings'];
 interface Prompt { kind: 'prompt'; title: string; hint?: string; value: string; /** value is a suggestion: the first keystroke replaces it */ fresh?: boolean; onSubmit: (v: string) => void }
 interface Menu { kind: 'menu'; title: string; items: { label: string; hint?: string; value: string }[]; sel: number; onPick: (v: string) => void }
 interface Confirm { kind: 'confirm'; title: string; onYes: () => void }
-type Modal = Prompt | Menu | Confirm;
+interface Cmd { group: string; label: string; hint: string; run: () => void }
+interface Palette { kind: 'palette'; query: string; sel: number; all: Cmd[] }
+type Modal = Prompt | Menu | Confirm | Palette;
 
 type Screen =
   | { kind: 'dash'; tab: Tab; sel: Record<Tab, number> }
-  | { kind: 'run'; runId: string; sel: number }
+  | { kind: 'run'; runId: string; sel: number; side?: Extract<Screen, { kind: 'session' }>; sideKey?: string }
   | { kind: 'session'; runId: string; nodeId: string; pane: 'output' | 'events' | 'diff'; scroll: number; follow: boolean; diff?: string; diffAll?: boolean; layout?: 'unified' | 'split'; parsed?: { src: string; p: ParsedDiff } }
   | { kind: 'theme'; prev: string; pal: Record<PalKey, RGB>; sel: number; dirty: boolean }
   | { kind: 'editor'; pipeline: Pipeline; saved: boolean; dirty: boolean; sel: number; stray?: boolean }
@@ -152,6 +216,11 @@ export class Tui {
   private unsub?: () => void;
   private metricCache?: { key: string; series: number[] };
   private modal?: Modal;
+  /** Clickable regions of the last frame (screen coordinates, 0-based). */
+  private hits: { y: number; x0: number; x1: number; act: () => void }[] = [];
+  private bodyY = 0;
+  /** Screen column where the run view's side pane starts, or 0 when there is none this frame. */
+  private splitX = 0;
   private toast?: { text: string; tone: 'ok' | 'err'; until: number };
   private tick = 0;
   private timer?: NodeJS.Timeout;
@@ -222,9 +291,13 @@ export class Tui {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
     this.out.write(`${ESC}?1049h${ESC}?25l${ESC}2J`);
+    this.applyMouse();
+  }
+  private applyMouse() {
+    this.out.write(this.prefs.mouse === false ? `${ESC}?1006l${ESC}?1000l` : `${ESC}?1000h${ESC}?1006h`);
   }
   private leave() {
-    this.out.write(`${ESC}?25h${ESC}?1049l`);
+    this.out.write(`${ESC}?1006l${ESC}?1000l${ESC}?25h${ESC}?1049l`);
     process.stdin.setRawMode(false);
   }
 
@@ -280,8 +353,10 @@ export class Tui {
     this.draw();
   };
 
-  private key(k: string) {
+  private key(k: string): void {
     if (k === 'ctrl-c') return this.quit();
+    if (k.startsWith('mouse:')) return this.mouse(k);
+    if (k === 'ctrl-k' && (!this.modal || this.modal.kind === 'palette')) return this.modal ? (this.modal = undefined) : this.openPalette();
     if (this.modal) return this.modalKey(k);
     const s = this.screen;
     switch (s.kind) {
@@ -302,6 +377,20 @@ export class Tui {
 
   private modalKey(k: string) {
     const m = this.modal!;
+    if (m.kind === 'palette') {
+      const items = this.paletteItems(m);
+      if (k === 'esc') this.modal = undefined;
+      else if (k === 'up') m.sel = (m.sel + Math.max(1, items.length) - 1) % Math.max(1, items.length);
+      else if (k === 'down') m.sel = (m.sel + 1) % Math.max(1, items.length);
+      else if (k === 'enter') {
+        const c = items[m.sel];
+        this.modal = undefined;
+        c?.run();
+      } else if (k === 'backspace') ((m.query = m.query.slice(0, -1)), (m.sel = 0));
+      else if (k === 'ctrl-u') ((m.query = ''), (m.sel = 0));
+      else if (([...k].length === 1 && k >= ' ') || (k.length > 1 && !/^[a-z0-9-]+$/.test(k))) ((m.query += k), (m.sel = 0));
+      return;
+    }
     if (m.kind === 'prompt') {
       if (k === 'esc') this.modal = undefined;
       else if (k === 'enter') {
@@ -329,6 +418,156 @@ export class Tui {
         m.onYes();
       } else if (k === 'n' || k === 'N' || k === 'esc') this.modal = undefined;
     }
+  }
+
+  // ---------- mouse ----------
+  private hit(y: number, x0: number, x1: number, act: () => void) {
+    this.hits.push({ y, x0, x1, act });
+  }
+  private bodyHit(rel: number, x0: number, x1: number, act: () => void) {
+    this.hit(this.bodyY + rel, x0, x1, act);
+  }
+  /** One clickable column per bot in a crew strip (7 rows tall, starting `rel` rows into the body). */
+  private stripHits(rel: number, count: number, sel: number, pick: (i: number) => void) {
+    const { start, per } = stripLayout(count, sel, this.cols - 2);
+    for (let vi = 0; vi < Math.min(per, count - start); vi++) for (let r = 0; r < 7; r++) this.bodyHit(rel + r, 1 + vi * CELL, vi * CELL + CELL, () => pick(start + vi));
+  }
+
+  private mouse(k: string): void {
+    if (this.prefs.mouse === false) return;
+    const [, kind, xs, ys] = k.split(':');
+    const x = Number(xs) - 1;
+    const y = Number(ys) - 1;
+    if (kind === 'wheelup' || kind === 'wheeldown') {
+      const sc = this.screen;
+      if (sc.kind === 'run' && !this.modal && this.splitX && x >= this.splitX) {
+        if (sc.side) ((sc.side.follow = false), (sc.side.scroll = Math.max(0, sc.side.scroll + (kind === 'wheelup' ? -3 : 3))));
+        return;
+      }
+      const n = this.screen.kind === 'session' && !this.modal ? 3 : 1;
+      for (let i = 0; i < n; i++) this.key(kind === 'wheelup' ? 'up' : 'down');
+      return;
+    }
+    if (kind === 'right') return this.key('esc');
+    for (let i = this.hits.length - 1; i >= 0; i--) {
+      const h = this.hits[i]!;
+      if (h.y === y && x >= h.x0 && x <= h.x1) return h.act();
+    }
+  }
+
+  // ---------- command palette + skills ----------
+  private skills(): Skill[] {
+    return [...aorchSkills(this.d.cfg.home), ...claudeSkills(process.cwd())];
+  }
+
+  private runSkill(skill: Skill) {
+    this.ask(`Skill “${skill.name}” — what should it work on?`, (task) => {
+      if (!task) return;
+      this.ask('Repository (a git repo):', (repo) => {
+        const r = resolve((repo || process.cwd()).replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
+        const p = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(r)) : claudeSkillPipeline(skill);
+        this.startRun(p, r, task);
+      }, process.cwd());
+    });
+  }
+
+  /** Editor: add an aorch skill's steps after the selection, or point the selected step at a Claude Code skill. */
+  private skillIntoEditor(s: Extract<Screen, { kind: 'editor' }>, touch: () => void) {
+    const all = this.skills();
+    if (!all.length) return this.say('no skills found', 'err');
+    this.choose('Add a skill', all.map((k, i) => ({ value: String(i), label: k.name, hint: `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}` })), (v) => {
+      const k = all[Number(v)]!;
+      const p = s.pipeline;
+      if (k.source === 'aorch') {
+        let at = p.nodes.length ? s.sel + 1 : 0;
+        const tests = detectTestCommand(process.cwd());
+        for (const st of k.steps ?? []) {
+          if (st.role === 'tester' && !tests) continue;
+          addStep(p, st.role, at, undefined, tests ?? 'npm test');
+          if (st.prompt) p.nodes[at]!.prompt = st.prompt;
+          at++;
+        }
+        s.sel = Math.max(0, Math.min(p.nodes.length - 1, at - 1));
+        touch();
+        return this.say(`added the steps of ${k.name}`);
+      }
+      const n = p.nodes[s.sel];
+      if (!n || n.kind !== 'agent') return this.say('select an agent step first (Claude Code skills run inside an agent)', 'err');
+      n.prompt = [n.prompt, claudeSkillLine(k.name)].filter(Boolean).join('\n');
+      n.agent = 'claude';
+      n.model = undefined;
+      touch();
+      this.say(`${n.id} will use the “${k.name}” skill (agent set to claude)`);
+    });
+  }
+
+  private commands(): Cmd[] {
+    const c: Cmd[] = [];
+    const add = (group: string, label: string, hint: string, run: () => void) => c.push({ group, label, hint, run });
+    const scr = this.screen;
+    const goto = (tab: Tab) => () => {
+      this.stack = [this.stack[0]!];
+      (this.stack[0] as { tab: Tab }).tab = tab;
+    };
+    if (scr.kind === 'run') {
+      add('this run', 'Approve the waiting step', 'a', () => this.key('a'));
+      add('this run', 'Reject the waiting step', 'x', () => this.key('x'));
+      add('this run', 'Show the diff', 'd', () => this.key('d'));
+      add('this run', 'Toggle the metrics panel', 'v', () => this.key('v'));
+      add('this run', 'Change the side pane (diff / events / off)', '|', () => this.key('|'));
+      add('this run', 'Toggle inline graphics', 'g', () => this.key('g'));
+      add('this run', 'Stop the run', 's', () => this.key('s'));
+      add('this run', 'Resume the run', 'u', () => this.key('u'));
+      add('this run', 'Retry only the failed branch', 'R', () => this.key('R'));
+      add('this run', 'Open a shell in its worktree', 'w', () => this.key('w'));
+    }
+    if (scr.kind === 'editor') {
+      add('this workflow', 'Add a step', 'a', () => this.key('a'));
+      add('this workflow', 'Add a skill', 'k', () => this.key('k'));
+      add('this workflow', 'Save', 's', () => this.key('s'));
+      add('this workflow', 'Run it', 'r', () => this.key('r'));
+    }
+    add('go to', 'Runs', '1', goto('runs'));
+    add('go to', 'Workflows', '2', goto('workflows'));
+    add('go to', 'Crew', '3', goto('crew'));
+    add('go to', 'Settings', '4', goto('settings'));
+    add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
+    add('do', 'New workflow', 'n', () => this.newWorkflow());
+    add('do', 'Open the theme editor', 'live preview', () => this.openThemeEditor());
+    add('do', 'Next colour theme', 't', () => this.cycleTheme());
+    add('do', 'Next crew style', 'c', () => this.cycleCrew());
+    add('do', 'Toggle animations', this.prefs.animate === false ? 'off' : 'on', () => this.setPref({ animate: this.prefs.animate === false }));
+    add('do', 'Toggle bot reactions', this.prefs.reactions === false ? 'off' : 'on', () => this.setPref({ reactions: this.prefs.reactions === false }));
+    add('do', 'Toggle mouse support', this.prefs.mouse === false ? 'off' : 'on', () => {
+      this.setPref({ mouse: this.prefs.mouse === false });
+      this.applyMouse();
+    });
+    for (const role of Object.keys(CREW).filter((r) => r !== 'approval')) add('link', `Link ${CREW[role]!.name} to a model`, CREW[role]!.title, () => this.bindBot(role));
+    for (const r of this.runs().slice(0, 12)) add('open run', `${r.pipeline} · ${r.id.slice(-6)}`, `${r.status} · ${r.task.split('\n')[0]!.slice(0, 50)}`, () => this.push({ kind: 'run', runId: r.id, sel: 0 }));
+    for (const f of this.flows()) {
+      add('workflow', `Edit ${f.name}`, `${f.nodes} steps`, () => this.openEditor(f.name));
+      add('workflow', `Run ${f.name}`, `${f.nodes} steps`, () => {
+        try {
+          this.askRun(readPipeline(this.d.cfg.home, f.name));
+        } catch (e) {
+          this.say((e as Error).message, 'err');
+        }
+      });
+    }
+    for (const k of this.skills()) add('skill', k.name, `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}`, () => this.runSkill(k));
+    add('do', 'Quit', 'q', () => this.quit());
+    return c;
+  }
+
+  private openPalette() {
+    this.modal = { kind: 'palette', query: '', sel: 0, all: this.commands() };
+  }
+  private paletteItems(m: Palette): Cmd[] {
+    // the label decides the order; the group ("skill", "workflow"…) only rescues queries that name it
+    const byLabel = rank(m.all, m.query, (c) => c.label);
+    if (!m.query.trim()) return byLabel;
+    const rest = rank(m.all.filter((c) => !byLabel.includes(c)), m.query, (c) => `${c.group} ${c.label}`);
+    return [...byLabel, ...rest];
   }
 
   private push(s: Screen) {
@@ -568,6 +807,17 @@ export class Tui {
       this.say(k === 'a' ? `approved ${awaiting}` : `rejected ${awaiting}`);
     } else if (k === 's') this.say(this.d.engine.stop(s.runId) ? 'stopping…' : 'not live in this window');
     else if (k === 'u') this.resumeRun(s.runId, false);
+    else if (k === '|') {
+      const order = ['auto', 'diff', 'events', 'off'] as const;
+      const next = order[(order.indexOf(this.prefs.split ?? 'auto') + 1) % order.length]!;
+      this.setPref({ split: next });
+      this.say(`side pane: ${next}${next === 'auto' ? ' (diff on wide terminals)' : ''}${this.cols < 100 ? '  — needs a terminal 100+ columns wide' : ''}`);
+    } else if (k === 'J' || k === 'K') {
+      if (s.side) ((s.side.follow = false), (s.side.scroll = Math.max(0, s.side.scroll + (k === 'J' ? 5 : -5))));
+    } else if (k === 'g') {
+      this.setPref({ graphics: this.prefs.graphics === false });
+      this.say(`inline graphics ${this.prefs.graphics === false ? 'off' : 'on'}`);
+    }
     else if (k === 'R') this.resumeRun(s.runId, true);
     else if (k === 'm') {
       if (st.status !== 'error') return this.say(st.status === 'running' ? 'the run is still going; Maestro steps in when it fails' : `nothing to fix: the run is ${st.status}`);
@@ -604,10 +854,10 @@ export class Tui {
     return mode === 'split' || (mode === 'auto' && this.cols >= 130);
   }
 
-  private sessionLines(s: Extract<Screen, { kind: 'session' }>): string[] {
+  private sessionLines(s: Extract<Screen, { kind: 'session' }>, width = this.cols - 2): string[] {
     const st = this.state(s.runId);
     const ns = st?.nodes[s.nodeId];
-    const w = this.cols - 2;
+    const w = width;
     if (!st || !ns) return [];
     if (s.pane === 'output') {
       const text = ns.output ?? ns.live ?? '';
@@ -736,7 +986,7 @@ export class Tui {
   // ---------- settings ----------
   private settings(): { label: string; value: string; hint: string; change?: (dir: 1 | -1 | 0) => void }[] {
     const onOff = (v: boolean | undefined) => (v === false ? dim('off') : green('on'));
-    const flip = (key: 'animate' | 'activity' | 'metrics') => () => this.setPref({ [key]: this.prefs[key] === false } as Prefs);
+    const flip = (key: 'animate' | 'activity' | 'metrics' | 'reactions' | 'graphics') => () => this.setPref({ [key]: this.prefs[key] === false } as Prefs);
     const cycle = <T,>(list: T[], cur: T, dir: 1 | -1 | 0): T => list[(list.indexOf(cur) + (dir || 1) + list.length) % list.length]!;
     return [
       { label: 'Colour theme', value: cyan(themeName), hint: 'enter: pick · ←→ cycle · x delete custom', change: (d) => this.pickTheme(d) },
@@ -748,6 +998,13 @@ export class Tui {
       { label: 'Animations', value: onOff(this.prefs.animate), hint: 'off freezes spinners and bots', change: flip('animate') },
       { label: 'Live activity lines', value: onOff(this.prefs.activity), hint: 'what each running agent is doing', change: flip('activity') },
       { label: 'Metrics panel', value: onOff(this.prefs.metrics), hint: 'cost, budget, stream rate, step times (v in a run)', change: flip('metrics') },
+      { label: 'Mouse', value: onOff(this.prefs.mouse), hint: 'click rows, tabs and bots; wheel scrolls (shift-drag selects text)', change: () => {
+        this.setPref({ mouse: this.prefs.mouse === false });
+        this.applyMouse();
+      } },
+      { label: 'Bot reactions', value: onOff(this.prefs.reactions), hint: 'cheers, shudders, batons passed between steps', change: flip('reactions') },
+      { label: 'Inline graphics', value: onOff(this.prefs.graphics), hint: 'timeline + cost charts in the run view (needs a colour terminal and 34+ rows)', change: flip('graphics') },
+      { label: 'Side pane', value: cyan(this.prefs.split ?? 'auto'), hint: 'run view: diff or events beside the live output (100+ columns)', change: (d) => this.setPref({ split: cycle(['auto', 'diff', 'events', 'off'] as const, this.prefs.split ?? 'auto', d) }) },
       { label: 'Diff layout', value: cyan(this.prefs.diff ?? 'auto'), hint: 'auto = side by side on wide terminals', change: (d) => this.setPref({ diff: cycle(['auto', 'unified', 'split'] as const, this.prefs.diff ?? 'auto', d) }) },
       { label: 'Theme editor', value: dim('open'), hint: 'edit colours with a live preview', change: () => this.openThemeEditor() },
     ];
@@ -800,6 +1057,7 @@ export class Tui {
     const items = this.settings();
     const sel = s.sel.settings;
     const lines = ['', `  ${dim('Preferences are saved to')} ${cyan('ui.json')} ${dim('in your aorch home and apply to every window.')}`, ''];
+    items.forEach((it, i) => this.bodyHit(3 + i, 0, this.cols, () => ((s.sel.settings = i), this.key('enter'))));
     items.forEach((it, i) => lines.push(`  ${i === sel ? cyan('▍') : ' '} ${padEnd(i === sel ? bold(it.label) : it.label, 22)} ${padEnd(it.value, 12)} ${dim(i === sel ? it.hint : '')}`));
     lines.push('', `  ${dim('home ')} ${this.d.cfg.home}`, `  ${dim('vault')} ${this.d.cfg.vault}`);
     if (h >= lines.length + 12) {
@@ -936,7 +1194,8 @@ export class Tui {
     else if (k === 'r') {
       if (s.dirty) this.saveFlow(s);
       if (!s.dirty) this.askRun(p);
-    } else if (k === 't') this.cycleTheme();
+    } else if (k === 'k') this.skillIntoEditor(s, touch);
+    else if (k === 't') this.cycleTheme();
   }
 
   private saveFlow(s: Extract<Screen, { kind: 'editor' }>) {
@@ -1026,6 +1285,11 @@ export class Tui {
       const waiting = st && Object.values(st.nodes).some((n) => n.status === 'awaiting');
       const last = st?.actions[st.actions.length - 1];
       if (last && st?.status !== 'done') return { mood: last.action === 'stop' ? 'sad' : 'working', text: `Maestro ${last.action === 'stop' ? 'stopped' : last.action}: ${last.detail}` };
+      if (st && st.status === 'running' && this.prefs.reactions !== false) {
+        const ns = st.pipeline.nodes;
+        const i = ns.findIndex((n, ix) => (st.nodes[n.id]?.finishedAt ?? 0) > Date.now() - 3000 && st.nodes[n.id]?.status === 'done' && ix < ns.length - 1);
+        if (i >= 0) return { mood: 'happy', text: `${CREW[crewFor(ns[i]!)]!.name} finished. Handing the baton to ${CREW[crewFor(ns[i + 1]!)]!.name}.` };
+      }
       return { mood: waiting ? 'waiting' : moodFor(st?.status ?? 'queued'), text: waiting ? 'Someone needs a decision from you. Press a to approve or x to reject.' : st?.status === 'done' ? 'All done. Review the branch, or step into any agent to see how it got there.' : st?.status === 'error' ? 'Something failed. Press R to retry only the failed branch.' : 'The crew is working. Pick an agent with ←/→ and press enter to step into its session.' };
     }
     if (s.kind === 'editor') return { mood: 'idle', text: 'Arrange the crew: shift+←/→ or [ ] moves a step, a adds one, enter edits its settings.' };
@@ -1045,6 +1309,17 @@ export class Tui {
       .slice(1)
       .map((s) => (s.kind === 'run' ? `run ${s.runId.slice(-6)}` : s.kind === 'session' ? `${s.nodeId} session` : s.kind === 'editor' ? `editing ${s.pipeline.name}${s.dirty ? ' •' : ''}` : s.kind === 'plan' ? 'plan' : s.kind === 'theme' ? 'theme editor' : ''))
       .join(dim(' › '));
+    if (!this.modal) {
+      let x = vlen(bot[1]!) + 2;
+      if (this.screen.kind === 'dash') {
+        const sc = this.screen;
+        TABS.forEach((t, i) => {
+          const wd = `${i + 1} ${t}`.length;
+          this.hit(1, x, x + wd - 1, () => (sc.tab = t));
+          x += wd + 3;
+        });
+      } else this.hit(1, x, x + 8, () => this.pop());
+    }
     const right = dim(new Date().toTimeString().slice(0, 8));
     const l0 = `${gradient('aorch', BRAND)}  ${faint(themeName)}${crumbs ? `  ${dim('›')} ${crumbs}` : ''}`;
     const txt = wrap(m.text, w - 14 - 4);
@@ -1065,15 +1340,16 @@ export class Tui {
       this.modal?.kind === 'prompt' ? 'enter confirm · esc cancel · ctrl-u clear'
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
+      : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
       : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · tab switch · t theme · c crew style · q quit' : 'enter link model · x unlink · o ask Maestro · t theme · c crew style · q quit')
-      : s.kind === 'run' ? '←→ pick agent · enter step into session · d diff · v metrics · a approve · x reject · s stop · u resume · R retry failed · m fix · w shell · esc back'
+      : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
-      : s.kind === 'editor' ? '←→ select · [ ] move · a add · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
+      : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';
     const t = this.toast && this.toast.until > Date.now() ? this.toast : undefined;
-    return [rule(this.cols), t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(hint)];
+    return [rule(this.cols), t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `^K commands · ${hint}`)];
   }
 
   private body(h: number): string[] {
@@ -1103,10 +1379,25 @@ export class Tui {
     const w = Math.min(this.cols - 4, 78);
     const pad = (l: string) => '  ' + l;
     const lines: string[] = [];
-    const top = '╭─ ' + m.title + ' ' + '─'.repeat(Math.max(0, w - 5 - vlen(m.title))) + '╮';
+    const clicks: { line: number; act: () => void }[] = [];
+    const title = m.kind === 'palette' ? 'Command palette' : m.title;
+    const top = '╭─ ' + title + ' ' + '─'.repeat(Math.max(0, w - 5 - vlen(title))) + '╮';
     lines.push(pad(gradient(top, BRAND)));
     const row = (c: string) => pad(faint('│') + ' ' + padEnd(clip(c, w - 4), w - 4) + ' ' + faint('│'));
-    if (m.kind === 'prompt') {
+    if (m.kind === 'palette') {
+      const items = this.paletteItems(m);
+      m.sel = Math.min(m.sel, Math.max(0, items.length - 1));
+      lines.push(row(`${cyan('›')} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`));
+      const room = Math.max(4, h - 7);
+      const start = Math.max(0, Math.min(Math.max(0, items.length - room), m.sel - Math.floor(room / 2)));
+      items.slice(start, start + room).forEach((it, vi) => {
+        const i = start + vi;
+        clicks.push({ line: lines.length, act: () => ((m.sel = i), this.modalKey('enter')) });
+        lines.push(row(`${i === m.sel ? cyan('▸') : ' '} ${padEnd(dim(it.group), 12)} ${padEnd(i === m.sel ? bold(it.label) : it.label, 30)} ${dim(it.hint)}`));
+      });
+      if (!items.length) lines.push(row(dim('nothing matches')));
+      else if (items.length > room) lines.push(row(dim(`${m.sel + 1}/${items.length}`)));
+    } else if (m.kind === 'prompt') {
       lines.push(row(`${cyan('›')} ${m.value}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`));
       if (m.hint) lines.push(row(dim(m.hint)));
     } else if (m.kind === 'menu') {
@@ -1114,12 +1405,15 @@ export class Tui {
       const start = Math.max(0, Math.min(Math.max(0, m.items.length - room), m.sel - Math.floor(room / 2)));
       m.items.slice(start, start + room).forEach((it, vi) => {
         const i = start + vi;
+        clicks.push({ line: lines.length, act: () => ((m.sel = i), this.modalKey('enter')) });
         lines.push(row(`${i === m.sel ? cyan('▸') : ' '} ${padEnd(i === m.sel ? bold(it.label) : it.label, 22)}${it.hint ? ' ' + dim(it.hint) : ''}`));
       });
       if (m.items.length > room) lines.push(row(dim(`${m.sel + 1}/${m.items.length}`)));
     } else lines.push(row(dim('press y to confirm, n to cancel')));
     lines.push(pad(gradient('╰' + '─'.repeat(w - 2) + '╯', BRAND)));
-    return [...Array(Math.max(0, Math.floor((h - lines.length) / 4))).fill(''), ...lines];
+    const off = Math.max(0, Math.floor((h - lines.length) / 4));
+    for (const c of clicks) this.bodyHit(off + c.line, 2, 2 + w, c.act);
+    return [...Array(off).fill(''), ...lines];
   }
 
   private window<T>(items: T[], sel: number, h: number): [T[], number] {
@@ -1137,6 +1431,7 @@ export class Tui {
       const mood = moodFor(r.status);
       const role = r.status === 'paused' ? 'approval' : 'coder';
       const stc = r.status === 'done' ? green(r.status) : r.status === 'error' ? red(r.status) : r.status === 'running' ? cyan(r.status) : amber(r.status);
+      this.bodyHit(vi, 0, this.cols, () => (s.sel.runs === start + vi ? this.key('enter') : (s.sel.runs = start + vi)));
       const row = `${sel ? cyan('▍') : ' '} ${miniBot(role, mood, this.tick)} ${padEnd(cyan(r.id.slice(-8)), 9)} ${padEnd(bold(r.pipeline), 22)} ${padEnd(stc, 9)} ${padEnd(usd(r.costUsd), 7)} ${padEnd(dim(ago(r.startedAt)), 10)} ${dim(r.task.split('\n')[0]!.slice(0, Math.max(10, this.cols - 74)))}`;
       return sel ? row : row;
     });
@@ -1152,6 +1447,7 @@ export class Tui {
     const [view, start] = this.window(flows, s.sel.workflows, Math.max(3, h - 2));
     return view.map((f, vi) => {
       const sel = start + vi === s.sel.workflows;
+      this.bodyHit(vi, 0, this.cols, () => (s.sel.workflows === start + vi ? this.key('enter') : (s.sel.workflows = start + vi)));
       let chain = '';
       try {
         const p = readPipeline(this.d.cfg.home, f.name);
@@ -1176,6 +1472,8 @@ export class Tui {
       const status = role === 'approval' ? '' : a ? (a.ok ? green('✔') : red('✘')) : dim('…');
       const model = role === 'approval' ? dim('you (a person)') : bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)');
       const mood: Mood = i === sel ? 'working' : 'idle';
+      const ds = this.screen as Extract<Screen, { kind: 'dash' }>;
+      this.bodyHit(1 + i, 0, 58, () => (ds.sel.crew === i ? this.key('enter') : (ds.sel.crew = i)));
       return `${i === sel ? cyan('▍') : ' '} ${miniBot(role, mood, this.tick)} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${status} ${model}`;
     });
     const role = roles[sel]!;
@@ -1191,10 +1489,77 @@ export class Tui {
     return lines;
   }
 
+  /** Short-lived reactions: cheers, shudders, batons passed on, Maestro stepping in. Off with animations or the setting. */
+  private fxFor(st: RunState): ((n: PipelineNode, i: number) => Fx | undefined) | undefined {
+    if (this.prefs.reactions === false || this.prefs.animate === false) return undefined;
+    const now = Date.now();
+    return (n, i) => {
+      const ns = st.nodes[n.id];
+      if (!ns) return undefined;
+      const f: Fx = {};
+      if (ns.finishedAt && now - ns.finishedAt < 2500) {
+        if (ns.status === 'done' && ns.verdict !== 'FAIL') f.cheer = true;
+        else if (ns.status === 'error' || ns.verdict === 'FAIL') f.shake = true;
+      }
+      const prev = i > 0 ? st.nodes[st.pipeline.nodes[i - 1]!.id] : undefined;
+      if (ns.startedAt && prev?.finishedAt && now - ns.startedAt < 1500 && ns.startedAt - prev.finishedAt < 3000) f.baton = (now - ns.startedAt) / 1200;
+      const act = [...st.actions].reverse().find((a) => a.node === n.id && now - a.ts < 5000);
+      if (act) f.tag = act.action === 'retry' ? '↻' : act.action === 'escalate' ? '⇧' : '■';
+      return Object.keys(f).length ? f : undefined;
+    };
+  }
+
+  /** Which side pane the run view shows, if any: needs a wide terminal. */
+  private sideKind(): 'diff' | 'events' | undefined {
+    if (this.cols < 100) return undefined;
+    const p = this.prefs.split ?? 'auto';
+    return p === 'auto' ? (this.cols >= 130 ? 'diff' : undefined) : p === 'off' ? undefined : p;
+  }
+
+  /** The right-hand pane next to the run's live output: the selected step's diff or event log. */
+  private sidePane(s: Extract<Screen, { kind: 'run' }>, nodeId: string, ns: RunState['nodes'][string] | undefined, kind: 'diff' | 'events', width: number, rows: number): string[] {
+    const key = `${nodeId}|${kind}|${ns?.commit ?? ''}|${ns?.status ?? ''}`;
+    if (!s.side || s.sideKey !== key) {
+      s.sideKey = key;
+      s.side = { kind: 'session', runId: s.runId, nodeId, pane: kind, scroll: 0, follow: kind === 'events', layout: 'unified' };
+      if (kind === 'diff') this.loadDiff(s.side);
+    }
+    const side = s.side;
+    const lines = this.sessionLines(side, Math.max(10, width - 1));
+    const room = Math.max(1, rows - 1);
+    const maxScroll = Math.max(0, lines.length - room);
+    if (side.follow) side.scroll = maxScroll;
+    side.scroll = Math.min(side.scroll, maxScroll);
+    const info = kind === 'diff' && side.parsed ? diffSummary(side.parsed.p) : lines.length > room ? dim(`${side.scroll + 1}-${Math.min(lines.length, side.scroll + room)}/${lines.length}`) : '';
+    return [`${bold(kind)} ${dim('· ' + nodeId)}  ${info}  ${dim('J/K scroll · | change')}`, ...lines.slice(side.scroll, side.scroll + room)];
+  }
+
+  /** Timeline (who ran when) and cost charts drawn in half-block pixels. Empty when there is no room or nothing has started. */
+  private graphLines(st: RunState): string[] {
+    if (this.prefs.graphics === false || this.prefs.metrics === false || this.rows < 34) return [];
+    if (!st.pipeline.nodes.some((n) => st.nodes[n.id]?.startedAt)) return [];
+    const w = this.cols - 4;
+    const lab = 9;
+    const tw = Math.max(16, Math.floor((w - lab) * 0.62));
+    const cw = w - lab - tw - 3;
+    if (cw < 10) return [];
+    const now = Date.now();
+    const colorOf = (id: string): RGB => CREW[crewFor(st.pipeline.nodes.find((n) => n.id === id)!)]!.color();
+    const { canvas, lanes } = timelineChart(st, now, tw, colorOf, pal.red);
+    const left = toLines(canvas);
+    const cap = st.pipeline.settings.maxCostUsd;
+    const right = toLines(costChart(this.metricCache?.series ?? [0], cw, left.length, pal.cyan, cap, pal.slate));
+    const span = (st.finishedAt ?? now) - st.startedAt;
+    const out = [` ${padEnd(dim('timeline'), lab)}${padEnd(dim(`0 → ${dur(span)}`), tw)}   ${dim('cost ' + usd(st.costUsd) + (cap ? ' / ' + usd(cap) : ''))}`];
+    left.forEach((l, i) => out.push(` ${padEnd(dim(clip(lanes[i]?.label ?? '', lab - 1)), lab)}${l}   ${right[i] ?? ''}`));
+    return out;
+  }
+
   private runBody(s: Extract<Screen, { kind: 'run' }>, h: number): string[] {
     const st = this.state(s.runId);
     if (!st) return [dim('  run not found')];
     s.sel = Math.min(s.sel, st.pipeline.nodes.length - 1);
+    this.stripHits(2, st.pipeline.nodes.length, s.sel, (i) => (s.sel === i ? this.key('enter') : (s.sel = i)));
     const strip_ = crewStrip(
       st.pipeline.nodes,
       (n) => st.nodes[n.id]?.status ?? 'queued',
@@ -1207,6 +1572,7 @@ export class Tui {
         if (a) return paint(VERB_COLOR[a.verb], clip(`${a.verb} ${a.text.split('/').pop() ?? ''}`, CELL - 3));
         return ns?.startedAt ? dim(dur(Math.max(0, (ns.status === 'running' || !ns.finishedAt ? Date.now() : ns.finishedAt) - ns.startedAt))) : dim(ns?.status ?? '');
       },
+      this.fxFor(st),
     ).map((l) => ' ' + l);
     const n = st.pipeline.nodes[s.sel]!;
     const ns = st.nodes[n.id];
@@ -1220,15 +1586,30 @@ export class Tui {
     const waiting = Object.entries(st.nodes).filter(([, v]) => v.status === 'awaiting').map(([id]) => id);
     const banner = waiting.length ? [amber(`  ◉ waiting for approval: ${waiting.join(', ')} — press a to approve, x to reject`)] : [];
     const metrics = this.metricLines(st).map((l) => ' ' + l);
+    let gfx = this.graphLines(st);
     const now = this.nowLines(st).map((l) => ' ' + l);
-    const extra = banner.length + metrics.length + now.length + (metrics.length || now.length ? 1 : 0);
-    const room = Math.max(2, h - strip_.length - 5 - extra);
+    const extraOf = () => banner.length + metrics.length + gfx.length + now.length + (metrics.length || now.length ? 1 : 0);
+    let room = Math.max(2, h - strip_.length - 5 - extraOf());
+    if (gfx.length && room < 6) {
+      gfx = [];
+      room = Math.max(2, h - strip_.length - 5 - extraOf());
+    }
+    const sideKind = this.sideKind();
+    const lw = sideKind ? Math.floor((this.cols - 3) / 2) : this.cols;
+    const dw = lw - 4;
     const text = (ns?.live ?? ns?.output ?? '').trim();
     if (ns?.status === 'running' && this.prefs.activity !== false && ns.live) {
-      for (const a of recent(ns.live, room)) detail.push('  ' + this.actLine(a, this.cols - 4));
-    } else if (text) detail.push(...wrap(text, this.cols - 4).slice(-room).map((l) => dim('  ' + l)));
+      for (const a of recent(ns.live, room)) detail.push('  ' + this.actLine(a, dw));
+    } else if (text) detail.push(...wrap(text, dw).slice(-room).map((l) => dim('  ' + l)));
     else detail.push(dim('  (no output yet)'));
-    return [' ' + head, '', ...strip_, '', ...banner, ...metrics, ...now, ...(metrics.length || now.length ? [''] : []), ...detail];
+    let lower = detail;
+    if (sideKind) {
+      this.splitX = lw + 3;
+      const right = this.sidePane(s, n.id, ns, sideKind, this.cols - lw - 3, room + 2);
+      const left = detail.map((l) => clip(l, lw));
+      lower = Array.from({ length: Math.max(left.length, right.length) }, (_, i) => `${padEnd(left[i] ?? '', lw)} ${faint('│')} ${right[i] ?? ''}`);
+    }
+    return [' ' + head, '', ...strip_, '', ...banner, ...metrics, ...gfx, ...now, ...(metrics.length || now.length ? [''] : []), ...lower];
   }
 
   private sessionBody(s: Extract<Screen, { kind: 'session' }>, h: number): string[] {
@@ -1271,6 +1652,7 @@ export class Tui {
     if (!p.nodes.length) lines.push(`  ${dim('No steps yet. Press')} ${cyan('a')} ${dim('to add the first crew member.')}`);
     else {
       s.sel = Math.min(s.sel, p.nodes.length - 1);
+      this.stripHits(2, p.nodes.length, s.sel, (i) => (s.sel === i ? this.key('enter') : (s.sel = i)));
       lines.push(...crewStrip(p.nodes, () => 'idle', s.sel, this.tick, this.cols - 2, (n) => dim(n.kind === 'agent' ? (n.readOnly ? 'read-only' : 'writes') : n.kind === 'gate' ? 'gate' : 'human')).map((l) => ' ' + l));
       const n = p.nodes[s.sel]!;
       lines.push('');
@@ -1309,10 +1691,14 @@ export class Tui {
   draw = () => {
     if (this.busy) return;
     const rows = this.rows;
+    this.hits = [];
+    this.splitX = 0;
     const head = this.header();
     const foot = this.footer();
     const bodyH = rows - head.length - foot.length;
+    this.bodyY = head.length;
     const body = this.body(bodyH);
+    this.hits = this.hits.filter((h) => h.y < head.length + bodyH);
     const lines = [...head, ...body.slice(0, bodyH), ...Array(Math.max(0, bodyH - body.length)).fill(''), ...foot];
     let buf = '';
     for (let i = 0; i < lines.length; i++) {
