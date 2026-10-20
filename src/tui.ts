@@ -7,6 +7,7 @@
  *   workflow editor    (arrange, add, remove steps; edit step settings; save; run)
  *   orchestrator bot   (describe a task, Maestro designs the workflow, you approve it, it runs)
  */
+import { parsePr, startPrRun } from './pr.js';
 import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -545,6 +546,7 @@ export class Tui {
     add('go to', 'Settings', '4', goto('settings'));
     add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
     add('do', 'New workflow', 'n', () => this.newWorkflow());
+    add('do', 'Review a pull request', 'paste a GitHub PR link', () => this.reviewPr());
     add('crew', 'New bot', 'design a crew member', () => this.openBotEditor());
     for (const role of Object.keys(CREW)) add('crew', `Edit ${CREW[role]!.name}`, CREW[role]!.title, () => this.openBotEditor(role));
     add('do', 'Open the theme editor', 'live preview', () => this.openThemeEditor());
@@ -632,6 +634,29 @@ export class Tui {
         (this.stack[0] as { tab: Tab; sel: Record<Tab, number> }).tab = 'runs';
       })
       .catch((e: Error) => this.say(e.message.split('\n').slice(0, 2).join(' '), 'err'));
+  }
+
+  /** Paste a PR link, pick a workflow, and run it on that PR. */
+  private reviewPr() {
+    this.ask('GitHub pull request link (or owner/repo#123):', (link) => {
+      if (!link) return;
+      let ref;
+      try {
+        ref = parsePr(link);
+      } catch (e) {
+        return this.say((e as Error).message, 'err');
+      }
+      this.ask('Workflow or skill to run (full-review reads the PR and writes one review):', (flow) => {
+        this.say(`fetching ${ref.repo}#${ref.number}…`);
+        startPrRun({ home: this.d.cfg.home, engine: this.d.engine }, ref, { workflow: flow || 'full-review' })
+          .then((r) => {
+            this.say(`started ${r.runId} on “${r.info.title.slice(0, 40)}”  ·  add --comment from the CLI to post it back`);
+            this.stack = [this.stack[0]!, { kind: 'run', runId: r.runId, sel: 0 }];
+            (this.stack[0] as { tab: Tab; sel: Record<Tab, number> }).tab = 'runs';
+          })
+          .catch((e: Error) => this.say(e.message.split('\n')[0]!, 'err'));
+      }, 'full-review');
+    });
   }
 
   private askRun(pipeline: Pipeline) {

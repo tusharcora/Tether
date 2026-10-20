@@ -102,7 +102,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   const cx1 = Math.floor((gl + gr) / 2), cx2 = cx1 + 1;
   const [tL, tR] = per[0]!;
   const g = Array.from({ length: 9 }, () => new Array<string>(10).fill('.'));
-  const hop = mood === 'happy' && tick % 12 < 6 ? -1 : 0;
+  const hop = 0; // a 1px hop re-pairs every half-block cell and reads as jitter in a terminal
   const oy = 2 + hop;
   const put = (x: number, y: number, k: string) => {
     const cx = x + 1, cy = y + oy;
@@ -122,7 +122,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   else if (look.side === 'ears') side([1], 'A');
   else if (look.side === 'cans') side([1, 2, 3], 'A');
   else if (look.side === 'wings') { side([2, 3], 'A'); put(per[3]![0] - 2, 3, 'A'); put(per[3]![1] + 2, 3, 'A'); }
-  const flick = mood === 'working' && tick % 6 < 3;
+  const flick = mood === 'working' && tick % 14 < 7;
   const A = flick ? 'h' : 'A', Z = flick ? 'Z' : 'A';
   switch (look.top) {
     case 'antenna': put(cx1, -1, Z); put(cx2, -1, Z); break;
@@ -324,18 +324,40 @@ export function renderLook(look: Look, mood: Mood = 'idle', tick = 0): string[] 
 }
 
 /** One-line emoticon version for table rows. */
+/** One-line face for lists: built from the bot's own look so it matches its pixel sprite. Always 5 columns wide. */
 export function miniBot(role: string, mood: Mood = 'idle', tick = 0): string {
   const info = CREW[role] ?? CREW.coder!;
-  const faces: Record<Mood, string[]> = {
-    idle: ['(•‿•)', '(•‿•)', '(-‿-)'],
-    working: ['(◔_◔)', '(◕_◔)', '(◔_◕)', '(◕_◕)'],
-    happy: ['(^‿^)', '(^▿^)'],
-    sad: ['(×_×)', '(×︵×)'],
-    waiting: ['(°o°)', '(°O°)'],
-    asleep: ['(-_-)', '(-_-)ᶻ'],
+  const look = info.def?.look;
+  const eyeFor = (side: 'l' | 'r'): string => {
+    switch (look?.eyes) {
+      case 'tall': return '|';
+      case 'wide': return '—';
+      case 'visor': return '▬';
+      case 'sleepy': return '-';
+      case 'wink': return side === 'l' ? '•' : '-';
+      case 'glasses': return 'ʘ';
+      default: return '•';
+    }
   };
-  const set = faces[mood];
-  return paint(info.color(), set[Math.floor(tick / (mood === 'working' ? 3 : 8)) % set.length]!);
+  const mouth = look?.mouth === 'open' ? 'o' : look?.mouth === 'smile' ? '‿' : look?.mouth === 'flat' ? '_' : '‿';
+  const blink = mood === 'idle' && tick % 40 > 37;
+  let l = eyeFor('l'), r = eyeFor('r'), m = mouth;
+  if (look?.eyes === 'cyclops') {
+    l = ' ';
+    r = ' ';
+    m = '◉';
+  }
+  const set: Partial<Record<Mood, [string, string, string][]>> = {
+    working: [['◔', '_', '◔'], ['◕', '_', '◔'], ['◔', '_', '◕'], ['◕', '_', '◕']],
+    happy: [['^', '‿', '^'], ['^', '▿', '^']],
+    sad: [['×', '_', '×'], ['×', '︵', '×']],
+    waiting: [['°', 'o', '°'], ['°', 'O', '°']],
+    asleep: [['-', '_', '-']],
+  };
+  const f = set[mood];
+  const face = f ? f[Math.floor(tick / (mood === 'working' ? 3 : 8)) % f.length]! : blink ? ['-', m, '-'] : [l, m, r];
+  const [bl, br] = look?.body === 'square' ? ['[', ']'] : look?.body === 'wide' ? ['{', '}'] : ['(', ')'];
+  return paint(info.color(), `${bl}${face.join('')}${br}`);
 }
 
 export function moodFor(status: string): Mood {

@@ -7,6 +7,7 @@ import type { Engine } from './engine.js';
 import { CREW, lookPixels, refreshCrew } from './bots.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
+import { loadSettings, matchRule, parseWebhook, startPrRun, verifySignature } from './pr.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -69,6 +70,17 @@ function originOk(req: IncomingMessage): boolean {
   }
 }
 
+async function readRaw(req: IncomingMessage, max = 5_000_000): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let n = 0;
+  for await (const c of req) {
+    n += (c as Buffer).length;
+    if (n > max) throw new HttpError(413, 'request body too large');
+    chunks.push(c as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function readJson(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
   let n = 0;
@@ -109,6 +121,34 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const live = engine.isLive(id) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
     return { ...s, live };
   };
+
+
+  /** GitHub pull_request webhook. Reachable through a tunnel, so it skips the loopback Host/Origin checks and is authenticated by the HMAC signature instead. */
+  async function githubWebhook(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const secret = process.env.AORCH_WEBHOOK_SECRET || loadSettings(cfg.home).webhookSecret || '';
+    if (!secret) throw new HttpError(503, 'no webhook secret set. Run: aorch pr secret');
+    const raw = await readRaw(req);
+    if (!verifySignature(secret, raw, req.headers['x-hub-signature-256'] as string | undefined)) throw new HttpError(401, 'bad signature');
+    const event = req.headers['x-github-event'] as string | undefined;
+    if (event === 'ping') return send(res, 200, { ok: true, pong: true });
+    let body: unknown;
+    try {
+      body = JSON.parse(raw.toString('utf8'));
+    } catch {
+      throw new HttpError(400, 'not JSON');
+    }
+    const pr = parseWebhook(event, body);
+    if (!pr) return send(res, 202, { ignored: 'not a pull_request event' });
+    const rule = matchRule(loadSettings(cfg.home).rules ?? [], pr);
+    if (!rule) return send(res, 202, { ignored: 'no rule matches' });
+    refreshCrew(cfg.home);
+    const ref = { provider: 'github' as const, repo: pr.repo, number: pr.number, url: `https://github.com/${pr.repo}/pull/${pr.number}` };
+    // answer GitHub at once (it gives up after 10s); the run goes on in the background
+    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment })
+      .then((r) => console.error(`[aorch] PR ${pr.repo}#${pr.number} -> run ${r.runId} (${rule.workflow})`))
+      .catch((e: Error) => console.error(`[aorch] PR ${pr.repo}#${pr.number} skipped: ${e.message}`));
+    return send(res, 202, { accepted: true, workflow: rule.workflow });
+  }
 
   async function route(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const p = url.pathname;
@@ -370,6 +410,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
 
   const server = createServer(async (req, res) => {
     try {
+      if (req.method === 'POST' && (req.url ?? '').split('?')[0] === '/api/webhooks/github') return await githubWebhook(req, res);
       if (!hostOk(req)) throw new HttpError(403, 'bad Host header');
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
       if (req.method && !['GET', 'HEAD'].includes(req.method) && !originOk(req)) throw new HttpError(403, 'cross-origin request refused');

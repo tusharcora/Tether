@@ -46,3 +46,25 @@ npm run typecheck   # root and web
 ```
 
 State lives under `~/.aorch` (override with `AORCH_HOME`): the run database, worktrees, saved workflows, `bots.json` (bot to model links) and `ui.json` (display preferences, custom themes).
+
+## Pull requests as triggers
+
+Link a GitHub PR and run any workflow on it. It uses the `gh` CLI you are already signed in with (`gh auth login`).
+
+```
+aorch pr https://github.com/acme/api/pull/42            # runs the built-in full-review (read-only, 5 steps)
+aorch pr acme/api#42 --workflow my-review --comment     # your own workflow, post the result as a PR comment
+```
+
+Run it automatically:
+
+```
+aorch pr rule add acme/api --workflow full-review --comment   # which PRs run what
+aorch pr map acme/api ~/code/api                              # optional: use your checkout instead of a clone
+aorch pr watch                                                # polls GitHub every 60s, no setup
+# or webhooks:
+aorch pr secret                                               # then add a GitHub webhook (Pull requests) to <tunnel>/api/webhooks/github
+aorch serve
+```
+
+Rules can limit by `--labels`, `--events`, and opt in to `--drafts` and `--forks`. Each PR runs once per commit. PR text is passed to agents fenced as data, and a workflow that executes commands (a test gate or setup step) refuses fork PRs unless you pass `--trust-code`. `aorch serve` stays loopback-only; only the webhook path accepts outside hosts, and it needs the HMAC signature. Azure DevOps and AWS CodeCommit links are recognised but not wired up yet.

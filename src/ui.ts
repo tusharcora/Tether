@@ -48,9 +48,16 @@ export const pal = {
   text: [226, 232, 240] as RGB,
 };
 
+// xterm's 256-colour cube is NOT linear: its channel levels are 0, 95, 135, 175, 215, 255, and 232-255 is a grey ramp of 8 + 10n.
+const CUBE = [0, 95, 135, 175, 215, 255];
 const to256 = ([r, g, b]: RGB) => {
-  if (r === g && g === b) return r < 8 ? 16 : r > 248 ? 231 : Math.round(((r - 8) / 247) * 24) + 232;
-  return 16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5);
+  const near = (v: number) => CUBE.reduce((bi, c, i) => (Math.abs(c - v) < Math.abs(CUBE[bi]! - v) ? i : bi), 0);
+  const ri = near(r), gi = near(g), bi = near(b);
+  const cube = [CUBE[ri]!, CUBE[gi]!, CUBE[bi]!];
+  const n = Math.max(0, Math.min(23, Math.round(((r + g + b) / 3 - 8) / 10)));
+  const gv = 8 + 10 * n;
+  const d = (c: number[]) => (c[0]! - r) ** 2 + (c[1]! - g) ** 2 + (c[2]! - b) ** 2;
+  return d([gv, gv, gv]) < d(cube) ? 232 + n : 16 + 36 * ri + 6 * gi + bi;
 };
 const to16 = ([r, g, b]: RGB) => {
   const mx = Math.max(r, g, b);
