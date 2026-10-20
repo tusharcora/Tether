@@ -1,0 +1,30 @@
+{
+  "name": "agent-orchestrator",
+  "version": "0.1.0",
+  "description": "Durable SDLC orchestrator for CLI coding agents (Claude Code, Codex, OpenCode) with a visual pipeline builder and an Obsidian knowledge graph",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.12" },
+  "bin": { "aorch": "dist/cli.js" },
+  "scripts": {
+    "dev": "tsx src/cli.ts serve",
+    "aorch": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
+    "test": "vitest run",
+    "build:server": "tsc -p tsconfig.build.json",
+    "build:web": "vite build web",
+    "build": "npm run build:server && npm run build:web"
+  },
+  "dependencies": {
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "solid-js": "^1.9.17",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^5.0.5"
+  }
+}

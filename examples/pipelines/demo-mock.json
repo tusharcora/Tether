@@ -1,0 +1,22 @@
+{
+  "name": "demo-mock",
+  "version": 1,
+  "mode": "pipeline",
+  "settings": { "parallel": 4, "nodeTimeoutMs": 60000, "pipeMode": "ancestors" },
+  "nodes": [
+    { "id": "plan", "kind": "agent", "role": "planner", "agent": "mock", "readOnly": true, "x": 60, "y": 140,
+      "mock": { "output": "Plan: create HELLO.md, then verify it exists.", "delayMs": 600, "costUsd": 0.01 } },
+    { "id": "code", "kind": "agent", "role": "coder", "agent": "mock", "x": 330, "y": 140,
+      "mock": { "writeFile": { "path": "HELLO.md", "content": "hello from the demo pipeline\n" }, "writeFileFromAttempt": 2, "delayMs": 600, "costUsd": 0.02 } },
+    { "id": "tests", "kind": "gate", "title": "file exists", "command": "test -f HELLO.md", "fixNode": "code", "maxLoops": 2, "x": 600, "y": 140 },
+    { "id": "review", "kind": "agent", "role": "reviewer", "agent": "mock", "readOnly": true, "verdict": true, "includeDiff": true, "fixNode": "code", "x": 870, "y": 140,
+      "mock": { "verdicts": ["PASS"], "delayMs": 400, "costUsd": 0.01 } },
+    { "id": "approve", "kind": "approval", "title": "approve", "x": 1140, "y": 140 }
+  ],
+  "edges": [
+    { "from": "plan", "to": "code" },
+    { "from": "code", "to": "tests" },
+    { "from": "tests", "to": "review" },
+    { "from": "review", "to": "approve" }
+  ]
+}

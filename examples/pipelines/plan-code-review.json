@@ -1,0 +1,26 @@
+{
+  "name": "plan-code-review",
+  "version": 1,
+  "mode": "pipeline",
+  "settings": {
+    "parallel": 4,
+    "nodeTimeoutMs": 1800000,
+    "maxCostUsd": 5,
+    "pipeMode": "ancestors"
+  },
+  "nodes": [
+    { "id": "plan", "kind": "agent", "role": "planner", "agent": "claude", "readOnly": true, "x": 60, "y": 140 },
+    { "id": "arch", "kind": "agent", "role": "architect", "agent": "claude", "readOnly": true, "x": 330, "y": 140 },
+    { "id": "code", "kind": "agent", "role": "coder", "agent": "claude", "x": 600, "y": 140 },
+    { "id": "tests", "kind": "gate", "title": "tests", "command": "npm test --silent", "fixNode": "code", "maxLoops": 2, "x": 870, "y": 140 },
+    { "id": "review", "kind": "agent", "role": "reviewer", "agent": "claude", "readOnly": true, "verdict": true, "includeDiff": true, "fixNode": "code", "maxLoops": 1, "x": 1140, "y": 140 },
+    { "id": "approve", "kind": "approval", "title": "approve", "x": 1410, "y": 140 }
+  ],
+  "edges": [
+    { "from": "plan", "to": "arch" },
+    { "from": "arch", "to": "code" },
+    { "from": "code", "to": "tests" },
+    { "from": "tests", "to": "review" },
+    { "from": "review", "to": "approve" }
+  ]
+}
