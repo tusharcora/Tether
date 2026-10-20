@@ -273,10 +273,10 @@ export class Tui {
     return this.stack[this.stack.length - 1]!;
   }
   private get cols() {
-    return Math.max(60, this.out.columns || 100);
+    return Math.max(20, this.out.columns || 100);
   }
   private get rows() {
-    return Math.max(20, this.out.rows || 32);
+    return Math.max(8, this.out.rows || 32);
   }
 
   // ---------- lifecycle ----------
@@ -287,7 +287,7 @@ export class Tui {
       this.enter();
       this.refreshAvail();
       process.stdin.on('data', this.onData);
-      this.out.on('resize', this.draw);
+      this.out.on('resize', this.onResize);
       this.unsub = this.d.store.onAppend((e) => this.pulse.observe(e.runId, e.event));
       this.timer = setInterval(() => {
         if (this.prefs.animate !== false) this.tick++;
@@ -315,7 +315,7 @@ export class Tui {
     clearInterval(this.timer);
     this.unsub?.();
     process.stdin.off('data', this.onData);
-    this.out.off('resize', this.draw);
+    this.out.off('resize', this.onResize);
     for (const r of this.d.store.list()) if (this.d.engine.isLive(r.id)) this.d.engine.stop(r.id);
     this.leave();
     process.stdin.pause();
@@ -1836,6 +1836,13 @@ export class Tui {
     void h;
     return lines;
   }
+
+  /** The terminal changed size: wipe the screen and the diff cache so nothing stale or reflowed is left behind, then repaint at once. */
+  private onResize = () => {
+    this.lastRender = [];
+    if (!this.busy) this.out.write(`${ESC}2J${ESC}H`);
+    this.draw();
+  };
 
   draw = () => {
     if (this.busy) return;
