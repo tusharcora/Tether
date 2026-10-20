@@ -1,6 +1,7 @@
 import { Show, createSignal, onCleanup, onMount } from 'solid-js';
 import { api } from './api';
 import { Builder } from './Builder';
+import { loadCrewDefs } from './bots';
 import { Crew } from './Crew';
 import { GraphView } from './Graph';
 import { Runs } from './Runs';
@@ -25,6 +26,7 @@ export function App() {
   };
 
   onMount(() => {
+    void loadCrewDefs();
     const beat = async () => {
       try {
         setHealth(await api('GET', '/api/health'));

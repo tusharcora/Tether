@@ -1,9 +1,16 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { api } from './api';
-import { CREW, Pebble } from './bots';
+import { Pebble, Sprite, applyCrew, type BotDef, type Pixels } from './bots';
+
+interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
+interface Meta { parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; packs: Pack[] }
+const PARTS = ['body', 'eyes', 'mouth', 'top', 'side', 'pattern'];
+const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
+const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
+const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
 
 interface AgentInfo { ok: boolean; version?: string; detail?: string; models: string[] }
-interface Row { role: string; name: string; title: string; binding: { agent: string; model?: string } | null }
+interface Row { role: string; name: string; title: string; kind: string; binding: { agent: string; model?: string } | null }
 
 export function Crew() {
   const [rows, setRows] = createSignal<Row[]>([]);
@@ -11,9 +18,81 @@ export function Crew() {
   const [draft, setDraft] = createSignal<Record<string, { agent: string; model: string }>>({});
   const [msg, setMsg] = createSignal('');
   const [loading, setLoading] = createSignal(true);
+  const [meta, setMeta] = createSignal<Meta>({ parts: {}, kinds: [], packs: [] });
+  const [defs, setDefs] = createSignal<BotDef[]>([]);
+  const [edit, setEdit] = createSignal<BotDef | null>(null);
+  const [isNew, setIsNew] = createSignal(false);
+  const [preview, setPreview] = createSignal<Pixels | null>(null);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const refreshPreview = (b: BotDef) => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        setPreview(await api<Pixels>('POST', '/api/crew/preview', { look: b.look }));
+      } catch {
+        /* keep the last preview */
+      }
+    }, 120);
+  };
+  const patch = (p: Partial<BotDef>) => {
+    const b = { ...edit()!, ...p };
+    setEdit(b);
+    refreshPreview(b);
+  };
+  const patchLook = (p: Partial<BotDef['look']>) => patch({ look: { ...edit()!.look, ...p } });
+  const open = (b: BotDef, fresh = false) => {
+    setEdit(JSON.parse(JSON.stringify(b)) as BotDef);
+    setIsNew(fresh);
+    setPreview(b.pixels ?? null);
+    if (fresh) refreshPreview(b);
+    setTimeout(() => document.querySelector('.bot-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
+
+  async function loadDefs() {
+    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[] }>('GET', '/api/crew');
+    applyCrew(r.bots);
+    setDefs(r.bots);
+    setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs });
+  }
+  async function saveEdit() {
+    const b = edit()!;
+    const id = isNew() ? slug(b.name) : b.id;
+    const taken = new Set(defs().map((d) => d.id));
+    let use = id;
+    if (isNew()) for (let i = 2; taken.has(use); i++) use = `${id.slice(0, 20)}${i}`;
+    try {
+      await api('PUT', `/api/crew/${use}`, { ...b, id: use });
+      setEdit(null);
+      setMsg(`${b.name} saved`);
+      await load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+  async function removeDef(b: BotDef) {
+    try {
+      await api('DELETE', `/api/crew/${b.id}`);
+      setEdit(null);
+      setMsg(b.builtin ? `${b.name} reset to its original look` : `${b.name} removed`);
+      await load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+  async function addPack(k: Pack) {
+    try {
+      const r = await api<{ added: string[] }>('POST', `/api/crew/packs/${k.id}`);
+      setMsg(`${k.name}: added ${r.added.length} bots`);
+      await load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
 
   async function load() {
     try {
+      await loadDefs();
       const r = await api<{ crew: Row[]; agents: Record<string, AgentInfo> }>('GET', '/api/bots');
       setRows(r.crew);
       setAgents(r.agents);
@@ -50,8 +129,9 @@ export function Crew() {
         <h2>Crew</h2>
         <p class="muted">
           Link each bot to an agent and model. A step with no agent of its own follows its bot; a step that names one keeps it.
-          Changes apply to the next run you start.
+          Changes apply to the next run you start. Click a bot's look to edit it, or add your own.
         </p>
+        <button class="primary" onClick={() => open(blank(), true)}>+ New bot</button>
         <Show when={msg()}><span class="chip">{msg()}</span></Show>
       </div>
       <Show when={!loading()} fallback={<p class="muted">Checking which agents are installed…</p>}>
@@ -59,11 +139,16 @@ export function Crew() {
           <For each={rows()}>
             {(r) => (
               <div class="crew-card">
-                <Pebble role={r.role} size={48} />
+                <button class="sprite-btn" title="Edit this bot" onClick={() => { const d = defs().find((x) => x.id === r.role); if (d) open(d); }}>
+                  <Pebble role={r.role} size={48} />
+                </button>
                 <div class="crew-main">
                   <h4>{r.name} <span class="muted">{r.title}</span></h4>
+                  <Show when={defs().find((x) => x.id === r.role)?.persona}>
+                    <p class="muted small persona">{defs().find((x) => x.id === r.role)!.persona}</p>
+                  </Show>
                   <Show
-                    when={r.role !== 'approval'}
+                    when={r.kind !== 'approval'}
                     fallback={<p class="muted">A person signs off here. Nothing to link.</p>}
                   >
                     <label>
@@ -95,6 +180,80 @@ export function Crew() {
                       </Show>
                     </div>
                   </Show>
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
+        <Show when={edit()}>
+          {(_) => (
+            <div class="bot-editor" role="dialog" aria-label="Edit bot">
+              <div class="bot-preview">
+                <Show when={preview()} fallback={<div class="muted small">…</div>}>
+                  <Sprite pixels={preview()!} size={120} label={edit()!.name} />
+                </Show>
+                <div class="muted small">{edit()!.name || 'New bot'}</div>
+              </div>
+              <div class="bot-fields">
+                <h3>{isNew() ? 'New bot' : `Edit ${edit()!.name}`}</h3>
+                <div class="row">
+                  <label>Name<input value={edit()!.name} maxLength={24} onInput={(e) => patch({ name: e.currentTarget.value })} /></label>
+                  <label>Title<input value={edit()!.title} maxLength={28} placeholder="what it is" onInput={(e) => patch({ title: e.currentTarget.value })} /></label>
+                </div>
+                <label>Kind
+                  <select value={edit()!.kind} disabled={!isNew() && !!edit()!.builtin} onChange={(e) => patch({ kind: e.currentTarget.value })}>
+                    <For each={meta().kinds}>{(k) => <option value={k.kind}>{k.kind}: {k.blurb}</option>}</For>
+                  </select>
+                </label>
+                <label>Persona (becomes this bot's instructions)
+                  <textarea rows={4} maxLength={600} value={edit()!.persona} onInput={(e) => patch({ persona: e.currentTarget.value })} />
+                </label>
+                <Show when={edit()!.kind === 'agent' && !edit()!.builtin}>
+                  <label class="check"><input type="checkbox" checked={!!edit()!.readOnly} onChange={(e) => patch({ readOnly: e.currentTarget.checked })} /> read-only (may not edit files)</label>
+                </Show>
+                <div class="look-grid">
+                  <For each={PARTS}>
+                    {(k) => (
+                      <label>{k}
+                        <select value={(edit()!.look as unknown as Record<string, string>)[k]} onChange={(e) => patchLook({ [k]: e.currentTarget.value })}>
+                          <For each={meta().parts[k] ?? []}>{(o) => <option value={o}>{o}</option>}</For>
+                        </select>
+                      </label>
+                    )}
+                  </For>
+                </div>
+                <div class="row swatches">
+                  <For each={SWATCH}>{(c) => <button class="swatch" style={{ background: c }} aria-label={`colour ${c}`} classList={{ on: edit()!.look.color === c }} onClick={() => patchLook({ color: c })} />}</For>
+                  <input type="color" value={edit()!.look.color} onInput={(e) => patchLook({ color: e.currentTarget.value })} aria-label="custom colour" />
+                  <label class="check"><input type="checkbox" checked={edit()!.look.accent === 'auto'} onChange={(e) => patchLook({ accent: e.currentTarget.checked ? 'auto' : '#ffffff' })} /> auto accent</label>
+                  <Show when={edit()!.look.accent !== 'auto'}>
+                    <input type="color" value={edit()!.look.accent} onInput={(e) => patchLook({ accent: e.currentTarget.value })} aria-label="accent colour" />
+                  </Show>
+                </div>
+                <div class="row">
+                  <button class="primary" disabled={!edit()!.name.trim()} onClick={() => void saveEdit()}>Save</button>
+                  <button onClick={() => setEdit(null)}>Cancel</button>
+                  <Show when={!isNew() && (!edit()!.builtin || edit()!.edited)}>
+                    <button onClick={() => void removeDef(edit()!)}>{edit()!.builtin ? 'Reset to original' : 'Remove'}</button>
+                  </Show>
+                </div>
+              </div>
+            </div>
+          )}
+        </Show>
+        <h3 class="packs-h">Crew packs</h3>
+        <div class="crew-grid">
+          <For each={meta().packs}>
+            {(k) => (
+              <div class="crew-card pack">
+                <div class="crew-main">
+                  <h4>{k.name} <span class="muted">{k.bots.length} bots</span></h4>
+                  <p class="muted small">{k.blurb}</p>
+                  <div class="row pack-sprites">
+                    <For each={k.bots}>{(b) => <span title={`${b.name}: ${b.persona}`}>{b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}</span>}</For>
+                  </div>
+                  <p class="muted small">{k.bots.map((b) => b.name).join(' · ')}</p>
+                  <div class="row"><button onClick={() => void addPack(k)}>Add to my crew</button></div>
                 </div>
               </div>
             )}

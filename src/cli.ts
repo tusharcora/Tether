@@ -20,8 +20,12 @@ import { runTui } from './tui.js';
 import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.js';
 import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
-import { CREW_STYLES, crewStyle, setCrewStyle } from './bots.js';
+import { CREW_STYLES, crewStyle, refreshCrew, setCrewStyle } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
+import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, type BotDef } from './crew.js';
+import { PACKS, findPack, parseBots, reid } from './packs.js';
+import { createInterface } from 'node:readline/promises';
+import { renderLook } from './bots.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
 import { THEMES, registerThemes, setTheme, themeName } from './ui.js';
 import { LiveBoard, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
@@ -127,6 +131,7 @@ interface Ctx {
 
 function open(flags: { home?: string; vault?: string }): Ctx {
   const cfg = loadConfig({ home: flags.home, vault: flags.vault });
+  refreshCrew(cfg.home);
   const store = Store.open(join(cfg.home, 'runs.db'));
   const vault = new Vault(cfg.vault);
   const engine = new Engine(store, { home: cfg.home, registry: makeRegistry(cfg), vault, bindings: () => loadBindings(cfg.home) });
@@ -278,6 +283,20 @@ async function main() {
       'no-supervise': { type: 'boolean' },
       rounds: { type: 'string' },
       'rules-only': { type: 'boolean' },
+      name: { type: 'string' },
+      title: { type: 'string' },
+      kind: { type: 'string' },
+      persona: { type: 'string' },
+      color: { type: 'string' },
+      accent: { type: 'string' },
+      body: { type: 'string' },
+      eyes: { type: 'string' },
+      mouth: { type: 'string' },
+      top: { type: 'string' },
+      side: { type: 'string' },
+      pattern: { type: 'string' },
+      'read-only': { type: 'boolean' },
+      bot: { type: 'string' },
     },
   });
   applyTheme(v.theme, v.crew);
@@ -326,7 +345,94 @@ async function main() {
       if (sub === 'gallery') return gallery();
       const cfg = loadConfig(v);
       const reg = makeRegistry(cfg);
+      refreshCrew(cfg.home);
       const roleOf = (q: string) => (q.toLowerCase() === 'escalate' ? 'escalate' : undefined) ?? Object.entries(CREW).find(([k, c]) => k === q.toLowerCase() || c.name.toLowerCase() === q.toLowerCase())?.[0];
+      if (sub === 'packs') {
+        for (const p of PACKS) console.log(`${bold(p.id.padEnd(10))} ${p.name} ${dim('· ' + p.bots.length + ' bots · ' + p.blurb)}\n           ${dim(p.bots.map((b) => b.name).join(', '))}`);
+        console.log(dim('\n  aorch bots add-pack <pack> [--yes]   ·   aorch bots import <file> [--yes]'));
+        return;
+      }
+      const crewNow = loadCrew(cfg.home);
+      const partFlags = () => {
+        const look: Record<string, unknown> = {};
+        for (const k of PART_KEYS) if (typeof v[k as keyof typeof v] === 'string') look[k] = v[k as keyof typeof v];
+        if (v.color) look.color = v.color;
+        if (v.accent) look.accent = v.accent;
+        return look;
+      };
+      const badParts = (look: Record<string, unknown>) => {
+        for (const k of PART_KEYS) if (look[k] !== undefined && !(LOOK_PARTS[k] as readonly string[]).includes(String(look[k]))) fail(`--${k} must be one of: ${LOOK_PARTS[k].join(', ')}`);
+      };
+      const confirm = async (q: string) => {
+        if (v.yes) return true;
+        if (!process.stdin.isTTY) fail('this needs a terminal to confirm, or pass --yes');
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const a = (await rl.question(q + ' [y/N] ')).trim().toLowerCase();
+        rl.close();
+        return a === 'y' || a === 'yes';
+      };
+      const review = (bots: BotDef[]) => {
+        for (const b of bots) {
+          for (const row of renderLook(b.look, 'idle', 0)) console.log('  ' + row);
+          console.log(`  ${bold(b.name)} ${dim('· ' + (b.title || 'no title') + ' · ' + b.kind + (b.readOnly ? ' · read-only' : ''))}\n    ${dim(b.persona || '(no persona)')}`);
+          if (b.kind === 'gate') console.log(`    ${amber('!')} ${dim('gate: runs your repo’s test command')}`);
+        }
+      };
+      const install = async (bots: BotDef[], what: string) => {
+        const taken = new Set(crewNow.map((b) => b.id));
+        const fresh = reid(bots, taken);
+        console.log(`${bold(what)} adds ${fresh.length} bot${fresh.length === 1 ? '' : 's'}. Their personas become the instructions for the steps they run:\n`);
+        review(fresh);
+        console.log();
+        if (!(await confirm('Add them to your crew?'))) return console.log(dim('nothing added'));
+        for (const b of fresh) saveBot(cfg.home, b);
+        console.log(`${green('✔')} added ${fresh.map((b) => bold(b.name)).join(', ')}  ${dim('(' + join(cfg.home, 'crew') + ')')}`);
+      };
+      if (sub === 'add-pack') {
+        const p = findPack(pos[1] ?? '') ?? fail(`usage: aorch bots add-pack <pack>   (packs: ${PACKS.map((x) => x.id).join(', ')})`);
+        return install(p.bots, `${p.name} pack`);
+      }
+      if (sub === 'import') {
+        const f = pos[1] ?? fail('usage: aorch bots import <file.json>');
+        let raw: unknown;
+        try { raw = JSON.parse(readFileSync(resolve(f), 'utf8')); } catch (e) { fail(`could not read ${f}: ${(e as Error).message}`); }
+        const { bots, errors } = parseBots(raw);
+        for (const e of errors) console.log(`${amber('!')} skipped ${e}`);
+        if (!bots.length) fail('no valid bots in that file');
+        return install(bots, f);
+      }
+      if (sub === 'export') {
+        const ids = pos.slice(1);
+        const pick = ids.length ? crewNow.filter((b) => ids.includes(b.id) || ids.includes(b.name.toLowerCase())) : crewNow.filter((b) => !b.builtin);
+        if (!pick.length) fail('nothing to export (pass bot ids, or create some bots first)');
+        console.log(JSON.stringify({ bots: pick.map(toFile) }, null, 2));
+        return;
+      }
+      if (sub === 'new' || sub === 'edit') {
+        const look0 = partFlags();
+        badParts(look0);
+        let base: BotDef | undefined;
+        if (sub === 'edit') {
+          const id = pos[1] ?? fail('usage: aorch bots edit <bot> [--name … --title … --persona … --kind … --color #hex --body … --eyes …]');
+          base = crewNow.find((b) => b.id === id.toLowerCase() || b.name.toLowerCase() === id.toLowerCase()) ?? fail(`no bot "${id}" (see: aorch bots)`);
+        } else if (!(pos[1] ?? v.name)) fail('usage: aorch bots new <name> [--title … --kind agent|verdict|gate|approval|orchestrator --persona … --color #hex --body … --eyes … --mouth … --top … --side … --pattern …]');
+        const name = String(v.name ?? (sub === 'new' ? pos[1] : base!.name));
+        const kind = (v.kind ?? base?.kind ?? 'agent') as string;
+        if (!BOT_KINDS.includes(kind as never)) fail(`--kind must be one of ${BOT_KINDS.join(', ')}`);
+        const cand = { id: base?.id ?? freshId(name, crewNow.map((b) => b.id)), name, title: v.title ?? base?.title ?? '', kind, persona: v.persona ?? base?.persona ?? '', readOnly: v['read-only'] ?? base?.readOnly, look: { ...(base?.look ?? {}), ...look0 } };
+        const { bot, error } = sanitizeBot(cand);
+        if (!bot) fail(error ?? 'invalid bot');
+        saveBot(cfg.home, bot);
+        console.log(`${green('✔')} ${sub === 'new' ? 'created' : 'saved'} ${bold(bot.name)} ${dim('(' + bot.id + ' · ' + bot.kind + ')')}`);
+        return;
+      }
+      if (sub === 'remove' || sub === 'reset') {
+        const id = (pos[1] ?? fail('usage: aorch bots remove <bot>')).toLowerCase();
+        const bot = crewNow.find((b) => b.id === id || b.name.toLowerCase() === id) ?? fail(`no bot "${id}"`);
+        const r = removeBot(cfg.home, bot.id);
+        console.log(r === 'deleted' ? `${green('✔')} removed ${bold(bot.name)}` : r === 'reset' ? `${green('✔')} ${bold(bot.name)} is back to its original look` : BUILTIN_IDS.has(bot.id) ? dim(`${bot.name} is a built-in and has no edits to reset`) : dim('nothing to remove'));
+        return;
+      }
       if (sub === 'link') {
         const role = roleOf(pos[1] ?? '') ?? fail(`usage: aorch bots link <bot> <agent> [model]   (bots: ${Object.values(CREW).map((c) => c.name.toLowerCase()).join(', ')})`);
         const agent = pos[2] ?? fail(`usage: aorch bots link ${pos[1]} <agent> [model]   (agents: ${reg.ids().filter((i) => i !== 'mock').join(', ')})`);

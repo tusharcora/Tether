@@ -5,6 +5,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
+import { CREW } from './bots.js';
+import { BUILTIN_IDS, KIND_BLURB, type BotDef } from './crew.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import { failureBrief } from './supervisor.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
@@ -22,6 +24,24 @@ export const STEP_BLURB: Record<StepType, string> = {
   approval: 'human sign-off; pauses the run durably',
 };
 
+/** A custom (non built-in) bot, if this id names one. */
+export function customBot(id: string): BotDef | undefined {
+  const d = CREW[id]?.def;
+  return d && !BUILTIN_IDS.has(id) ? d : undefined;
+}
+
+/** Everything that can be added as a step: the built-in step types, then your own bots (not orchestrators). */
+export function stepChoices(): string[] {
+  return [...STEP_TYPES, ...Object.values(CREW).flatMap((c) => (c.def && !BUILTIN_IDS.has(c.def.id) && c.def.kind !== 'orchestrator' ? [c.def.id] : []))];
+}
+
+/** One line on what a step is, for editors. */
+export function blurbFor(n: PipelineNode): string {
+  const c = n.role ? customBot(n.role.toLowerCase()) : undefined;
+  if (c) return `${c.title || c.name} · ${KIND_BLURB[c.kind]}`;
+  return STEP_BLURB[stepType(n)];
+}
+
 export function stepType(n: PipelineNode): StepType {
   if (n.kind === 'gate') return 'tester';
   if (n.kind === 'approval') return 'approval';
@@ -36,7 +56,29 @@ function uniqueId(p: Pipeline, base: string): string {
 }
 
 /** `agent` unset = the step follows whichever model is linked to its bot at run time. */
-export function makeStep(type: StepType, p: Pipeline, agent?: string, testCommand = 'npm test'): PipelineNode {
+export function makeStep(type: string, p: Pipeline, agent?: string, testCommand = 'npm test'): PipelineNode {
+  const custom = customBot(type);
+  if (custom) return makeBotStep(custom, p, agent, testCommand);
+  return makeBuiltinStep(type as StepType, p, agent, testCommand);
+}
+
+/** A step for one of your own bots: its persona is the step's instructions, its kind decides how it runs. */
+function makeBotStep(b: BotDef, p: Pipeline, agent?: string, testCommand = 'npm test'): PipelineNode {
+  const base = { id: uniqueId(p, b.id), x: 0, y: 140, role: b.id };
+  const who = agent ? { agent } : {};
+  switch (b.kind) {
+    case 'gate':
+      return { ...base, kind: 'gate', title: b.name.toLowerCase().slice(0, 24), command: testCommand, maxLoops: 2 };
+    case 'approval':
+      return { ...base, kind: 'approval', title: b.title || b.name };
+    case 'verdict':
+      return { ...base, kind: 'agent', ...who, readOnly: true, verdict: true, includeDiff: true, maxLoops: 2, prompt: b.persona || undefined };
+    default:
+      return { ...base, kind: 'agent', ...who, ...(b.readOnly ? { readOnly: true } : {}), prompt: b.persona || undefined };
+  }
+}
+
+function makeBuiltinStep(type: StepType, p: Pipeline, agent?: string, testCommand = 'npm test'): PipelineNode {
   const id = uniqueId(p, type === 'tester' ? 'tests' : type === 'approval' ? 'approve' : type === 'reviewer' ? 'review' : type);
   const base = { id, x: 0, y: 140 };
   const who = agent ? { agent } : {};
@@ -74,7 +116,7 @@ export function relink(p: Pipeline): Pipeline {
   return p;
 }
 
-export function addStep(p: Pipeline, type: StepType, at: number, agent?: string, testCommand = 'npm test'): Pipeline {
+export function addStep(p: Pipeline, type: string, at: number, agent?: string, testCommand = 'npm test'): Pipeline {
   const idx = Math.max(0, Math.min(p.nodes.length, at));
   p.nodes.splice(idx, 0, makeStep(type, p, agent, testCommand));
   return relink(p);
@@ -157,7 +199,15 @@ export interface Composition {
   warnings: string[];
 }
 
-const COMPOSE_PROMPT = (task: string, tests: string | undefined) => `You are Maestro, the orchestrator bot. Design a workflow (a linear pipeline of steps) for an automated team of coding agents to complete the task below. Do NOT do the task yourself and do not modify any files.
+/** The extra crew members the orchestrator may use, one per line. Descriptions are the user's own text; they only describe. */
+function crewLines(): string {
+  return Object.values(CREW)
+    .flatMap((c) => (c.def && !BUILTIN_IDS.has(c.def.id) && c.def.kind !== 'orchestrator' ? [c.def] : []))
+    .map((d) => `- ${d.id.padEnd(10)} (${d.kind}${d.readOnly ? ', read-only' : ''}) ${d.title}${d.persona ? ': ' + d.persona.replace(/\s+/g, ' ').slice(0, 140) : ''}`)
+    .join('\n');
+}
+
+const COMPOSE_PROMPT = (task: string, tests: string | undefined, who?: BotDef) => `You are ${who ? who.name : 'Maestro'}, the orchestrator bot.${who?.persona ? ' ' + who.persona.replace(/\s+/g, ' ').slice(0, 300) : ''} Design a workflow (a linear pipeline of steps) for an automated team of coding agents to complete the task below. Do NOT do the task yourself and do not modify any files.
 
 Task: ${task}
 Test command detected in the repo: ${tests ?? 'none'}
@@ -169,7 +219,7 @@ Allowed step types (use only these, 1 to 8 steps, in order):
 - tester    (gate)              runs a command; use only if a real test command exists
 - reviewer  (agent, read-only)  reviews the diff
 - approval  (human sign-off)    include for risky or user-facing changes
-
+${crewLines() ? '\nCustom crew members you may also use (a gate runs a command; a verdict step reviews and ends PASS/FAIL):\n' + crewLines() + '\n' : ''}
 Rules: small tasks need few steps; always put a coder before tester/reviewer when code changes; do not invent test commands.
 Reply with ONLY a JSON object, no prose, no code fences:
 {"steps":["planner","coder","tester","reviewer"],"testCommand":${tests ? JSON.stringify(tests) : 'null'},"rationale":"one sentence on why"}`;
@@ -187,6 +237,8 @@ export interface ComposeOpts {
   /** Which agent runs Maestro himself (his bot binding). Default claude. */
   agent?: string;
   model?: string;
+  /** A custom orchestrator bot to plan as (its persona guides the plan). Default Maestro. */
+  orchestrator?: BotDef;
   signal?: AbortSignal;
   /** Skip the agent and use rules only (offline / no agent CLI installed). */
   heuristicOnly?: boolean;
@@ -221,7 +273,7 @@ export async function composePipeline(task: string, o: ComposeOpts): Promise<Com
     const res = await adapter.run({
       runId: 'compose',
       nodeId: 'compose',
-      prompt: COMPOSE_PROMPT(task, tests),
+      prompt: COMPOSE_PROMPT(task, tests, o.orchestrator),
       cwd: o.repo,
       model: o.model,
       readOnly: true,
@@ -235,13 +287,14 @@ export async function composePipeline(task: string, o: ComposeOpts): Promise<Com
     const raw = extractJson(res.output || text) as { steps?: unknown; testCommand?: unknown; rationale?: unknown };
     if (!Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > 8) throw new Error('bad step list');
     const steps = raw.steps.map((s) => String(s).toLowerCase());
-    for (const s of steps) if (!(STEP_TYPES as string[]).includes(s)) throw new Error(`unknown step type "${s}"`);
+    const allowed = new Set(stepChoices());
+    for (const s of steps) if (!allowed.has(s)) throw new Error(`unknown step type "${s}"`);
     // never trust a model-supplied shell command beyond what the repo itself implies
     const cmd = tests;
     if (typeof raw.testCommand === 'string' && raw.testCommand !== tests) warnings.push(`ignored proposed test command "${raw.testCommand}"`);
     const pipeline = blankPipeline(name);
-    for (const s of steps as StepType[]) {
-      if (s === 'tester' && !cmd) {
+    for (const s of steps) {
+      if ((s === 'tester' || customBot(s)?.kind === 'gate') && !cmd) {
         warnings.push('dropped a test gate: no test command found in the repo');
         continue;
       }

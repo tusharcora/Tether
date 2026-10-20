@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
-import { CREW, CREW_STYLES, crewFor, renderBot, setCrewStyle, sprite, type Mood } from '../src/bots.js';
+import { CREW, CREW_STYLES, crewFor, lookSprite, renderBot, setCrewStyle, sprite, type Mood } from '../src/bots.js';
 import { addStep, classifyTask, composePipeline, detectTestCommand, fromTemplate, moveStep, relink, removeStep, slugify } from '../src/composer.js';
 import { normalizePipeline, preflight } from '../src/pipeline.js';
 import { parseKeys } from '../src/tui.js';
@@ -110,17 +110,18 @@ describe('crew', () => {
     }
     }
     expect(setCrewStyle('nope')).toBe(false);
-    setCrewStyle('classic');
+    setCrewStyle('pebble');
   });
 
-  it('pebble bots keep their eyes inside the body and move them with mood', () => {
+  it('family bots keep their eyes inside the body and move them with mood', () => {
     setCrewStyle('pebble');
-    const eyes = (m: Mood, t: number) => sprite('planner', m, t).map((r, y) => [...r].map((c, x) => (c === 'E' ? `${x},${y}` : '')).filter(Boolean)).flat();
+    const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#5b9dff', accent: 'auto' };
+    const eyes = (m: Mood, t: number) => lookSprite(look, m, t).map((r, y) => [...r].map((c, x) => (c === 'E' ? `${x},${y}` : '')).filter(Boolean)).flat();
     expect(eyes('idle', 0)).toHaveLength(2);
     expect(eyes('asleep', 0)).toHaveLength(0);
     expect(eyes('working', 0)).not.toEqual(eyes('working', 3));
     expect(eyes('waiting', 0)).not.toEqual(eyes('idle', 0));
-    setCrewStyle('classic');
+    setCrewStyle('pebble');
   });
 });
 

@@ -2,6 +2,8 @@
  * The aorch crew: small original pixel-art bots, one per role, drawn in the terminal with half-block characters.
  * Each pixel is a colour; two pixel rows share one terminal row (▀ foreground = top pixel, background = bottom pixel).
  */
+import { hslToRgb, parseHex, rgbToHsl, toHex } from './color.js';
+import { BUILTIN_BOTS, loadCrew, type BotDef, type Look } from './crew.js';
 import { bgCode, caps, fgCode, mix, pal, paint, vlen, type RGB } from './ui.js';
 
 export type Mood = 'idle' | 'working' | 'happy' | 'sad' | 'waiting' | 'asleep';
@@ -11,6 +13,8 @@ export interface BotInfo {
   title: string;
   color: () => RGB;
   accent: () => RGB;
+  /** What the bot is and how it looks. Present on every registered bot. */
+  def?: BotDef;
 }
 
 export const CREW: Record<string, BotInfo> = {
@@ -23,11 +27,39 @@ export const CREW: Record<string, BotInfo> = {
   approval: { name: 'Gate', title: 'approver', color: () => pal.text, accent: () => pal.amber },
 };
 
-/** Map a pipeline node to one of the crew. */
+const BASE: Record<string, BotInfo> = { ...CREW };
+
+const guardRgb = (c: RGB): RGB => {
+  const [h, s, l] = rgbToHsl(c);
+  return hslToRgb([h, Math.max(0.35, Math.min(0.82, s)), Math.max(0.5, Math.min(0.68, l))]);
+};
+const bodyRgb = (l: Look): RGB => {
+  const c = parseHex(l.color) ?? [154, 166, 184];
+  return l.guard === false ? c : guardRgb(c);
+};
+const accentRgb = (l: Look): RGB => {
+  if (l.accent !== 'auto') return parseHex(l.accent) ?? [255, 255, 255];
+  const [h] = rgbToHsl(bodyRgb(l));
+  return hslToRgb([h + 28, 0.9, 0.84]);
+};
+
+/** Make the crew registry match these definitions. Unedited built-ins keep their theme-aware colours. */
+export function registerCrew(defs: BotDef[]): void {
+  for (const k of Object.keys(CREW)) delete CREW[k];
+  for (const d of defs) {
+    const base = d.builtin && !d.edited ? BASE[d.id] : undefined;
+    CREW[d.id] = base ? { ...base, def: d } : { name: d.name, title: d.title, color: () => bodyRgb(d.look), accent: () => accentRgb(d.look), def: d };
+  }
+  if (!CREW.coder) for (const [k, v] of Object.entries(BASE)) CREW[k] ??= v;
+}
+
+/** Map a pipeline node to one of the crew. A step whose role names a bot runs as that bot. */
 export function crewFor(node: { kind: string; role?: string }): string {
+  const named = (node.role ?? '').toLowerCase();
+  if (named in CREW && named !== 'orchestrator') return named;
   if (node.kind === 'gate') return 'tester';
   if (node.kind === 'approval') return 'approval';
-  const r = (node.role ?? '').toLowerCase();
+  const r = named;
   if (r in CREW) return r;
   if (/test|qa/.test(r)) return 'tester';
   if (/review|audit/.test(r)) return 'reviewer';
@@ -37,43 +69,119 @@ export function crewFor(node: { kind: string; role?: string }): string {
 }
 
 export type CrewStyle = 'classic' | 'pebble';
-export const CREW_STYLES: Record<CrewStyle, string> = { classic: 'visor bots with antennae and faces', pebble: 'minimal: one flat shape, two eyes, one mark' };
-export let crewStyle: CrewStyle = 'classic';
+export const CREW_STYLES: Record<CrewStyle, string> = { classic: 'visor bots with antennae and faces (built-in crew only)', pebble: 'the family: one pebble base, swappable parts' };
+export let crewStyle: CrewStyle = 'pebble';
 export function setCrewStyle(s: string): boolean {
   if (!(s in CREW_STYLES)) return false;
   crewStyle = s as CrewStyle;
   return true;
 }
 
-// Pebble crew: 8x6 pixel grids (# body, a accent, e eye), centred in the same 10x8 cell as the classic bots.
-const PEBBLE: Record<string, string[]> = {
-  orchestrator: ['.a.aa.a.', '.######.', '.#e##e#.', '.######.', '.######.', '..#..#..'],
-  planner: ['...aa...', '..####..', '.#e##e#.', '.######.', '..####..', '..#..#..'],
-  architect: ['..aaaa..', '.######.', '.#e##e#.', '.######.', '.######.', '..#..#..'],
-  coder: ['..####..', 'a######a', 'a#e##e#a', '.######.', '..####..', '..#..#..'],
-  tester: ['.a....a.', '..####..', '.#e##e#.', '.######.', '..####..', '..#..#..'],
-  reviewer: ['..####..', '.###aaa.', '.#e#aea.', '.###aaa.', '..####..', '..#..#..'],
-  approval: ['..####..', '.######.', '.#e##e#.', '.######.', '.######.', '.######.'],
+// ---------- the family: one pebble base, a few swappable parts ----------
+const BODY: Record<string, string[]> = {
+  pebble: ['..####..', '.######.', '.######.', '.######.', '..####..', '..#..#..'],
+  wide: ['.######.', '########', '########', '########', '.######.', '.##..##.'],
+  tall: ['..####..', '..####..', '..####..', '..####..', '..####..', '..#..#..'],
+  square: ['########', '########', '########', '########', '########', '.##..##.'],
+  blob: ['..####..', '.######.', '########', '########', '.######.', '..####..'],
 };
 
-function pebbleSprite(role: string, mood: Mood, tick: number): string[] {
-  const g = (PEBBLE[role] ?? PEBBLE.coder!).map((r) => r.split(''));
-  const eyes: [number, number][] = [];
-  g.forEach((row, y) => row.forEach((c, x) => c === 'e' && eyes.push([x, y])));
+/** The look for a role (unknown roles use the coder's). */
+const lookOf = (role: string): Look | undefined => (CREW[role] ?? CREW.coder)?.def?.look;
+
+/**
+ * One frame of a bot built from its parts: 8 rows × 10 columns of pixel codes
+ * (B body · b shade · h shine · E dark · A accent · G gold · Q/q leaf · P blush · Z light).
+ * Layers, bottom to top: body, marking, sides, top, mouth, eyes.
+ */
+export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
+  const rows = BODY[look.body] ?? BODY.pebble!;
+  const per = rows.map((r) => (r.indexOf('#') < 0 ? null : ([r.indexOf('#'), r.lastIndexOf('#')] as [number, number])));
+  const gl = Math.min(...per.map((p) => p?.[0] ?? 99));
+  const gr = Math.max(...per.map((p) => p?.[1] ?? -1));
+  const cx1 = Math.floor((gl + gr) / 2), cx2 = cx1 + 1;
+  const [tL, tR] = per[0]!;
+  const g = Array.from({ length: 9 }, () => new Array<string>(10).fill('.'));
+  const hop = mood === 'happy' && tick % 12 < 6 ? -1 : 0;
+  const oy = 2 + hop;
+  const put = (x: number, y: number, k: string) => {
+    const cx = x + 1, cy = y + oy;
+    if (cx >= 0 && cx < 10 && cy >= 0 && cy < 9) g[cy]![cx] = k;
+  };
+  const inBody = (x: number, y: number) => rows[y]?.[x] === '#';
+  rows.forEach((r, y) => [...r].forEach((c, x) => c === '#' && put(x, y, y >= rows.length - 2 ? 'b' : 'B')));
+  put(tL, 0, 'h');
+  const pat = look.pattern;
+  if (pat === 'blush') { put(per[2]![0], 2, 'P'); put(per[2]![1], 2, 'P'); }
+  else if (pat === 'band') for (let x = per[0]![0]; x <= per[0]![1]; x++) put(x, 0, 'A');
+  else if (pat === 'belly') { put(cx1, 4, 'h'); put(cx2, 4, 'h'); }
+  else if (pat === 'badge') put(per[4]![0], 4, 'A');
+  else if (pat === 'spots') { put(per[2]![0] + 1, 2, 'b'); put(per[4]![1], 4, 'b'); put(per[3]![0], 3, 'h'); }
+  const side = (ys: number[], k: string) => ys.forEach((y) => { const p = per[y]; if (p) { put(p[0] - 1, y, k); put(p[1] + 1, y, k); } });
+  if (look.side === 'arms') side([3, 4], 'b');
+  else if (look.side === 'ears') side([1], 'A');
+  else if (look.side === 'cans') side([1, 2, 3], 'A');
+  else if (look.side === 'wings') { side([2, 3], 'A'); put(per[3]![0] - 2, 3, 'A'); put(per[3]![1] + 2, 3, 'A'); }
+  const flick = mood === 'working' && tick % 6 < 3;
+  const A = flick ? 'h' : 'A', Z = flick ? 'Z' : 'A';
+  switch (look.top) {
+    case 'antenna': put(cx1, -1, Z); put(cx2, -1, Z); break;
+    case 'horns': put(tL, -1, A); put(tR, -1, A); break;
+    case 'crest': for (let x = cx1 - 1; x <= cx2 + 1; x++) put(x, -1, Z); break;
+    case 'cap':
+      for (let x = tL; x <= tR; x++) put(x, -1, 'A');
+      for (let x = gl; x <= gr; x++) if (inBody(x, 0)) put(x, 0, 'A');
+      break;
+    case 'crown':
+      for (let x = tL; x <= tR; x += 2) put(x, -1, flick ? 'h' : 'G');
+      for (let x = tL; x <= tR; x++) put(x, 0, 'G');
+      break;
+    case 'sprout': put(cx1, -1, 'q'); put(cx2, -1, 'Q'); put(cx2 + 1, -1, flick ? 'Z' : 'Q'); break;
+  }
+  let mouth = look.mouth;
+  if (mood === 'happy' && mouth === 'none') mouth = 'smile';
+  if (mood === 'sad' && mouth === 'smile') mouth = 'frown';
+  if (mood === 'asleep' && mouth === 'smile') mouth = 'flat';
+  if (mouth === 'flat') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); }
+  else if (mouth === 'smile') { put(cx1 - 1, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); put(cx2 + 1, 3, 'E'); }
+  else if (mouth === 'frown') { put(cx1 - 1, 4, 'E'); put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx2 + 1, 4, 'E'); }
+  else if (mouth === 'open') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); }
   let dx = 0, dy = 0, closed = false;
   if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 3) % 4]!;
-  else if (mood === 'waiting') dy = -1;
+  else if (mood === 'waiting') { dy = -1; dx = tick % 30 < 15 ? -1 : 0; }
   else if (mood === 'sad') dy = 1;
   else if (mood === 'asleep' || (mood === 'idle' && tick % 40 > 37)) closed = true;
-  for (const [x, y] of eyes) g[y]![x] = '#';
-  if (!closed) for (const [x, y] of eyes) if (g[y + dy]?.[x + dx] === '#') g[y + dy]![x + dx] = 'e';
-  const hop = mood === 'happy' && tick % 12 < 6 ? -1 : 0;
-  const out = Array.from({ length: 8 }, () => '..........'.split(''));
-  g.forEach((row, y) => row.forEach((c, x) => {
-    const ty = y + 1 + hop;
-    if (c !== '.' && out[ty]) out[ty]![x + 1] = c === '#' ? 'B' : c === 'a' ? 'A' : 'E';
-  }));
-  return out.map((r) => r.join(''));
+  const eyes: [number, number, string, boolean][] = [];
+  const e = (x: number, y: number, k: string, mv: boolean) => eyes.push([x, y, k, mv]);
+  switch (look.eyes) {
+    case 'tall': e(2, 1, 'E', true); e(2, 2, 'E', true); e(5, 1, 'E', true); e(5, 2, 'E', true); break;
+    case 'wide': e(1, 1, 'E', true); e(2, 1, 'E', true); e(5, 1, 'E', true); e(6, 1, 'E', true); break;
+    case 'visor': for (let x = 1; x <= 6; x++) e(x, 1, 'E', false); e(2, 1, 'Z', true); e(5, 1, 'Z', true); break;
+    case 'cyclops': e(3, 1, 'E', true); e(4, 1, 'E', true); e(3, 2, 'E', true); e(4, 2, 'E', true); break;
+    case 'sleepy': e(2, 2, 'E', true); e(5, 2, 'E', true); e(2, 1, 'b', false); e(5, 1, 'b', false); break;
+    case 'wink': e(2, 1, 'E', true); e(5, 1, 'E', false); e(6, 1, 'E', false); break;
+    case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', true); e(5, 1, 'E', true); break;
+    default: e(2, 1, 'E', true); e(5, 1, 'E', true);
+  }
+  for (const [x0, y0, k0, mv] of eyes) {
+    let x = x0, y = y0, k = k0;
+    if (mv && inBody(x + dx, y + dy)) (x += dx), (y += dy);
+    if (closed && mv) k = 'b';
+    if (inBody(x, y)) put(x, y, k);
+  }
+  if (mood === 'asleep') {
+    const zt = Math.floor(tick / 6) % 3;
+    put(8, -1 + (zt % 2), 'Z');
+    if (zt > 0) put(9, -2 + zt, 'Z');
+  }
+  return g.slice(0, 8).map((r) => r.join(''));
+}
+
+function lookPalette(look: Look): Record<string, RGB> {
+  const body = bodyRgb(look);
+  const sh = (c: RGB, k: number): RGB => [Math.round(c[0] * k), Math.round(c[1] * k), Math.round(c[2] * k)];
+  const li = (c: RGB, k: number): RGB => [Math.round(c[0] + (255 - c[0]) * k), Math.round(c[1] + (255 - c[1]) * k), Math.round(c[2] + (255 - c[2]) * k)];
+  return { B: body, b: sh(body, 0.78), h: li(body, 0.22), E: [16, 20, 28], A: accentRgb(look), G: [242, 193, 78], Q: [63, 185, 124], q: [42, 143, 92], P: [255, 158, 199], Z: li(body, 0.6) };
 }
 
 // Legend: . empty · B body · b shade · V visor · E eye · M mouth · A accent
@@ -106,7 +214,8 @@ const FACES: Record<string, Face> = {
 
 /** The sprite for one frame: 8 rows of 10 pixel codes. */
 export function sprite(role: string, mood: Mood, tick: number): string[] {
-  if (crewStyle === 'pebble') return pebbleSprite(role, mood, tick);
+  const lk = lookOf(role);
+  if ((crewStyle === 'pebble' || !(role in HEAD)) && lk) return lookSprite(lk, mood, tick);
   const key = role in HEAD ? role : 'coder';
   const [h0, h1] = HEAD[key]!;
   let face: Face;
@@ -155,6 +264,8 @@ const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
 const shade = (c: RGB, k: number): RGB => [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k)];
 
 function palette(role: string, mood: Mood): Record<string, RGB | undefined> {
+  const lk = lookOf(role);
+  if ((crewStyle === 'pebble' || !(role in HEAD)) && lk) return lookPalette(lk);
   const info = CREW[role] ?? CREW.coder!;
   let body = info.color();
   if (mood === 'asleep') body = mix([body, pal.slate], 0.55);
@@ -163,19 +274,14 @@ function palette(role: string, mood: Mood): Record<string, RGB | undefined> {
     B: body,
     b: shade(body, 0.62),
     V: shade(body, 0.3),
-    E: crewStyle === 'pebble' ? [15, 20, 32] : mood === 'sad' ? pal.red : mood === 'happy' ? pal.green : [240, 249, 255],
+    E: mood === 'sad' ? pal.red : mood === 'happy' ? pal.green : [240, 249, 255],
     M: mood === 'sad' ? pal.red : [240, 249, 255],
     A: info.accent(),
   };
 }
 
-/** Render a bot to 4 terminal rows (10 columns wide). */
-export function renderBot(role: string, mood: Mood = 'idle', tick = 0): string[] {
-  const px = sprite(role, mood, tick);
-  const colors = palette(role, mood);
-  // a happy bot hops: shift up by one pixel row on alternate beats
-  const hop = mood === 'happy' && tick % 12 < 6;
-  const grid = hop ? [...px.slice(1), '..........'] : px;
+/** Paint a pixel-code grid as terminal rows (two pixel rows per text row, 10 columns). */
+function paintGrid(grid: string[], colors: Record<string, RGB | undefined>): string[] {
   const lines: string[] = [];
   for (let y = 0; y < grid.length; y += 2) {
     let line = '';
@@ -195,6 +301,26 @@ export function renderBot(role: string, mood: Mood = 'idle', tick = 0): string[]
     lines.push(line);
   }
   return lines;
+}
+
+/** Render a bot to 4 terminal rows (10 columns wide). */
+export function renderBot(role: string, mood: Mood = 'idle', tick = 0): string[] {
+  const px = sprite(role, mood, tick);
+  const looks = (crewStyle === 'pebble' || !(role in HEAD)) && !!lookOf(role);
+  // a classic bot that is happy hops: shift up by one pixel row on alternate beats (look-based bots hop inside their sprite)
+  const hop = !looks && mood === 'happy' && tick % 12 < 6;
+  return paintGrid(hop ? [...px.slice(1), '..........'] : px, palette(role, mood));
+}
+
+/** Render a look that is not (yet) in the crew, e.g. while editing. */
+/** A bot's look as plain pixels for other renderers (the web dashboard): 8 rows of 10 pixel codes plus a hex colour per code. */
+export function lookPixels(look: Look, mood: Mood = 'idle', tick = 0): { grid: string[]; colors: Record<string, string> } {
+  const hex = (c: RGB) => '#' + c.map((n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0')).join('');
+  return { grid: lookSprite(look, mood, tick), colors: Object.fromEntries(Object.entries(lookPalette(look)).map(([k, c]) => [k, hex(c)])) };
+}
+
+export function renderLook(look: Look, mood: Mood = 'idle', tick = 0): string[] {
+  return paintGrid(lookSprite(look, mood, tick), lookPalette(look));
 }
 
 /** One-line emoticon version for table rows. */
@@ -241,4 +367,13 @@ export function botSays(role: string, text: string, mood: Mood = 'idle', tick = 
     out.push(`${b}  ${i === Math.floor(bot.length / 2) && bubble.length <= bot.length ? c('◂') : ' '}${bb}`);
   }
   return out;
+}
+
+registerCrew(BUILTIN_BOTS.map((b) => ({ ...b, builtin: true })));
+
+/** Re-read <home>/crew and make the registry match. Call at start-up and after any edit. */
+export function refreshCrew(home: string): BotDef[] {
+  const defs = loadCrew(home);
+  registerCrew(defs);
+  return defs;
 }

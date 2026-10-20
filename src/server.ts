@@ -4,7 +4,9 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
-import { CREW } from './bots.js';
+import { CREW, lookPixels, refreshCrew } from './bots.js';
+import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
+import { PACKS, findPack, reid } from './packs.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -112,6 +114,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const p = url.pathname;
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
+    if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
       return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home }), true;
@@ -146,14 +149,16 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         );
         modelsCache = { at: Date.now(), data: out };
       }
+      refreshCrew(cfg.home);
       const b = loadBindings(cfg.home);
-      const crew = Object.entries(CREW).map(([role, c]) => ({ role, name: c.name, title: c.title, binding: b[role] ?? null }));
+      const crew = Object.entries(CREW).map(([role, c]) => ({ role, name: c.name, title: c.title, kind: c.def?.kind ?? 'agent', binding: b[role] ?? null }));
       return send(res, 200, { crew, escalate: b.escalate ?? null, agents: modelsCache.data }), true;
     }
     if ((g = p.match(/^\/api\/bots\/([a-z][a-z0-9_-]{0,31})$/))) {
       const role = g[1]!;
       if (role !== 'escalate' && !(role in CREW)) throw new HttpError(404, `unknown bot "${role}"`);
-      if (role === 'approval') throw new HttpError(400, 'Gate is a person, not a model');
+      refreshCrew(cfg.home);
+      if (CREW[role]?.def?.kind === 'approval') throw new HttpError(400, `${CREW[role]!.name} is a person, not a model`);
       if (m === 'PUT') {
         const body = await readJson(req);
         const agent = typeof body.agent === 'string' ? body.agent : '';
@@ -166,6 +171,48 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (m === 'DELETE') {
         unlink(cfg.home, role);
         return send(res, 200, { ok: true }), true;
+      }
+    }
+
+    // ---- crew roster: the bots themselves (looks, personas), built-in and your own ----
+    if (p === '/api/crew' && m === 'GET') {
+      const px = (b: BotDef) => ({ ...b, pixels: lookPixels(b.look) });
+      return send(res, 200, { bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
+    }
+    if (p === '/api/crew/preview' && m === 'POST') {
+      const { bot, error } = sanitizeBot({ id: 'preview', name: 'preview', kind: 'agent', ...(await readJson(req)) });
+      if (!bot) throw new HttpError(400, error ?? 'invalid look');
+      return send(res, 200, lookPixels(bot.look)), true;
+    }
+    if ((g = p.match(/^\/api\/crew\/packs\/([a-z0-9-]{1,24})$/)) && m === 'POST') {
+      const pack = findPack(g[1]!) ?? (() => { throw new HttpError(404, 'unknown pack'); })();
+      const have = loadCrew(cfg.home);
+      if (have.length + pack.bots.length > 67) throw new HttpError(400, 'too many bots; remove some first');
+      const fresh = reid(pack.bots, new Set(have.map((b) => b.id)));
+      for (const b of fresh) saveBot(cfg.home, b);
+      refreshCrew(cfg.home);
+      return send(res, 200, { added: fresh.map((b) => b.id) }), true;
+    }
+    if ((g = p.match(/^\/api\/crew\/([a-z][a-z0-9_-]{0,23})$/))) {
+      const id = g[1]!;
+      if (!BOT_ID_RE.test(id)) throw new HttpError(400, 'bad id');
+      if (m === 'PUT') {
+        const existing = loadCrew(cfg.home);
+        const was = existing.find((b) => b.id === id);
+        if (!was && existing.length >= 67) throw new HttpError(400, 'too many bots; remove some first');
+        const body = await readJson(req);
+        const { bot, error } = sanitizeBot({ ...body, id });
+        if (!bot) throw new HttpError(400, error ?? 'invalid bot');
+        saveBot(cfg.home, bot);
+        refreshCrew(cfg.home);
+        const saved = loadCrew(cfg.home).find((b) => b.id === id)!;
+        return send(res, 200, { ...saved, pixels: lookPixels(saved.look) }), true;
+      }
+      if (m === 'DELETE') {
+        const r = removeBot(cfg.home, id);
+        if (r === 'none' && BUILTIN_IDS.has(id)) throw new HttpError(400, 'built-in bots cannot be removed');
+        refreshCrew(cfg.home);
+        return send(res, 200, { ok: true, result: r }), true;
       }
     }
 

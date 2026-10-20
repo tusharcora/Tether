@@ -9,7 +9,7 @@
 import { existsSync, openSync, closeSync, readSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { STEP_TYPES, blankPipeline, makeStep, relink, type StepType } from './composer.js';
+import { blankPipeline, makeStep, relink, stepChoices } from './composer.js';
 import { NAME_RE } from './pipeline.js';
 import type { Pipeline } from './types.js';
 
@@ -19,7 +19,7 @@ export interface Skill {
   description: string;
   source: 'claude' | 'project' | 'aorch';
   /** aorch skills only. */
-  steps?: { role: StepType; prompt?: string }[];
+  steps?: { role: string; prompt?: string }[];
   builtin?: boolean;
 }
 
@@ -124,9 +124,9 @@ export function parseAorchSkill(raw: unknown): Skill | undefined {
   for (const s of r.steps) {
     if (!s || typeof s !== 'object') return undefined;
     const o = s as Record<string, unknown>;
-    if (typeof o.role !== 'string' || !(STEP_TYPES as string[]).includes(o.role)) return undefined;
+    if (typeof o.role !== 'string' || !stepChoices().includes(o.role)) return undefined;
     const prompt = typeof o.prompt === 'string' ? o.prompt.slice(0, 4000) : undefined;
-    steps.push({ role: o.role as StepType, ...(prompt ? { prompt } : {}) });
+    steps.push({ role: o.role, ...(prompt ? { prompt } : {}) });
   }
   return { name: r.name, description: oneLine(r.description, 160), source: 'aorch', steps };
 }

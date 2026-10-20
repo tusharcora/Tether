@@ -18,12 +18,13 @@ import { Pulse, costSeries, stepDurations } from './metrics.js';
 import { jumpPoints, parseDiff, renderSplit, renderUnified, summary as diffSummary, type ParsedDiff } from './diffview.js';
 import { contrast, nudge, parseHex, rgbToHsl, toHex } from './color.js';
 import { sampleRun } from './sample.js';
-import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
+import { CREW, botSays, crewFor, miniBot, moodFor, refreshCrew, renderBot, renderLook, type Mood } from './bots.js';
+import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, removeBot, saveBot, type BotDef, type PartKey } from './crew.js';
 import { supervise } from './supervisor.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
-import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
+import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
 import { commitDiff, diffCommitted } from './git.js';
@@ -109,6 +110,13 @@ const VERB_COLOR: Record<Verb, RGB> = {
   get note() { return pal.gray; },
   get tool() { return pal.gray; },
 };
+
+const BOT_SWATCH = ['#9b7bff', '#5b9dff', '#38c5d6', '#3fb97c', '#a3c957', '#e3ab3a', '#f08a4b', '#e5645f', '#e46fa8', '#c9a27a', '#9aa6b8'];
+const BOT_ACCENTS = ['#ffffff', '#f2c14e', '#ff9ec7', '#7de3f2', '#8ee6a8', '#6d4aff', '#1c1a2b'];
+const randomLook = (pick: <T>(a: readonly T[]) => T) => ({
+  body: pick(LOOK_PARTS.body), eyes: pick(LOOK_PARTS.eyes), mouth: pick(LOOK_PARTS.mouth), top: pick(LOOK_PARTS.top), side: pick(LOOK_PARTS.side), pattern: pick(LOOK_PARTS.pattern),
+  color: '#9b7bff', accent: Math.random() < 0.6 ? 'auto' : pick(BOT_ACCENTS), guard: true,
+});
 
 const CELL = 13;
 /** Which slice of the chain fits on screen, and how wide each cell is. */
@@ -199,6 +207,7 @@ type Screen =
   | { kind: 'dash'; tab: Tab; sel: Record<Tab, number> }
   | { kind: 'run'; runId: string; sel: number; side?: Extract<Screen, { kind: 'session' }>; sideKey?: string }
   | { kind: 'session'; runId: string; nodeId: string; pane: 'output' | 'events' | 'diff'; scroll: number; follow: boolean; diff?: string; diffAll?: boolean; layout?: 'unified' | 'split'; parsed?: { src: string; p: ParsedDiff } }
+  | { kind: 'botedit'; bot: BotDef; isNew: boolean; sel: number; dirty: boolean }
   | { kind: 'theme'; prev: string; pal: Record<PalKey, RGB>; sel: number; dirty: boolean }
   | { kind: 'editor'; pipeline: Pipeline; saved: boolean; dirty: boolean; sel: number; stray?: boolean }
   | { kind: 'plan'; comp?: Composition; task: string; repo: string; error?: string };
@@ -234,6 +243,7 @@ export class Tui {
   constructor(private readonly d: TuiDeps, private readonly out: NodeJS.WriteStream = process.stdout) {
     this.registry = makeRegistry(d.cfg);
     this.prefs = loadPrefs(d.cfg.home);
+    refreshCrew(d.cfg.home);
   }
 
   private setPref(patch: Prefs) {
@@ -372,6 +382,8 @@ export class Tui {
         return this.planKey(s, k);
       case 'theme':
         return this.themeKey(s, k);
+      case 'botedit':
+        return this.botKey(s, k);
     }
   }
 
@@ -533,6 +545,8 @@ export class Tui {
     add('go to', 'Settings', '4', goto('settings'));
     add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
     add('do', 'New workflow', 'n', () => this.newWorkflow());
+    add('crew', 'New bot', 'design a crew member', () => this.openBotEditor());
+    for (const role of Object.keys(CREW)) add('crew', `Edit ${CREW[role]!.name}`, CREW[role]!.title, () => this.openBotEditor(role));
     add('do', 'Open the theme editor', 'live preview', () => this.openThemeEditor());
     add('do', 'Next colour theme', 't', () => this.cycleTheme());
     add('do', 'Next crew style', 'c', () => this.cycleCrew());
@@ -643,6 +657,9 @@ export class Tui {
     if (s.tab === 'crew' && Date.now() - this.availAt > 15_000) this.refreshAvail();
     else if ((k === 'up' || k === 'k') && n) s.sel[s.tab] = (sel + n - 1) % n;
     else if ((k === 'down' || k === 'j') && n) s.sel[s.tab] = (sel + 1) % n;
+    else if (s.tab === 'crew' && k === 'n') this.openBotEditor();
+    else if (s.tab === 'crew' && k === 'e' && n) this.openBotEditor(list[sel] as string);
+    else if (s.tab === 'crew' && k === 'D' && n) this.removeBotUi(list[sel] as string);
     else if (k === 'o') this.orchestrate();
     else if (k === 'n') this.newWorkflow();
     else if (k === 't') this.cycleTheme();
@@ -695,7 +712,7 @@ export class Tui {
 
   /** Link a bot to any agent and model: Claude Code, Codex, OpenCode, or a local model server. */
   private bindBot(role: string) {
-    if (role === 'approval') return this.say('Gate is you: approvals are always a person, so there is no model to link', 'err');
+    if (role === 'approval' || CREW[role]?.def?.kind === 'approval') return this.say(`${CREW[role]?.name ?? 'That bot'} is a person: approvals are always a person, so there is no model to link`, 'err');
     const cur = this.bindings()[role];
     this.refreshAvail();
     this.choose(`Link ${CREW[role]!.name} (${CREW[role]!.title}) to`, this.agentItems(), (agent) => {
@@ -745,16 +762,139 @@ export class Tui {
     }
   }
 
+  // ---------- bot editor ----------
+  private openBotEditor(role?: string) {
+    const existing = role ? CREW[role]?.def : undefined;
+    const pick = <T,>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;
+    const bot: BotDef = existing
+      ? JSON.parse(JSON.stringify(existing))
+      : { id: '', name: 'New bot', title: 'new role', kind: 'agent', persona: '', look: { ...randomLook(pick), color: pick(BOT_SWATCH) } };
+    delete bot.edited;
+    this.push({ kind: 'botedit', bot, isNew: !existing, sel: 0, dirty: !existing });
+  }
+
+  private removeBotUi(role: string) {
+    const def = CREW[role]?.def;
+    if (!def) return;
+    if (BUILTIN_IDS.has(role)) {
+      if (!def.edited) return this.say(`${def.name} is built in and cannot be removed; press e to change how it looks`, 'err');
+      this.modal = { kind: 'confirm', title: `Reset ${def.name} to the original look and name? (y/n)`, onYes: () => {
+        removeBot(this.d.cfg.home, role);
+        refreshCrew(this.d.cfg.home);
+        this.say(`${CREW[role]?.name ?? role} is back to the original`);
+      } };
+      return;
+    }
+    this.modal = { kind: 'confirm', title: `Remove ${def.name}? Workflows keep working; its steps fall back to Bolt. (y/n)`, onYes: () => {
+      removeBot(this.d.cfg.home, role);
+      unlink(this.d.cfg.home, role);
+      refreshCrew(this.d.cfg.home);
+      const d = this.stack[0] as Extract<Screen, { kind: 'dash' }>;
+      d.sel.crew = Math.max(0, Math.min(d.sel.crew, Object.keys(CREW).length - 1));
+      this.say(`removed ${def.name}`);
+    } };
+  }
+
+  private botRows(s: Extract<Screen, { kind: 'botedit' }>): { label: string; value: string; locked?: boolean; run: (dir: 1 | -1 | 0) => void }[] {
+    const b = s.bot;
+    const builtin = BUILTIN_IDS.has(b.id);
+    const touch = () => (s.dirty = true);
+    const cyc = <T,>(list: readonly T[], cur: T, dir: 1 | -1 | 0): T => list[(list.indexOf(cur) + (dir || 1) + list.length) % list.length]!;
+    const rows: ReturnType<Tui['botRows']> = [
+      { label: 'Name', value: b.name, run: () => this.ask('Name (max 24):', (v) => v && ((b.name = v.slice(0, 24)), touch()), b.name) },
+      { label: 'Title', value: b.title || dim('(none)'), run: () => this.ask('Title — what it is, in a few words (max 28):', (v) => ((b.title = v.slice(0, 28)), touch()), b.title) },
+      { label: 'Behaves as', value: `${b.kind}  ${dim(KIND_BLURB[b.kind])}`, locked: builtin, run: (d) => { if (!builtin) { b.kind = cyc(BOT_KINDS, b.kind, d); if (b.kind === 'verdict') b.readOnly = true; touch(); } } },
+    ];
+    if (b.kind === 'agent') rows.push({ label: 'Read-only', value: b.readOnly ? green('yes') : dim('no'), locked: builtin, run: () => { if (!builtin) { b.readOnly = !b.readOnly; touch(); } } });
+    for (const k of PART_KEYS) rows.push({ label: k[0]!.toUpperCase() + k.slice(1), value: `‹ ${b.look[k as PartKey]} ›`, run: (d) => { b.look[k as PartKey] = cyc(LOOK_PARTS[k], b.look[k as PartKey], d); touch(); } });
+    rows.push(
+      { label: 'Colour', value: `${paint(parseHex(b.look.color) ?? pal.gray, '██')} ${b.look.color}`, run: (d) => {
+        if (d === 0) return this.ask('Body colour (hex, e.g. #f08a4b):', (v) => { const c = parseHex(v); if (!c) return this.say('that is not a hex colour', 'err'); b.look.color = toHex(c); touch(); }, b.look.color);
+        const i = BOT_SWATCH.indexOf(b.look.color.toLowerCase());
+        b.look.color = BOT_SWATCH[((i < 0 ? 0 : i) + d + BOT_SWATCH.length) % BOT_SWATCH.length]!;
+        touch();
+      } },
+      { label: 'Accent', value: b.look.accent === 'auto' ? 'auto' : `${paint(parseHex(b.look.accent) ?? pal.gray, '██')} ${b.look.accent}`, run: (d) => {
+        const list = ['auto', ...BOT_ACCENTS];
+        b.look.accent = cyc(list, b.look.accent, d);
+        touch();
+      } },
+      { label: 'Colour guard', value: b.look.guard === false ? dim('off') : green('on'), run: () => { b.look.guard = b.look.guard === false; touch(); } },
+      { label: 'Persona', value: dim(clip(b.persona || '(what this bot is for — becomes its instructions)', Math.max(20, this.cols - 40))), run: () => this.ask('Persona — one or two sentences: its job and how it thinks (max 600):', (v) => ((b.persona = v.slice(0, 600)), touch()), b.persona) },
+    );
+    return rows;
+  }
+
+  private botKey(s: Extract<Screen, { kind: 'botedit' }>, k: string) {
+    const rows = this.botRows(s);
+    const n = rows.length;
+    s.sel = Math.min(s.sel, n - 1);
+    if (k === 'esc' || k === 'q') {
+      if (!s.dirty) return this.pop();
+      this.modal = { kind: 'confirm', title: 'Discard your changes to this bot? (y/n)', onYes: () => this.pop() };
+    } else if (k === 'up' || k === 'k') s.sel = (s.sel + n - 1) % n;
+    else if (k === 'down' || k === 'j') s.sel = (s.sel + 1) % n;
+    else if (k === 'left' || k === 'h') rows[s.sel]!.run(-1);
+    else if (k === 'right' || k === 'l') rows[s.sel]!.run(1);
+    else if (k === 'enter') {
+      const r = rows[s.sel]!;
+      if (r.locked) this.say(`${s.bot.name} is built in, so this stays as it is`, 'err');
+      else r.run(0);
+    } else if (k === 'r') {
+      const pick = <T,>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)]!;
+      s.bot.look = { ...randomLook(pick), color: pick(BOT_SWATCH), guard: s.bot.look.guard };
+      s.dirty = true;
+    } else if (k === 's') {
+      try {
+        const bot = { ...s.bot, id: s.bot.id || freshId(s.bot.name, Object.keys(CREW)) };
+        saveBot(this.d.cfg.home, bot);
+        refreshCrew(this.d.cfg.home);
+        const d = this.stack[0] as Extract<Screen, { kind: 'dash' }>;
+        d.sel.crew = Math.max(0, Object.keys(CREW).indexOf(bot.id));
+        this.say(`saved ${bot.name}${s.isNew ? ' — link it to a model with enter on the Crew tab' : ''}`);
+        this.pop();
+      } catch (e) {
+        this.say((e as Error).message, 'err');
+      }
+    }
+  }
+
+  private botBody(s: Extract<Screen, { kind: 'botedit' }>, h: number): string[] {
+    const b = s.bot;
+    const moods: Mood[] = this.cols >= 76 ? ['idle', 'working', 'happy', 'sad', 'waiting', 'asleep'] : ['idle', 'working', 'happy'];
+    const lines: string[] = [` ${bold(b.name)} ${dim(`· ${b.title || 'no title'} · ${b.kind}${b.id ? ' · id ' + b.id : ' · new'}`)}`, ''];
+    const sprites = moods.map((m) => renderLook(b.look, m, this.tick));
+    if (h >= 22) {
+      for (let r = 0; r < 4; r++) lines.push('  ' + sprites.map((sp) => sp[r]!).join('  '));
+      lines.push('  ' + moods.map((m) => dim(padEnd(m, 10))).join('  '), '');
+    } else lines.push('  ' + sprites.slice(0, 1).map((sp) => sp[0]!).join(''), '');
+    const rows = this.botRows(s);
+    s.sel = Math.min(s.sel, rows.length - 1);
+    const top = lines.length;
+    const room = Math.max(4, h - top);
+    const [view, start] = this.window(rows, s.sel, room);
+    view.forEach((r, vi) => {
+      const i = start + vi;
+      this.bodyHit(top + vi, 0, this.cols, () => (s.sel === i ? this.botKey(s, 'enter') : (s.sel = i)));
+      lines.push(`${i === s.sel ? cyan('▍') : ' '} ${padEnd(i === s.sel ? bold(r.label) : r.label, 13)} ${r.locked ? dim(r.value.replace(/\x1b\[[0-9;]*m/g, '')) : r.value}`);
+    });
+    return lines;
+  }
+
   // ---------- orchestrator bot ----------
-  private orchestrate() {
-    this.ask('Tell Maestro what you want done:', (task) => {
+  private orchestrate(who?: BotDef) {
+    const orchs = Object.values(CREW).flatMap((c) => (c.def?.kind === 'orchestrator' ? [c.def] : []));
+    if (!who && orchs.length > 1) return this.choose('Who plans it?', orchs.map((o) => ({ value: o.id, label: o.name, hint: o.title })), (id) => this.orchestrate(orchs.find((o) => o.id === id)));
+    const lead = who ?? orchs[0];
+    const custom = lead && lead.id !== 'orchestrator' ? lead : undefined;
+    this.ask(`Tell ${lead?.name ?? 'Maestro'} what you want done:`, (task) => {
       if (!task) return;
       this.ask('Repository (a git repo):', (repo) => {
         const r = resolve(repo || process.cwd());
         const plan: Extract<Screen, { kind: 'plan' }> = { kind: 'plan', task, repo: r };
         this.push(plan);
         const ac = new AbortController();
-        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, agent: this.bindings().orchestrator?.agent, model: this.bindings().orchestrator?.model })
+        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, orchestrator: custom, agent: this.bindings()[lead?.id ?? 'orchestrator']?.agent, model: this.bindings()[lead?.id ?? 'orchestrator']?.model })
           .then((c) => (plan.comp = c))
           .catch((e: Error) => (plan.error = e.message));
       }, process.cwd());
@@ -1176,9 +1316,9 @@ export class Tui {
     else if (k === 'a') {
       this.choose(
         'Add a step after the selected one',
-        STEP_TYPES.map((t) => ({ value: t, label: `${CREW[t === 'tester' ? 'tester' : t === 'approval' ? 'approval' : t]!.name} · ${t}`, hint: STEP_BLURB[t] })),
+        stepChoices().map((t) => ({ value: t, label: `${CREW[t]!.name} · ${t}`, hint: t in STEP_BLURB ? STEP_BLURB[t as StepType] : blurbFor({ id: '', kind: 'agent', role: t, x: 0, y: 0 }) })),
         (t) => {
-          addStep(p, t as StepType, p.nodes.length ? s.sel + 1 : 0, undefined, detectTestCommand(process.cwd()) ?? 'npm test');
+          addStep(p, t, p.nodes.length ? s.sel + 1 : 0, undefined, detectTestCommand(process.cwd()) ?? 'npm test');
           s.sel = p.nodes.length ? Math.min(p.nodes.length - 1, s.sel + 1) : 0;
           touch();
         },
@@ -1219,7 +1359,7 @@ export class Tui {
     const t = stepType(n);
     if (n.kind === 'agent') {
       items.push({ value: 'agent', label: 'agent', hint: n.agent ?? `follows ${CREW[crewFor(n)]!.name}` }, { value: 'model', label: 'model', hint: n.model ?? '(default)' }, { value: 'prompt', label: 'instructions', hint: n.prompt ? n.prompt.slice(0, 40) : '(role default)' });
-      if (t === 'coder') items.push({ value: 'readOnly', label: 'read-only', hint: n.readOnly ? 'yes' : 'no' });
+      if (!n.verdict) items.push({ value: 'readOnly', label: 'read-only', hint: n.readOnly ? 'yes' : 'no' });
     }
     if (n.kind === 'gate') items.push({ value: 'command', label: 'command', hint: n.command ?? '' }, { value: 'maxLoops', label: 'max fix loops', hint: String(n.maxLoops ?? 2) });
     if (n.verdict) items.push({ value: 'maxLoops', label: 'max fix loops', hint: String(n.maxLoops ?? 2) });
@@ -1292,6 +1432,7 @@ export class Tui {
       }
       return { mood: waiting ? 'waiting' : moodFor(st?.status ?? 'queued'), text: waiting ? 'Someone needs a decision from you. Press a to approve or x to reject.' : st?.status === 'done' ? 'All done. Review the branch, or step into any agent to see how it got there.' : st?.status === 'error' ? 'Something failed. Press R to retry only the failed branch.' : 'The crew is working. Pick an agent with ←/→ and press enter to step into its session.' };
     }
+    if (s.kind === 'botedit') return { mood: 'happy', text: 'Every bot shares the same pebble base. Change a part and the preview updates instantly.' };
     if (s.kind === 'editor') return { mood: 'idle', text: 'Arrange the crew: shift+←/→ or [ ] moves a step, a adds one, enter edits its settings.' };
     if (paused.length) return { mood: 'waiting', text: `${paused.length} run${paused.length > 1 ? 's are' : ' is'} waiting for your approval. Open it and press a to approve.` };
     if (live.length) return { mood: 'working', text: `${live.length} run${live.length > 1 ? 's' : ''} in motion. Open one to watch the crew, or step into an agent's session.` };
@@ -1307,7 +1448,7 @@ export class Tui {
     const tabLine = TABS.map((t, i) => (t === tabs ? bold(paint(pal.cyan, `${i + 1} ${t}`)) : dim(`${i + 1} ${t}`))).join('   ');
     const crumbs = this.stack
       .slice(1)
-      .map((s) => (s.kind === 'run' ? `run ${s.runId.slice(-6)}` : s.kind === 'session' ? `${s.nodeId} session` : s.kind === 'editor' ? `editing ${s.pipeline.name}${s.dirty ? ' •' : ''}` : s.kind === 'plan' ? 'plan' : s.kind === 'theme' ? 'theme editor' : ''))
+      .map((s) => (s.kind === 'run' ? `run ${s.runId.slice(-6)}` : s.kind === 'session' ? `${s.nodeId} session` : s.kind === 'editor' ? `editing ${s.pipeline.name}${s.dirty ? ' •' : ''}` : s.kind === 'plan' ? 'plan' : s.kind === 'theme' ? 'theme editor' : s.kind === 'botedit' ? `bot: ${s.bot.name}${s.dirty ? ' •' : ''}` : ''))
       .join(dim(' › '));
     if (!this.modal) {
       let x = vlen(bot[1]!) + 2;
@@ -1342,8 +1483,9 @@ export class Tui {
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
+      : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
-      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · tab switch · t theme · c crew style · q quit' : 'enter link model · x unlink · o ask Maestro · t theme · c crew style · q quit')
+      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · tab switch · t theme · c crew style · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
       : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
@@ -1369,6 +1511,8 @@ export class Tui {
         return this.planBody(s, h);
       case 'theme':
         return this.themeBody(s, h);
+      case 'botedit':
+        return this.botBody(s, h);
     }
     void w;
     return [];
@@ -1461,31 +1605,36 @@ export class Tui {
 
   private crewBody(h: number): string[] {
     const roles = Object.keys(CREW);
-    const sel = (this.screen as Extract<Screen, { kind: 'dash' }>).sel.crew;
+    const ds = this.screen as Extract<Screen, { kind: 'dash' }>;
+    ds.sel.crew = Math.min(ds.sel.crew, Math.max(0, roles.length - 1));
+    const sel = ds.sel.crew;
     const b = this.bindings();
-    const lines: string[] = [];
-    const list = roles.map((role, i) => {
+    const lines: string[] = [''];
+    const rowsH = Math.max(6, h - 6);
+    const [view, start] = this.window(roles, sel, Math.max(8, rowsH));
+    const list = view.map((role, vi) => {
+      const i = start + vi;
       const c = CREW[role]!;
       const bd = b[role];
+      const person = c.def?.kind === 'approval';
       const agent = bd?.agent ?? 'claude';
       const a = this.avail[agent];
-      const status = role === 'approval' ? '' : a ? (a.ok ? green('✔') : red('✘')) : dim('…');
-      const model = role === 'approval' ? dim('you (a person)') : bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)');
+      const status = person ? '' : a ? (a.ok ? green('✔') : red('✘')) : dim('…');
+      const model = person ? dim('you (a person)') : bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)');
       const mood: Mood = i === sel ? 'working' : 'idle';
-      const ds = this.screen as Extract<Screen, { kind: 'dash' }>;
-      this.bodyHit(1 + i, 0, 58, () => (ds.sel.crew === i ? this.key('enter') : (ds.sel.crew = i)));
+      this.bodyHit(1 + vi, 0, 58, () => (ds.sel.crew === i ? this.key('enter') : (ds.sel.crew = i)));
       return `${i === sel ? cyan('▍') : ' '} ${miniBot(role, mood, this.tick)} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${status} ${model}`;
     });
     const role = roles[sel]!;
+    const def = CREW[role]?.def;
     const big = renderBot(role, 'working', this.tick);
-    const info = [bold(paint(CREW[role]!.color(), CREW[role]!.name)), dim(CREW[role]!.title), '', dim('enter  link to an agent / model'), dim('x      follow the default'), '', dim(role === 'orchestrator' ? 'designs workflows from your task' : role === 'approval' ? 'a person: pauses the run for you' : 'steps without their own agent use this link')];
-    lines.push('');
+    const persona = wrap(def?.persona ?? '', 40).slice(0, 3).map((l) => dim(l));
+    const info = [bold(paint(CREW[role]!.color(), CREW[role]!.name)), dim(`${CREW[role]!.title} · ${def ? def.kind : ''}`), '', dim('enter  link to an agent / model'), dim('e      edit name, persona and look'), dim('x      follow the default'), '', ...persona];
     for (let i = 0; i < Math.max(list.length, 8); i++) {
       const left = padEnd(list[i] ?? '', 58);
       lines.push(`${left}  ${i < 4 ? big[i]! : ' '.repeat(10)}  ${info[i] ?? ''}`);
     }
-    lines.push('', `  ${dim('Local models: start Ollama, LM Studio or llama.cpp and they appear here. Others: add "endpoints" to')} ${cyan('aorch.config.json')}${dim('.')}`);
-    void h;
+    lines.push('', `  ${dim(`${roles.length} bots · n adds one · D removes yours (or resets a built-in you changed). Local models: start Ollama, LM Studio or llama.cpp and they appear here.`)}`);
     return lines;
   }
 
@@ -1656,7 +1805,7 @@ export class Tui {
       lines.push(...crewStrip(p.nodes, () => 'idle', s.sel, this.tick, this.cols - 2, (n) => dim(n.kind === 'agent' ? (n.readOnly ? 'read-only' : 'writes') : n.kind === 'gate' ? 'gate' : 'human')).map((l) => ' ' + l));
       const n = p.nodes[s.sel]!;
       lines.push('');
-      lines.push(` ${bold(CREW[crewFor(n)]!.name)} ${dim(STEP_BLURB[stepType(n)])}`);
+      lines.push(` ${bold(CREW[crewFor(n)]!.name)} ${dim(blurbFor(n))}`);
       const rn = applyBindings(p, this.bindings()).nodes[s.sel]!;
       const facts = [`id ${n.id}`, rn.agent ? `agent ${rn.agent}${n.agent ? '' : ' (via ' + CREW[crewFor(n)]!.name + ')'}` : '', rn.model ? `model ${rn.model}` : '', n.command ? `$ ${n.command}` : '', n.fixNode ? `fixes via ${n.fixNode} ≤${n.maxLoops ?? 2}×` : '', n.prompt ? `instructions: ${n.prompt.slice(0, 60)}` : ''].filter(Boolean);
       lines.push(` ${dim(facts.join('  ·  '))}`);
