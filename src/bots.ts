@@ -148,7 +148,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   else if (mouth === 'open') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); }
   let dx = 0, dy = 0, closed = false;
   if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 7) % 4]!; // a slow glance left, centre, right, centre
-  else if (mood === 'waiting') { dy = -1; dx = tick % 50 < 25 ? -1 : 0; }
+  else if (mood === 'waiting') dx = tick % 50 < 25 ? -1 : 1;
   else if (mood === 'sad') dy = 1;
   else if (mood === 'asleep' || (mood === 'idle' && tick % 40 > 37)) closed = true;
   const eyes: [number, number, string, boolean][] = [];
@@ -163,9 +163,14 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
     case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', false); e(5, 1, 'E', false); break; // pupils stay inside the lenses
     default: e(2, 1, 'E', true); e(5, 1, 'E', true);
   }
-  // The eyes move as one piece. Try the full shift, then each axis alone, then stay put, so a pair never stretches or loses an eye at the edge.
-  const fits = (ox: number, oy: number) => eyes.every(([x, y, , mv]) => !mv || !inBody(x, y) || inBody(x + ox, y + oy));
-  const [ox, oy2] = ([[dx, dy], [dx, 0], [0, dy], [0, 0]] as [number, number][]).find(([a, b]) => fits(a, b)) ?? [0, 0];
+  // The eyes move as one piece and never onto the outline (that punches notches in the silhouette) or into the mouth rows.
+  // Try the wanted shift, then each axis alone, then a glance down, then stay put.
+  const solid = (x: number, y: number) => inBody(x - 1, y) && inBody(x + 1, y) && inBody(x, y - 1) && inBody(x, y + 1);
+  const fits = (ox: number, oy: number) => (ox === 0 && oy === 0) || eyes.every(([x, y, , mv]) => !mv || !inBody(x, y) || (solid(x + ox, y + oy) && y + oy <= 2));
+  const wanted: [number, number][] = [];
+  if (dx !== 0 || dy !== 0) for (const c of [[dx, dy], [dx, 0], [0, dy], [0, 1]] as [number, number][]) if (c[0] !== 0 || c[1] !== 0) wanted.push(c);
+  wanted.push([0, 0]);
+  const [ox, oy2] = wanted.find(([a, b]) => fits(a, b)) ?? [0, 0];
   for (const [x0, y0, k0, mv] of eyes) {
     const x = mv ? x0 + ox : x0, y = mv ? y0 + oy2 : y0;
     const k = closed && mv ? 'b' : k0;
