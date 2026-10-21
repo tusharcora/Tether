@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
-import { CREW, CREW_STYLES, crewFor, lookSprite, renderBot, setCrewStyle, sprite, type Mood } from '../src/bots.js';
+import { CREW, CREW_STYLES, crewFor, lookSprite, renderLook, type Mood } from '../src/bots.js';
 import { addStep, classifyTask, composePipeline, detectTestCommand, fromTemplate, moveStep, relink, removeStep, slugify } from '../src/composer.js';
 import { normalizePipeline, preflight } from '../src/pipeline.js';
 import { parseKeys } from '../src/tui.js';
@@ -94,27 +94,21 @@ describe('crew', () => {
     expect(crewFor({ kind: 'agent' })).toBe('coder');
   });
 
-  it('every role, mood and style renders 4 rows of 10 columns', () => {
+  it('the bot editor preview renders 4 rows of 10 columns in every mood; the web still lists its styles', () => {
     const moods: Mood[] = ['idle', 'working', 'happy', 'sad', 'waiting', 'asleep'];
-    for (const style of Object.keys(CREW_STYLES)) {
-      expect(setCrewStyle(style)).toBe(true);
-    for (const role of [...Object.keys(CREW), 'unknown']) {
+    for (const role of Object.keys(CREW)) {
       for (const m of moods) {
         for (const t of [0, 7, 39]) {
-          expect(sprite(role, m, t)).toHaveLength(8);
-          const rows = renderBot(role, m, t);
+          const rows = renderLook(CREW[role]!.def!.look, m, t);
           expect(rows).toHaveLength(4);
           for (const r of rows) expect(vlen(r)).toBe(10);
         }
       }
     }
-    }
-    expect(setCrewStyle('nope')).toBe(false);
-    setCrewStyle('pebble');
+    expect(Object.keys(CREW_STYLES)).toEqual(expect.arrayContaining(['pebble', 'sigil', 'tile', 'ticker', 'orbit']));
   });
 
   it('family bots keep their eyes inside the body and move them with mood', () => {
-    setCrewStyle('pebble');
     const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#5b9dff', accent: 'auto' };
     const eyes = (m: Mood, t: number) => lookSprite(look, m, t).map((r, y) => [...r].map((c, x) => (c === 'E' ? `${x},${y}` : '')).filter(Boolean)).flat();
     expect(eyes('idle', 0)).toHaveLength(2);
@@ -124,7 +118,6 @@ describe('crew', () => {
     expect(lookSprite(talking, 'working', 0)).not.toEqual(lookSprite(talking, 'working', 7));
     expect(lookSprite(talking, 'waiting', 0)).not.toEqual(lookSprite(talking, 'idle', 0));
     expect(eyes('sad', 0)).toEqual(eyes('idle', 0));
-    setCrewStyle('pebble');
   });
 
   it('eyes move as one piece: no eye is ever lost or stretched while animating', () => {
@@ -166,22 +159,8 @@ describe('mark styles (sigil, ticker, orbit)', () => {
   const MARKS = ['sigil', 'tile', 'ticker', 'orbit'];
   const moods: Mood[] = ['idle', 'working', 'happy', 'sad', 'waiting', 'asleep'];
 
-  it('are crew styles, render 4×10, and mini marks are exactly 5 columns', async () => {
-    const { miniBot } = await import('../src/bots.js');
-    for (const style of MARKS) {
-      expect(setCrewStyle(style)).toBe(true);
-      for (const role of Object.keys(CREW)) {
-        for (const m of moods) {
-          for (const t of [0, 5, 31]) {
-            const rows = renderBot(role, m, t);
-            expect(rows).toHaveLength(4);
-            for (const r of rows) expect(vlen(r)).toBe(10);
-            expect(vlen(miniBot(role, m, t))).toBe(5);
-          }
-        }
-      }
-    }
-    setCrewStyle('pebble');
+  it('are web crew styles', () => {
+    for (const style of MARKS) expect(style in CREW_STYLES).toBe(true);
   });
 
   it('symbols and initials come from the name; shapes are stable per bot', async () => {

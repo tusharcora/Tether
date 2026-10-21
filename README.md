@@ -11,9 +11,10 @@ A durable orchestrator for CLI coding agents. It runs workflows of agents (Claud
 
 - **Tabs**: `1` chat, `2` runs, `3` workflows, `4` crew, `5` triggers, `6` settings (outside the chat tab; `tab` and `shift-tab` always cycle).
 - **Ctrl-K** opens the command palette: jump to a tab, open a run, edit or run a workflow, link a bot, change settings, or run a skill. Type to filter.
-- **Mouse**: click tabs, rows and bots (click a selected row again to open it), wheel to scroll, right-click to go back. Turn it off in Settings if you prefer to select text (or hold shift while dragging).
+- **Mouse**: click tabs, rows and steps (click a selected row again to open it), wheel to scroll, right-click to go back. Turn it off in Settings if you prefer to select text (or hold shift while dragging).
 - **Skills**: `aorch skills` lists them; `aorch skills run <name> --task "…"` runs one. Two kinds: built-in or custom aorch workflows (JSON in `<home>/skills/`, e.g. `{"name":"my-skill","description":"…","steps":[{"role":"coder","prompt":"…"},{"role":"tester"}]}`), and Claude Code skills found in `~/.claude/skills` and `<repo>/.claude/skills`. A Claude Code skill runs inside a Claude agent step that is told to invoke it by name. In the workflow editor press `k` to add either kind.
-- **Reactions**: bots cheer when a step passes, shudder when one fails, and a baton slides along the arrow when work is handed on. Maestro shows ↻ or ⇧ on a step it retries or escalates. Turn it off in Settings.
+- **The face**: one small face band sits at the top-left of the header (`▐  ●  ●  ▌`). Its eyes, colour and a glyph beside it show what is going on: idle (blinks now and then), working (`◉◉` and a spinner), waiting for you (`◔◔` amber `?`), done (`^^` green `✓`, for a few seconds after a run you started finishes), failed (`╥╥` red `!`) and asleep (`––` grey `z`, after ten idle minutes with nothing running; any key wakes it). It follows your colour theme, and shrinks to `▐●●▌` under 40 columns.
+- **Reactions**: a step sparkles when it passes, shudders when one fails, and a baton slides along the arrow when work is handed on. Maestro shows ↻ or ⇧ on a step it retries or escalates. Turn it off in Settings.
 - **Side pane and charts** (run view): on terminals 100+ columns wide a pane beside the live output shows the selected step's diff or events (`|` cycles diff / events / off, `J`/`K` or the wheel scroll it). With colour and 34+ rows, `g` toggles a timeline and cost chart drawn with half-block pixels.
 
 ## Requirements
@@ -165,9 +166,9 @@ A worker (any agent step, including one a manager spawned) can pass a sub-task t
 - `@ASK` is still the cheap way to ask a question: it consults a step that already finished and spawns nothing. Use `@HAND` when someone needs to do new work.
 
 
-## Crew styles
+## Crew styles (web dashboard)
 
-The crew can be drawn five ways. Switch with `aorch crew <style>`, `--crew <style>` / `AORCH_CREW` for one run, `c` in the dashboard, or the picker at the top of the Crew tab in the web dashboard.
+The web dashboard draws the crew five ways; pick one with the picker at the top of the Crew tab. The terminal draws no crew characters or styles.
 
 | style | what a bot looks like | good for |
 | --- | --- | --- |
@@ -178,7 +179,7 @@ The crew can be drawn five ways. Switch with `aorch crew <style>`, `--crew <styl
 | `ticker` | a three-letter symbol chip, a stance arrow and a sparkline | traders, the Trading desk |
 | `orbit` | two initials in a small ring; a lit arc runs round it while the bot works | shared dashboards |
 
-The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. Every mark fits in four rows and sits in the same 4×10 slot a pixel bot uses and a 5-column mini mark in lists, so no screen changes layout when you switch. The bot editor still edits the pixel look, which `pebble` uses.
+The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. The bot editor still edits the pixel look, which `pebble` uses.
 
 ## Talking to Maestro
 

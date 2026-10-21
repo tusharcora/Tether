@@ -20,19 +20,18 @@ import { runTui } from './tui.js';
 import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.js';
 import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
-import { CREW_STYLES, crewStyle, refreshCrew, setCrewStyle } from './bots.js';
+import { refreshCrew } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
 import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, type BotDef } from './crew.js';
 import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { createInterface } from 'node:readline/promises';
-import { renderLook } from './bots.js';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
-import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
+import { CREW, crewFor } from './bots.js';
 import { THEMES, registerThemes, setTheme, themeName, spawnedLabel, underManagers } from './ui.js';
 import { LiveBoard, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
 
@@ -51,12 +50,11 @@ Usage
   aorch approve <runId> <node> [--reject] [--resume]
   aorch                               interactive dashboard (runs, workflows, agent sessions)
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
-  aorch bots [link <bot> <agent> [model] | unlink <bot> | gallery]   link crew members to Claude, Codex, OpenCode or a local model
+  aorch bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
-  aorch crew [style]                  bot style: pebble · classic · sigil · tile · ticker · orbit
   aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
@@ -86,7 +84,7 @@ function prettyHelp(): string {
     .join('\n');
 }
 
-function applyTheme(flag?: string, crewFlag?: string) {
+function applyTheme(flag?: string) {
   const prefs = loadPrefs(resolveHome());
   registerThemes(prefs.themes);
   const name = flag ?? process.env.AORCH_THEME ?? prefs.theme;
@@ -94,38 +92,6 @@ function applyTheme(flag?: string, crewFlag?: string) {
     console.error(`unknown theme "${name}" — options: ${Object.keys(THEMES).join(', ')}`);
     process.exit(1);
   }
-  const crew = crewFlag ?? process.env.AORCH_CREW ?? prefs.crew;
-  if (crew && !setCrewStyle(crew)) {
-    console.error(`unknown crew style "${crew}" — options: ${Object.keys(CREW_STYLES).join(', ')}`);
-    process.exit(1);
-  }
-}
-
-/** Static gallery of the crew in every mood; animates for a few seconds on a TTY. */
-async function gallery() {
-  const roles = Object.keys(CREW);
-  const moods: Mood[] = ['idle', 'working', 'happy', 'sad'];
-  const draw = (tick: number) => {
-    const rows: string[] = [];
-    rows.push('  ' + roles.map((r) => padEndV(bold(CREW[r]!.name), 13)).join(''));
-    rows.push('  ' + roles.map((r) => padEndV(dim(CREW[r]!.title), 13)).join(''));
-    for (const m of moods) {
-      rows.push(dim(`  ${m}`));
-      const bots = roles.map((r) => renderBot(r, m, tick));
-      for (let i = 0; i < 4; i++) rows.push('  ' + bots.map((b) => b[i] + '   ').join(''));
-    }
-    return rows;
-  };
-  await banner('meet the crew');
-  if (!caps.animate) return console.log(draw(0).join('\n'));
-  const frame0 = draw(0);
-  process.stdout.write('\x1b[?25l' + frame0.join('\n') + '\n');
-  for (let t = 1; t < 60; t++) {
-    await new Promise((r) => setTimeout(r, 90));
-    const f = draw(t);
-    process.stdout.write(`\x1b[${f.length}A` + f.join('\n') + '\n');
-  }
-  process.stdout.write('\x1b[?25h');
 }
 
 /** What a trigger points at, for validation: workspaces, agents and workflows that exist. */
@@ -285,6 +251,11 @@ async function drive(ctx: Ctx, runId: string, json: boolean, sup?: { rounds: num
 
 async function main() {
   const argv = process.argv.slice(2);
+  // crew styles moved to the web dashboard: accept the old flag, env var and command, say so once, and carry on
+  const ci = argv.findIndex((a) => a === '--crew' || a.startsWith('--crew='));
+  if (ci >= 0) argv.splice(ci, argv[ci] === '--crew' ? 2 : 1);
+  if (ci >= 0 || process.env.AORCH_CREW || argv[0] === 'crew') console.error(dim('crew styles moved to the web dashboard (aorch serve, Crew tab)'));
+  if (argv[0] === 'crew') return;
   const cmd = argv[0];
   if (!cmd && process.stdout.isTTY && process.stdin.isTTY) {
     applyTheme();
@@ -318,7 +289,6 @@ async function main() {
       resume: { type: 'boolean' },
       json: { type: 'boolean' },
       theme: { type: 'string' },
-      crew: { type: 'string' },
       yes: { type: 'boolean' },
       supervise: { type: 'boolean' },
       'no-supervise': { type: 'boolean' },
@@ -369,7 +339,7 @@ async function main() {
       'no-workspace': { type: 'boolean' },
     },
   });
-  applyTheme(v.theme, v.crew);
+  applyTheme(v.theme);
 
   switch (cmd) {
     case 'tui': {
@@ -384,12 +354,11 @@ async function main() {
       const repo = resolve(v.repo ?? '.');
       const ctx = open(v);
       await banner('orchestrator bot');
-      const think = botSays('orchestrator', 'Reading your task and designing a workflow…', 'working', 0, 70);
-      if (caps.animate) console.log(think.join('\n'));
+      if (caps.animate) console.log(dim('  Reading your task and designing a workflow…'));
       const maestro = loadBindings(ctx.cfg.home).orchestrator;
       const comp = await composePipeline(task, { repo, registry: makeRegistry(ctx.cfg), heuristicOnly: v['rules-only'], agent: maestro?.agent, model: maestro?.model });
-      if (caps.animate) process.stdout.write(`\x1b[${think.length}A\x1b[J`);
-      console.log(botSays('orchestrator', comp.rationale, 'happy', 0, 76).join('\n'));
+      if (caps.animate) process.stdout.write('\x1b[1A\x1b[J');
+      console.log(`  ${comp.rationale}`);
       console.log('');
       console.log(`  ${comp.pipeline.nodes.map((n) => paint(CREW[crewFor(n)]!.color(), `${CREW[crewFor(n)]!.name}`) + dim(` ${n.title ?? n.role ?? n.kind}`)).join(dim('  →  '))}`);
       for (const w of comp.warnings) console.log(`  ${amber('!')} ${dim(w)}`);
@@ -412,7 +381,6 @@ async function main() {
     }
     case 'bots': {
       const sub = pos[0];
-      if (sub === 'gallery') return gallery();
       const cfg = loadConfig(v);
       const reg = makeRegistry(cfg);
       refreshCrew(cfg.home);
@@ -443,7 +411,6 @@ async function main() {
       };
       const review = (bots: BotDef[]) => {
         for (const b of bots) {
-          for (const row of renderLook(b.look, 'idle', 0)) console.log('  ' + row);
           console.log(`  ${bold(b.name)} ${dim('· ' + (b.title || 'no title') + ' · ' + b.kind + (b.readOnly ? ' · read-only' : ''))}\n    ${dim(b.persona || '(no persona)')}`);
           if (b.kind === 'gate') console.log(`    ${amber('!')} ${dim('gate: runs your repo’s test command')}`);
         }
@@ -526,12 +493,12 @@ async function main() {
       const rows = Object.entries(CREW).map(([role, c]) => {
         const bd = b[role];
         const agent = bd?.agent ?? 'claude';
-        return [miniBot(role, 'idle', 0), bold(paint(c.color(), c.name)), dim(c.title), bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)'), role === 'approval' ? '' : det[agent] ? green('✔ ready') : red('✘ unavailable')];
+        return [paint(c.color(), '●'), bold(paint(c.color(), c.name)), dim(c.title), bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)'), role === 'approval' ? '' : det[agent] ? green('✔ ready') : red('✘ unavailable')];
       });
       const esc = b.escalate;
-      rows.push([dim('  ⇧  '), bold(paint(pal.amber, 'escalate')), dim('on repeat failure'), esc ? `${cyan(esc.agent)}${esc.model ? dim(' · ' + esc.model) : ''}` : dim('claude · opus (default)'), '']);
+      rows.push([dim('⇧'), bold(paint(pal.amber, 'escalate')), dim('on repeat failure'), esc ? `${cyan(esc.agent)}${esc.model ? dim(' · ' + esc.model) : ''}` : dim('claude · opus (default)'), '']);
       console.log(box(table(rows), { title: 'crew ↔ models', width: caps.cols, border: BRAND }).join('\n'));
-      console.log(dim(`\n  aorch bots link <bot> <agent> [model]   ·   aorch bots unlink <bot>   ·   aorch models   ·   aorch bots gallery`));
+      console.log(dim(`\n  aorch bots link <bot> <agent> [model]   ·   aorch bots unlink <bot>   ·   aorch models `));
       return;
     }
     case 'models': {
@@ -550,26 +517,6 @@ async function main() {
       }));
       console.log(lines.join('\n'));
       console.log(dim(`\n  link one to a bot:  aorch bots link bolt ollama qwen2.5-coder:14b`));
-      return;
-    }
-    case 'crew': {
-      const cfg = loadConfig(v);
-      const pick = pos[0];
-      if (pick) {
-        if (!setCrewStyle(pick)) fail(`unknown crew style "${pick}" — options: ${Object.keys(CREW_STYLES).join(', ')}`);
-        savePrefs(cfg.home, { crew: pick });
-      }
-      await banner(`crew style: ${crewStyle}`);
-      const keep = crewStyle;
-      for (const [n, label] of Object.entries(CREW_STYLES)) {
-        setCrewStyle(n);
-        const row = Object.keys(CREW).map((r) => renderBot(r, 'idle', 0));
-        console.log(`  ${n === keep ? green('●') : dim('○')} ${bold(n)}  ${dim(label)}`);
-        for (let i = 0; i < 4; i++) console.log('    ' + row.map((b) => b[i] + '  ').join(''));
-        console.log('');
-      }
-      setCrewStyle(keep);
-      console.log(dim('  switch with: aorch crew <name>   or per run: --crew <name> / AORCH_CREW   (c in the dashboard)'));
       return;
     }
     case 'theme': {

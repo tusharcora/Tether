@@ -1,4 +1,4 @@
-/** Saved display preferences (<home>/ui.json): theme, crew style, and what the dashboard shows. */
+/** Saved display preferences (<home>/ui.json): theme, the web dashboard's crew style, and what the dashboard shows. */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -7,7 +7,7 @@ export type DiffLayout = 'auto' | 'unified' | 'split';
 export interface Prefs {
   theme?: string;
   crew?: string;
-  /** Spinners and bot animation. Off freezes them (reduced motion). Default on. */
+  /** Spinners and the face animation. Off freezes them (reduced motion). Default on. */
   animate?: boolean;
   /** Live "now doing" lines under running steps. Default on. */
   activity?: boolean;
@@ -15,7 +15,7 @@ export interface Prefs {
   metrics?: boolean;
   /** Mouse clicks in the terminal UI. Default off, so text can be selected and copied. */
   mouse?: boolean;
-  /** Bots cheer, shake and hand over batons as steps finish. Default on. */
+  /** Steps sparkle, shudder and hand over batons as they finish. Default on. */
   reactions?: boolean;
   /** Side pane in the run view: auto = diff on wide terminals. */
   split?: 'auto' | 'off' | 'diff' | 'events';

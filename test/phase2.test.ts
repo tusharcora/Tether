@@ -90,7 +90,7 @@ describe('crew strip effects', () => {
     const fx = crewStrip(nodes, () => 'idle', 0, 0, 100, undefined, (n) => (n.id === 'a' ? { tag: '↻' } : n.id === 'b' ? { baton: 0.5, cheer: true } : { shake: true }));
     expect(fx).toHaveLength(base.length);
     expect(strip(fx[0]!)).toContain('↻');
-    expect(strip(fx[2]!)).toContain('●');
+    expect(strip(fx[0]!)).toContain('●');
     expect(strip(fx[0]!)).toContain('✦');
   });
   it('lays out a window around the selection', () => {

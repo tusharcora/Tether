@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CREW, crewFor, lookSprite, refreshCrew, renderBot, setCrewStyle } from '../src/bots.js';
+import { CREW, crewFor, lookSprite, refreshCrew, renderLook } from '../src/bots.js';
 import { BUILTIN_BOTS, LOOK_PARTS, freshId, loadCrew, removeBot, sanitizeBot, saveBot } from '../src/crew.js';
 import { blurbFor, makeStep, relink, stepChoices, blankPipeline, addStep } from '../src/composer.js';
 import { normalizePipeline, preflight } from '../src/pipeline.js';
@@ -56,15 +56,13 @@ describe('crew data', () => {
     const home = mkdtempSync(join(tmpdir(), 'crew-'));
     for (const b of [quant, risk, skeptic, trader]) saveBot(home, sanitizeBot(b).bot!);
     refreshCrew(home);
-    setCrewStyle('classic');
     for (const id of ['quant', 'risk', 'skeptic', 'trader']) {
       for (const m of ['idle', 'working', 'happy', 'sad', 'waiting', 'asleep'] as const) {
-        const rows = renderBot(id, m, 5);
+        const rows = renderLook(CREW[id]!.def!.look, m, 5);
         expect(rows).toHaveLength(4);
         for (const r of rows) expect(vlen(r)).toBe(10);
       }
     }
-    setCrewStyle('pebble');
     expect(stepChoices()).toEqual(expect.arrayContaining(['planner', 'quant', 'risk', 'skeptic', 'trader']));
     const p = blankPipeline('trade');
     for (const id of ['quant', 'risk', 'skeptic', 'trader']) addStep(p, id, p.nodes.length, undefined, 'python risk.py');

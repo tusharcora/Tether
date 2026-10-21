@@ -13,14 +13,14 @@ import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { applyBindings, link, loadBindings, unlink, type Bindings } from './bindings.js';
-import { CREW_STYLES, crewStyle, setCrewStyle } from './bots.js';
+import { DONE_MS, face, faceMoodFor, type FaceMood } from './face.js';
 import { deleteTheme, loadPrefs, savePrefs, type Prefs } from './prefs.js';
 import { recent, type Activity, type Verb } from './activity.js';
 import { Pulse, costSeries, stepDurations } from './metrics.js';
 import { jumpPoints, parseDiff, renderSplit, renderUnified, summary as diffSummary, type ParsedDiff } from './diffview.js';
 import { contrast, nudge, parseHex, rgbToHsl, toHex } from './color.js';
 import { sampleRun } from './sample.js';
-import { CREW, botSays, crewFor, miniBot, moodFor, refreshCrew, renderBot, renderLook, type Mood } from './bots.js';
+import { CREW, crewFor, moodFor, refreshCrew, renderLook, type Mood } from './bots.js';
 import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, removeBot, saveBot, type BotDef, type PartKey } from './crew.js';
 import { supervise } from './supervisor.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
@@ -165,41 +165,38 @@ export interface Fx {
   tag?: string;
 }
 
-/** The crew laid out as a chain: one animated bot per step, with arrows between them. */
+/** The workflow laid out as a chain: one cell per step (status glyph, arrow, name, role, status), no characters. */
 export function crewStrip(nodes: PipelineNode[], statusOf: (n: PipelineNode) => string, sel: number, tick: number, width: number, annot?: (n: PipelineNode) => string, fx?: (n: PipelineNode, i: number) => Fx | undefined): string[] {
   const { start, per } = stripLayout(nodes.length, sel, width);
   const view = nodes.slice(start, start + per);
-  const rows: string[][] = [[], [], [], [], [], [], []];
+  const rows: string[][] = [[], [], [], []];
   view.forEach((n, vi) => {
     const i = start + vi;
     const st = statusOf(n);
     const role = crewFor(n);
     const f = fx?.(n, i);
-    const bot = renderBot(role, f?.cheer ? 'happy' : f?.shake ? 'sad' : moodFor(st), tick + i * 5);
-    const selected = i === sel;
     const last = vi === view.length - 1;
-    for (let r = 0; r < 4; r++) {
-      let cell = bot[r]! + '   ';
-      if (r === 0 && f?.tag) cell = bot[r]! + ' ' + amber(f.tag) + ' ';
-      else if (r === 0 && f?.cheer && tick % 4 < 3) cell = bot[r]! + ' ' + paint(pal.amber, '✦') + ' ';
-      else if (r === 2 && !last) cell = bot[r]! + faint(' ━▸');
-      if (f?.shake && tick % 2 === 0) cell = ' ' + clip(padEnd(cell, CELL), CELL - 1);
-      rows[r]!.push(cell);
-    }
+    const mark = f?.cheer ? green('✔') : f?.shake ? red('✘') : glyph(st, tick);
+    let cell = ` ${mark} `;
+    if (f?.tag) cell = ` ${mark} ${amber(f.tag)} `;
+    else if (f?.cheer && tick % 4 < 3) cell = ` ${mark} ${paint(pal.amber, '✦')} `;
+    if (!last) cell = padEnd(cell, 5) + faint('━'.repeat(CELL - 7) + '▸') + ' ';
+    if (f?.shake && tick % 2 === 0) cell = ' ' + clip(padEnd(cell, CELL), CELL - 1);
+    rows[0]!.push(padEnd(cell, CELL));
     const name = CREW[role]!.name;
-    rows[4]!.push(padCenter(selected ? bold(paint(pal.cyan, `‹ ${name} ›`)) : bold(name), CELL));
-    rows[5]!.push(padCenter(dim(`${n.spawn ? '↳ ' : ''}${n.title ?? n.role ?? n.kind}`), CELL));
-    rows[6]!.push(padCenter(`${glyph(st, tick)} ${annot ? annot(n) : dim(st)}`, CELL));
+    rows[1]!.push(padCenter(i === sel ? bold(paint(pal.cyan, `‹ ${name} ›`)) : bold(name), CELL));
+    rows[2]!.push(padCenter(dim(`${n.spawn ? '↳ ' : ''}${n.title ?? n.role ?? n.kind}`), CELL));
+    rows[3]!.push(padCenter(`${glyph(st, tick)} ${annot ? annot(n) : dim(st)}`, CELL));
   });
-  // baton: a dot sliding along the arrow that leads into the receiving step (row 2, last 3 cells of the previous one)
+  // baton: a dot sliding along the arrow that leads into the receiving step (row 0, the arrow of the previous cell)
   const lines = rows.map((r) => r.join(''));
   view.forEach((n, vi) => {
     const bt = vi > 0 ? fx?.(n, start + vi)?.baton : undefined;
     if (bt === undefined || bt < 0 || bt > 1) return;
-    const pos = vi * CELL - 3 + Math.min(2, Math.floor(bt * 3));
-    lines[2] = overlay(lines[2]!, pos, paint(pal.amber, '●'));
+    const pos = vi * CELL - (CELL - 5) + Math.min(CELL - 7, Math.floor(bt * (CELL - 6)));
+    lines[0] = overlay(lines[0]!, pos, paint(pal.amber, '●'));
   });
-  if (start > 0) lines[2] = dim('◂') + lines[2]!.slice(1);
+  if (start > 0) lines[0] = dim('◂') + lines[0]!.slice(1);
   return lines;
 }
 
@@ -310,6 +307,11 @@ export class Tui {
   private splitX = 0;
   private toast?: { text: string; tone: 'ok' | 'err'; until: number };
   private tick = 0;
+  /** Last key press, for the face falling asleep; and runs started here, for the face celebrating them. */
+  private lastInput = Date.now();
+  private doneUntil = 0;
+  private failedAt = 0;
+  private mine = new Map<string, string>();
   private timer?: NodeJS.Timeout;
   private busy = false;
   private done?: () => void;
@@ -401,6 +403,7 @@ export class Tui {
     if (this.prefs.animate !== false) this.tick++;
     if (++this.beat % 10 === 0) {
       try {
+        this.trackRuns();
         this.watchTick();
       } catch (e) {
         this.say((e as Error).message.split('\n')[0]!, 'err');
@@ -450,6 +453,7 @@ export class Tui {
 
   // ---------- input ----------
   private onData = (chunk: string | Buffer) => {
+    this.lastInput = Date.now();
     for (const k of parseKeys(chunk.toString())) {
       try {
         this.key(k);
@@ -929,6 +933,17 @@ export class Tui {
   }
 
   // ---------- watching runs: progress reports, failures, interrupted runs ----------
+  /** Remember runs started here; when one finishes cleanly the face shows "done" for a few seconds. */
+  private trackRuns() {
+    for (const r of this.runs()) {
+      const before = this.mine.get(r.id);
+      if (before === undefined) continue;
+      if (before !== 'done' && r.status === 'done') this.doneUntil = Date.now() + DONE_MS;
+      else if (before !== 'error' && r.status === 'error') this.failedAt = Date.now();
+      this.mine.set(r.id, r.status);
+    }
+  }
+
   private watchTick() {
     const runs = new Map(this.runs().map((r) => [r.id, r.status]));
     for (const sess of this.known.values()) {
@@ -1175,10 +1190,10 @@ export class Tui {
   private bodyHit(rel: number, x0: number, x1: number, act: () => void) {
     this.hit(this.bodyY + rel, x0, x1, act);
   }
-  /** One clickable column per bot in a crew strip (7 rows tall, starting `rel` rows into the body). */
+  /** One clickable column per step in the strip (4 rows tall, starting `rel` rows into the body). */
   private stripHits(rel: number, count: number, sel: number, pick: (i: number) => void) {
     const { start, per } = stripLayout(count, sel, this.cols - 2);
-    for (let vi = 0; vi < Math.min(per, count - start); vi++) for (let r = 0; r < 7; r++) this.bodyHit(rel + r, 1 + vi * CELL, vi * CELL + CELL, () => pick(start + vi));
+    for (let vi = 0; vi < Math.min(per, count - start); vi++) for (let r = 0; r < 4; r++) this.bodyHit(rel + r, 1 + vi * CELL, vi * CELL + CELL, () => pick(start + vi));
   }
 
   private mouse(k: string): void {
@@ -1287,7 +1302,6 @@ export class Tui {
     for (const role of Object.keys(CREW)) add('crew', `Edit ${CREW[role]!.name}`, CREW[role]!.title, () => this.openBotEditor(role));
     add('do', 'Open the theme editor', 'live preview', () => this.openThemeEditor());
     add('do', 'Next colour theme', 't', () => this.cycleTheme());
-    add('do', 'Next crew style', 'c', () => this.cycleCrew());
     add('do', 'Toggle animations', this.prefs.animate === false ? 'off' : 'on', () => this.setPref({ animate: this.prefs.animate === false }));
     add('do', 'Toggle bot reactions', this.prefs.reactions === false ? 'off' : 'on', () => this.setPref({ reactions: this.prefs.reactions === false }));
     add('do', 'Toggle mouse support', this.prefs.mouse === true ? 'on' : 'off (text can be selected)', () => {
@@ -1364,6 +1378,7 @@ export class Tui {
     this.d.engine
       .start({ pipeline, task, repo: r, autoApprove: auto })
       .then((id) => {
+        (this.mine.set(id, 'running'), (this.failedAt = 0));
         this.say(`started ${id}${watch ? '  ·  Maestro is watching' : ''}`);
         if (watch) this.superviseRun(id);
         if (onStarted) return onStarted(id);
@@ -1387,6 +1402,7 @@ export class Tui {
         this.say(`fetching ${ref.repo}#${ref.number}…`);
         startPrRun({ home: this.d.cfg.home, engine: this.d.engine }, ref, { workflow: flow || 'full-review' })
           .then((r) => {
+            (this.mine.set(r.runId, 'running'), (this.failedAt = 0));
             this.say(`started ${r.runId} on “${r.info.title.slice(0, 40)}”  ·  add --comment from the CLI to post it back`);
             this.stack = [this.stack[0]!, { kind: 'run', runId: r.runId, sel: 0 }];
             (this.stack[0] as { tab: Tab; sel: Record<Tab, number> }).tab = 'runs';
@@ -1433,7 +1449,6 @@ export class Tui {
     else if (k === 'o') this.orchestrate();
     else if (k === 'n') this.newWorkflow();
     else if (k === 't') this.cycleTheme();
-    else if (k === 'c') this.cycleCrew();
     else if (k === 'enter' && n && s.tab === 'crew') this.bindBot(list[sel] as string);
     else if (k === 'x' && n && s.tab === 'crew') {
       unlink(this.d.cfg.home, list[sel] as string);
@@ -1516,14 +1531,6 @@ export class Tui {
     setTheme(next);
     savePrefs(this.d.cfg.home, { theme: next });
     this.say(`theme: ${next}  ·  ${THEMES[next]!.label}`);
-  }
-
-  private cycleCrew() {
-    const names = Object.keys(CREW_STYLES);
-    const next = names[(names.indexOf(crewStyle) + 1) % names.length]!;
-    setCrewStyle(next);
-    savePrefs(this.d.cfg.home, { crew: next });
-    this.say(`crew style: ${next}  ·  ${CREW_STYLES[next as keyof typeof CREW_STYLES]}`);
   }
 
   private newWorkflow() {
@@ -1917,19 +1924,14 @@ export class Tui {
     const cycle = <T,>(list: T[], cur: T, dir: 1 | -1 | 0): T => list[(list.indexOf(cur) + (dir || 1) + list.length) % list.length]!;
     return [
       { label: 'Colour theme', value: cyan(themeName), hint: 'enter: pick · ←→ cycle · x delete custom', change: (d) => this.pickTheme(d) },
-      { label: 'Crew style', value: cyan(crewStyle), hint: '←→ cycle', change: (d) => {
-        const next = cycle(Object.keys(CREW_STYLES), crewStyle, d);
-        setCrewStyle(next);
-        this.setPref({ crew: next });
-      } },
-      { label: 'Animations', value: onOff(this.prefs.animate), hint: 'off freezes spinners and bots', change: flip('animate') },
+      { label: 'Animations', value: onOff(this.prefs.animate), hint: 'off freezes spinners and the face', change: flip('animate') },
       { label: 'Live activity lines', value: onOff(this.prefs.activity), hint: 'what each running agent is doing', change: flip('activity') },
       { label: 'Metrics panel', value: onOff(this.prefs.metrics), hint: 'cost, budget, stream rate, step times (v in a run)', change: flip('metrics') },
       { label: 'Mouse', value: this.prefs.mouse === true ? green('on') : dim('off'), hint: 'on: click rows, tabs and run cards, but the terminal cannot select text (hold Option/Shift to select anyway)', change: () => {
         this.setPref({ mouse: this.prefs.mouse !== true });
         this.applyMouse();
       } },
-      { label: 'Bot reactions', value: onOff(this.prefs.reactions), hint: 'cheers, shudders, batons passed between steps', change: flip('reactions') },
+      { label: 'Step reactions', value: onOff(this.prefs.reactions), hint: 'sparkles, shudders, batons passed between steps', change: flip('reactions') },
       { label: 'Inline graphics', value: onOff(this.prefs.graphics), hint: 'timeline + cost charts in the run view (needs a colour terminal and 34+ rows)', change: flip('graphics') },
       { label: 'Side pane', value: cyan(this.prefs.split ?? 'auto'), hint: 'run view: diff or events beside the live output (100+ columns)', change: (d) => this.setPref({ split: cycle(['auto', 'diff', 'events', 'off'] as const, this.prefs.split ?? 'auto', d) }) },
       { label: 'Diff layout', value: cyan(this.prefs.diff ?? 'auto'), hint: 'auto = side by side on wide terminals', change: (d) => this.setPref({ diff: cycle(['auto', 'unified', 'split'] as const, this.prefs.diff ?? 'auto', d) }) },
@@ -2051,7 +2053,6 @@ export class Tui {
       } };
     } else if (k === 'o') this.orchestrate();
     else if (k === 't') this.cycleTheme();
-    else if (k === 'c') this.cycleCrew();
   }
 
   private pickTheme(dir: 1 | -1 | 0) {
@@ -2160,12 +2161,11 @@ export class Tui {
     else left.push(dim(' ↑↓ colour · ←→ hue · -/= light · ,/. saturation · enter hex · r/R reset · s save'));
     const pw = wide ? this.cols - 64 : this.cols - 4;
     const now = Date.now();
-    const crew = ['orchestrator', 'planner', 'architect', 'coder', 'tester', 'reviewer', 'approval'].map((r) => padCenter(miniBot(r, 'working', this.tick), 6)).join('');
     const sampleDiff = renderUnified(parseDiff('diff --git a/x.ts b/x.ts\n@@ -1,2 +1,2 @@\n const a = 1;\n-return "old"; // x\n+return "new"; // y\n'), Math.min(pw, 60));
     const right = [
       ...renderBoard({ state: sampleRun(now), frame: this.tick, now }, Math.max(40, Math.min(pw, 88))),
       '',
-      `${dim('cost')} ${spark([1, 2, 2, 4, 5, 7, 9, 12, 14, 17], 14)} ${meter(0.64, 10)}  ${dim('crew')} ${crew}`,
+      `${dim('cost')} ${spark([1, 2, 2, 4, 5, 7, 9, 12, 14, 17], 14)} ${meter(0.64, 10)}`,
       ...(wide ? sampleDiff : []),
     ];
     if (wide) {
@@ -2288,9 +2288,8 @@ export class Tui {
   }
 
   // ---------- drawing ----------
-  private maestro(): { mood: Mood; text: string } {
+  private maestro(runs = this.runs()): { mood: Mood; text: string } {
     if (this.isBusy()) return { mood: 'working', text: 'Thinking it over…' };
-    const runs = this.runs();
     const live = runs.filter((r) => r.status === 'running');
     const paused = runs.filter((r) => r.status === 'paused');
     const s = this.screen;
@@ -2319,39 +2318,60 @@ export class Tui {
     return { mood: 'idle', text: 'All quiet. Tell me what to build in the chat below, and I will plan it and run it.' };
   }
 
+  /** The face's mood is global (run state, your last key press), never a function of the current screen. */
+  private faceMood(runs: ReturnType<Tui['runs']>): FaceMood {
+    const live = runs.some((r) => r.status === 'running' || r.status === 'paused') || this.busyIds.size > 0;
+    return faceMoodFor({
+      waiting: runs.some((r) => r.status === 'paused') || !!(this.pendingPermit() || this.pendingChoice() || this.pendingOffer()),
+      working: runs.some((r) => r.status === 'running') || this.busyIds.size > 0,
+      live,
+      now: Date.now(),
+      failedAt: this.failedAt,
+      doneUntil: this.doneUntil,
+      lastInput: this.lastInput,
+    });
+  }
+
+  /** Header: face + title line, tab line, Maestro's one-line status, then a rule. 4 rows. */
   private header(): string[] {
     const w = this.cols;
-    const m = this.maestro();
-    const bot = renderBot('orchestrator', m.mood, this.tick);
+    const runs = this.runs(); // one scan of the run store per render, shared by the status line and the face
+    const m = this.maestro(runs);
+    const fm = this.faceMood(runs);
+    const f = face(fm, this.tick, w, this.prefs.animate !== false);
+    const ind = ' '.repeat(f.width);
+    const narrow = w < 70; // short status line
+    const compactTabs = w < f.width + 64; // the full tab line is 64 cells
     const tabs = this.screen.kind === 'dash' ? this.screen.tab : undefined;
-    const tabLine = TABS.map((t, i) => (t === tabs ? bold(paint(pal.cyan, `${i + 1} ${t}`)) : dim(`${i + 1} ${t}`))).join('   ');
+    const label = (t: Tab, i: number) => (compactTabs ? `${i + 1}` : `${i + 1} ${t}`);
+    const tabLine = TABS.map((t, i) => (t === tabs ? bold(paint(pal.cyan, label(t, i))) : dim(label(t, i)))).join('   ');
     const crumbs = this.stack
       .slice(1)
       .map((s) => (s.kind === 'run' ? `run ${s.runId.slice(-6)}` : s.kind === 'session' ? `${s.nodeId} session` : s.kind === 'editor' ? `editing ${s.pipeline.name}${s.dirty ? ' •' : ''}` : s.kind === 'plan' ? 'plan' : s.kind === 'theme' ? 'theme editor' : s.kind === 'botedit' ? `bot: ${s.bot.name}${s.dirty ? ' •' : ''}` : ''))
       .join(dim(' › '));
     if (!this.modal) {
-      let x = vlen(bot[1]!) + 2;
+      let x = f.width;
       if (this.screen.kind === 'dash') {
         const sc = this.screen;
         TABS.forEach((t, i) => {
-          const wd = `${i + 1} ${t}`.length;
+          const wd = label(t, i).length;
           this.hit(1, x, x + wd - 1, () => (sc.tab = t));
           x += wd + 3;
         });
       } else this.hit(1, x, x + 8, () => this.pop());
     }
-    const right = dim(new Date().toTimeString().slice(0, 8));
-    const l0 = `${gradient('aorch', BRAND)}  ${faint(themeName)}${crumbs ? `  ${dim('›')} ${crumbs}` : ''}`;
-    const txt = wrap(m.text, w - 14 - 4);
-    const bubble = [dim('“') + (txt[0] ?? '') + (txt.length < 2 ? dim('”') : ''), txt[1] ? txt[1] + dim('”') : ''];
-    const lines = [
-      `${bot[0]}  ${padEnd(l0, w - 12 - vlen(right) - 1)}${right}`,
-      `${bot[1]}  ${tabs ? tabLine : dim('esc back  ·  ctrl-c quit')}`,
-      `${bot[2]}  ${bubble[0]}`,
-      `${bot[3]}  ${bubble[1]}`,
+    const right = w >= 40 ? dim(new Date().toTimeString().slice(0, 8)) : '';
+    const l0 = `${gradient('aorch', BRAND)}${w >= 50 ? `  ${faint(themeName)}` : ''}${crumbs ? `  ${dim('›')} ${crumbs}` : ''}`;
+    const room = Math.max(0, w - f.width - vlen(right) - (right ? 1 : 0));
+    const say = fm === 'asleep' ? 'Asleep. Press any key to wake me.' : m.text;
+    const avail = Math.max(0, w - f.width - 1);
+    const status = narrow ? (say.split(/(?<=[.!?])\s/)[0] ?? say) : say;
+    return [
+      `${f.text}${padEnd(clip(l0, room), room)}${right ? ' ' + right : ''}`,
+      `${ind}${tabs ? tabLine : dim('esc back  ·  ctrl-c quit')}`,
+      `${ind}${dim(clip(status.replace(/\s+/g, ' '), avail))}`,
       rule(w),
     ];
-    return lines;
   }
 
   private footer(): string[] {
@@ -2366,7 +2386,7 @@ export class Tui {
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
-      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · D delete · tab switch · t theme · c crew style · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
+      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · D delete · tab switch · t theme · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
       : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · D delete · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
@@ -2461,11 +2481,9 @@ export class Tui {
     const [view, start] = this.window(runs, s.sel.runs, listH);
     const lines = view.map((r, vi) => {
       const sel = start + vi === s.sel.runs;
-      const mood = moodFor(r.status);
-      const role = r.status === 'paused' ? 'approval' : 'coder';
       const stc = r.status === 'done' ? green(r.status) : r.status === 'error' ? red(r.status) : r.status === 'running' ? cyan(r.status) : amber(r.status);
       this.bodyHit(vi, 0, this.cols, () => (s.sel.runs === start + vi ? this.key('enter') : (s.sel.runs = start + vi)));
-      const row = `${sel ? cyan('▍') : ' '} ${miniBot(role, mood, this.tick)} ${padEnd(cyan(r.id.slice(-8)), 9)} ${padEnd(bold(r.pipeline), 22)} ${padEnd(stc, 9)} ${padEnd(usd(r.costUsd), 7)} ${padEnd(dim(ago(r.startedAt)), 10)} ${dim(r.task.split('\n')[0]!.slice(0, Math.max(10, this.cols - 74)))}`;
+      const row = `${sel ? cyan('▍') : ' '} ${glyph(r.status, this.tick)} ${padEnd(cyan(r.id.slice(-8)), 9)} ${padEnd(bold(r.pipeline), 22)} ${padEnd(stc, 9)} ${padEnd(usd(r.costUsd), 7)} ${padEnd(dim(ago(r.startedAt)), 10)} ${dim(r.task.split('\n')[0]!.slice(0, Math.max(10, this.cols - 70)))}`;
       return sel ? row : row;
     });
     const sel = runs[s.sel.runs];
@@ -2584,18 +2602,16 @@ export class Tui {
       const a = this.avail[agent];
       const status = person ? '' : a ? (a.ok ? green('✔') : red('✘')) : dim('…');
       const model = person ? dim('you (a person)') : bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)');
-      const mood: Mood = i === sel ? 'working' : 'idle';
       this.bodyHit(1 + vi, 0, 58, () => (ds.sel.crew === i ? this.key('enter') : (ds.sel.crew = i)));
-      return `${i === sel ? cyan('▍') : ' '} ${miniBot(role, mood, this.tick)} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${status} ${model}`;
+      return `${i === sel ? cyan('▍') : ' '} ${paint(c.color(), i === sel ? '◉' : '●')} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${status} ${model}`;
     });
     const role = roles[sel]!;
     const def = CREW[role]?.def;
-    const big = renderBot(role, 'working', this.tick);
     const persona = wrap(def?.persona ?? '', 40).slice(0, 3).map((l) => dim(l));
     const info = [bold(paint(CREW[role]!.color(), CREW[role]!.name)), dim(`${CREW[role]!.title} · ${def ? def.kind : ''}`), '', dim('enter  link to an agent / model'), dim('e      edit name, persona and look'), dim('x      follow the default'), '', ...persona];
     for (let i = 0; i < Math.max(list.length, 8); i++) {
       const left = padEnd(list[i] ?? '', 58);
-      lines.push(`${left}  ${i < 4 ? big[i]! : ' '.repeat(10)}  ${info[i] ?? ''}`);
+      lines.push(`${left}  ${info[i] ?? ''}`);
     }
     lines.push('', `  ${dim(`${roles.length} bots · n adds one · D removes yours (or resets a built-in you changed). Local models: start Ollama, LM Studio or llama.cpp and they appear here.`)}`);
     return lines;
@@ -2733,7 +2749,6 @@ export class Tui {
     const ns = st?.nodes[s.nodeId];
     if (!st || !node || !ns) return [dim('  step not found')];
     const role = crewFor(node);
-    const bot = renderBot(role, moodFor(ns.status), this.tick);
     const attachable = this.registry.has(node.agent ?? 'claude') && this.registry.get(node.agent ?? 'claude').attachCommand?.(ns.sessionId);
     const info = [
       `${bold(paint(CREW[role]!.color(), CREW[role]!.name))} ${dim('·')} ${node.title ?? node.role ?? node.kind} ${dim('·')} ${glyph(ns.status, this.tick)} ${ns.status}`,
@@ -2741,7 +2756,7 @@ export class Tui {
       `${dim('session')} ${ns.sessionId ? ns.sessionId.slice(0, 18) + '…' : dim('none')}   ${attachable ? green('press i to attach') : dim('attach unavailable')}`,
       `${dim('worktree')} ${st.workdir}`,
     ];
-    const head = bot.map((b, i) => ` ${b}  ${info[i] ?? ''}`);
+    const head = info.map((l) => ` ${l}`);
     const tabs = (['output', 'events', 'diff'] as const).map((p, i) => (p === s.pane ? bold(paint(pal.cyan, `${i + 1} ${p}`)) : dim(`${i + 1} ${p}`))).join('   ');
     const lines = this.sessionLines(s);
     const room = Math.max(3, h - head.length - 3);
