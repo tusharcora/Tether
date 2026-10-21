@@ -22,6 +22,8 @@ import { sampleRun } from './sample.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, refreshCrew, renderBot, renderLook, type Mood } from './bots.js';
 import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, removeBot, saveBot, type BotDef, type PartKey } from './crew.js';
 import { supervise } from './supervisor.js';
+import { PRESETS, addEndpoint, keyRef, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
+import { chat as askMaestro, savePipeline, stepsOf, type Reply, type Turn } from './maestro.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
@@ -236,10 +238,12 @@ export class Tui {
   private timer?: NodeJS.Timeout;
   private busy = false;
   private done?: () => void;
-  private readonly registry: ReturnType<typeof makeRegistry>;
+  private registry: ReturnType<typeof makeRegistry>;
   private lastRender: string[] = [];
   private avail: Record<string, { ok: boolean; detail?: string; version?: string; models: string[] }> = {};
   private availAt = 0;
+  /** The line at the bottom that talks to Maestro. */
+  private talk = { focus: false, text: '', busy: false, history: [] as Turn[], reply: undefined as { text: string; mood: Mood; until: number } | undefined };
 
   constructor(private readonly d: TuiDeps, private readonly out: NodeJS.WriteStream = process.stdout) {
     this.registry = makeRegistry(d.cfg);
@@ -369,6 +373,8 @@ export class Tui {
     if (k.startsWith('mouse:')) return this.mouse(k);
     if (k === 'ctrl-k' && (!this.modal || this.modal.kind === 'palette')) return this.modal ? (this.modal = undefined) : this.openPalette();
     if (this.modal) return this.modalKey(k);
+    if (this.talk.focus) return this.talkKey(k);
+    if (k === '/') return this.focusTalk();
     const s = this.screen;
     switch (s.kind) {
       case 'dash':
@@ -386,6 +392,91 @@ export class Tui {
       case 'botedit':
         return this.botKey(s, k);
     }
+  }
+
+  // ---------- Maestro chat line ----------
+  private focusTalk() {
+    this.talk.focus = true;
+  }
+
+  private talkKey(k: string) {
+    const t = this.talk;
+    if (k === 'esc') t.focus = false;
+    else if (k === 'enter') {
+      const msg = t.text.trim();
+      if (!msg || t.busy) return;
+      t.text = '';
+      this.sendTalk(msg);
+    } else if (k === 'backspace') t.text = t.text.slice(0, -1);
+    else if (k === 'ctrl-u') t.text = '';
+    else if (([...k].length === 1 && k >= ' ') || (k.length > 1 && !/^[a-z0-9-]+$/.test(k))) t.text += k;
+  }
+
+  private sendTalk(msg: string) {
+    const t = this.talk;
+    t.history.push({ who: 'you', text: msg });
+    t.busy = true;
+    t.reply = undefined;
+    const s = this.screen;
+    const current = s.kind === 'editor' ? s.pipeline.name : undefined;
+    const b = this.bindings().orchestrator;
+    askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: t.history.slice(0, -1), current })
+      .then((r) => {
+        t.busy = false;
+        t.history.push({ who: 'maestro', text: r.text });
+        t.reply = { text: r.text, mood: r.proposal ? 'happy' : 'idle', until: Date.now() + 90_000 };
+        if (r.warnings.length) this.say(r.warnings[0]!, 'err');
+        if (r.proposal) this.offer(r);
+      })
+      .catch((e: Error) => {
+        t.busy = false;
+        this.say(e.message.split('\n')[0]!, 'err');
+      });
+  }
+
+  /** Maestro proposed something: show what it is and only do it on a yes. */
+  private offer(r: Reply) {
+    const pr = r.proposal!;
+    if (pr.kind === 'run') {
+      return this.choose(`Maestro wants to run “${pr.workflow}”: ${pr.task.slice(0, 60)}`, [
+        { label: 'Run it', hint: 'in this folder', value: 'run' },
+        { label: 'Not now', value: 'no' },
+      ], (v) => {
+        if (v !== 'run') return;
+        try {
+          this.startRun(readPipeline(this.d.cfg.home, pr.workflow), process.cwd(), pr.task);
+        } catch (e) {
+          this.say((e as Error).message.split('\n')[0]!, 'err');
+        }
+      });
+    }
+    const p = pr.pipeline;
+    const verb = pr.kind === 'optimize' ? 'Replace' : 'Save';
+    const detail = pr.kind === 'optimize' ? `${pr.before[0]} ⇒ ${stepsOf(p)}` : stepsOf(p);
+    this.choose(`${verb} workflow “${p.name}”?  ${detail}`, [
+      { label: `${verb} it`, hint: pr.kind === 'optimize' ? 'the old version is kept in pipelines/.backup' : 'to your workflows', value: 'save' },
+      { label: 'Save it and open the editor', value: 'edit' },
+      { label: 'Not now', value: 'no' },
+    ], (v) => {
+      if (v === 'no') return;
+      try {
+        savePipeline(this.d.cfg.home, p);
+        this.say(`saved workflow ${p.name}`);
+        if (v === 'edit') this.push({ kind: 'editor', pipeline: readPipeline(this.d.cfg.home, p.name), saved: true, dirty: false, sel: 0 });
+      } catch (e) {
+        this.say((e as Error).message.split('\n')[0]!, 'err');
+      }
+    });
+  }
+
+  private talkLine(): string {
+    const t = this.talk;
+    const w = this.cols;
+    if (t.busy) return `${paint(pal.cyan, '◆')} ${dim('Maestro is thinking' + '.'.repeat(1 + (this.tick % 12) / 4 | 0))}`;
+    if (!t.focus) return dim(`› ask Maestro to plan, improve or save a workflow  ·  / to type`);
+    const room = Math.max(8, w - 12);
+    const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
+    return `${bold(paint(pal.cyan, 'Maestro ›'))} ${shown}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`;
   }
 
   private modalKey(k: string) {
@@ -1171,8 +1262,74 @@ export class Tui {
       { label: 'Inline graphics', value: onOff(this.prefs.graphics), hint: 'timeline + cost charts in the run view (needs a colour terminal and 34+ rows)', change: flip('graphics') },
       { label: 'Side pane', value: cyan(this.prefs.split ?? 'auto'), hint: 'run view: diff or events beside the live output (100+ columns)', change: (d) => this.setPref({ split: cycle(['auto', 'diff', 'events', 'off'] as const, this.prefs.split ?? 'auto', d) }) },
       { label: 'Diff layout', value: cyan(this.prefs.diff ?? 'auto'), hint: 'auto = side by side on wide terminals', change: (d) => this.setPref({ diff: cycle(['auto', 'unified', 'split'] as const, this.prefs.diff ?? 'auto', d) }) },
+      { label: 'LLM providers', value: cyan(`${Object.values(this.avail).filter((a) => a.ok).length} ready`), hint: 'enter: view what is set up, add DeepSeek, OpenRouter, your own server…', change: () => this.providers() },
       { label: 'Theme editor', value: dim('open'), hint: 'edit colours with a live preview', change: () => this.openThemeEditor() },
     ];
+  }
+
+  // ---------- LLM providers ----------
+  private providers() {
+    const rows = listProviders(this.d.cfg, this.registry);
+    const status = (r: ProviderRow) => {
+      const a = this.avail[r.id];
+      const key = r.kind === 'endpoint' && r.keyEnv && !r.keySet ? ` · ${r.keyEnv} not set` : '';
+      return (a ? (a.ok ? '✔ ' + (a.version ?? 'ready') : '✘ ' + (a.detail ?? 'not available')) : 'checking…') + key;
+    };
+    this.choose('LLM providers', [
+      ...rows.map((r) => ({ label: `${this.avail[r.id]?.ok ? '●' : '○'} ${r.id}`, hint: `${r.kind} · ${status(r)}`, value: r.id })),
+      { label: '+ Add a provider', hint: 'any OpenAI-compatible API', value: '+' },
+    ], (v) => (v === '+' ? this.addProvider() : this.providerMenu(rows.find((r) => r.id === v)!)));
+  }
+
+  private providerMenu(r: ProviderRow) {
+    const a = this.avail[r.id];
+    const models = a?.models ?? [];
+    this.choose(`${r.id} · ${r.kind} · ${r.where}`, [
+      { label: 'Models', hint: models.length ? `${models.length} found` : 'none listed', value: 'models' },
+      { label: 'Test connection', value: 'test' },
+      ...(r.removable ? [{ label: 'Remove', hint: 'bots linked to it fall back to their defaults', value: 'rm' }] : []),
+      { label: 'Back', value: 'back' },
+    ], (v) => {
+      if (v === 'models') this.say(models.length ? models.slice(0, 12).join(', ') + (models.length > 12 ? ` … +${models.length - 12}` : '') : `no models listed${a?.ok ? ' (name one per bot in the Crew tab)' : ': not reachable'}`);
+      else if (v === 'test') {
+        this.refreshAvail();
+        this.say(`checking ${r.id}…`);
+      } else if (v === 'rm') {
+        this.modal = { kind: 'confirm', title: `Remove ${r.id}? (y/n)`, onYes: () => {
+          try {
+            removeEndpoint(this.d.cfg, r.id);
+            this.registry = makeRegistry(this.d.cfg);
+            this.refreshAvail();
+            this.say(`removed ${r.id}`);
+          } catch (e) {
+            this.say((e as Error).message, 'err');
+          }
+        } };
+      } else this.providers();
+    });
+  }
+
+  private addProvider() {
+    this.choose('Add a provider', [
+      ...PRESETS.map((p) => ({ label: p.label, hint: `${p.baseUrl} · key in ${p.keyEnv}`, value: p.id })),
+      { label: 'Another OpenAI-compatible server', hint: 'your own vLLM, a gateway, a cloud endpoint…', value: '_custom' },
+    ], (v) => {
+      const preset = PRESETS.find((p) => p.id === v);
+      const finish = (id: string, baseUrl: string, keyEnv: string) => {
+        try {
+          const key = keyRef(keyEnv);
+          addEndpoint(this.d.cfg, id, { baseUrl: baseUrl.trim().replace(/\/+$/, ''), ...(key ? { apiKey: key } : {}) });
+          this.registry = makeRegistry(this.d.cfg);
+          this.refreshAvail();
+          const missing = key && !process.env[key.slice(4)];
+          this.say(`added ${id}${missing ? `  ·  set ${key!.slice(4)} in your shell and restart aorch` : ''}`, missing ? 'err' : 'ok');
+        } catch (e) {
+          this.say((e as Error).message, 'err');
+        }
+      };
+      if (preset) return this.ask(`Name for this provider:`, (id) => id && this.ask('Environment variable holding the API key:', (k) => finish(id, preset.baseUrl, k), preset.keyEnv, 'the key itself is never stored in aorch’s config, only this name'), preset.id);
+      this.ask('Name (lowercase, e.g. mybox):', (id) => id && this.ask('Base URL (ends in /v1):', (url) => url && this.ask('Environment variable holding the API key (blank = none):', (k) => finish(id, url, k), '', 'the key itself is never stored in aorch’s config, only this name')));
+    });
   }
 
   private settingsKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
@@ -1436,6 +1593,9 @@ export class Tui {
 
   // ---------- drawing ----------
   private maestro(): { mood: Mood; text: string } {
+    const tr = this.talk.reply;
+    if (tr && tr.until > Date.now() && !this.modal) return { mood: tr.mood, text: tr.text };
+    if (this.talk.busy) return { mood: 'working', text: 'Thinking it over…' };
     const runs = this.runs();
     const live = runs.filter((r) => r.status === 'running');
     const paused = runs.filter((r) => r.status === 'paused');
@@ -1516,7 +1676,8 @@ export class Tui {
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';
     const t = this.toast && this.toast.until > Date.now() ? this.toast : undefined;
-    return [rule(this.cols), t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `^K commands · ${hint}`)];
+    const hintLine = this.talk.focus && !this.modal ? dim('enter send · esc back · ctrl-u clear') : t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `/ chat · ^K commands · ${hint}`);
+    return [rule(this.cols), this.talkLine(), hintLine];
   }
 
   private body(h: number): string[] {
@@ -1882,6 +2043,7 @@ export class Tui {
     this.bodyY = head.length;
     const body = this.body(bodyH);
     this.hits = this.hits.filter((h) => h.y < head.length + bodyH);
+    if (!this.modal) this.hit(rows - 2, 0, this.cols, () => this.focusTalk());
     const lines = [...head, ...body.slice(0, bodyH), ...Array(Math.max(0, bodyH - body.length)).fill(''), ...foot];
     let buf = '';
     for (let i = 0; i < lines.length; i++) {

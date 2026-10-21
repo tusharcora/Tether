@@ -72,6 +72,8 @@ export function buildPrompt(i: PromptInput): string {
     parts.push('End your answer with exactly one line: `VERDICT: PASS` or `VERDICT: FAIL`.');
   }
 
+  if (state.workspace?.context) parts.push(`# Project context (what you are working on)\n${state.workspace.context}`);
+
   parts.push(`# Task\n${state.task}`);
 
   const upstream = p.settings.pipeMode === 'direct' ? parentsOf(p, node.id) : ancestorsOf(p, node.id);

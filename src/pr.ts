@@ -176,6 +176,15 @@ export interface Rule {
   forks?: boolean;
   /** post the result back as a PR comment */
   comment?: boolean;
+  /** a short stable name, so it can be listed, switched off and tested */
+  id?: string;
+  /** the project this trigger belongs to (its folder is used, its context goes to the agents) */
+  workspace?: string;
+  /** run every agent step on this agent / model instead of the crew's defaults */
+  agent?: string;
+  model?: string;
+  /** false pauses it without deleting it */
+  enabled?: boolean;
 }
 export const DEFAULT_EVENTS = ['opened', 'reopened', 'synchronize', 'ready_for_review'];
 const validRule = (r: unknown): r is Rule => !!r && typeof r === 'object' && typeof (r as Rule).repo === 'string' && typeof (r as Rule).workflow === 'string' && /^[\w.*/-]{1,100}$/.test((r as Rule).repo) && /^[A-Za-z0-9._-]{1,64}$/.test((r as Rule).workflow);

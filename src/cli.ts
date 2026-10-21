@@ -28,11 +28,16 @@ import { createInterface } from 'node:readline/promises';
 import { renderLook } from './bots.js';
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, loadSettings, matchRule, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
 import { randomBytes } from 'node:crypto';
+import { PRESETS, addEndpoint, keyRef, listProviders, removeEndpoint } from './providers.js';
+import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
+import { normalizePipeline } from './pipeline.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
 import { THEMES, registerThemes, setTheme, themeName } from './ui.js';
 import { LiveBoard, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
 
 const yellow = amber;
+/** --workspace <id> picks one; --no-workspace runs without project context. */
+const wsOpt = (v: { workspace?: string; 'no-workspace'?: boolean }): string | false | undefined => (v['no-workspace'] ? false : v.workspace);
 const padEndV = (x: string, w: number) => x + ' '.repeat(Math.max(0, w - vlen(x)));
 const s0 = (t: string) => bold(t.split('\n')[0]!.slice(0, 90));
 
@@ -50,6 +55,7 @@ Usage
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
   aorch crew [style]                  bot style: pebble · classic · sigil · tile · ticker · orbit
+  aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
   aorch runs                          list runs
   aorch show <runId>                  node table, cost, coach findings
@@ -291,6 +297,8 @@ async function main() {
       rounds: { type: 'string' },
       'rules-only': { type: 'boolean' },
       name: { type: 'string' },
+      url: { type: 'string' },
+      'key-env': { type: 'string' },
       title: { type: 'string' },
       kind: { type: 'string' },
       persona: { type: 'string' },
@@ -313,6 +321,20 @@ async function main() {
       forks: { type: 'boolean' },
       generate: { type: 'boolean' },
       interval: { type: 'string' },
+      workspace: { type: 'string' },
+      agent: { type: 'string' },
+      model: { type: 'string' },
+      summary: { type: 'string' },
+      setup: { type: 'string' },
+      build: { type: 'string' },
+      test: { type: 'string' },
+      goal: { type: 'string', multiple: true },
+      convention: { type: 'string', multiple: true },
+      avoid: { type: 'string', multiple: true },
+      survey: { type: 'boolean' },
+      force: { type: 'boolean' },
+      limit: { type: 'string' },
+      'no-workspace': { type: 'boolean' },
     },
   });
   applyTheme(v.theme, v.crew);
@@ -350,7 +372,7 @@ async function main() {
       writePipeline(ctx.cfg.home, comp.pipeline);
       let id: string;
       try {
-        id = await ctx.engine.start({ pipeline: comp.pipeline, task, repo, autoApprove: v['auto-approve'] });
+        id = await ctx.engine.start({ pipeline: comp.pipeline, task, repo, autoApprove: v['auto-approve'], workspace: wsOpt(v) });
       } catch (e) {
         fail((e as Error).message);
       }
@@ -535,6 +557,129 @@ async function main() {
       console.log(dim(`\n  switch with: aorch theme <name>   or per run: --theme <name> / AORCH_THEME`));
       return;
     }
+    case 'providers': {
+      const cfg = loadConfig(v);
+      const sub = pos[0] ?? 'list';
+      if (sub === 'list') {
+        const rows = listProviders(cfg, makeRegistry(cfg));
+        if (v.json) return console.log(JSON.stringify(rows));
+        for (const r of rows) console.log(`  ${padEndV(bold(r.id), 14)} ${padEndV(dim(r.kind), 14)} ${r.where}${r.keyEnv ? '  ' + (r.keySet ? green(r.keyEnv + ' set') : amber(r.keyEnv + ' not set')) : ''}`);
+        console.log(dim('\n  add one: aorch providers add deepseek   ·   aorch providers presets'));
+        return;
+      }
+      if (sub === 'presets') {
+        for (const p of PRESETS) console.log(`  ${padEndV(bold(p.id), 12)} ${padEndV(p.label, 26)} ${dim(p.baseUrl)}  key: ${p.keyEnv}`);
+        return;
+      }
+      if (sub === 'add') {
+        const preset = PRESETS.find((p) => p.id === pos[1]);
+        const id = v.name ?? pos[1];
+        const url = v.url ?? preset?.baseUrl;
+        if (!id || !url) fail('usage: aorch providers add <preset>   or   aorch providers add --name mybox --url https://host/v1 [--key-env MYBOX_KEY]');
+        const key = keyRef(v['key-env'] ?? preset?.keyEnv ?? '');
+        addEndpoint(cfg, id!, { baseUrl: url!.replace(/\/+$/, ''), ...(key ? { apiKey: key } : {}) });
+        console.log(`${green('✔')} added ${id}${key && !process.env[key.slice(4)] ? '  ' + amber(`(set ${key.slice(4)} in your shell before using it)`) : ''}`);
+        return;
+      }
+      if (sub === 'remove' || sub === 'rm') {
+        if (!pos[1]) fail('usage: aorch providers remove <name>');
+        removeEndpoint(cfg, pos[1]!);
+        console.log(`${green('✔')} removed ${pos[1]}`);
+        return;
+      }
+      return fail('usage: aorch providers [list | presets | add <preset> | remove <name>]');
+    }
+    case 'workspace':
+    case 'ws': {
+      const cfg = loadConfig(v);
+      const sub = pos[0] ?? 'list';
+      const need = (id: string | undefined): ReturnType<typeof getWorkspace> & object => {
+        const all = listWorkspaces(cfg.home);
+        const w = id ? all.find((x) => x.id === id) : (resolveWorkspace(cfg.home, { repo: resolve('.') }) ?? all.find((x) => x.isDefault) ?? all[0]);
+        return w ?? fail(id ? `no workspace "${id}" (see: aorch workspace list)` : 'no workspace here. Register this folder: aorch workspace init');
+      };
+      const line = (w: ReturnType<typeof need>) => `  ${w.isDefault ? green('●') : dim('○')} ${padEndV(bold(w.id), 16)} ${padEndV(w.exists ? w.name : red('folder missing'), 22)} ${dim(w.path)}${w.repos.length ? '  ' + cyan(w.repos.join(', ')) : ''}${w.described ? '' : '  ' + amber('no notes yet')}`;
+      if (sub === 'list') {
+        const all = listWorkspaces(cfg.home);
+        if (v.json) return console.log(JSON.stringify(all.map(({ notes, ...w }) => ({ ...w, notes: notes.length }))));
+        if (!all.length) return console.log(dim('no workspaces yet. In a project folder: aorch workspace init   (writes .aorch/workspace.json and .aorch/project.md)'));
+        for (const w of all) console.log(line(w));
+        console.log(dim('\n  every run started in one of these folders gets its context: aorch workspace context [id]'));
+        return;
+      }
+      if (sub === 'init' || sub === 'add') {
+        const dir = resolve(pos[1] ?? '.');
+        let r;
+        try {
+          r = initWorkspace(cfg.home, dir, { name: v.name, id: v.workspace, write: sub === 'init' });
+        } catch (e) {
+          fail((e as Error).message);
+        }
+        const patch: Record<string, unknown> = { ...(v.summary ? { summary: v.summary } : {}), ...(v.setup ? { setup: v.setup } : {}), ...(v.build ? { build: v.build } : {}), ...(v.test ? { test: v.test } : {}) };
+        if (Object.keys(patch).length) updateMeta(r.workspace.path, patch);
+        for (const g of v.goal ?? []) addToList(r.workspace.path, 'goals', g);
+        for (const c of v.convention ?? []) addToList(r.workspace.path, 'conventions', c);
+        for (const a of v.avoid ?? []) addToList(r.workspace.path, 'avoid', a);
+        console.log(`${green('✔')} ${r.existed ? 'already registered' : 'registered'} ${bold(r.workspace.id)} ${dim(r.workspace.path)}`);
+        for (const f of r.created) console.log(`  ${green('+')} ${f} ${dim('(commit it: your team and CI get the same context)')}`);
+        if (r.created.length) console.log(dim(`\n  fill in what it is and how it works, or let an agent draft it:  aorch workspace survey ${r.workspace.id}`));
+        return;
+      }
+      if (sub === 'show' || sub === 'context') {
+        const w = need(pos[1]);
+        if (sub === 'context') return console.log(contextOf(w));
+        if (v.json) return console.log(JSON.stringify(w));
+        await banner(`workspace ${w.id}`);
+        console.log(`  ${bold(w.name)}  ${dim(w.path)}\n${w.summary ? '  ' + w.summary + '\n' : ''}`);
+        const kv = (k: string, val?: string) => val && console.log(`  ${dim(k.padEnd(10))} ${val}`);
+        kv('setup', w.setup); kv('build', w.build); kv('test', w.test); kv('github', w.repos.join(', '));
+        for (const [k, xs] of [['goals', w.goals], ['conventions', w.conventions], ['avoid', w.avoid]] as const) for (const x of xs) kv(k, x);
+        console.log(`\n  ${dim('notes')}  ${w.notes ? `${w.notes.split('\n').length} lines in .aorch/project.md` : amber('empty — aorch workspace survey ' + w.id)}`);
+        const triggers = (loadSettings(cfg.home).rules ?? []).filter((r) => r.workspace === w.id || w.repos.some((x) => x.toLowerCase() === r.repo.toLowerCase()));
+        if (triggers.length) console.log(`  ${dim('triggers')} ${triggers.map((t) => `${t.repo} → ${t.workflow}`).join(' · ')}`);
+        return;
+      }
+      if (sub === 'use') {
+        const id = pos[1] ?? fail('usage: aorch workspace use <id>');
+        if (!setDefaultWorkspace(cfg.home, id)) fail(`no workspace "${id}"`);
+        return console.log(`${green('✔')} ${bold(id)} is the default workspace`);
+      }
+      if (sub === 'remove') {
+        const id = pos[1] ?? fail('usage: aorch workspace remove <id>');
+        if (!removeWorkspace(cfg.home, id)) fail(`no workspace "${id}"`);
+        return console.log(`${green('✔')} forgot ${bold(id)} ${dim('(the folder and its .aorch files are untouched)')}`);
+      }
+      if (sub === 'set') {
+        const w = need(pos[1]);
+        const patch: Record<string, unknown> = { ...(v.name ? { name: v.name } : {}), ...(v.summary !== undefined ? { summary: v.summary } : {}), ...(v.setup !== undefined ? { setup: v.setup } : {}), ...(v.build !== undefined ? { build: v.build } : {}), ...(v.test !== undefined ? { test: v.test } : {}) };
+        if (v.goal) patch.goals = v.goal;
+        if (v.convention) patch.conventions = v.convention;
+        if (v.avoid) patch.avoid = v.avoid;
+        if (!Object.keys(patch).length) fail('nothing to set. Flags: --name --summary --setup --build --test --goal "…" --convention "…" --avoid "…" (lists are replaced; repeat the flag for several)');
+        updateMeta(w.path, patch);
+        return console.log(`${green('✔')} updated ${join(w.path, '.aorch/workspace.json')}`);
+      }
+      if (sub === 'survey') {
+        const w = need(pos[1]);
+        if (w.notes && !v.force) fail(`${w.id} already has notes (.aorch/project.md). Use --force to replace them.`);
+        const ctx = open(v);
+        const pipeline = normalizePipeline({
+          name: 'survey',
+          nodes: [{ id: 'survey', kind: 'agent', role: 'planner', title: 'Survey the project', readOnly: true, prompt: SURVEY_PROMPT }],
+          edges: [],
+          settings: { maxCostUsd: 2 },
+        });
+        await banner(`surveying ${w.name}`);
+        const id = await ctx.engine.start({ pipeline, task: `Survey the project "${w.name}" and write its project notes.`, repo: w.path, workspace: false });
+        const st = await ctx.engine.wait(id);
+        const out = st.nodes.survey?.output?.trim();
+        if (st.status !== 'done' || !out) fail(`the survey did not finish (${st.error ?? st.nodes.survey?.error ?? 'no output'})`);
+        writeNotes(w.path, out);
+        console.log(`${green('✔')} wrote ${join(w.path, '.aorch/project.md')} ${dim(`${out.split('\n').length} lines · $${st.costUsd.toFixed(2)}`)}\n  ${dim('read it, correct anything wrong, and commit it. Every agent in this project will see it.')}`);
+        return;
+      }
+      fail('usage: aorch workspace [list | init [dir] | add [dir] | show [id] | context [id] | set [id] --summary … | survey [id] | use <id> | remove <id>]');
+    }
     case 'pr': {
       const cfg = loadConfig(v);
       refreshCrew(cfg.home);
@@ -655,7 +800,7 @@ async function main() {
         const ctx = open(v);
         let id: string;
         try {
-          id = await ctx.engine.start({ pipeline, task, repo, autoApprove: v['auto-approve'] });
+          id = await ctx.engine.start({ pipeline, task, repo, autoApprove: v['auto-approve'], workspace: wsOpt(v) });
         } catch (e) {
           fail((e as Error).message);
         }
@@ -756,12 +901,14 @@ async function main() {
       for (const i of preflight(ctx.engine.resolve(pipeline), makeRegistry(ctx.cfg))) if (i.level === 'warn') console.error(yellow(`warning: ${i.node ? `[${i.node}] ` : ''}${i.message}`));
       let id: string;
       try {
-        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'] });
+        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v) });
       } catch (e) {
         fail((e as Error).message);
       }
       if (!v.json) {
         await banner(`${pipeline.name}  ${faint('→')}  ${repo}`);
+        const wsn = ctx.store.state(id)?.workspace;
+        if (wsn) console.log(`${dim('project')}  ${bold(wsn.name)} ${faint('(' + wsn.id + ') — its context goes to every agent')}`);
         await typeLine(`${dim('task')}  ${s0(task)}`, 6);
         console.log('');
       }

@@ -199,8 +199,12 @@ describe('mark styles (sigil, ticker, orbit)', () => {
     const { sigil } = await import('../src/marks.js');
     const bot = { id: 'planner', name: 'Scout', color: [90, 160, 250] as [number, number, number] };
     const strip = (rows: string[]) => rows.join('\n').replace(/\x1b\[[0-9;]*m/g, '');
-    expect(strip(sigil(bot, 'idle', 0))).toContain('◇');
-    expect(strip(sigil(bot, 'working', 0))).toContain('◆');
+    const { caps } = await import('../src/ui.js');
+    const keep = caps.level;
+    caps.level = 3;
+    expect(sigil(bot, 'idle', 0)).toHaveLength(4);
+    expect(sigil(bot, 'idle', 0).join('')).not.toEqual(sigil(bot, 'happy', 0).join(''));
+    caps.level = keep;
     expect(strip(sigil(bot, 'working', 0))).not.toEqual(strip(sigil(bot, 'working', 4)));
     expect(strip(sigil(bot, 'happy', 0))).toContain('✔');
   });
@@ -212,7 +216,7 @@ describe('mark styles (sigil, ticker, orbit)', () => {
     caps.level = 3;
     const bot = { id: 'coder', name: 'Bolt', color: [60, 200, 130] as [number, number, number] };
     expect(tile(bot, 'happy', 0).join('')).not.toEqual(tile(bot, 'sad', 0).join(''));
-    expect(tile(bot, 'idle', 0).join('').replace(/\x1b\[[0-9;]*m/g, '')).toContain('▲');
+    expect(tile(bot, 'idle', 0)).toHaveLength(4);
     caps.level = keep;
   });
 

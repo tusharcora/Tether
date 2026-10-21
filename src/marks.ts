@@ -108,14 +108,25 @@ function hollow(shape: string[]): string[] {
   );
 }
 
-/** A bot as a single glyph with its state mark beneath, the way it appears in a log line, just centred in the slot. */
+/** The glyph as the tile's inverse: the same 6×6 pixel shape in the bot's colour, no tile behind it. */
 export function sigil(bot: MarkBot, mood: MarkMood, tick: number): string[] {
-  const shape = shapeOf(bot.id);
+  const g = GLYPH[shapeOf(bot.id)]!;
   const col = moodColor(bot.color, mood);
   const open = mood === 'idle' || mood === 'asleep' || mood === 'sad' || (mood === 'waiting' && tick % 16 >= 10);
-  const glyph = open ? HOLLOW_CHAR[shape]! : SOLID_CHAR[shape]!;
+  const shape = open ? hollow(g.map((r) => r.padStart(8, '.').padEnd(10, '.'))) : g.map((r) => r.padStart(8, '.').padEnd(10, '.'));
+  const grid = [...shape.map((r) => r.replace(/#/g, 'B')), '..........', '..........'];
+  if (mood === 'sad') for (const [x, y] of [[4, 2], [5, 2], [4, 3], [5, 3]] as const) grid[y] = grid[y]!.slice(0, x) + 'B' + grid[y]!.slice(x + 1);
+  const colors: Record<string, RGB> = { B: col };
+  if (mood === 'working') {
+    // a soft band of light runs down the glyph; the shape never changes
+    const band = Math.floor(tick / 2) % 9 - 2;
+    colors.L = mix([col, LIGHT], 0.45);
+    for (let y = 0; y < 6; y++) if (y === band || y === band + 1) grid[y] = grid[y]!.replace(/B/g, 'L');
+  }
+  const rows = paintRows(grid, colors);
   const mark = mood === 'working' ? SPIN[Math.floor(tick / 2) % SPIN.length]! : mood === 'happy' ? '✔' : mood === 'sad' ? '✘' : mood === 'waiting' ? '…' : ' ';
-  return [blank(), centre(paint(col, `\x1b[1m${glyph}\x1b[22m`), 1), centre(paint(col, mark), 1), blank()];
+  rows[3] = centre(paint(col, mark), 1);
+  return rows;
 }
 
 export function miniSigil(bot: MarkBot, mood: MarkMood, tick: number): string {
@@ -151,20 +162,15 @@ function light(base: RGB, mood: MarkMood, tick: number): RGB {
   }
 }
 
-/** A 5×3 tile: the glyph dead centre on the bot's colour, the status light in the top-right corner. */
+/** An 8×8 pixel tile (8 columns, 4 rows): the glyph in dark ink on the bot's colour, a status light in the top-right corner. */
 export function tile(bot: MarkBot, mood: MarkMood, tick: number): string[] {
   const body = mood === 'idle' ? mix([bot.color, pal.slate], 0.3) : mood === 'asleep' ? mix([bot.color, pal.slate], 0.6) : bot.color;
-  const glyph = SOLID_TILE_CHAR[shapeOf(bot.id)]!;
-  const lamp = light(bot.color, mood, tick);
-  if (!caps.level) return [centre(`[ ${glyph} ]`, 5), blank(), blank(), blank()];
-  const on = `${bgCode(body)}${fgCode(inkOn(bot.color))}`;
-  const row = (inner: string) => centre(`${on}${inner}\x1b[0m`, 5);
-  return [
-    row(`   ${fgCode(lamp)}●${fgCode(inkOn(bot.color))} `),
-    row(`  \x1b[1m${glyph}\x1b[22m  `),
-    row('     '),
-    blank(),
-  ];
+  const g = GLYPH[shapeOf(bot.id)]!;
+  const grid = [...Array(8)].map(() => Array(W).fill('.'));
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 10; x++) if (!((y === 0 || y === 7) && (x === 0 || x === 9))) grid[y]![x] = 'B';
+  g.forEach((row, y) => [...row].forEach((c, x) => c === '#' && (grid[y + 1]![x + 2] = 'D')));
+  grid[0]![9] = 'L'; grid[0]![8] = 'L'; grid[1]![9] = 'L';
+  return paintRows(grid.map((r) => r.join('')), { B: body, D: inkOn(bot.color), L: light(bot.color, mood, tick) });
 }
 
 const SOLID_TILE_CHAR: Record<string, string> = { diamond: '◆', triangle: '▲', square: '■', circle: '●', hex: '◉', plus: '✚', arrow: '▶' };

@@ -11,6 +11,7 @@ import type { Store } from './store.js';
 import type { AgentResult, Pipeline, PipelineNode, RunState } from './types.js';
 import { applyBindings, type Bindings } from './bindings.js';
 import { Vault } from './vault.js';
+import { resolveWorkspace, snapshot } from './workspace.js';
 
 export interface EngineOptions {
   /** Where worktrees live (state dir). */
@@ -27,6 +28,8 @@ export interface StartInput {
   repo: string;
   ref?: string;
   autoApprove?: boolean;
+  /** A workspace id, or false for none. Default: the registered workspace that holds the repo, or the repo's own .aorch files. */
+  workspace?: string | false;
 }
 
 const MAX_OUTPUT = 200_000;
@@ -65,6 +68,9 @@ export class Engine {
 
   async start(rawInput: StartInput): Promise<string> {
     const input = { ...rawInput, pipeline: this.resolve(rawInput.pipeline) };
+    const ws = rawInput.workspace === false ? undefined : resolveWorkspace(this.opts.home, { workspace: rawInput.workspace, repo: input.repo });
+    // the project's setup command is the run's default; a workflow that sets its own keeps it
+    if (ws?.setup && !input.pipeline.settings.setup) input.pipeline = { ...input.pipeline, settings: { ...input.pipeline.settings, setup: ws.setup } };
     const errors = preflight(input.pipeline, this.opts.registry).filter((i) => i.level === 'error');
     if (errors.length) {
       throw new Error(`preflight failed:\n${errors.map((e) => `- ${e.node ? `[${e.node}] ` : ''}${e.message}`).join('\n')}`);
@@ -81,6 +87,7 @@ export class Engine {
       branch: wt.branch,
       vault: this.opts.vault?.root,
       autoApprove: input.autoApprove,
+      workspace: ws ? snapshot(ws) : undefined,
     });
     this.launch(runId);
     return runId;

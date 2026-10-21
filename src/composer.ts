@@ -224,7 +224,7 @@ Rules: small tasks need few steps; always put a coder before tester/reviewer whe
 Reply with ONLY a JSON object, no prose, no code fences:
 {"steps":["planner","coder","tester","reviewer"],"testCommand":${tests ? JSON.stringify(tests) : 'null'},"rationale":"one sentence on why"}`;
 
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('no JSON object in reply');

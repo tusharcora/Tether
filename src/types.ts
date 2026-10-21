@@ -100,6 +100,13 @@ export interface CoachFinding {
   action: string;
 }
 
+/** The project a run belongs to, as it was when the run began: shown in the UI and pasted into every agent's prompt. */
+export interface RunWorkspace {
+  id: string;
+  name: string;
+  context: string;
+}
+
 export type RunEvent =
   | {
       type: 'run.started';
@@ -111,6 +118,7 @@ export type RunEvent =
       branch: string;
       vault?: string;
       autoApprove?: boolean;
+      workspace?: RunWorkspace;
     }
   | { type: 'run.resumed'; retryFailed?: boolean }
   | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
@@ -179,6 +187,8 @@ export interface RunState {
   baseSha: string;
   branch: string;
   vault?: string;
+  /** The project this run works on (its context is in every agent's prompt). */
+  workspace?: RunWorkspace;
   autoApprove: boolean;
   setupDone: boolean;
   /** Paths the setup command left in the worktree; kept out of agent commits and diffs. */
@@ -213,6 +223,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         baseSha: e.baseSha,
         branch: e.branch,
         vault: e.vault,
+        workspace: e.workspace,
         autoApprove: !!e.autoApprove,
         setupDone: false,
         setupArtifacts: [],
