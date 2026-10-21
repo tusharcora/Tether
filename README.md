@@ -100,7 +100,9 @@ Maestro can:
 
 He only proposes. A proposal shows up as a card; `enter` accepts it and `esc` declines. Replacing a workflow copies the old one to `pipelines/.backup/` first. Proposals are checked the same way as hand-built workflows (known step types, a test gate only when the repo has a test command).
 
-Slash commands: `/runs` `/workflows` `/crew` `/settings` switch screen, `/run <workflow> <task>` starts a workflow, `/approve` and `/reject` answer a run that is waiting for you, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
+When the input is empty, a greyed-out suggestion for the next step is shown, based on the latest run (`/approve` when it is waiting for you, `/retry` after a failure, `/open` when it finished); press `tab` to fill it in, then enter to send. While a suggestion is showing, `shift-tab` switches screens.
+
+Slash commands: `/runs` `/workflows` `/crew` `/settings` switch screen, `/run <workflow> <task>` starts a workflow, `/approve` and `/reject` answer a run that is waiting for you, `/open` and `/retry` open the latest run or retry its failed step, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
 
 ## LLM providers
 

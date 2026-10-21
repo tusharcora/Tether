@@ -449,6 +449,24 @@ export class Tui {
     else if (([...k].length === 1 && k >= ' ') || (k.length > 1 && !/^[a-z0-9-]+$/.test(k))) t.text += k;
   }
 
+  /** A greyed-out next step for the empty input; tab fills it in. `text` is what is typed, `label` what is shown. */
+  private suggestion(): { text: string; label: string } | undefined {
+    if (this.talk.busy || this.pendingOffer()) return undefined;
+    const last = [...this.talk.log].reverse().find((e) => e.k === 'run');
+    const id = last?.k === 'run' ? last.runId : this.runs()[0]?.id;
+    const st = id ? this.state(id) : undefined;
+    if (id && st) {
+      const tag = id.slice(-8);
+      if (st.status === 'paused' && Object.values(st.nodes).some((n) => n.status === 'awaiting')) return { text: '/approve', label: `/approve   sign off run ${tag}` };
+      if (st.status === 'error') return { text: '/retry', label: `/retry   run ${tag} again, only the failed step` };
+      if (st.status === 'done') return { text: '/open', label: `/open   review what run ${tag} did` };
+      if (st.status === 'running') return undefined;
+    }
+    const flow = this.flows()[0];
+    if (this.talk.log.length && flow) return { text: `/run ${flow.name} `, label: `/run ${flow.name} …   start a saved workflow` };
+    return { text: 'plan a workflow for this repo', label: 'plan a workflow for this repo' };
+  }
+
   private slash(s: Extract<Screen, { kind: 'dash' }>, line: string) {
     const [cmd = '', ...rest] = line.slice(1).trim().split(/\s+/);
     const t = this.talk;
@@ -464,6 +482,14 @@ export class Tui {
         if (!this.d.engine.isLive(hit.r.id)) this.d.engine.resume(hit.r.id).catch(() => {});
         note(`${cmd === 'approve' ? 'approved' : 'rejected'} ${node} in run ${hit.r.id.slice(-8)}`);
       }
+    } else if (cmd === 'open' || cmd === 'retry') {
+      const id = (rest[0] ? this.runs().find((r) => r.id.endsWith(rest[0]!)) : undefined)?.id ?? [...t.log].reverse().flatMap((e) => (e.k === 'run' ? [e.runId] : []))[0] ?? this.runs()[0]?.id;
+      if (!id) note('no runs yet');
+      else if (cmd === 'open') this.push({ kind: 'run', runId: id, sel: 0 });
+      else {
+        this.resumeRun(id, true);
+        note(`retrying the failed step in run ${id.slice(-8)}`);
+      }
     } else if (cmd === 'providers') this.providers();
     else if (cmd === 'quit' || cmd === 'exit') this.quit();
     else if (cmd === 'run') {
@@ -476,6 +502,7 @@ export class Tui {
       note('/runs  /workflows  /crew  /settings   switch screen');
       note('/run <workflow> <task>              start a saved workflow');
       note('/approve  /reject                   answer a run that is waiting for you');
+      note('/open  /retry                       open the latest run, or retry its failed step');
       note('/providers                          LLM providers');
       note('/clear                              clear this conversation  ·  /quit leaves aorch');
       note('Anything else is a message to Maestro: ask for a plan, an improved workflow, or a run.');
@@ -624,7 +651,7 @@ export class Tui {
       const cur = this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' ';
       const room = Math.max(8, this.cols - 6);
       const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
-      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim('Message Maestro… (/ for commands)')}`;
+      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim(this.suggestion()?.label ?? 'Message Maestro… (/ for commands)')}${!t.text && this.suggestion() ? dim('   tab ⇥') : ''}`;
     }
     return dim(dash ? '› chat with Maestro  ·  press / to open the chat' : '› esc back to the home screen to chat with Maestro');
   }
@@ -910,6 +937,10 @@ export class Tui {
 
   // ---------- dashboard ----------
   private dashKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
+    if (s.tab === 'chat' && k === 'tab' && !this.talk.text) {
+      const g = this.suggestion();
+      if (g) return void (this.talk.text = g.text);
+    }
     if (s.tab === 'chat' && k !== 'tab' && k !== 'shift-tab') return this.chatKey(s, k);
     const list = s.tab === 'runs' ? this.runs() : s.tab === 'workflows' ? this.flows() : s.tab === 'settings' ? [] : Object.keys(CREW);
     const n = list.length;
@@ -1842,7 +1873,7 @@ export class Tui {
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
-      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : 'enter send · /help commands · ↑↓ PgUp PgDn scroll · tab next screen · ctrl-c quit')
+      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
