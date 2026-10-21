@@ -73,6 +73,28 @@ Rules can limit by `--labels`, `--events`, and opt in to `--drafts` and `--forks
 
 A step can ask a step that already finished: why it did something, or about a bug it may have caused. It ends its answer with `@ASK <step-id>: <question>`; aorch puts the question to that step (read-only, resuming its own session when the agent supports it), then gives the answer back so the asker finishes. At most 2 questions per round, 2 rounds, billed to the asker, and every exchange is logged as a `consult` event (shown in `aorch run`, the run's event list, and as a `?` / `…` mark over the two bots in the strip). Turn it on per workflow with `"settings": { "consult": 2 }` (new workflows have it on; `0` or leaving it out turns it off). Fix loops use it too: the fixing step can ask the reviewer that sent it back.
 
+## Teams: a manager hands out work
+
+A `manager` step plans the work and hands pieces to other bots at run time, then reviews what comes back. It is read-only: it coordinates and never edits files. The `team` workflow (`manager → tests → review → approve`, tests only when the repo has a test command) is the quickest way to try it; you can also add a manager step to any workflow by hand. Maestro does not propose manager steps.
+
+The manager replies with a plan, `{"tasks":[…]}`. Each task is a hand-off contract:
+
+- `to`: the bot or role that gets the work (the manager's `roster`, or any bot except gates, approvals and managers)
+- `goal`: what to do; `expected`: what done looks like
+- `context`: ids of finished steps whose output the receiver needs
+- `mode`: `read` (default) or `write`; write tasks may edit files in the run worktree. Write tasks are only accepted when the workflow sets `allowWrites: true` in its `settings` (the `team` workflow does; a plan with write tasks otherwise goes back to the manager with the reason), they can only go to bots that edit files (not planners, reviewers or other read-only bots), and they still pause for your approval by default (see `planApproval` below)
+- `after`: ids of tasks in the same plan that must finish first (tasks without `after` run in parallel)
+
+A spawned step is the receiving bot's usual step (its persona, read-only setting, and for reviewers the diff and `VERDICT` line) with the contract on top. The manager sees the task, its own instructions and guidance, the project context, the output of the steps before it, and the list of steps in the run. A plan holds at most 12 tasks; goals and expected results are capped at 500 characters and `context` at 10 step ids.
+
+Spawned steps show up under their manager in the run view, `aorch show` and the run board, marked `↳` with the receiving bot's name, and open like any other step. After they finish the manager reviews the results and replies `{"decision":"accept"}`, `{"redo":[…]}` (send some back) or `{"more":[…]}` (plan more work).
+
+Limits live in the workflow's `settings`: `allowWrites` (managers may hand out write tasks, default off), `maxDepth` (how deep managers may nest, default 3, 1 to 5; it only matters once managers can nest, planned for stage 2, since spawned steps today are always at depth 1), `maxSpawn` (steps spawned per run, default 12, 1 to 30) and `planApproval` (the manager's plan must be approved before anything is spawned). Unless you set `planApproval` yourself, a plan that includes write tasks pauses for approval (`planApproval: false` turns that off). Redos count against `maxSpawn`, and the run's cost cap and wall-clock limit apply to everything a manager spawns, including the manager's own plan and review calls.
+
+In this first stage the `team` workflow has no automatic fix loop for the tests or the reviewer after the manager: if they fail, the run ends as an error, and you retry or resume it (`aorch resume`, or Retry in the run chat). Feeding such a failure back into the manager's review is planned. A pull request from a fork is refused for any workflow with a manager step unless you pass `--trust-code`, because spawned steps may run and edit code.
+
+Worker-to-worker hand-offs (`@HAND`, a step passing work straight to another step) are the next stage and are not part of this release.
+
 ## Crew styles
 
 The crew can be drawn five ways. Switch with `aorch crew <style>`, `--crew <style>` / `AORCH_CREW` for one run, `c` in the dashboard, or the picker at the top of the Crew tab in the web dashboard.

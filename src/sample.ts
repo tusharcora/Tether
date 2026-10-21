@@ -29,6 +29,7 @@ export function sampleRun(now = Date.now()): RunState {
       tests: st('queued'),
       lens: st('queued'),
     },
+    spawned: 0,
     costUsd: 0.61,
     startedAt: now - 140_000,
     notes: [],

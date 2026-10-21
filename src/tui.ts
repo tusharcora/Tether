@@ -39,7 +39,7 @@ import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
-import { PAL_KEYS, THEMES, BRAND, THEME_NAME_RE, BUILTIN_THEMES, applyPalette, basePalette, registerThemes, spark, type PalKey, type RGB, ago, amber, bold, caps, clip, cyan, dim, dur, faint, glyph, gradient, green, meter, padEnd, paint, pal, red, renderBoard, setTheme, strip, themeName, usd, vlen } from './ui.js';
+import { PAL_KEYS, THEMES, BRAND, THEME_NAME_RE, BUILTIN_THEMES, applyPalette, basePalette, registerThemes, spark, type PalKey, type RGB, ago, amber, bold, caps, clip, cyan, dim, dur, faint, glyph, gradient, green, meter, padEnd, paint, pal, red, renderBoard, setTheme, strip, themeName, underManagers, usd, vlen } from './ui.js';
 
 const ESC = '\x1b[';
 
@@ -187,7 +187,7 @@ export function crewStrip(nodes: PipelineNode[], statusOf: (n: PipelineNode) => 
     }
     const name = CREW[role]!.name;
     rows[4]!.push(padCenter(selected ? bold(paint(pal.cyan, `‹ ${name} ›`)) : bold(name), CELL));
-    rows[5]!.push(padCenter(dim(n.title ?? n.role ?? n.kind), CELL));
+    rows[5]!.push(padCenter(dim(`${n.spawn ? '↳ ' : ''}${n.title ?? n.role ?? n.kind}`), CELL));
     rows[6]!.push(padCenter(`${glyph(st, tick)} ${annot ? annot(n) : dim(st)}`, CELL));
   });
   // baton: a dot sliding along the arrow that leads into the receiving step (row 2, last 3 cells of the previous one)
@@ -1666,7 +1666,7 @@ export class Tui {
     const st = this.state(s.runId);
     if (k === 'esc' || k === 'q') return this.pop();
     if (!st) return;
-    const nodes = st.pipeline.nodes;
+    const nodes = underManagers(st.pipeline.nodes); // s.sel indexes this display order
     if (k === 'left' || k === 'h') s.sel = Math.max(0, s.sel - 1);
     else if (k === 'right' || k === 'l') s.sel = Math.min(nodes.length - 1, s.sel + 1);
     else if (k === 'enter' || k === 'i') this.push({ kind: 'session', runId: s.runId, nodeId: nodes[s.sel]!.id, pane: 'output', scroll: 0, follow: true });
@@ -2473,7 +2473,7 @@ export class Tui {
   }
 
   /** Short-lived reactions: cheers, shudders, batons passed on, Maestro stepping in. Off with animations or the setting. */
-  private fxFor(st: RunState): ((n: PipelineNode, i: number) => Fx | undefined) | undefined {
+  private fxFor(st: RunState, order: PipelineNode[] = st.pipeline.nodes): ((n: PipelineNode, i: number) => Fx | undefined) | undefined {
     if (this.prefs.reactions === false || this.prefs.animate === false) return undefined;
     const now = Date.now();
     return (n, i) => {
@@ -2484,7 +2484,7 @@ export class Tui {
         if (ns.status === 'done' && ns.verdict !== 'FAIL') f.cheer = true;
         else if (ns.status === 'error' || ns.verdict === 'FAIL') f.shake = true;
       }
-      const prev = i > 0 ? st.nodes[st.pipeline.nodes[i - 1]!.id] : undefined;
+      const prev = i > 0 ? st.nodes[order[i - 1]!.id] : undefined;
       if (ns.startedAt && prev?.finishedAt && now - ns.startedAt < 1500 && ns.startedAt - prev.finishedAt < 3000) f.baton = (now - ns.startedAt) / 1200;
       const act = [...st.actions].reverse().find((a) => a.node === n.id && now - a.ts < 5000);
       if (act) f.tag = act.action === 'retry' ? '↻' : act.action === 'escalate' ? '⇧' : '■';
@@ -2543,10 +2543,11 @@ export class Tui {
   private runBody(s: Extract<Screen, { kind: 'run' }>, h: number): string[] {
     const st = this.state(s.runId);
     if (!st) return [dim('  run not found')];
-    s.sel = Math.min(s.sel, st.pipeline.nodes.length - 1);
-    this.stripHits(2, st.pipeline.nodes.length, s.sel, (i) => (s.sel === i ? this.key('enter') : (s.sel = i)));
+    const order = underManagers(st.pipeline.nodes); // s.sel, the strip and its click targets all use this display order
+    s.sel = Math.min(s.sel, order.length - 1);
+    this.stripHits(2, order.length, s.sel, (i) => (s.sel === i ? this.key('enter') : (s.sel = i)));
     const strip_ = crewStrip(
-      st.pipeline.nodes,
+      order,
       (n) => st.nodes[n.id]?.status ?? 'queued',
       s.sel,
       this.tick,
@@ -2557,14 +2558,14 @@ export class Tui {
         if (a) return paint(VERB_COLOR[a.verb], clip(`${a.verb} ${a.text.split('/').pop() ?? ''}`, CELL - 3));
         return ns?.startedAt ? dim(dur(Math.max(0, (ns.status === 'running' || !ns.finishedAt ? Date.now() : ns.finishedAt) - ns.startedAt))) : dim(ns?.status ?? '');
       },
-      this.fxFor(st),
+      this.fxFor(st, order),
     ).map((l) => ' ' + l);
-    const n = st.pipeline.nodes[s.sel]!;
+    const n = order[s.sel]!;
     const ns = st.nodes[n.id];
     const cap = st.pipeline.settings.maxCostUsd;
     const head = `${glyph(st.status, this.tick)} ${bold(st.pipeline.name)} ${dim('·')} ${st.status}  ${dim('·')} ${cap ? meter(st.costUsd / cap, 10) + ' ' : ''}${usd(st.costUsd)}${cap ? dim(` / ${usd(cap)}`) : ''} ${dim('· ' + dur((st.finishedAt ?? Date.now()) - st.startedAt))}  ${dim('branch')} ${cyan(st.branch)}`;
     const detail: string[] = [
-      `${bold(CREW[crewFor(n)]!.name)} ${dim(`${n.title ?? n.role ?? n.kind} · ${n.id}`)}  ${ns?.verdict ? (ns.verdict === 'PASS' ? green('PASS') : red('FAIL')) : ''} ${ns && ns.attempts > 1 ? amber(`attempt ${ns.attempts}`) : ''} ${ns?.commit ? dim('commit ') + cyan(ns.commit.slice(0, 7)) : ''} ${ns?.costUsd ? dim(usd(ns.costUsd)) : ''}  ${n.agent ? dim(`${n.agent}${n.model ? ' · ' + n.model : ''}`) : ''}`,
+      `${bold(CREW[crewFor(n)]!.name)} ${dim(`${n.spawn ? `↳ from ${n.spawn.parent} · ` : ''}${n.title ?? n.role ?? n.kind} · ${n.id}`)}  ${ns?.verdict ? (ns.verdict === 'PASS' ? green('PASS') : red('FAIL')) : ''} ${ns && ns.attempts > 1 ? amber(`attempt ${ns.attempts}`) : ''} ${ns?.commit ? dim('commit ') + cyan(ns.commit.slice(0, 7)) : ''} ${ns?.costUsd ? dim(usd(ns.costUsd)) : ''}  ${n.agent ? dim(`${n.agent}${n.model ? ' · ' + n.model : ''}`) : ''}`,
     ];
     if (ns?.error) detail.push(red(ns.error.split('\n')[0]!));
     if (ns?.gate) detail.push(`${ns.gate.ok ? green('gate passed') : red(`gate failed (exit ${ns.gate.exitCode})`)}`);

@@ -41,7 +41,7 @@ describe('crew packs', () => {
     const home = mkdtempSync(join(tmpdir(), 'aorch-pk-'));
     for (const b of findPack('trading')!.bots) saveBot(home, b);
     refreshCrew(home);
-    expect(loadCrew(home)).toHaveLength(7 + 6);
+    expect(loadCrew(home)).toHaveLength(BUILTIN_IDS.size + 6);
     expect(CREW.skeptic?.name).toBe('Skeptic');
     expect(crewFor({ kind: 'agent', role: 'skeptic' })).toBe('skeptic');
     const step = makeStep('skeptic', { name: 'x', nodes: [], edges: [] } as never, 'claude', 'npm test');

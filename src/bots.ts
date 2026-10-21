@@ -25,6 +25,7 @@ export const CREW: Record<string, BotInfo> = {
   coder: { name: 'Bolt', title: 'coder', color: () => pal.green, accent: () => pal.cyan },
   tester: { name: 'Probe', title: 'tester', color: () => pal.amber, accent: () => pal.red },
   reviewer: { name: 'Lens', title: 'reviewer', color: () => pal.pink, accent: () => pal.violet },
+  manager: { name: 'Boss', title: 'manager', color: () => pal.amber, accent: () => pal.pink },
   approval: { name: 'Gate', title: 'approver', color: () => pal.text, accent: () => pal.amber },
 };
 

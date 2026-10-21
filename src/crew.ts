@@ -67,6 +67,7 @@ export const BUILTIN_BOTS: BotDef[] = [
   { id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: 'Writes the change in the run worktree, small steps, tests alongside.', look: look('wide', 'dots', 'smile', 'none', 'arms', 'none', '#3fb97c') },
   { id: 'tester', name: 'Probe', title: 'tester', kind: 'gate', persona: 'Runs the test command. Failures loop back to the coder.', look: look('pebble', 'wink', 'flat', 'horns', 'none', 'none', '#e3ab3a') },
   { id: 'reviewer', name: 'Lens', title: 'reviewer', kind: 'verdict', readOnly: true, persona: 'Reads the diff critically and ends with VERDICT: PASS or FAIL.', look: look('pebble', 'glasses', 'flat', 'none', 'none', 'none', '#e46fa8', '#ffffff') },
+  { id: 'manager', name: 'Boss', title: 'manager', kind: 'agent', readOnly: true, persona: 'Splits the task, hands each part to the right bot, and reviews what comes back. Never edits files.', look: look('wide', 'visor', 'flat', 'crest', 'none', 'band', '#e0734a') },
   { id: 'approval', name: 'Gate', title: 'approver', kind: 'approval', persona: 'A person. Pauses the run until someone says yes.', look: look('blob', 'dots', 'flat', 'none', 'none', 'badge', '#9aa6b8', '#6d4aff') },
 ];
 export const BUILTIN_IDS = new Set(BUILTIN_BOTS.map((b) => b.id));
@@ -111,8 +112,16 @@ export const toFile = (b: BotDef): BotDef => {
 const dir = (home: string) => join(home, 'crew');
 const file = (home: string, id: string) => join(dir(home), `${id}.json`);
 
-/** Built-ins (with any saved overrides applied), then your own bots in name order. */
-export function loadCrew(home: string): BotDef[] {
+/** Problems found by the last loadCrew, for `aorch bots` and the like to show. */
+export const crewWarnings: string[] = [];
+
+/**
+ * Built-ins (with any saved overrides applied), then your own bots in name order.
+ * A saved bot whose id is now a built-in (e.g. a custom `manager` made before managers existed) keeps its name,
+ * persona and look but takes the built-in's role; that is reported through `crewWarnings` / `onWarn`.
+ */
+export function loadCrew(home: string, onWarn?: (msg: string) => void): BotDef[] {
+  crewWarnings.length = 0;
   const saved = new Map<string, BotDef>();
   try {
     for (const f of readdirSync(dir(home)).filter((x) => x.endsWith('.json')).sort()) {
@@ -129,6 +138,11 @@ export function loadCrew(home: string): BotDef[] {
   const out: BotDef[] = BUILTIN_BOTS.map((b) => {
     const o = saved.get(b.id);
     saved.delete(b.id);
+    if (o && (o.kind !== b.kind || !!o.readOnly !== !!b.readOnly)) {
+      const msg = `your bot "${b.id}" (${o.name}) has the id of a built-in ${b.title} and now runs as one (${b.kind}${b.readOnly ? ', read-only' : ''}); rename it to keep it as a ${o.kind} bot`;
+      crewWarnings.push(msg);
+      onWarn?.(msg);
+    }
     // a built-in keeps its role: only identity and look can be changed, not what kind of step it is
     return o ? { ...o, kind: b.kind, readOnly: b.readOnly, builtin: true, edited: true } : { ...b, builtin: true };
   });

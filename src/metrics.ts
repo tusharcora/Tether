@@ -4,7 +4,7 @@ import type { RunState, StoredEvent } from './types.js';
 /** Cumulative spend after each step that reported a cost, starting from zero. */
 export function costSeries(events: StoredEvent[]): number[] {
   const out = [0];
-  for (const { event: e } of events) if (e.type === 'node.finished' && (e.costUsd ?? 0) > 0) out.push(out[out.length - 1]! + e.costUsd!);
+  for (const { event: e } of events) if ((e.type === 'node.finished' || e.type === 'manager.cost') && (e.costUsd ?? 0) > 0) out.push(out[out.length - 1]! + e.costUsd!);
   return out;
 }
 

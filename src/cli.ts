@@ -33,7 +33,7 @@ import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, 
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
-import { THEMES, registerThemes, setTheme, themeName } from './ui.js';
+import { THEMES, registerThemes, setTheme, themeName, spawnedLabel, underManagers } from './ui.js';
 import { LiveBoard, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
 
 const yellow = amber;
@@ -199,6 +199,14 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
         break;
       case 'node.skipped':
         say(`${ts()}  ${dim('◌')} ${name(e.node)} ${dim(`skipped: ${e.reason}`)}`);
+        break;
+      case 'node.spawned':
+        say(`${ts()}  ${cyan('↳')} ${name(e.parent)} ${dim('hands')} ${name(e.node.id)} ${dim(e.node.kind === 'approval' ? 'plan approval' : `to ${e.node.role ?? 'agent'}: ${(e.node.spawn?.contract.goal ?? '').replace(/\s+/g, ' ').slice(0, 100)}`)}`);
+        break;
+      case 'node.requeued':
+        say(`${ts()}  ${amber('↺')} ${name(e.node)} ${dim(`queued again: ${e.reason}`)}`);
+        break;
+      case 'manager.cost':
         break;
       case 'approval.requested':
         say(`${ts()}  ${amber('◉')} ${name(e.node)} ${amber('waiting for approval')}`);
@@ -397,7 +405,7 @@ async function main() {
         console.log(dim('\n  aorch bots add-pack <pack> [--yes]   ·   aorch bots import <file> [--yes]'));
         return;
       }
-      const crewNow = loadCrew(cfg.home);
+      const crewNow = loadCrew(cfg.home, (m) => console.error(amber(`warning: ${m}`)));
       const partFlags = () => {
         const look: Record<string, unknown> = {};
         for (const k of PART_KEYS) if (typeof v[k as keyof typeof v] === 'string') look[k] = v[k as keyof typeof v];
@@ -914,11 +922,11 @@ async function main() {
       const { store } = open(v);
       const s = store.state(id) ?? fail(`unknown run ${id}`);
       console.log(`${gradient(s.pipeline.name, BRAND)}  ${faint(s.id)}\n${dim(s.task.split('\n')[0]!)}\n`);
-      const rows = s.pipeline.nodes.map((n) => {
+      const rows = underManagers(s.pipeline.nodes).map((n) => {
         const ns = s.nodes[n.id]!;
         return [
           statusGlyph(ns.status),
-          bold(n.title ?? n.role ?? n.kind),
+          bold(spawnedLabel(n)),
           dim(n.id),
           dim(ns.status),
           ns.attempts > 1 ? amber(`↻${ns.attempts}`) : dim(`×${ns.attempts}`),

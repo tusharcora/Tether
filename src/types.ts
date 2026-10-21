@@ -19,8 +19,22 @@ export interface MockScript {
   failFirst?: number;
   /** Per-attempt verdicts for reviewer nodes; the last entry repeats. */
   verdicts?: ('PASS' | 'FAIL')[];
+  /** Scripted replies per phase: a request whose nodeId ends in `.<phase>` gets replies[phase][min(attempt-1, len-1)]. */
+  replies?: Record<string, string[]>;
+  /** On a manager: scripts for the steps it spawns, keyed by the plan's local task id. */
+  spawned?: Record<string, MockScript>;
   delayMs?: number;
   costUsd?: number;
+}
+
+/** The hand-off a manager gives a step it spawns. */
+export interface Contract {
+  to: string;
+  goal: string;
+  expected?: string;
+  context: string[];
+  mode: 'read' | 'write';
+  after: string[];
 }
 
 export interface PipelineNode {
@@ -53,6 +67,12 @@ export interface PipelineNode {
   fixNode?: string;
   /** Max fix loops for this check (default 2). */
   maxLoops?: number;
+  /** This step may spawn further steps at run time. */
+  manager?: boolean;
+  /** Bot ids / built-in roles a manager may spawn (default: any). */
+  roster?: string[];
+  /** Set on steps created at run time by a manager. */
+  spawn?: { parent: string; depth: number; contract: Contract };
   mock?: MockScript;
 }
 
@@ -73,6 +93,14 @@ export interface PipelineSettings {
   setup?: string;
   /** Rounds a step may spend asking already-finished steps questions (0 or unset: off). */
   consult?: number;
+  /** How deep managers may nest (default 3, 1..5). */
+  maxDepth?: number;
+  /** Max steps spawned in one run (default 12, 1..30). */
+  maxSpawn?: number;
+  /** Managers must have their plan approved before spawning. */
+  planApproval?: boolean;
+  /** Managers may hand out write tasks (spawned steps that edit files). Default off: read-only plans only. */
+  allowWrites?: boolean;
 }
 
 export interface Pipeline {
@@ -122,6 +150,7 @@ export type RunEvent =
       autoApprove?: boolean;
       workspace?: RunWorkspace;
     }
+  | { type: 'node.spawned'; node: PipelineNode; parent: string; depth: number; after: string[] }
   | { type: 'run.resumed'; retryFailed?: boolean }
   | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
   | { type: 'node.started'; node: string; attempt: number }
@@ -143,6 +172,10 @@ export type RunEvent =
   | { type: 'node.skipped'; node: string; reason: string }
   | { type: 'gate.result'; node: string; ok: boolean; exitCode: number | null; output: string; durationMs: number }
   | { type: 'loop'; check: string; fixNode: string; n: number }
+  /** Spend of a manager's own plan/review calls, recorded as it happens (the step may pause before it finishes). */
+  | { type: 'manager.cost'; node: string; costUsd: number }
+  /** A skipped step is queued again (its failed upstream was redone). */
+  | { type: 'node.requeued'; node: string; reason: string }
   | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number }
   | { type: 'approval.requested'; node: string }
   | { type: 'approval.resolved'; node: string; approved: boolean; by?: string }
@@ -196,6 +229,8 @@ export interface RunState {
   /** Paths the setup command left in the worktree; kept out of agent commits and diffs. */
   setupArtifacts: string[];
   nodes: Record<string, NodeState>;
+  /** Work steps spawned at run time (node.spawned events, not counting plan approvals). */
+  spawned: number;
   costUsd: number;
   startedAt: number;
   finishedAt?: number;
@@ -232,6 +267,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         nodes: Object.fromEntries(
           e.pipeline.nodes.map((n) => [n.id, { status: 'queued', attempts: 0, costUsd: 0, loops: 0 } as NodeState]),
         ),
+        spawned: 0,
         costUsd: 0,
         startedAt: ts,
         notes: [],
@@ -240,6 +276,17 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       continue;
     }
     if (!s) continue;
+    if (e.type === 'node.spawned') {
+      s.pipeline = {
+        ...s.pipeline,
+        nodes: [...s.pipeline.nodes, e.node],
+        edges: [...s.pipeline.edges, ...e.after.map((from) => ({ from, to: e.node.id }))],
+      };
+      s.nodes[e.node.id] = { status: 'queued', attempts: 0, costUsd: 0, loops: 0 };
+      // plan approvals are control steps, not work: they do not use up the spawn budget
+      if (e.node.kind !== 'approval') s.spawned += 1;
+      continue;
+    }
     const n = 'node' in e && e.node ? s.nodes[e.node] : undefined;
     switch (e.type) {
       case 'run.resumed':
@@ -321,6 +368,16 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'node.amended':
         s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: [x.guidance, e.guidance].filter(Boolean).join('\n').slice(-2000) } : {}) } : x)) };
+        break;
+      case 'manager.cost':
+        if (n) n.costUsd += e.costUsd;
+        s.costUsd += e.costUsd;
+        break;
+      case 'node.requeued':
+        if (n) {
+          n.status = 'queued';
+          n.error = undefined;
+        }
         break;
       case 'consult':
         (s.talk ??= []).push({ from: e.from, to: e.to, question: e.question, answer: e.answer, round: e.round, ts });

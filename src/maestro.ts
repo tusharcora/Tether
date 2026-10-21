@@ -6,7 +6,7 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
-import { blankPipeline, customBot, detectTestCommand, extractJson, makeStep, relink, stepChoices, type StepType } from './composer.js';
+import { blankPipeline, customBot, detectTestCommand, extractJson, makeStep, relink, proposableSteps, type StepType } from './composer.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline } from './config.js';
 import { CREW } from './bots.js';
 import { BUILTIN_IDS } from './crew.js';
@@ -91,7 +91,7 @@ export function pipelineFromReply(raw: { name?: unknown; steps?: unknown; maxCos
   if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a usable workflow name`);
   if (!Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > 8) throw new Error('a workflow needs 1 to 8 steps');
   const tests = detectTestCommand(o.repo);
-  const allowed = new Set(stepChoices());
+  const allowed = new Set(proposableSteps()); // managers are authored by hand, not proposed by Maestro
   const p = blankPipeline(name);
   if (o.base) p.settings = { ...o.base.settings };
   for (const s of raw.steps) {

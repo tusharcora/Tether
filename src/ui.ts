@@ -4,7 +4,8 @@
  * Everything degrades: truecolor → 256 → 16 → plain text. When stdout is not a TTY, or NO_COLOR is set,
  * nothing animates and nothing is coloured, so piping and CI logs stay clean.
  */
-import type { RunState } from './types.js';
+import type { PipelineNode, RunState } from './types.js';
+import { CREW, crewFor } from './bots.js'; // used lazily: bots.ts also imports this file
 
 // ---------- capability detection ----------
 export type ColorLevel = 0 | 1 | 2 | 3;
@@ -395,11 +396,31 @@ export interface BoardInput {
   now: number;
 }
 
-const nodeLabel = (n: RunState['pipeline']['nodes'][number]) => n.title ?? n.role ?? n.kind;
+const nodeLabel = (n: RunState['pipeline']['nodes'][number]) => (n.spawn ? spawnedLabel(n) : n.title ?? n.role ?? n.kind);
+
+/** Display order for lists: each spawned step sits right after its manager (and its earlier siblings), the rest keep their order. */
+export function underManagers(nodes: PipelineNode[]): PipelineNode[] {
+  const kids = new Map<string, PipelineNode[]>();
+  for (const n of nodes) if (n.spawn) kids.set(n.spawn.parent, [...(kids.get(n.spawn.parent) ?? []), n]);
+  const out: PipelineNode[] = [];
+  const add = (n: PipelineNode) => {
+    out.push(n);
+    for (const k of kids.get(n.id) ?? []) add(k);
+  };
+  for (const n of nodes) if (!n.spawn || !nodes.some((m) => m.id === n.spawn!.parent)) add(n);
+  return out;
+}
+
+/** A step a manager handed out: `↳ <bot name>` plus its title. Other steps get their plain label. */
+export function spawnedLabel(n: PipelineNode): string {
+  if (!n.spawn) return n.title ?? n.role ?? n.kind;
+  const bot = CREW[crewFor(n)]?.name ?? n.role ?? 'bot';
+  return n.title ? `↳ ${bot} · ${n.title}` : `↳ ${bot}`;
+}
 
 /** Pure: produce the board for one frame. Kept separate from I/O so it can be tested and screenshotted. */
 export function renderBoard({ state: s, frame, now }: BoardInput, width = caps.cols): string[] {
-  const nodes = s.pipeline.nodes;
+  const nodes = underManagers(s.pipeline.nodes);
   const inner = width - 4;
   const labelW = Math.min(18, Math.max(...nodes.map((n) => vlen(nodeLabel(n))), 6));
   const kindW = Math.max(...nodes.map((n) => vlen(n.kind === 'agent' ? n.agent ?? 'agent' : n.kind)), 5);

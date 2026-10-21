@@ -3,6 +3,10 @@ import { askable } from './consult.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
 
 export const DEFAULT_ROLE_PROMPTS: Record<string, string> = {
+  manager:
+    'You coordinate: you split the task into pieces and hand each to the right bot, then judge what comes back. ' +
+    'Never edit files or run commands that change anything. Reply ONLY with the JSON the engine asks for, with no ' +
+    'other text: for a plan {"tasks":[…]}; for a review {"decision":"accept"}, {"redo":[…]} or {"more":[…]}.',
   planner:
     'Analyse the task and the repository, then write a concrete, ordered implementation plan: files to change, ' +
     'approach, risks, and how to verify. Do not modify any files.',
@@ -68,6 +72,13 @@ export function buildPrompt(i: PromptInput): string {
 
   const role = node.prompt ?? DEFAULT_ROLE_PROMPTS[node.role ?? ''] ?? '';
   if (role) parts.push(`# Your role\n${role}`);
+  const c = node.spawn?.contract;
+  if (node.spawn && c) {
+    const lines = [`Goal: ${c.goal}`];
+    if (c.expected) lines.push(`Expected output: ${c.expected}`);
+    lines.push(`Handed to you by ${node.spawn.parent}.`);
+    parts.push(`# Your assignment\n${lines.join('\n')}`);
+  }
   if (node.guidance) parts.push(`# Guidance from the person in charge (follow it)\n${node.guidance}`);
   if (node.verdict && !/VERDICT:/.test(role)) {
     parts.push('End your answer with exactly one line: `VERDICT: PASS` or `VERDICT: FAIL`.');
@@ -77,13 +88,13 @@ export function buildPrompt(i: PromptInput): string {
 
   parts.push(`# Task\n${state.task}`);
 
-  const upstream = p.settings.pipeMode === 'direct' ? parentsOf(p, node.id) : ancestorsOf(p, node.id);
   const byId = new Map(p.nodes.map((n) => [n.id, n]));
+  const upstream = node.spawn ? node.spawn.contract.context : p.settings.pipeMode === 'direct' ? parentsOf(p, node.id) : ancestorsOf(p, node.id);
   const blocks: string[] = [];
   for (const id of upstream) {
-    const un = byId.get(id)!;
+    const un = byId.get(id);
     const out = state.nodes[id]?.output;
-    if (un.kind === 'agent' && out) blocks.push(`## ${label(un)}\n${clip(out, 12_000)}`);
+    if (un?.kind === 'agent' && out) blocks.push(`## ${label(un)}\n${clip(out, 12_000)}`);
   }
   if (blocks.length) parts.push(`# Upstream output\n${blocks.join('\n\n')}`);
 

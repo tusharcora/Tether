@@ -22,10 +22,17 @@ export interface Decision {
   detail: string;
 }
 
-/** The agent step to blame: the failed step itself, or the writer a failing check keeps looping back to. */
+/**
+ * The agent step to blame: the failed step itself, or the writer a failing check keeps looping back to.
+ * A manager that failed only because a step it spawned failed points at that step.
+ */
 export function culprit(s: RunState): PipelineNode | undefined {
   const failed = s.pipeline.nodes.filter((n) => s.nodes[n.id]?.status === 'error');
   for (const n of failed) {
+    if (n.manager && s.nodes[n.id]?.error?.startsWith('spawned step(s) failed')) {
+      const kid = failed.find((k) => k.spawn?.parent === n.id && k.kind === 'agent');
+      if (kid) return kid;
+    }
     if (n.kind === 'agent' && !n.verdict && !n.fixNode) return n;
     const fix = n.fixNode ? s.pipeline.nodes.find((x) => x.id === n.fixNode) : undefined;
     if (fix?.kind === 'agent') return fix;

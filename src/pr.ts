@@ -262,7 +262,7 @@ export async function startPrRun(d: PrDeps, ref: PrRef, o: PrRunOpts): Promise<{
   const info = await fetchPr(ref, exec);
   const repoDir = o.repoDir ?? (await localRepo(d.home, ref, exec));
   const pipeline = pipelineFor(d.home, o.workflow, repoDir);
-  if (info.fork && !o.trustCode && pipeline.nodes.some((n) => n.kind === 'gate' || pipeline.settings.setup)) {
+  if (info.fork && !o.trustCode && pipeline.nodes.some((n) => n.kind === 'gate' || n.manager || pipeline.settings.setup)) {
     throw new Error(`#${ref.number} comes from a fork and "${o.workflow}" would run commands from its code on your machine. Use a read-only workflow (like full-review), or pass --trust-code if you have read the diff.`);
   }
   const prev = alreadyRan(d.home, ref, info.headSha);

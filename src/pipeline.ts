@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { AdapterRegistry } from './adapters/index.js';
+import { CREW } from './bots.js';
+import { STEP_TYPES } from './composer.js';
 import {
   DEFAULT_SETTINGS,
   SUPPORTED_MODES,
@@ -60,6 +62,8 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
       command: str(rn.command),
       fixNode: str(rn.fixNode),
       maxLoops: num(rn.maxLoops),
+      manager: bool(rn.manager),
+      roster: Array.isArray(rn.roster) ? rn.roster.filter((r): r is string => typeof r === 'string' && r.length > 0) : undefined,
     };
     if (isObj(rn.mock)) n.mock = rn.mock as PipelineNode['mock'];
     return n;
@@ -79,6 +83,10 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
     pipeMode: rs.pipeMode === 'direct' ? 'direct' : 'ancestors',
     setup: str(rs.setup),
     consult: rs.consult === true ? 2 : num(rs.consult) ? Math.min(4, Math.max(0, Math.trunc(num(rs.consult)!))) : undefined,
+    maxDepth: num(rs.maxDepth) !== undefined ? Math.min(5, Math.max(1, Math.trunc(num(rs.maxDepth)!))) : undefined,
+    maxSpawn: num(rs.maxSpawn) !== undefined ? Math.min(30, Math.max(1, Math.trunc(num(rs.maxSpawn)!))) : undefined,
+    planApproval: bool(rs.planApproval),
+    allowWrites: bool(rs.allowWrites),
   };
   return { name, version: 1, mode, nodes, edges, settings };
 }
@@ -180,6 +188,14 @@ export function preflight(p: Pipeline, registry?: AdapterRegistry): Issue[] {
     if (n.kind === 'gate') {
       gates++;
       if (!n.command) err('gate needs a command', n.id);
+    }
+    if (n.manager) {
+      if (n.kind !== 'agent') err('only agent nodes can be managers', n.id);
+      if (n.fixNode) warn('a manager with a fixNode may spawn work that the fix loop then re-runs', n.id);
+    }
+    for (const r of n.roster ?? []) {
+      if (!CREW[r] && !(STEP_TYPES as string[]).includes(r)) err(`roster entry "${r}" is not a known bot or role`, n.id);
+      else if (['tester', 'approval', 'manager'].includes(r) || ['orchestrator', 'gate', 'approval'].includes(CREW[r]?.def?.kind ?? '')) err(`roster entry "${r}" cannot take hand-offs (gates, approvals, managers and orchestrators are not workers)`, n.id);
     }
     if (n.fixNode) {
       const fx = byId.get(n.fixNode);

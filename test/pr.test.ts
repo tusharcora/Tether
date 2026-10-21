@@ -109,6 +109,16 @@ describe('running a PR', () => {
     expect(ok.runId).toBe('r2');
   });
 
+  it('refuses a fork PR for a workflow with a manager step', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'aorch-pr-'));
+    const fork = JSON.stringify({ ...JSON.parse(ghView), isCrossRepository: true });
+    const engine = { start: async () => 'r3', wait: async () => state() };
+    const { writePipeline } = await import('../src/config.js');
+    const { normalizePipeline } = await import('../src/pipeline.js');
+    writePipeline(home, normalizePipeline({ name: 'teamwork', nodes: [{ id: 'lead', role: 'manager', manager: true, readOnly: true }, { id: 'review', role: 'reviewer', readOnly: true }], edges: [{ from: 'lead', to: 'review' }] }));
+    await expect(startPrRun({ home, engine: engine as never, exec: fakeExec([], { view: fork }) }, parsePr('acme/api#44'), { workflow: 'teamwork', repoDir: home })).rejects.toThrow(/fork/);
+  });
+
   it('comment failures are reported, not thrown', async () => {
     await expect(postComment(parsePr('acme/api#1'), 'x', async () => ({ code: 1, stdout: '', stderr: 'HTTP 403' }))).rejects.toThrow(/403/);
   });

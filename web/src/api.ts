@@ -77,6 +77,12 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       };
     case 'node.skipped':
       return { text: `${nameOf(e.node)} skipped — ${e.reason}`, tone: 'skipped' };
+    case 'node.spawned':
+      return { text: e.node.kind === 'approval' ? `${nameOf(e.parent)} asks for plan approval (${e.node.id})` : `${nameOf(e.parent)} hands ${e.node.id} to ${e.node.role ?? 'agent'}: ${e.node.spawn?.contract.goal ?? ''}`, tone: 'info' };
+    case 'node.requeued':
+      return { text: `${nameOf(e.node)} queued again — ${e.reason}`, tone: 'wait' };
+    case 'manager.cost':
+      return undefined;
     case 'gate.result':
       return { text: `${nameOf(e.node)} gate ${e.ok ? 'passed' : `failed (exit ${e.exitCode})`}`, tone: e.ok ? 'done' : 'error' };
     case 'loop':

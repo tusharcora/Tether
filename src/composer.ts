@@ -12,8 +12,8 @@ import { failureBrief } from './supervisor.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
 
 // ---------- step library ----------
-export type StepType = 'planner' | 'architect' | 'coder' | 'tester' | 'reviewer' | 'approval';
-export const STEP_TYPES: StepType[] = ['planner', 'architect', 'coder', 'tester', 'reviewer', 'approval'];
+export type StepType = 'planner' | 'architect' | 'coder' | 'tester' | 'reviewer' | 'approval' | 'manager';
+export const STEP_TYPES: StepType[] = ['planner', 'architect', 'coder', 'tester', 'reviewer', 'approval', 'manager'];
 
 export const STEP_BLURB: Record<StepType, string> = {
   planner: 'read-only · plans the change',
@@ -22,6 +22,7 @@ export const STEP_BLURB: Record<StepType, string> = {
   tester: 'gate · runs a command; failures loop back to the coder',
   reviewer: 'read-only · reads the diff, ends with VERDICT: PASS/FAIL',
   approval: 'human sign-off; pauses the run durably',
+  manager: 'read-only · plans the work, hands it to other bots, reviews what comes back',
 };
 
 /** A custom (non built-in) bot, if this id names one. */
@@ -33,6 +34,11 @@ export function customBot(id: string): BotDef | undefined {
 /** Everything that can be added as a step: the built-in step types, then your own bots (not orchestrators). */
 export function stepChoices(): string[] {
   return [...STEP_TYPES, ...Object.values(CREW).flatMap((c) => (c.def && !BUILTIN_IDS.has(c.def.id) && c.def.kind !== 'orchestrator' ? [c.def.id] : []))];
+}
+
+/** Step types a model may propose (Maestro, compose): everything except `manager`, which is authored by hand. */
+export function proposableSteps(): string[] {
+  return stepChoices().filter((t) => t !== 'manager');
 }
 
 /** One line on what a step is, for editors. */
@@ -95,6 +101,8 @@ function makeBuiltinStep(type: StepType, p: Pipeline, agent?: string, testComman
       return { ...base, kind: 'agent', role: 'reviewer', ...who, readOnly: true, verdict: true, includeDiff: true, maxLoops: 2 };
     case 'approval':
       return { ...base, kind: 'approval', title: 'approve' };
+    case 'manager':
+      return { ...base, kind: 'agent', role: 'manager', ...who, readOnly: true, manager: true };
   }
 }
 
@@ -141,7 +149,7 @@ export function blankPipeline(name: string): Pipeline {
   return { name, version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 4, nodeTimeoutMs: 600_000, pipeMode: 'ancestors', maxCostUsd: 5, consult: 2 } };
 }
 
-export type Template = 'feature' | 'bugfix' | 'refactor' | 'docs' | 'review' | 'research';
+export type Template = 'feature' | 'bugfix' | 'refactor' | 'docs' | 'review' | 'research' | 'team';
 export const TEMPLATES: Record<Template, { label: string; steps: StepType[] }> = {
   feature: { label: 'new feature · plan → design → code → tests → review → approve', steps: ['planner', 'architect', 'coder', 'tester', 'reviewer', 'approval'] },
   bugfix: { label: 'bug fix · code → tests → review', steps: ['coder', 'tester', 'reviewer'] },
@@ -149,6 +157,7 @@ export const TEMPLATES: Record<Template, { label: string; steps: StepType[] }> =
   docs: { label: 'docs · plan → write → review', steps: ['planner', 'coder', 'reviewer'] },
   review: { label: 'code review · reviewer only', steps: ['reviewer'] },
   research: { label: 'research · planner only', steps: ['planner'] },
+  team: { label: 'team · a manager hands out the work → tests → review → approve', steps: ['manager', 'tester', 'reviewer', 'approval'] },
 };
 
 export function fromTemplate(t: Template, name: string, agent?: string, testCommand?: string): Pipeline {
@@ -157,6 +166,8 @@ export function fromTemplate(t: Template, name: string, agent?: string, testComm
     if (s === 'tester' && !testCommand) continue; // no known test command: lean on the reviewer
     p.nodes.push(makeStep(s, p, agent, testCommand));
   }
+  // the team workflow exists so a manager can hand out real work, including file edits (still approved first)
+  if (t === 'team') p.settings.allowWrites = true;
   return relink(p);
 }
 
@@ -287,7 +298,7 @@ export async function composePipeline(task: string, o: ComposeOpts): Promise<Com
     const raw = extractJson(res.output || text) as { steps?: unknown; testCommand?: unknown; rationale?: unknown };
     if (!Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > 8) throw new Error('bad step list');
     const steps = raw.steps.map((s) => String(s).toLowerCase());
-    const allowed = new Set(stepChoices());
+    const allowed = new Set(proposableSteps());
     for (const s of steps) if (!allowed.has(s)) throw new Error(`unknown step type "${s}"`);
     // never trust a model-supplied shell command beyond what the repo itself implies
     const cmd = tests;

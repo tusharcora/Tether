@@ -4,7 +4,8 @@ import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
 import { commitAll, commitFiles, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, resolveTarget, stripAsks, type Ask } from './consult.js';
-import { parentsOf, preflight } from './pipeline.js';
+import { childrenOf, parentsOf, preflight } from './pipeline.js';
+import { limitsOf, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, toNode, validatePlan, type PlanTask } from './handoff.js';
 import { buildPrompt } from './prompt.js';
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
@@ -34,6 +35,11 @@ export interface StartInput {
 }
 
 const MAX_OUTPUT = 200_000;
+/** Times a manager may send one spawned step back. */
+const MAX_REDOS = 2;
+/** Canvas spacing for spawned steps. */
+const SPAWN_DX = 260;
+const SPAWN_DY = 160;
 const tail = (s: string, n: number) => (s.length > n ? s.slice(s.length - n) : s);
 
 interface NodeOutcome {
@@ -44,6 +50,8 @@ interface NodeOutcome {
 export class Engine {
   private active = new Map<string, AbortController>();
   private running = new Map<string, Promise<void>>();
+  /** When each live run's current execution pass began, for the wall-clock limit (managers check it too). */
+  private wallStart = new Map<string, number>();
 
   constructor(
     readonly store: Store,
@@ -160,12 +168,14 @@ export class Engine {
       .finally(() => {
         this.active.delete(runId);
         this.running.delete(runId);
+        this.wallStart.delete(runId);
       });
     this.running.set(runId, p);
   }
 
   private async execute(runId: string, signal: AbortSignal): Promise<void> {
     const wallStart = Date.now();
+    this.wallStart.set(runId, wallStart);
     let state = this.state(runId);
     const pipe = state.pipeline;
     const st = pipe.settings;
@@ -196,39 +206,18 @@ export class Engine {
         return this.finish(runId, 'error', `budget exhausted ($${state.costUsd.toFixed(4)} of $${st.maxCostUsd})`);
       }
 
-      // A node whose upstream failed can never run.
-      let propagated = false;
-      for (const n of pipe.nodes) {
-        if (state.nodes[n.id]?.status !== 'queued') continue;
-        const bad = parentsOf(pipe, n.id).find((p) => ['error', 'skipped'].includes(state.nodes[p]?.status ?? ''));
-        if (bad) {
-          this.store.append(runId, { type: 'node.skipped', node: n.id, reason: `upstream "${bad}" did not succeed` });
-          propagated = true;
-        }
-      }
-      if (propagated) continue;
-
-      const ready = pipe.nodes.filter(
-        (n) =>
-          state.nodes[n.id]?.status === 'queued' &&
-          parentsOf(pipe, n.id).every((p) => state.nodes[p]?.status === 'done'),
-      );
-      if (!ready.length) break;
-
-      for (const n of ready.filter((x) => x.kind === 'approval')) {
-        this.store.append(runId, { type: 'approval.requested', node: n.id });
-        if (state.autoApprove) this.store.append(runId, { type: 'approval.resolved', node: n.id, approved: true, by: 'auto' });
-      }
-      const work = ready.filter((x) => x.kind !== 'approval');
-      // Read-only agents without a fix loop can't disturb each other: run those concurrently.
-      const concurrent = work.filter((n) => n.kind === 'agent' && n.readOnly && !n.fixNode);
-      const serial = work.filter((n) => !concurrent.includes(n));
-
-      await pool(concurrent, st.parallel, (n) => this.runNode(runId, n, signal));
-      if (signal.aborted) return this.finish(runId, 'stopped');
-      for (const n of serial) {
-        const out = await this.runNode(runId, n, signal);
-        if (out.aborted || signal.aborted) return this.finish(runId, 'stopped');
+      const r = await this.stepFrontier(runId, signal);
+      if (r === 'stopped') return this.finish(runId, 'stopped');
+      if (r === 'idle') {
+        // A manager left running while its plan approval waited: if nothing of its own is awaiting any more
+        // (the plan was approved or rejected while the run was live), queue it again so it carries on.
+        const now = this.state(runId);
+        const stalled = now.pipeline.nodes.filter(
+          (n) => n.manager && now.nodes[n.id]?.status === 'running' && !this.spawnedBy(now, n.id).some((k) => now.nodes[k.id]?.status === 'awaiting'),
+        );
+        for (const m of stalled) this.store.append(runId, { type: 'node.requeued', node: m.id, reason: 'its plan approval was resolved' });
+        if (stalled.length) continue;
+        break;
       }
     }
 
@@ -236,10 +225,66 @@ export class Engine {
     const nodes = Object.values(state.nodes);
     if (nodes.some((n) => n.status === 'awaiting')) return this.finish(runId, 'paused');
     if (nodes.some((n) => n.status === 'error' || n.status === 'skipped')) {
-      const failed = pipe.nodes.find((n) => state.nodes[n.id]?.status === 'error');
+      const failed = state.pipeline.nodes.find((n) => state.nodes[n.id]?.status === 'error');
       return this.finish(runId, 'error', failed ? `node "${failed.id}" failed: ${state.nodes[failed.id]?.error ?? 'unknown error'}` : undefined);
     }
+    // fail closed: a step that never finished must not let the run report success
+    const unfinished = state.pipeline.nodes.filter((n) => ['running', 'queued'].includes(state.nodes[n.id]?.status ?? ''));
+    if (unfinished.length) return this.finish(runId, 'error', `run ended with unfinished steps: ${unfinished.map((n) => n.id).join(', ')}`);
     return this.finish(runId, 'done');
+  }
+
+  /**
+   * One scheduler pass: propagate skips, find ready nodes, request approvals, run the
+   * concurrent read-only batch then the serial nodes. When `only` is given, only those
+   * node ids are considered.
+   */
+  private async stepFrontier(runId: string, signal: AbortSignal, only?: Set<string>): Promise<'progress' | 'idle' | 'stopped'> {
+    const state = this.state(runId);
+    const pipe = state.pipeline;
+    const st = pipe.settings;
+    // Spawned steps belong to their manager: only its own frontier (`only`) runs them.
+    const spawnedIds = new Set(pipe.nodes.filter((n) => n.spawn).map((n) => n.id));
+    const inScope = (id: string) => (only ? only.has(id) : !spawnedIds.has(id));
+
+    // A node whose upstream failed can never run.
+    let propagated = false;
+    for (const n of pipe.nodes) {
+      if (!inScope(n.id)) continue;
+      if (state.nodes[n.id]?.status !== 'queued') continue;
+      const bad = parentsOf(pipe, n.id).find((p) => ['error', 'skipped'].includes(state.nodes[p]?.status ?? ''));
+      if (bad) {
+        this.store.append(runId, { type: 'node.skipped', node: n.id, reason: `upstream "${bad}" did not succeed` });
+        propagated = true;
+      }
+    }
+    if (propagated) return 'progress';
+
+    const ready = pipe.nodes.filter(
+      (n) =>
+        inScope(n.id) &&
+        state.nodes[n.id]?.status === 'queued' &&
+        parentsOf(pipe, n.id).every((p) => state.nodes[p]?.status === 'done'),
+    );
+    if (!ready.length) return 'idle';
+
+    for (const n of ready.filter((x) => x.kind === 'approval')) {
+      this.store.append(runId, { type: 'approval.requested', node: n.id });
+      if (state.autoApprove) this.store.append(runId, { type: 'approval.resolved', node: n.id, approved: true, by: 'auto' });
+    }
+    const work = ready.filter((x) => x.kind !== 'approval');
+    // Read-only agents without a fix loop can't disturb each other: run those concurrently.
+    // A manager runs its spawned (possibly writing) steps itself, so it never shares the worktree with a read-only batch.
+    const concurrent = work.filter((n) => n.kind === 'agent' && n.readOnly && !n.fixNode && !n.manager);
+    const serial = work.filter((n) => !concurrent.includes(n));
+
+    await pool(concurrent, st.parallel, (n) => this.runNode(runId, n, signal));
+    if (signal.aborted) return 'stopped';
+    for (const n of serial) {
+      const out = await this.runNode(runId, n, signal);
+      if (out.aborted || signal.aborted) return 'stopped';
+    }
+    return 'progress';
   }
 
   private state(runId: string): RunState {
@@ -280,6 +325,7 @@ export class Engine {
 
   private async runNode(runId: string, node: PipelineNode, signal: AbortSignal): Promise<NodeOutcome> {
     try {
+      if (node.manager && node.kind === 'agent') return await this.runManager(runId, node, signal);
       if (node.kind === 'gate') return await this.runCheck(runId, node, signal);
       if (node.verdict) return await this.runCheck(runId, node, signal);
       const r = await this.runAgentOnce(runId, node, signal);
@@ -365,6 +411,332 @@ export class Engine {
         return { ok: false };
       }
     }
+  }
+
+  // ---------- managers ----------
+
+  /** Steps this manager has spawned so far, in spawn order. */
+  private spawnedBy(s: RunState, managerId: string): PipelineNode[] {
+    return s.pipeline.nodes.filter((n) => n.spawn?.parent === managerId);
+  }
+
+  /**
+   * A manager step: plan hand-offs, spawn them, let them run (stepFrontier scoped to its own steps), review the
+   * results and send work back or add more, within the run's limits. The manager itself never edits files.
+   * While a spawned approval is awaiting it returns without finishing, so the run pauses; on resume it picks up
+   * its existing steps instead of planning again.
+   */
+  private async runManager(runId: string, node: PipelineNode, signal: AbortSignal): Promise<NodeOutcome> {
+    const t0 = Date.now();
+    const first = this.state(runId);
+    const attempt = (first.nodes[node.id]?.attempts ?? 0) + 1;
+    this.store.append(runId, { type: 'node.started', node: node.id, attempt });
+    const settings = first.pipeline.settings;
+    const { maxDepth } = limitsOf(first.pipeline);
+    const depth = (node.spawn?.depth ?? 0) + 1;
+    const roster = rosterOf(node);
+    const notes: string[] = [];
+    let lastReview = '';
+    let reviewCalls = 0;
+
+    const finish = (status: 'done' | 'error', error?: string): NodeOutcome => {
+      this.store.append(runId, {
+        type: 'node.finished',
+        node: node.id,
+        status,
+        output: tail(managerSummary(this.state(runId), node, this.spawnedBy(this.state(runId), node.id), notes, lastReview), MAX_OUTPUT),
+        error,
+        durationMs: Date.now() - t0,
+        attempt,
+      });
+      return { ok: status === 'done' };
+    };
+    const overBudget = (): string | undefined => {
+      if (settings.maxCostUsd === undefined) return undefined;
+      const spent = this.state(runId).costUsd;
+      return spent >= settings.maxCostUsd ? `budget exhausted ($${spent.toFixed(4)} of $${settings.maxCostUsd})` : undefined;
+    };
+    const overClock = (): string | undefined => {
+      const since = this.wallStart.get(runId);
+      return settings.wallClockMs !== undefined && since !== undefined && Date.now() - since > settings.wallClockMs ? 'wall-clock limit reached' : undefined;
+    };
+    /** Out of money or time: skip this manager's queued steps and end it. */
+    const halted = (why: string): NodeOutcome => {
+      const s = this.state(runId);
+      for (const k of this.spawnedBy(s, node.id)) if (s.nodes[k.id]?.status === 'queued') this.store.append(runId, { type: 'node.skipped', node: k.id, reason: why.startsWith('budget') ? 'budget exhausted' : why });
+      return finish('error', why);
+    };
+    const limit = () => overBudget() ?? overClock();
+    const ask = (phase: 'plan' | 'review', round: number, prompt: string) => this.askManager(runId, node, phase, round, prompt, signal);
+    /** Parse-free checks on a batch of tasks: the plan rules plus id clashes with steps that already exist. */
+    const vet = (tasks: PlanTask[]): string | undefined => {
+      const s = this.state(runId);
+      const why = validatePlan(tasks, { manager: node, state: s, roster, allowWrite: settings.allowWrites === true, used: this.spawnUsed(s) });
+      if (why) return why;
+      const taken = new Set(s.pipeline.nodes.map((n) => n.id));
+      const approval = this.nextApprovalId(s, node);
+      for (const t of tasks) {
+        const full = `${node.id}-${t.id}`;
+        if (taken.has(full) || full === approval) return `task id "${t.id}" is already in use (${full}); pick another`;
+      }
+      return undefined;
+    };
+    /** In a follow-up batch, `context` may name earlier spawned steps by their local id. */
+    const localize = (tasks: PlanTask[]): PlanTask[] => {
+      const earlier = new Set(this.spawnedBy(this.state(runId), node.id).map((k) => k.id));
+      const local = new Set(tasks.map((t) => t.id));
+      return tasks.map((t) => ({ ...t, context: t.context.map((c) => (!local.has(c) && earlier.has(`${node.id}-${c}`) ? `${node.id}-${c}` : c)) }));
+    };
+    const spawn = (tasks: PlanTask[]) => {
+      const s = this.state(runId);
+      const needsApproval = settings.planApproval ?? tasks.some((t) => t.mode === 'write');
+      const approvalId = needsApproval ? this.nextApprovalId(s, node) : undefined;
+      const batch: { node: PipelineNode; after: string[] }[] = [];
+      if (approvalId) {
+        const approval: PipelineNode = {
+          id: approvalId,
+          kind: 'approval',
+          title: 'approve plan',
+          x: node.x,
+          y: node.y,
+          spawn: { parent: node.id, depth, contract: { to: 'approval', goal: `approve the plan of ${node.id}`, context: [], mode: 'read', after: [] } },
+        };
+        batch.push({ node: approval, after: [] });
+      }
+      const siblings = tasks.map((t) => t.id);
+      for (const t of tasks) {
+        const draft = toNode(t, node, depth, undefined, siblings);
+        const bound = this.resolve({ ...s.pipeline, nodes: [draft] }).nodes[0]!;
+        const agent = bound.agent ?? node.agent;
+        const model = bound.model ?? (agent === node.agent ? node.model : undefined);
+        const script = node.mock?.spawned?.[t.id];
+        const child: PipelineNode = { ...bound, agent, ...(model ? { model } : {}), ...(script ? { mock: script } : {}) };
+        const after = [...child.spawn!.contract.after, ...(approvalId ? [approvalId] : [])];
+        batch.push({ node: child, after });
+      }
+      // lay them out below the manager, three to a row, after any it spawned before (the canvas shows them apart)
+      const already = this.spawnedBy(s, node.id).length;
+      batch.forEach((b, i) => {
+        const k = already + i;
+        b.node = { ...b.node, x: node.x + SPAWN_DX * (k % 3), y: node.y + SPAWN_DY * (1 + Math.floor(k / 3)) };
+      });
+      // built in full first, so a fault cannot leave a half-spawned plan behind
+      for (const b of batch) this.store.append(runId, { type: 'node.spawned', node: b.node, parent: node.id, depth, after: b.after });
+    };
+    /** Run the spawned steps until nothing more is ready. */
+    const work = async (): Promise<'idle' | 'paused' | 'aborted' | { error: string }> => {
+      for (;;) {
+        if (signal.aborted) return 'aborted';
+        const s = this.state(runId);
+        const kids = this.spawnedBy(s, node.id);
+        if (kids.some((k) => s.nodes[k.id]?.status === 'awaiting')) return 'paused';
+        const queued = kids.filter((k) => s.nodes[k.id]?.status === 'queued');
+        const late = overClock();
+        if (late) return { error: late };
+        const broke = overBudget();
+        if (broke && queued.length) return { error: broke };
+        const r = await this.stepFrontier(runId, signal, new Set(kids.map((k) => k.id)));
+        if (r === 'stopped') return 'aborted';
+        if (r === 'idle') return 'idle';
+      }
+    };
+    /** After work: undefined to carry on, or what runManager should return. */
+    const afterWork = (w: Awaited<ReturnType<typeof work>>): NodeOutcome | undefined => {
+      if (w === 'aborted') return { ok: false, aborted: true };
+      if (w === 'paused') return { ok: true };
+      if (typeof w === 'object') return halted(w.error);
+      const s = this.state(runId);
+      const refused = this.spawnedBy(s, node.id).find((k) => k.kind === 'approval' && s.nodes[k.id]?.status === 'error');
+      if (refused) return finish('error', `plan rejected (${refused.id} was not approved)`);
+      return undefined;
+    };
+
+    // 1. Plan, unless this manager already has spawned steps (a resumed run).
+    if (!this.spawnedBy(first, node.id).length) {
+      if (depth > maxDepth) return finish('error', `manager plan rejected: spawn depth ${depth} exceeds maxDepth ${maxDepth}`);
+      let rejection: string | undefined;
+      let tasks: PlanTask[] | undefined;
+      for (let round = 1; round <= 2 && !tasks; round++) {
+        const broke = limit();
+        if (broke) return halted(broke);
+        const now = this.state(runId);
+        const r = await ask('plan', round, planPrompt(now, node, roster, rejection, this.spawnUsed(now)));
+        if (r.aborted) return { ok: false, aborted: true };
+        if (!r.ok) return finish('error', `manager failed: ${r.error ?? 'no answer'}`);
+        const parsed = parsePlan(r.output);
+        rejection = 'error' in parsed ? parsed.error : vet(parsed.tasks);
+        if (!rejection && !('error' in parsed)) tasks = parsed.tasks;
+      }
+      if (!tasks) return finish('error', `manager plan rejected: ${rejection}`);
+      spawn(tasks);
+    }
+
+    // 2. Work.
+    const stop = afterWork(await work());
+    if (stop) return stop;
+
+    // 3. Review: accept, redo or more, at most 3 rounds.
+    type Decision = { accept: true } | { redo: { id: string; reason: string }[] } | { more: PlanTask[] };
+    const review = async (round: number): Promise<Decision | 'aborted'> => {
+      let extra = '';
+      let reason = '';
+      for (let tryN = 1; tryN <= 2; tryN++) {
+        const s = this.state(runId);
+        const r = await ask('review', ++reviewCalls, reviewPrompt(s, node, this.spawnedBy(s, node.id), round) + extra);
+        if (r.aborted) return 'aborted';
+        if (!r.ok) reason = `no answer (${r.error ?? 'unknown error'})`;
+        else {
+          lastReview = r.output;
+          const d = parseReview(r.output);
+          if ('error' in d) reason = d.error;
+          else if ('more' in d) {
+            const more = localize(d.more);
+            const why = vet(more);
+            if (!why) return { more };
+            reason = why;
+          } else return d;
+        }
+        extra = `\n\nYour previous reply was rejected: ${reason}\nAnswer again with ONLY one JSON object.`;
+      }
+      notes.push(`review reply could not be used (${reason}); treated as accept`);
+      return { accept: true };
+    };
+
+    for (let round = 1; round <= 3; round++) {
+      const broke = limit();
+      if (broke) return halted(broke);
+      const d = await review(round);
+      if (d === 'aborted') return { ok: false, aborted: true };
+      if ('accept' in d) break;
+      if ('redo' in d) {
+        let did = 0;
+        for (const item of d.redo) {
+          const kids = this.spawnedBy(this.state(runId), node.id);
+          const child = kids.find((k) => k.kind === 'agent' && (k.id === item.id || k.id === `${node.id}-${item.id}`));
+          if (!child) {
+            notes.push(`redo of "${item.id}" ignored: not a step ${node.id} spawned`);
+            continue;
+          }
+          const done = this.store.eventsNoChunks(runId).filter((e) => e.event.type === 'loop' && e.event.check === node.id && e.event.fixNode === child.id).length;
+          if (done >= MAX_REDOS) {
+            notes.push(`redo of ${child.id} ignored: it was already sent back ${MAX_REDOS} times`);
+            continue;
+          }
+          const now = this.state(runId);
+          const used = this.spawnUsed(now);
+          const { maxSpawn } = limitsOf(now.pipeline);
+          if (used >= maxSpawn) {
+            notes.push(`redo of ${child.id} refused: the spawn budget is used up (${used} of ${maxSpawn}, redos included)`);
+            continue;
+          }
+          const brokeNow = limit();
+          if (brokeNow) return halted(brokeNow);
+          this.store.append(runId, { type: 'loop', check: node.id, fixNode: child.id, n: done + 1 });
+          this.store.append(runId, { type: 'node.amended', node: child.id, guidance: `Redo requested by ${node.id}: ${item.reason}`.slice(0, 1000), reason: `redo requested by ${node.id}` });
+          const fresh = this.state(runId).pipeline.nodes.find((n) => n.id === child.id)!;
+          const r = await this.runAgentOnce(runId, fresh, signal);
+          if (r.aborted || signal.aborted) return { ok: false, aborted: true };
+          if (r.ok) this.requeueSkippedBelow(runId, node, child.id);
+          did++;
+        }
+        if (!did) {
+          notes.push('nothing left to redo; treated as accept');
+          break;
+        }
+        // steps that were skipped because the redone one had failed can run now
+        const after = afterWork(await work());
+        if (after) return after;
+      } else {
+        spawn(d.more);
+        const halt = afterWork(await work());
+        if (halt) return halt;
+      }
+      if (round === 3) notes.push('review limit reached (3 rounds); finished with the work as it stands');
+    }
+
+    // 4. Done. A spawned step that is still failed fails the manager, even if it accepted.
+    const s = this.state(runId);
+    const failed = this.spawnedBy(s, node.id).filter((k) => ['error', 'skipped'].includes(s.nodes[k.id]?.status ?? '')).map((k) => k.id);
+    if (failed.length) return finish('error', `spawned step(s) failed: ${failed.join(', ')}`);
+    return finish('done');
+  }
+
+  /** Spawn budget used so far in this run: spawned work steps plus every redo a manager asked for. */
+  private spawnUsed(s: RunState): number {
+    const managers = new Set(s.pipeline.nodes.filter((n) => n.manager).map((n) => n.id));
+    const redos = this.store.eventsNoChunks(s.id).filter((e) => e.event.type === 'loop' && managers.has(e.event.check)).length;
+    return s.spawned + redos;
+  }
+
+  /** After a redo succeeded: queue again the manager's steps that were skipped below it. */
+  private requeueSkippedBelow(runId: string, manager: PipelineNode, from: string): void {
+    const s = this.state(runId);
+    const mine = new Set(this.spawnedBy(s, manager.id).map((k) => k.id));
+    const seen = new Set<string>();
+    const stack = childrenOf(s.pipeline, from);
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (seen.has(id) || !mine.has(id)) continue;
+      seen.add(id);
+      stack.push(...childrenOf(s.pipeline, id));
+    }
+    for (const id of seen) if (s.nodes[id]?.status === 'skipped') this.store.append(runId, { type: 'node.requeued', node: id, reason: `${from} was redone` });
+  }
+
+  /** Id for the manager's next plan-approval step: `<id>-approve`, then `<id>-approve-2`, ... */
+  private nextApprovalId(s: RunState, node: PipelineNode): string {
+    const n = this.spawnedBy(s, node.id).filter((k) => k.kind === 'approval').length;
+    return n ? `${node.id}-approve-${n + 1}` : `${node.id}-approve`;
+  }
+
+  /** One plan or review call to a manager: read-only, any stray file changes reverted, its cost logged as a manager.cost event. */
+  private async askManager(
+    runId: string,
+    node: PipelineNode,
+    phase: 'plan' | 'review',
+    round: number,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; aborted?: boolean; output: string; error?: string; cost: number }> {
+    const st = this.state(runId);
+    const settings = st.pipeline.settings;
+    const remaining = settings.maxCostUsd !== undefined ? Math.max(0, settings.maxCostUsd - st.costUsd) : undefined;
+    const adapter = this.opts.registry.get(node.agent ?? 'claude');
+    const dirtyBefore = new Set(await statusEntries(st.workdir));
+    const sig = AbortSignal.any([signal, AbortSignal.timeout(settings.nodeTimeoutMs)]);
+    let res: AgentResult;
+    try {
+      res = await adapter.run({
+        runId,
+        nodeId: `${node.id}.${phase}`,
+        prompt,
+        cwd: st.workdir,
+        model: node.model,
+        readOnly: true,
+        attempt: round,
+        timeoutMs: settings.nodeTimeoutMs,
+        budgetUsd: remaining,
+        signal: sig,
+        mock: node.mock,
+        onChunk: () => undefined,
+        onSession: () => undefined,
+      });
+    } catch (err) {
+      res = { output: '', exitCode: 1, error: (err as Error).message };
+    }
+    try {
+      const touched = (await statusEntries(st.workdir)).filter((l) => !dirtyBefore.has(l));
+      if (touched.length) await revertEntries(st.workdir, touched);
+    } catch {
+      /* best effort: the manager is read-only */
+    }
+    const cost = res.costUsd ?? 0;
+    // recorded now, not when the manager finishes: it may pause or be stopped first
+    if (cost) this.store.append(runId, { type: 'manager.cost', node: node.id, costUsd: cost });
+    if (signal.aborted) return { ok: false, aborted: true, output: res.output, cost };
+    const ok = res.exitCode === 0 && !sig.aborted;
+    if (res.output) this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[${phase} ${round}]\n${tail(res.output, 4000)}\n` });
+    return { ok, output: res.output, error: sig.aborted ? `timed out after ${Math.round(settings.nodeTimeoutMs / 1000)}s` : (res.error ?? (ok ? undefined : `exit ${res.exitCode}`)), cost };
   }
 
   /** Put one question to a finished step, read-only, and log it. Always yields an answer (even "no such step"). */
@@ -566,6 +938,24 @@ export class Engine {
     });
     return { ok: status === 'done' && verdict !== 'FAIL', output: res.output, error };
   }
+}
+
+/** What a manager step hands downstream: who did what, how it ended, and the manager's last word. */
+function managerSummary(s: RunState, node: PipelineNode, kids: PipelineNode[], notes: string[], lastReview: string): string {
+  const lines = [`${node.id} handed out ${kids.filter((k) => k.kind === 'agent').length} step(s).`];
+  for (const k of kids) {
+    const ns = s.nodes[k.id];
+    if (k.kind !== 'agent') {
+      lines.push(`- ${k.id} (approval): ${ns?.status ?? 'unknown'}`);
+      continue;
+    }
+    lines.push(`- ${k.id} → ${k.role ?? 'agent'}: ${k.spawn?.contract.goal ?? ''} [${ns?.status ?? 'unknown'}]`);
+    const body = ns?.error ? `error: ${ns.error}` : ns?.output;
+    if (body) lines.push(`  ${tail(body, 1500).replace(/\n/g, '\n  ')}`);
+  }
+  if (notes.length) lines.push('', 'Notes:', ...notes.map((n) => `- ${n}`));
+  if (lastReview) lines.push('', `Final review:\n${tail(lastReview, 2000)}`);
+  return lines.join('\n');
 }
 
 async function pool<T>(items: T[], limit: number, fn: (x: T) => Promise<unknown>): Promise<void> {

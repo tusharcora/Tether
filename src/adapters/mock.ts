@@ -34,7 +34,11 @@ export class MockAdapter implements AgentAdapter {
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, m.writeFile.content);
     }
-    let out = m.echoPrompt ? req.prompt : (m.output ?? `mock output from ${req.nodeId}`);
+    const phase = /\.([^.]+)$/.exec(req.nodeId)?.[1];
+    const scripted = phase ? m.replies?.[phase] : undefined;
+    let out = scripted?.length
+      ? scripted[Math.min(req.attempt - 1, scripted.length - 1)]!
+      : m.echoPrompt ? req.prompt : (m.output ?? `mock output from ${req.nodeId}`);
     req.onChunk(out + '\n');
     if (req.verdictNode) {
       const vs = m.verdicts ?? ['PASS'];
