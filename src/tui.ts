@@ -7,7 +7,8 @@
  *   workflow editor    (arrange, add, remove steps; edit step settings; save; run)
  *   orchestrator bot   (describe a task, Maestro designs the workflow, you approve it, it runs)
  */
-import { parsePr, startPrRun } from './pr.js';
+import { alreadyRan, fetchPr, loadSettings, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
+import { dryRunVerdict, ensureIds, findRule, lastDelivery, parsePrTarget, readDeliveries, triggerStatus, webhookSetupInfo, type Delivery, type TriggerStatus, ago as agoRel } from './triggers.js';
 import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -220,8 +221,58 @@ function overlay(line: string, x: number, glyphStr: string): string {
 }
 
 // ---------- state ----------
-type Tab = 'chat' | 'runs' | 'workflows' | 'crew' | 'settings';
-const TABS: Tab[] = ['chat', 'runs', 'workflows', 'crew', 'settings'];
+type Tab = 'chat' | 'runs' | 'workflows' | 'crew' | 'triggers' | 'settings';
+export const TABS: Tab[] = ['chat', 'runs', 'workflows', 'crew', 'triggers', 'settings'];
+
+export interface TriggerRow { rule: Rule; status: TriggerStatus; last?: Delivery }
+
+/** The triggers tab: one row per trigger, the selected one explained underneath. Empty state says how to add. */
+export function triggerLines(rows: TriggerRow[], sel: number, width: number, now = Date.now()): string[] {
+  if (!rows.length) {
+    return ['', `  ${dim('No triggers yet. A trigger starts a workflow when a pull request arrives.')}`, '', `  ${dim('add one:')}  ${cyan('aorch triggers add acme/api --workflow full-review --comment')}`, `  ${dim('receive PRs:')} ${cyan('aorch triggers setup')} ${dim('(webhook)  or')} ${cyan('aorch pr watch')} ${dim('(polling, no setup, named repos only)')}`, `  ${dim('the same list lives in the dashboard (Triggers) and the aorch triggers command')}`];
+  }
+  const tone = (st: TriggerStatus, t: string) => (st === 'error' ? red(t) : st === 'active' ? green(t) : st === 'paused' ? amber(t) : dim(t));
+  const lines = rows.map((r, i) => {
+    const x = r.rule;
+    const who = x.agent ? `${x.agent}${x.model ? '/' + x.model : ''}` : x.model ? `default agent/${x.model}` : 'default agent';
+    const last = r.last ? `${agoRel(r.last.at, now)} ${r.last.outcome}${r.last.pr ? ' #' + r.last.pr : ''}` : 'no deliveries';
+    const text = clip([padEnd(x.id ?? '?', 18), padEnd(r.status, 7), `${x.repo} → ${x.workflow}`, x.workspace ?? 'no workspace', who, last].join('  '), Math.max(20, width - 4));
+    return `${i === sel ? cyan('▍') : ' '} ${tone(r.status, r.status === 'paused' ? '⏸' : r.status === 'error' ? '✘' : r.status === 'active' ? '●' : '○')} ${i === sel ? bold(text) : text}`;
+  });
+  const cur = rows[sel];
+  if (cur) {
+    const r = cur.rule;
+    lines.push('', `  ${bold(r.id ?? '?')} ${dim('·')} ${tone(cur.status, cur.status)}`);
+    const facts = [
+      `events ${(r.events ?? ['opened', 'reopened', 'synchronize', 'ready_for_review']).join(', ')}`,
+      r.labels?.length ? `labels ${r.labels.join(', ')}` : 'any label',
+      `drafts ${r.drafts ? 'yes' : 'no'} · forks ${r.forks ? 'yes' : 'no'} · comment ${r.comment ? 'yes' : 'no'}`,
+    ];
+    for (const f of facts) lines.push(`  ${dim(f)}`);
+    if (cur.last?.reason) lines.push(`  ${dim('last: ' + clip(cur.last.reason, Math.max(20, width - 12)))}`);
+    lines.push('', `  ${dim('space pause/enable · t test a PR (dry run) · d delete · l deliveries · s webhook setup')}`);
+  }
+  return lines;
+}
+
+/** Recent deliveries as plain lines for a modal. */
+export function deliveryLines(ds: Delivery[], now = Date.now()): string[] {
+  if (!ds.length) return ['nothing has arrived yet. Webhooks and polling record every PR they see, including the ones they ignore.'];
+  return ds.map((d) => `${agoRel(d.at, now).padEnd(9)} ${d.outcome.padEnd(8)} ${d.source.padEnd(7)} ${d.repo}${d.pr ? '#' + d.pr : ''} ${d.reason ?? d.runId ?? ''}`.trimEnd());
+}
+
+/** Webhook setup text. Shows the payload path and the secret's hint only, never the secret. */
+export function setupLines(info: ReturnType<typeof webhookSetupInfo>): string[] {
+  return [
+    'GitHub > repo > Settings > Webhooks > Add webhook',
+    `payload URL   https://<your tunnel>${info.payloadPath}`,
+    `content type  ${info.contentType}`,
+    `events        ${info.eventsToSelect.join(', ')}`,
+    info.hasSecret ? `secret        set${info.secretHint ? ` (ends in ${info.secretHint})` : ''}, from ${info.secretSource === 'env' ? 'AORCH_WEBHOOK_SECRET' : 'pr.json'}` : 'secret        none yet',
+    'To see or create the secret, run: aorch triggers setup',
+    'No tunnel? aorch pr watch polls GitHub instead.',
+  ];
+}
 
 interface Prompt { kind: 'prompt'; title: string; hint?: string; value: string; /** value is a suggestion: the first keystroke replaces it */ fresh?: boolean; onSubmit: (v: string) => void }
 interface Menu { kind: 'menu'; title: string; items: { label: string; hint?: string; value: string }[]; sel: number; onPick: (v: string) => void }
@@ -246,7 +297,7 @@ export interface TuiDeps {
 }
 
 export class Tui {
-  private stack: Screen[] = [{ kind: 'dash', tab: 'chat', sel: { chat: 0, runs: 0, workflows: 0, crew: 0, settings: 0 } }];
+  private stack: Screen[] = [{ kind: 'dash', tab: 'chat', sel: { chat: 0, runs: 0, workflows: 0, crew: 0, triggers: 0, settings: 0 } }];
   private prefs: Prefs;
   private readonly pulse = new Pulse();
   private unsub?: () => void;
@@ -593,7 +644,7 @@ export class Tui {
     const note = (text: string) => this.note(text);
     const runTag = rest[0];
     const findRun = () => (runTag ? this.runs().find((r) => r.id.endsWith(runTag))?.id : undefined) ?? this.curRunId();
-    if (['runs', 'workflows', 'crew', 'settings'].includes(cmd)) s.tab = cmd as Tab;
+    if (['runs', 'workflows', 'crew', 'triggers', 'settings'].includes(cmd)) s.tab = cmd as Tab;
     else if (cmd === 'clear') {
       this.sess.log = [];
       this.sess.history = [];
@@ -657,7 +708,7 @@ export class Tui {
       note('/approve  /reject  /retry  /resume    answer or continue a run');
       note('/open  /chat [run]                     open a run, or its own conversation');
       note('/sessions  /main                       switch conversation (each run has its own)');
-      note('/runs  /workflows  /crew  /settings   switch screen');
+      note('/runs  /workflows  /crew  /triggers  /settings   switch screen');
       note('/run <workflow> <task>                 start a saved workflow');
       note('/allowed [clear]                       commands you always allow for Maestro');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
@@ -1224,10 +1275,11 @@ export class Tui {
       add('this workflow', 'Save', 's', () => this.key('s'));
       add('this workflow', 'Run it', 'r', () => this.key('r'));
     }
-    add('go to', 'Runs', '1', goto('runs'));
-    add('go to', 'Workflows', '2', goto('workflows'));
-    add('go to', 'Crew', '3', goto('crew'));
-    add('go to', 'Settings', '4', goto('settings'));
+    add('go to', 'Runs', '2', goto('runs'));
+    add('go to', 'Workflows', '3', goto('workflows'));
+    add('go to', 'Crew', '4', goto('crew'));
+    add('go to', 'Triggers', '5', goto('triggers'));
+    add('go to', 'Settings', '6', goto('settings'));
     add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
     add('do', 'New workflow', 'n', () => this.newWorkflow());
     add('do', 'Review a pull request', 'paste a GitHub PR link', () => this.reviewPr());
@@ -1358,18 +1410,20 @@ export class Tui {
       if (g) return void (this.talk.text = g.text);
     }
     if (s.tab === 'chat' && k !== 'tab' && k !== 'shift-tab') return this.chatKey(s, k);
-    const list = s.tab === 'runs' ? this.runs() : s.tab === 'workflows' ? this.flows() : s.tab === 'settings' ? [] : Object.keys(CREW);
+    const list = s.tab === 'runs' ? this.runs() : s.tab === 'workflows' ? this.flows() : s.tab === 'settings' ? [] : s.tab === 'triggers' ? this.triggerRules() : Object.keys(CREW);
     const n = list.length;
     const sel = s.sel[s.tab];
     if (k === 'q') return this.quit();
-    if (s.tab === 'settings' && k !== 'tab' && k !== 'shift-tab' && !/^[1-5]$/.test(k)) return this.settingsKey(s, k);
+    if (s.tab === 'triggers' && this.triggersKey(s, k)) return;
+    if (s.tab === 'settings' && k !== 'tab' && k !== 'shift-tab' && !/^[1-6]$/.test(k)) return this.settingsKey(s, k);
     if (k === 'tab' || (k === 'right' || k === 'l')) s.tab = TABS[(TABS.indexOf(s.tab) + 1) % TABS.length]!;
     else if (k === 'shift-tab' || k === 'left' || k === 'h') s.tab = TABS[(TABS.indexOf(s.tab) + TABS.length - 1) % TABS.length]!;
     else if (k === '1') s.tab = 'chat';
     else if (k === '2') s.tab = 'runs';
     else if (k === '3') s.tab = 'workflows';
     else if (k === '4') s.tab = 'crew';
-    else if (k === '5') s.tab = 'settings';
+    else if (k === '5') s.tab = 'triggers';
+    else if (k === '6') s.tab = 'settings';
     if (s.tab === 'crew' && Date.now() - this.availAt > 15_000) this.refreshAvail();
     else if ((k === 'up' || k === 'k') && n) s.sel[s.tab] = (sel + n - 1) % n;
     else if ((k === 'down' || k === 'j') && n) s.sel[s.tab] = (sel + 1) % n;
@@ -2308,6 +2362,7 @@ export class Tui {
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
       : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingPermit() ? 'enter choose · 1 allow once · 2 always allow · 3 deny · esc deny' : this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
+      : s.kind === 'dash' && s.tab === 'triggers' ? '↑↓ select · space pause/enable · t test a PR · d delete · l deliveries · s webhook setup · tab switch · q quit'
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
@@ -2335,7 +2390,7 @@ export class Tui {
     const s = this.screen;
     switch (s.kind) {
       case 'dash':
-        return s.tab === 'chat' ? this.chatBody(h) : s.tab === 'runs' ? this.runsBody(s, h) : s.tab === 'workflows' ? this.flowsBody(s, h) : s.tab === 'settings' ? this.settingsBody(s, h) : this.crewBody(h);
+        return s.tab === 'chat' ? this.chatBody(h) : s.tab === 'runs' ? this.runsBody(s, h) : s.tab === 'workflows' ? this.flowsBody(s, h) : s.tab === 'settings' ? this.settingsBody(s, h) : s.tab === 'triggers' ? this.triggersBody(s) : this.crewBody(h);
       case 'run':
         return this.runBody(s, h);
       case 'session':
@@ -2435,6 +2490,80 @@ export class Tui {
       }
       return `${sel ? cyan('▍') : ' '} ${padEnd(sel ? bold(f.name) : f.name, 26)} ${padEnd(dim(`${f.nodes} steps`), 10)} ${chain}`;
     });
+  }
+
+  // ---------- triggers ----------
+  private trigCache?: { at: number; rows: TriggerRow[] };
+  private triggerRules(): Rule[] {
+    return loadSettings(this.d.cfg.home).rules ?? [];
+  }
+
+  private triggersBody(s: Extract<Screen, { kind: 'dash' }>): string[] {
+    const home = this.d.cfg.home;
+    // the files are re-read after a key action here, or every couple of seconds, not on every animation frame
+    if (!this.trigCache || Date.now() - this.trigCache.at > 2000) {
+      this.trigCache = { at: Date.now(), rows: this.triggerRules().map((rule) => ({ rule, status: triggerStatus(rule, home), last: rule.id ? lastDelivery(home, rule.id) : undefined })) };
+    }
+    const rows = this.trigCache.rows;
+    s.sel.triggers = Math.max(0, Math.min(s.sel.triggers, rows.length - 1));
+    rows.forEach((_, i) => this.bodyHit(i, 0, this.cols, () => (s.sel.triggers = i)));
+    return triggerLines(rows, s.sel.triggers, this.cols);
+  }
+
+  /** A read-only message: lines in a box, esc closes it. */
+  private info(title: string, lines: string[]) {
+    const wrapped = lines.flatMap((l) => wrap(l, 70));
+    this.choose(title, wrapped.map((label) => ({ label, value: '' })), () => undefined);
+  }
+
+  /** Keys of the triggers tab. Returns true when it used the key. */
+  private triggersKey(s: Extract<Screen, { kind: 'dash' }>, k: string): boolean {
+    this.trigCache = undefined;
+    const rules = this.triggerRules();
+    const r = rules[Math.min(s.sel.triggers, rules.length - 1)];
+    const home = this.d.cfg.home;
+    if (k === 's') {
+      this.info('Webhook setup', setupLines(webhookSetupInfo(home)));
+      return true;
+    }
+    if (!r) return false; // nothing selected: space, t, d and l keep their global meaning
+    const save = (next: Rule[]) => saveSettings(home, { ...loadSettings(home), rules: ensureIds(next) });
+    if (k === ' ') {
+      save(rules.map((x) => (x === r ? (r.enabled === false ? (({ enabled: _e, ...rest }) => rest)(r) : { ...r, enabled: false }) : x)));
+      this.say(r.enabled === false ? `${r.id} enabled` : `${r.id} paused`);
+    } else if (k === 'd') {
+      this.modal = { kind: 'confirm', title: `Delete trigger ${r.id}? Its deliveries stay in the log. (y/n)`, onYes: () => {
+        save(this.triggerRules().filter((x) => x.id !== r.id));
+        this.say(`removed ${r.id}`);
+      } };
+    } else if (k === 'l') {
+      this.info(`Deliveries for ${r.id}`, deliveryLines(readDeliveries(home, { trigger: r.id, limit: 20 })));
+    } else if (k === 't') {
+      this.ask(`Test ${r.id}: PR link, owner/repo#n or a number (dry run, nothing starts)`, (text) => {
+        if (!text.trim()) return;
+        void this.testTrigger(r.id!, text.trim());
+      });
+    } else return false;
+    return true;
+  }
+
+  private async testTrigger(id: string, text: string) {
+    try {
+      const r = findRule(this.triggerRules(), id);
+      const ref = parsePrTarget(text, r);
+      this.say(`checking ${ref.repo}#${ref.number}…`);
+      const pr = await fetchPr(ref);
+      const prev = alreadyRan(this.d.cfg.home, ref, pr.headSha);
+      const v = dryRunVerdict(r, { repo: ref.repo, labels: pr.labels, draft: pr.draft, fork: pr.fork }, prev ? { sha: pr.headSha, runId: prev } : undefined);
+      const who = r.agent || r.model ? [r.agent ?? 'default agent', r.model].filter(Boolean).join('/') : 'the crew defaults';
+      this.info(`Test ${id}`, [
+        `${ref.repo}#${ref.number} "${pr.title.slice(0, 60)}"`,
+        v.matches ? `would start ${r.workflow}${r.workspace ? ' on workspace ' + r.workspace : ''} with ${who}` : `would be ignored: ${v.why}`,
+        'Dry run, nothing started. Events are not checked (GitHub supplies the action on a real PR event).',
+      ]);
+    } catch (e) {
+      this.say((e as Error).message.split('\n')[0]!, 'err');
+    }
   }
 
   private crewBody(h: number): string[] {

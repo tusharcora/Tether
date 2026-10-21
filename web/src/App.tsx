@@ -5,12 +5,13 @@ import { loadCrewDefs } from './bots';
 import { Crew } from './Crew';
 import { GraphView } from './Graph';
 import { Runs } from './Runs';
+import { Triggers } from './Triggers';
 
-type Tab = 'builder' | 'runs' | 'graph' | 'crew';
+type Tab = 'builder' | 'runs' | 'graph' | 'crew' | 'triggers';
 
 const fromHash = (): { tab: Tab; run?: string } => {
   const [t, r] = location.hash.replace(/^#\/?/, '').split('/');
-  return { tab: t === 'runs' || t === 'graph' || t === 'crew' ? t : 'builder', run: r };
+  return { tab: t === 'runs' || t === 'graph' || t === 'crew' || t === 'triggers' ? t : 'builder', run: r };
 };
 
 export function App() {
@@ -56,6 +57,7 @@ export function App() {
           <button classList={{ active: tab() === 'runs' }} onClick={() => go('runs')}>Runs</button>
           <button classList={{ active: tab() === 'graph' }} onClick={() => go('graph')}>Graph</button>
           <button classList={{ active: tab() === 'crew' }} onClick={() => go('crew')}>Crew</button>
+          <button classList={{ active: tab() === 'triggers' }} onClick={() => go('triggers')}>Triggers</button>
         </nav>
         <div class="status">
           <Show when={health()?.vault}>
@@ -76,6 +78,9 @@ export function App() {
         </Show>
         <Show when={tab() === 'crew'}>
           <Crew />
+        </Show>
+        <Show when={tab() === 'triggers'}>
+          <Triggers />
         </Show>
         <Show when={tab() === 'graph'}>
           <GraphView />

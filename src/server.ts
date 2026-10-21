@@ -9,7 +9,9 @@ import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
 import { loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
-import { loadSettings, matchRule, parseWebhook, startPrRun, verifySignature } from './pr.js';
+import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
+import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
+import { getWorkspace, listWorkspaces } from './workspace.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -26,6 +28,8 @@ export interface ServerOptions {
   port?: number;
   /** Directory of the built dashboard. Optional: the API works without it. */
   webDir?: string;
+  /** Runs `gh`/`git` for PR triggers; tests replace it. */
+  exec?: Exec;
 }
 
 const MAX_BODY = 1_000_000;
@@ -49,6 +53,52 @@ class HttpError extends Error {
     super(message);
   }
 }
+
+const MAX_LIST = 20;
+/** Body must be a JSON object. */
+function reqObject(b: unknown): Record<string, unknown> {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'the body must be a JSON object');
+  return b as Record<string, unknown>;
+}
+/** Optional single-line string, trimmed; empty means absent. */
+function reqString(b: Record<string, unknown>, k: string, max = 200): string | undefined {
+  const v = b[k];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'string') throw new HttpError(400, `"${k}" must be a string`);
+  const t = v.trim();
+  if (/[\n\r]/.test(t)) throw new HttpError(400, `"${k}" must be a single line`);
+  if (t.length > max) throw new HttpError(400, `"${k}" is too long (max ${max})`);
+  return t || undefined;
+}
+function reqBool(b: Record<string, unknown>, k: string): boolean | undefined {
+  const v = b[k];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'boolean') throw new HttpError(400, `"${k}" must be true or false`);
+  return v;
+}
+/** Optional list of short strings, as an array or a comma-separated string; returned comma-joined. */
+function reqList(b: Record<string, unknown>, k: string): string | undefined {
+  const v = b[k];
+  if (v === undefined || v === null) return undefined;
+  const items = typeof v === 'string' ? v.split(',') : Array.isArray(v) ? v : (() => { throw new HttpError(400, `"${k}" must be an array of strings`); })();
+  const out: string[] = [];
+  for (const x of items) {
+    if (typeof x !== 'string') throw new HttpError(400, `"${k}" must be an array of strings`);
+    const t = x.trim();
+    if (!t) continue;
+    if (t.length > 64 || /[\n\r]/.test(t)) throw new HttpError(400, `"${k}" has an entry that is too long or not one line`);
+    out.push(t);
+  }
+  if (out.length > MAX_LIST) throw new HttpError(400, `"${k}" has too many entries (max ${MAX_LIST})`);
+  return out.length ? out.join(',') : undefined;
+}
+const idParam = (raw: string): string => {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new HttpError(400, 'malformed id');
+  }
+};
 
 const isLoopback = (h: string) => h === '127.0.0.1' || h === '::1' || h === 'localhost' || h === '[::1]';
 
@@ -139,16 +189,31 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     } catch {
       throw new HttpError(400, 'not JSON');
     }
+    const at = () => new Date().toISOString();
     const pr = parseWebhook(event, body);
-    if (!pr) return send(res, 202, { ignored: 'not a pull_request event' });
-    const rule = matchRule(loadSettings(cfg.home).rules ?? [], pr);
-    if (!rule) return send(res, 202, { ignored: 'no rule matches' });
+    if (!pr) {
+      return send(res, 202, { ignored: 'not a pull_request event' });
+    }
+    const rules = loadSettings(cfg.home).rules ?? [];
+    const rule = matchRule(rules, pr);
+    if (!rule) {
+      // only worth a log line when a trigger for this repo listens for this action and still said no; everything else is noise
+      const no = refusal(rules, pr);
+      if (no) recordDelivery(cfg.home, { at: at(), trigger: no.rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: 'ignored', reason: no.why });
+      return send(res, 202, { ignored: 'no rule matches' });
+    }
     refreshCrew(cfg.home);
     const ref = { provider: 'github' as const, repo: pr.repo, number: pr.number, url: `https://github.com/${pr.repo}/pull/${pr.number}` };
     // answer GitHub at once (it gives up after 10s); the run goes on in the background
-    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment })
-      .then((r) => console.error(`[aorch] PR ${pr.repo}#${pr.number} -> run ${r.runId} (${rule.workflow})`))
-      .catch((e: Error) => console.error(`[aorch] PR ${pr.repo}#${pr.number} skipped: ${e.message}`));
+    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment, workspace: rule.workspace, agent: rule.agent, model: rule.model })
+      .then((r) => {
+        recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: 'started', runId: r.runId });
+        console.error(`[aorch] PR ${pr.repo}#${pr.number} -> run ${r.runId} (${rule.workflow})`);
+      })
+      .catch((e: Error) => {
+        recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: classifyFailure(e.message), reason: e.message.slice(0, 300) });
+        console.error(`[aorch] PR ${pr.repo}#${pr.number} skipped: ${e.message}`);
+      });
     return send(res, 202, { accepted: true, workflow: rule.workflow });
   }
 
@@ -263,6 +328,116 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         refreshCrew(cfg.home);
         return send(res, 200, { ok: true, result: r }), true;
       }
+    }
+
+    // ---- workspaces (for pickers) ----
+    if (p === '/api/workspaces' && m === 'GET') {
+      return send(res, 200, listWorkspaces(cfg.home).map((w) => ({ id: w.id, name: w.name, path: w.path, isDefault: !!w.isDefault, exists: w.exists, repos: w.repos }))), true;
+    }
+
+    // ---- triggers: PR rules with ids, status and a delivery log. The webhook secret is only ever returned by POST /api/triggers/setup/secret. ----
+    if (p === '/api/triggers' && m === 'GET') {
+      const rules = loadSettings(cfg.home).rules ?? [];
+      return send(res, 200, rules.map((r) => ({ ...r, status: triggerStatus(r, cfg.home), last: lastDelivery(cfg.home, r.id!) ?? null }))), true;
+    }
+    if (p === '/api/triggers' && m === 'POST') {
+      const b = reqObject(await readJson(req));
+      const repo = reqString(b, 'repo', 100);
+      if (!repo) throw new HttpError(400, '"repo" is required (owner/repo, or * for any mapped repo)');
+      const str = (k: string) => reqString(b, k);
+      const settings = loadSettings(cfg.home);
+      let out;
+      try {
+        out = upsertRule(
+          settings.rules ?? [],
+          { repo, workflow: reqString(b, 'workflow', 64), workspace: str('workspace'), agent: str('agent'), model: str('model'), events: reqList(b, 'events'), labels: reqList(b, 'labels'), comment: reqBool(b, 'comment') ?? false, drafts: reqBool(b, 'drafts') ?? false, forks: reqBool(b, 'forks') ?? false, id: reqString(b, 'id', 63), enabled: reqBool(b, 'enabled') },
+          { hasWorkspace: (id) => !!getWorkspace(cfg.home, id), workspaceRepos: (id) => getWorkspace(cfg.home, id)?.repos, hasAgent: (id) => registry.has(id), checkWorkflow: (r) => checkWorkflow(cfg.home, r) },
+        );
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      saveSettings(cfg.home, { ...settings, rules: out.next });
+      return send(res, 200, { ...out.rule, status: triggerStatus(out.rule, cfg.home), last: lastDelivery(cfg.home, out.rule.id!) ?? null, warnings: out.warnings, replaced: out.replaced }), true;
+    }
+    if (p === '/api/triggers/deliveries' && m === 'GET') {
+      const trigger = url.searchParams.get('trigger') || undefined;
+      const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit') ?? 50) || 50));
+      return send(res, 200, readDeliveries(cfg.home, { trigger, limit })), true;
+    }
+    if (p === '/api/triggers/setup' && m === 'GET') {
+      return send(res, 200, webhookSetupInfo(cfg.home)), true;
+    }
+    if (p === '/api/triggers/setup/secret' && m === 'POST') {
+      if (process.env.AORCH_WEBHOOK_SECRET) throw new HttpError(409, 'the secret comes from the AORCH_WEBHOOK_SECRET environment variable; change it there');
+      const { secret } = ensureWebhookSecret(cfg.home, true);
+      return send(res, 200, { secret, secretHint: secret.slice(-4) }), true;
+    }
+    if ((g = p.match(/^\/api\/triggers\/([^/]+)\/test$/)) && m === 'POST') {
+      const settings = loadSettings(cfg.home);
+      const tid = idParam(g[1]!);
+      let r;
+      try {
+        r = findRule(settings.rules ?? [], tid);
+      } catch (e) {
+        throw new HttpError(404, (e as Error).message);
+      }
+      const b = reqObject(await readJson(req));
+      const prText = reqString(b, 'pr', 300);
+      if (!prText) throw new HttpError(400, '"pr" is required (a PR link, owner/repo#number, or a number)');
+      const fire = reqBool(b, 'fire') === true;
+      let ref;
+      try {
+        ref = parsePrTarget(prText, r);
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      let info;
+      try {
+        info = await fetchPr(ref, o.exec);
+      } catch (e) {
+        throw new HttpError(502, (e as Error).message);
+      }
+      const prevRun = alreadyRan(cfg.home, ref, info.headSha);
+      const verdict = dryRunVerdict(r, { repo: ref.repo, labels: info.labels, draft: info.draft, fork: info.fork }, prevRun ? { sha: info.headSha, runId: prevRun } : undefined);
+      const pr = { repo: ref.repo, number: ref.number, title: info.title, url: ref.url };
+      if (!verdict.matches || !fire) {
+        return send(res, 200, { matches: verdict.matches, why: verdict.why, fired: false, pr, ...(verdict.matches ? { note: 'dry run, nothing started' } : {}) }), true;
+      }
+      refreshCrew(cfg.home);
+      const at = () => new Date().toISOString();
+      try {
+        const started = await startPrRun({ home: cfg.home, engine, exec: o.exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model });
+        started.done.catch(() => undefined);
+        recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: 'started', runId: started.runId });
+        return send(res, 200, { matches: true, why: verdict.why, fired: true, runId: started.runId, pr }), true;
+      } catch (e) {
+        const msg = (e as Error).message;
+        recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: classifyFailure(msg), reason: msg.slice(0, 300) });
+        throw new HttpError(422, msg);
+      }
+    }
+    if ((g = p.match(/^\/api\/triggers\/([^/]+)$/)) && (m === 'PATCH' || m === 'DELETE')) {
+      const id = idParam(g[1]!);
+      const settings = loadSettings(cfg.home);
+      const rules = settings.rules ?? [];
+      let r;
+      try {
+        r = findRule(rules, id);
+      } catch (e) {
+        throw new HttpError(404, (e as Error).message);
+      }
+      if (m === 'DELETE') {
+        saveSettings(cfg.home, { ...settings, rules: ensureIds(rules.filter((x) => x !== r)) });
+        return send(res, 200, { ok: true }), true;
+      }
+      const b = reqObject(await readJson(req));
+      const enabled = reqBool(b, 'enabled');
+      if (enabled === undefined) throw new HttpError(400, '"enabled" (true or false) is required');
+      const nextRule = { ...r };
+      if (enabled) delete nextRule.enabled;
+      else nextRule.enabled = false;
+      saveSettings(cfg.home, { ...settings, rules: ensureIds(rules.map((x) => (x === r ? nextRule : x))) });
+      return send(res, 200, { ...nextRule, status: triggerStatus(nextRule, cfg.home), last: lastDelivery(cfg.home, id) ?? null }), true;
     }
 
     // ---- pipelines ----

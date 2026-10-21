@@ -9,6 +9,7 @@ A durable orchestrator for CLI coding agents. It runs workflows of agents (Claud
 
 ## Terminal UI tips
 
+- **Tabs**: `1` chat, `2` runs, `3` workflows, `4` crew, `5` triggers, `6` settings (outside the chat tab; `tab` and `shift-tab` always cycle).
 - **Ctrl-K** opens the command palette: jump to a tab, open a run, edit or run a workflow, link a bot, change settings, or run a skill. Type to filter.
 - **Mouse**: click tabs, rows and bots (click a selected row again to open it), wheel to scroll, right-click to go back. Turn it off in Settings if you prefer to select text (or hold shift while dragging).
 - **Skills**: `aorch skills` lists them; `aorch skills run <name> --task "…"` runs one. Two kinds: built-in or custom aorch workflows (JSON in `<home>/skills/`, e.g. `{"name":"my-skill","description":"…","steps":[{"role":"coder","prompt":"…"},{"role":"tester"}]}`), and Claude Code skills found in `~/.claude/skills` and `<repo>/.claude/skills`. A Claude Code skill runs inside a Claude agent step that is told to invoke it by name. In the workflow editor press `k` to add either kind.
@@ -67,7 +68,58 @@ aorch pr secret                                               # then add a GitHu
 aorch serve
 ```
 
+These rules are triggers: see [Triggers](#triggers) for ids, pausing, a dry-run test, the delivery log and a guided webhook setup (`aorch triggers …`). `aorch pr rule …` keeps working and edits the same list.
+
 Rules can limit by `--labels`, `--events`, and opt in to `--drafts` and `--forks`. Each PR runs once per commit. PR text is passed to agents fenced as data, and a workflow that executes commands (a test gate or setup step) refuses fork PRs unless you pass `--trust-code`. `aorch serve` stays loopback-only; only the webhook path accepts outside hosts, and it needs the HMAC signature. Azure DevOps and AWS CodeCommit links are recognised but not wired up yet.
+
+## Triggers
+
+A **trigger** says: when a pull request arrives that matches this, start this workflow, in this workspace, on this agent. Triggers are the PR rules from `aorch pr`, with an id, a pause switch, a status and a log of everything that reached them. They are stored in `<home>/pr.json` (older files load unchanged).
+
+```
+aorch triggers add acme/api --workflow full-review --comment      # new trigger (the id defaults to acme-api-full-review)
+aorch triggers add acme/api --workflow quick-check --workspace api --agent codex --model gpt-5 --labels ready
+aorch triggers list                                                # id, status, repo, workflow, workspace, agent, last delivery
+aorch triggers disable acme-api-full-review   # keep it, ignore PRs (enable turns it back on)
+aorch triggers test acme-api-full-review acme/api#42    # dry run: would it start, and with what? add --fire to really start it
+aorch triggers log [id] --limit 50     # recent deliveries (what started, what a trigger refused, failures)
+aorch triggers setup                   # webhook payload URL, secret and tunnel help
+```
+
+`show <id>` prints one trigger; `remove <id>` deletes it. Adding the same repo and workflow again edits the existing trigger and keeps its id and paused state.
+
+**Fields**
+
+| field | flag | meaning |
+|---|---|---|
+| `id` | `--id` | name used by every command (letters, digits, `.`, `_`, `-`) |
+| `repo` | first argument | `owner/repo`, or `*` for any repo (webhook only) |
+| `workflow` | `--workflow` | the saved workflow to run |
+| `workspace` | `--workspace` | a registered workspace id: its notes go to the agents, and its folder is used as the checkout when the repo is not mapped *and the workspace lists that repo* (otherwise the PR is cloned, so a workspace for another project is never reviewed by mistake; `triggers add` warns about this). Without one, the registered workspace whose folder holds the repo is used automatically |
+| `agent`, `model` | `--agent`, `--model` | override for every agent step of the workflow (not gates, approvals or steps a manager spawns). `--model` needs `--agent`. Without them the workflow's own choices and your Crew links apply |
+| `events` | `--events` | PR actions that start it; default `opened,reopened,synchronize,ready_for_review` |
+| `labels` | `--labels a,b` | only PRs carrying at least one of these labels |
+| `drafts`, `forks` | `--drafts`, `--forks` | opt in to draft PRs and PRs from forks (ignored by default) |
+| `comment` | `--comment` | post the review result back on the PR |
+| `enabled` | enable / disable | a paused trigger is kept but never starts anything |
+
+**How PRs arrive.** Two ways, and both end in the same place (each PR head runs once per commit):
+
+- **Webhook**: GitHub calls `POST /api/webhooks/github` on `aorch serve`. Run `aorch triggers setup` for the values to paste into GitHub (Settings, Webhooks, content type `application/json`, event *Pull requests*) and for tunnel commands, since `aorch serve` listens on this machine only. Only the webhook path is reachable through a tunnel, and every request must carry a valid HMAC signature.
+- **Polling**: `aorch pr watch` asks GitHub every 60 seconds. No tunnel or secret needed, but `gh` must be signed in. It re-reads your triggers on every sweep, so enabling, disabling, adding and removing apply while it runs. It only polls named repos: `*` triggers work through the webhook only (it says so once).
+
+**Deliveries log.** `<home>/triggers-log.jsonl` keeps the most recent 500 entries, each `started`, `ignored`, `skipped` (matched but refused: already reviewed, fork guard) or `error`, with the reason. What gets written: the webhook records starts, failures, and PRs a matching trigger refused (draft, fork or label filters); actions no trigger listens for (closed, edited, ...) and repos no trigger covers leave no entry. Polling records only what it starts and its failures, each once per commit rather than every sweep. A dry-run `test` logs nothing; `test --fire` logs. Webhook and poll processes write the same file; if both trim it at the very same moment an entry can be lost.
+
+**Status** in lists and dashboards:
+
+- `paused`: the trigger is disabled.
+- `error`: its latest delivery failed. `aorch triggers log <id>` says why.
+- `active`: it started a run within the last 24 hours.
+- `idle`: enabled, nothing recent (or nothing yet).
+
+**Where to manage them.** The web dashboard has a Triggers screen (list, add and edit form, pause, delete, test, deliveries, webhook setup). The terminal UI has a **Triggers** tab (key `5`, or `/triggers`): `↑↓` select, `space` pause or enable, `t` dry-run test against a PR link or `owner/repo#n`, `d` delete (asks first), `l` recent deliveries for the selected trigger, `s` webhook setup. The tab is empty until you add one; it shows the command to run.
+
+**The webhook secret** is generated and saved in `<home>/pr.json` (mode 600) the first time you run `aorch triggers setup`, or comes from `AORCH_WEBHOOK_SECRET` if set (the variable wins). `aorch triggers setup --generate` replaces it. It is shown only by that command and when you generate it from the dashboard. Lists, the TUI, the delivery log and API responses never contain it; setup views show only its last four characters.
 
 ## Bots asking each other
 
@@ -157,7 +209,7 @@ Maestro can ask to run a shell command (check `git status`, run the tests, look 
 
 Settings → **Maestro commands** has three modes: *ask first* (default), *always run* (no prompt), and *off*. Even in *always run*, plainly destructive commands (`sudo`, `rm -rf /` or `~`, piping a download into a shell, force-pushing main, writing to disk devices) are refused. Commands run with a 2-minute limit and without environment variables that look like secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`). `/allowed` lists what you always allow and `/allowed clear` forgets it. Approvals are stored in `<home>/permissions.json`.
 
-Slash commands: `/status`, `/approve` `/reject` `/retry` `/resume`, `/open` `/chat [run]`, `/sessions` `/main`, `/runs` `/workflows` `/crew` `/settings` to switch screen, `/run <workflow> <task>`, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
+Slash commands: `/status`, `/approve` `/reject` `/retry` `/resume`, `/open` `/chat [run]`, `/sessions` `/main`, `/runs` `/workflows` `/crew` `/triggers` `/settings` to switch screen, `/run <workflow> <task>`, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
 
 ## LLM providers
 

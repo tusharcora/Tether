@@ -7,6 +7,8 @@ import { readPipeline } from './config.js';
 import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { detectTestCommand } from './composer.js';
 import { runProcess } from './proc.js';
+import { applyOverrides, ensureIds } from './triggers.js';
+import { getWorkspace } from './workspace.js';
 import type { Pipeline, RunState } from './types.js';
 
 export type Provider = 'github' | 'azure' | 'aws';
@@ -102,7 +104,7 @@ const settingsPath = (home: string) => join(home, 'pr.json');
 export function loadSettings(home: string): Settings {
   try {
     const j = JSON.parse(readFileSync(settingsPath(home), 'utf8')) as Settings;
-    return { repos: j.repos && typeof j.repos === 'object' ? j.repos : {}, webhookSecret: typeof j.webhookSecret === 'string' ? j.webhookSecret : undefined, rules: Array.isArray(j.rules) ? j.rules.filter(validRule) : [] };
+    return { repos: j.repos && typeof j.repos === 'object' ? j.repos : {}, webhookSecret: typeof j.webhookSecret === 'string' ? j.webhookSecret : undefined, rules: Array.isArray(j.rules) ? ensureIds(j.rules.filter(validRule)) : [] };
   } catch {
     return { repos: {}, rules: [] };
   }
@@ -117,9 +119,16 @@ export function saveSettings(home: string, s: Settings): void {
 const sameRepo = (remote: string, repo: string) => remote.trim().toLowerCase().replace(/\.git$/, '').replace(/^.*github\.com[/:]/, '') === repo.toLowerCase();
 
 /** A local clone of the PR's repo: a mapped folder, the current folder if its origin matches, or a clone under <home>/clones. */
+/** The folder you mapped this repo to, if it still exists. */
+export function mappedRepo(home: string, ref: PrRef): string | undefined {
+  const repos = loadSettings(home).repos;
+  const m = repos?.[ref.repo.toLowerCase()] ?? repos?.[ref.repo];
+  return m && existsSync(resolve(m)) ? resolve(m) : undefined;
+}
+
 export async function localRepo(home: string, ref: PrRef, exec: Exec = defaultExec, cwd = process.cwd()): Promise<string> {
-  const mapped = loadSettings(home).repos?.[ref.repo.toLowerCase()] ?? loadSettings(home).repos?.[ref.repo];
-  if (mapped && existsSync(resolve(mapped))) return resolve(mapped);
+  const mapped = mappedRepo(home, ref);
+  if (mapped) return mapped;
   const here = await exec('git', ['remote', 'get-url', 'origin'], cwd);
   if (here.code === 0 && sameRepo(here.stdout, ref.repo)) return (await exec('git', ['rev-parse', '--show-toplevel'], cwd)).stdout.trim() || cwd;
   const dir = join(home, 'clones', ref.repo.replace('/', '__'));
@@ -191,6 +200,7 @@ const validRule = (r: unknown): r is Rule => !!r && typeof r === 'object' && typ
 
 export function matchRule(rules: Rule[], p: { repo: string; action: string; labels: string[]; draft: boolean; fork: boolean }): Rule | undefined {
   return rules.find((r) => {
+    if (r.enabled === false) return false;
     if (r.repo !== '*' && r.repo.toLowerCase() !== p.repo.toLowerCase()) return false;
     if (!(r.events ?? DEFAULT_EVENTS).includes(p.action)) return false;
     if (p.draft && !r.drafts) return false;
@@ -240,7 +250,7 @@ export function pipelineFor(home: string, name: string, repoDir: string): Pipeli
 // ---------- start a run for a PR ----------
 export interface PrDeps {
   home: string;
-  engine: { start(i: { pipeline: Pipeline; task: string; repo: string; ref?: string; autoApprove?: boolean }): Promise<string>; wait(id: string): Promise<RunState> };
+  engine: { start(i: { pipeline: Pipeline; task: string; repo: string; ref?: string; autoApprove?: boolean; workspace?: string | false }): Promise<string>; wait(id: string): Promise<RunState> };
   exec?: Exec;
 }
 export interface PrRunOpts {
@@ -253,6 +263,11 @@ export interface PrRunOpts {
   note?: string;
   /** folder to use instead of finding or cloning one */
   repoDir?: string;
+  /** the trigger's workspace id (or false for none): passed to the run; its folder is the repo when none is mapped and the workspace lists this repo */
+  workspace?: string | false;
+  /** run every agent step on this agent / model */
+  agent?: string;
+  model?: string;
   /** called once the comment was posted (no argument) or failed (the error) */
   onComment?: (err?: Error) => void;
 }
@@ -260,15 +275,21 @@ export interface PrRunOpts {
 export async function startPrRun(d: PrDeps, ref: PrRef, o: PrRunOpts): Promise<{ runId: string; info: PrInfo; repoDir: string; done: Promise<RunState> }> {
   const exec = d.exec ?? defaultExec;
   const info = await fetchPr(ref, exec);
-  const repoDir = o.repoDir ?? (await localRepo(d.home, ref, exec));
-  const pipeline = pipelineFor(d.home, o.workflow, repoDir);
+  let repoDir = o.repoDir;
+  if (!repoDir && typeof o.workspace === 'string') {
+    const w = getWorkspace(d.home, o.workspace);
+    // only a workspace that is a checkout of this very repo may stand in for it; anything else would review the wrong code
+    if (!mappedRepo(d.home, ref) && w?.exists && w.repos.some((x) => x.toLowerCase() === ref.repo.toLowerCase())) repoDir = w.path;
+  }
+  repoDir ??= await localRepo(d.home, ref, exec);
+  const pipeline = applyOverrides(pipelineFor(d.home, o.workflow, repoDir), { agent: o.agent, model: o.model });
   if (info.fork && !o.trustCode && pipeline.nodes.some((n) => n.kind === 'gate' || n.manager || pipeline.settings.setup)) {
     throw new Error(`#${ref.number} comes from a fork and "${o.workflow}" would run commands from its code on your machine. Use a read-only workflow (like full-review), or pass --trust-code if you have read the diff.`);
   }
   const prev = alreadyRan(d.home, ref, info.headSha);
   if (prev) throw new Error(`already reviewed at ${info.headSha.slice(0, 7)} (run ${prev})`);
   const gitRef = await fetchHead(repoDir, info, exec);
-  const runId = await d.engine.start({ pipeline, task: prTask(info, o.note), repo: repoDir, ref: gitRef, autoApprove: o.autoApprove });
+  const runId = await d.engine.start({ pipeline, task: prTask(info, o.note), repo: repoDir, ref: gitRef, autoApprove: o.autoApprove, workspace: o.workspace });
   markRan(d.home, ref, info.headSha, runId);
   const done = d.engine.wait(runId).then(async (s) => {
     if (o.comment) {

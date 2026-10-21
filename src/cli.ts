@@ -26,8 +26,8 @@ import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, 
 import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { createInterface } from 'node:readline/promises';
 import { renderLook } from './bots.js';
-import { DEFAULT_EVENTS, alreadyRan, defaultExec, loadSettings, matchRule, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
-import { randomBytes } from 'node:crypto';
+import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
+import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
@@ -53,6 +53,7 @@ Usage
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
   aorch bots [link <bot> <agent> [model] | unlink <bot> | gallery]   link crew members to Claude, Codex, OpenCode or a local model
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
+  aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
   aorch crew [style]                  bot style: pebble · classic · sigil · tile · ticker · orbit
@@ -125,6 +126,17 @@ async function gallery() {
     process.stdout.write(`\x1b[${f.length}A` + f.join('\n') + '\n');
   }
   process.stdout.write('\x1b[?25h');
+}
+
+/** What a trigger points at, for validation: workspaces, agents and workflows that exist. */
+function ruleRefs(cfg: Config) {
+  const registry = makeRegistry(cfg);
+  return {
+    hasWorkspace: (id: string) => !!getWorkspace(cfg.home, id),
+    workspaceRepos: (id: string) => getWorkspace(cfg.home, id)?.repos,
+    hasAgent: (id: string) => registry.has(id),
+    checkWorkflow: (r: Rule) => checkWorkflow(cfg.home, r),
+  };
 }
 
 function fail(msg: string, code = 1): never {
@@ -340,6 +352,7 @@ async function main() {
       generate: { type: 'boolean' },
       interval: { type: 'string' },
       workspace: { type: 'string' },
+      id: { type: 'string' },
       agent: { type: 'string' },
       model: { type: 'string' },
       summary: { type: 'string' },
@@ -351,6 +364,7 @@ async function main() {
       avoid: { type: 'string', multiple: true },
       survey: { type: 'boolean' },
       force: { type: 'boolean' },
+      fire: { type: 'boolean' },
       limit: { type: 'string' },
       'no-workspace': { type: 'boolean' },
     },
@@ -720,6 +734,158 @@ async function main() {
       }
       fail('usage: aorch workspace [list | init [dir] | add [dir] | show [id] | context [id] | set [id] --summary … | survey [id] | use <id> | remove <id>]');
     }
+    case 'triggers':
+    case 'trigger': {
+      const cfg = loadConfig(v);
+      const sub = pos[0] ?? 'list';
+      const settings = loadSettings(cfg.home);
+      const rules = settings.rules ?? [];
+      const save = (next: Rule[]) => saveSettings(cfg.home, { ...settings, rules: ensureIds(next) });
+      const get = (id: string | undefined, usage: string): Rule => {
+        if (!id) return fail(usage);
+        try {
+          return findRule(rules, id);
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+      };
+      const colorStatus = (st: ReturnType<typeof triggerStatus>) => ({ paused: dim, error: red, idle: dim, active: green })[st](statusText(st));
+      const outcomeColor = (o: string) => (o === 'started' ? green(o) : o === 'error' ? red(o) : amber(o));
+      if (sub === 'list' || sub === 'ls') {
+        if (v.json) return console.log(JSON.stringify(rules.map((r) => ({ ...r, status: triggerStatus(r, cfg.home), last: lastDelivery(cfg.home, r.id!) ?? null }))));
+        if (!rules.length) return console.log(dim('no triggers yet. A trigger starts a workflow when a pull request arrives.\n  Example: aorch triggers add acme/api --workflow full-review --comment\n  Then:    aorch triggers setup   (webhook) · aorch pr watch   (polling, no setup, named repos only; * triggers need the webhook)'));
+        const now = Date.now();
+        for (const r of rules) {
+          const st = triggerStatus(r, cfg.home, now);
+          const last = lastDelivery(cfg.home, r.id!);
+          const who = r.agent ? `${r.agent}${r.model ? '/' + r.model : ''}` : r.model ? `default agent/${r.model}` : 'default agent';
+          console.log(`  ${padEndV(bold(r.id!), 24)} ${padEndV(colorStatus(st), 8)} ${padEndV(r.repo, 22)} ${padEndV(cyan('→ ' + r.workflow), 20)} ${padEndV(dim(r.workspace ?? 'no workspace'), 14)} ${padEndV(dim(who), 18)} ${dim((r.events ?? DEFAULT_EVENTS).join(','))}  ${last ? `${dim(agoRel(last.at, now))} ${outcomeColor(last.outcome)}${last.pr ? dim(' #' + last.pr) : ''}` : dim('no deliveries')}`);
+        }
+        return;
+      }
+      if (sub === 'add') {
+        const repo = pos[1] ?? fail('usage: aorch triggers add <owner/repo|*> --workflow <name> [--workspace id] [--agent a] [--model m] [--events opened,synchronize] [--labels a,b] [--comment] [--drafts] [--forks] [--id name]');
+        let rule: Rule;
+        try {
+          rule = parseRuleArgs(repo, { ...v, workflow: v.workflow });
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+        const checked = checkRuleRefs(rule, ruleRefs(cfg));
+        if (checked.errors.length) fail(checked.errors.join('\n'));
+        for (const w of checked.warnings) console.log(`${amber('!')} ${w}`);
+        let plan;
+        try {
+          plan = planRuleAdd(rules, rule);
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+        const { next, prev } = plan;
+        save(next);
+        const saved = loadSettings(cfg.home).rules!.find((r) => r.repo.toLowerCase() === rule.repo.toLowerCase() && r.workflow === rule.workflow)!;
+        console.log(`${green('✔')} trigger ${bold(saved.id!)}: PRs on ${bold(repo)} will run ${cyan(rule.workflow)}${rule.workspace ? ' in workspace ' + bold(rule.workspace) : ''}${rule.agent || rule.model ? ' on ' + bold([rule.agent, rule.model].filter(Boolean).join('/')) : ''}${rule.comment ? ' and post the result as a comment' : ''}${prev ? dim(' (replaced the earlier one)') : ''}`);
+        console.log(dim(`  try it without running anything: aorch triggers test ${saved.id} <pr>   ·   receive PRs: aorch triggers setup (webhook) or aorch pr watch (polling)`));
+        return;
+      }
+      if (sub === 'enable' || sub === 'disable') {
+        const r = get(pos[1], `usage: aorch triggers ${sub} <id>`);
+        save(rules.map((x) => (x === r ? { ...x, enabled: sub === 'enable' ? undefined : false } : x)));
+        console.log(`${green('✔')} ${bold(r.id!)} ${sub === 'enable' ? 'enabled' : 'paused (kept, but PRs are ignored until you enable it)'}`);
+        return;
+      }
+      if (sub === 'remove' || sub === 'rm') {
+        const r = get(pos[1], 'usage: aorch triggers remove <id>');
+        save(rules.filter((x) => x !== r));
+        console.log(`${green('✔')} removed ${bold(r.id!)}`);
+        return;
+      }
+      if (sub === 'show') {
+        const r = get(pos[1], 'usage: aorch triggers show <id>');
+        const st = triggerStatus(r, cfg.home);
+        if (v.json) return console.log(JSON.stringify({ ...r, status: st, deliveries: readDeliveries(cfg.home, { trigger: r.id, limit: 10 }) }));
+        const row = (k: string, val: string) => console.log(`  ${dim(k.padEnd(11))} ${val}`);
+        console.log(`  ${bold(r.id!)}  ${colorStatus(st)}`);
+        row('source', `GitHub pull requests on ${r.repo === '*' ? 'any repo (webhook only; aorch pr watch skips * triggers)' : r.repo}`);
+        row('events', (r.events ?? DEFAULT_EVENTS).join(', '));
+        row('workflow', cyan(r.workflow));
+        row('workspace', r.workspace ?? dim('none'));
+        row('agent/model', r.agent || r.model ? [r.agent ?? 'default', r.model].filter(Boolean).join('/') : dim("crew defaults"));
+        row('filters', [r.labels?.length ? 'labels: ' + r.labels.join(', ') : '', r.drafts ? 'drafts' : 'no drafts', r.forks ? 'forks' : 'no forks'].filter(Boolean).join(' · '));
+        row('comment', r.comment ? 'posts the result on the PR' : 'no');
+        const recent = readDeliveries(cfg.home, { trigger: r.id, limit: 5 });
+        console.log(`\n  ${dim('recent deliveries')}${recent.length ? '' : '  ' + dim('none yet')}`);
+        for (const d of recent) console.log(`  ${dim(agoRel(d.at).padEnd(10))} ${padEndV(outcomeColor(d.outcome), 8)} ${dim(d.source.padEnd(7))} ${d.repo}${d.pr ? '#' + d.pr : ''} ${dim(d.reason ?? d.runId ?? '')}`);
+        return;
+      }
+      if (sub === 'log') {
+        const id = pos[1];
+        if (id) get(id, '');
+        const limit = Math.max(1, Math.min(500, Number(v.limit ?? 20) || 20));
+        const ds = readDeliveries(cfg.home, { trigger: id, limit });
+        if (v.json) return console.log(JSON.stringify(ds));
+        if (!ds.length) return console.log(dim(id ? `nothing has arrived for ${id} yet` : 'no deliveries yet. Webhooks and polling record every PR they see, including the ones they ignore.'));
+        for (const d of ds) console.log(`  ${dim(agoRel(d.at).padEnd(10))} ${padEndV(outcomeColor(d.outcome), 8)} ${dim(d.source.padEnd(7))} ${padEndV(dim(d.trigger ?? '-'), 22)} ${d.repo}${d.pr ? '#' + d.pr : ''} ${dim(d.reason ?? d.runId ?? '')}`);
+        return;
+      }
+      if (sub === 'test') {
+        const r = get(pos[1], 'usage: aorch triggers test <id> <pr-link-or-number> [--fire]');
+        if (!pos[2]) fail('usage: aorch triggers test <id> <pr-link-or-number> [--fire]');
+        let ref;
+        try {
+          ref = parsePrTarget(pos[2]!, r);
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+        let info;
+        try {
+          info = await fetchPr(ref);
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+        const prevRun = alreadyRan(cfg.home, ref, info.headSha);
+        const verdict = dryRunVerdict(r, { repo: ref.repo, labels: info.labels, draft: info.draft, fork: info.fork }, prevRun ? { sha: info.headSha, runId: prevRun } : undefined);
+        const target = `${ref.repo}#${ref.number} ${dim('"' + info.title.slice(0, 60) + '"')}`;
+        const where = `${cyan(r.workflow)}${r.workspace ? ' on workspace ' + bold(r.workspace) : ''} with ${bold(r.agent || r.model ? [r.agent ?? 'default agent', r.model].filter(Boolean).join('/') : 'the crew defaults')}`;
+        if (!verdict.matches) {
+          console.log(`${amber('○')} would be ignored: ${verdict.why}\n  ${target}`);
+          return;
+        }
+        if (!v.fire) {
+          console.log(`${green('✔')} would start ${where}\n  ${target}\n  ${dim('dry run, nothing started. Add --fire to start it for real.')}\n  ${dim('events are not checked in a dry run (GitHub supplies the action when a real PR event arrives).')}`);
+          return;
+        }
+        const ctx = open(v);
+        const at = () => new Date().toISOString();
+        let started;
+        try {
+          started = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model, onComment: (e) => console.log(e ? `${red('✘')} ${e.message}` : `${green('✔')} posted the review on ${ref.url}`) });
+        } catch (e) {
+          const msg = (e as Error).message;
+          recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: classifyFailure(msg), reason: msg.slice(0, 300) });
+          return fail(msg);
+        }
+        recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: 'started', runId: started.runId });
+        console.log(`${cyan('▶')} started ${where}\n  ${target} ${dim('run ' + started.runId)}`);
+        return drive(ctx, started.runId, !!v.json, undefined, async () => { await started.done; });
+      }
+      if (sub === 'setup') {
+        const { secret, created } = ensureWebhookSecret(cfg.home, v.generate);
+        const port = Number(v.port ?? 4177);
+        let up = false;
+        try {
+          await fetch(`http://127.0.0.1:${port}/api/webhooks/github`, { method: 'GET', signal: AbortSignal.timeout(1000) });
+          up = true;
+        } catch {
+          up = false;
+        }
+        if (created) console.log(`${green('✔')} new webhook secret saved to ${join(cfg.home, 'pr.json')}`);
+        console.log(`\n  ${dim('GitHub → repo → Settings → Webhooks → Add webhook')}\n  payload URL  ${dim('https://<your tunnel>/api/webhooks/github')}\n  content type ${bold('application/json')}\n  secret       ${bold(secret)}\n  events       ${bold('Let me select individual events → Pull requests')}\n`);
+        console.log(`  local server ${up ? green(`reachable on http://127.0.0.1:${port}`) : amber(`not running on port ${port}`) + dim('  (start it: aorch serve)')}`);
+        console.log(dim('\n  aorch serve listens on this machine only. Expose just the webhook with a tunnel:\n    cloudflared tunnel --url http://127.0.0.1:' + port + '\n    ngrok http ' + port + '\n    tailscale funnel ' + port + '\n  Only the webhook path is reachable that way, and it needs this signature.\n  No tunnel? aorch pr watch polls GitHub instead.\n  Check it works: aorch triggers log'));
+        return;
+      }
+      fail('usage: aorch triggers [list | add <owner/repo|*> --workflow w … | enable|disable|remove|show <id> | log [id] [--limit n] | test <id> <pr> [--fire] | setup]');
+    }
     case 'pr': {
       const cfg = loadConfig(v);
       refreshCrew(cfg.home);
@@ -738,15 +904,26 @@ async function main() {
       }
       if (sub === 'rule') {
         const act = pos[1];
-        const repo = pos[2] ?? fail('usage: aorch pr rule add <owner/repo|*> --workflow <name> [--comment] [--labels a,b] [--events opened,synchronize] [--drafts] [--forks]   ·   aorch pr rule remove <owner/repo> [--workflow <name>]');
+        const repo = pos[2] ?? fail('usage: aorch pr rule add <owner/repo|*> --workflow <name> [--comment] [--labels a,b] [--events opened,synchronize] [--drafts] [--forks] [--workspace id] [--agent a] [--model m] [--id name]   ·   aorch pr rule remove <owner/repo> [--workflow <name>]');
         const rules = [...(settings.rules ?? [])];
         if (act === 'add') {
-          const workflow = v.workflow ?? 'full-review';
-          const rule: Rule = { repo, workflow, ...(v.comment ? { comment: true } : {}), ...(v.drafts ? { drafts: true } : {}), ...(v.forks ? { forks: true } : {}), ...(v.labels ? { labels: v.labels.split(',').map((x) => x.trim()).filter(Boolean) } : {}), ...(v.events ? { events: v.events.split(',').map((x) => x.trim()).filter(Boolean) } : {}) };
-          if (!/^[\w.*/-]{1,100}$/.test(repo)) fail('repo must look like owner/repo');
-          const next = rules.filter((r) => !(r.repo === repo && r.workflow === workflow));
-          next.push(rule);
-          saveSettings(cfg.home, { ...settings, rules: next });
+          let rule: Rule;
+          try {
+            rule = parseRuleArgs(repo, v);
+          } catch (e) {
+            return fail((e as Error).message);
+          }
+          const checked = checkRuleRefs(rule, ruleRefs(cfg));
+          if (checked.errors.length) fail(checked.errors.join('\n'));
+          for (const w of checked.warnings) console.log(`${amber('!')} ${w}`);
+          const workflow = rule.workflow;
+          let next: Rule[];
+          try {
+            next = planRuleAdd(rules, rule).next;
+          } catch (e) {
+            return fail((e as Error).message);
+          }
+          saveSettings(cfg.home, { ...settings, rules: ensureIds(next) });
           console.log(`${green('✔')} PRs on ${bold(repo)} will run ${cyan(workflow)}${rule.comment ? ' and post the result as a comment' : ''}`);
           console.log(dim('  start listening: aorch pr watch   (polls, no setup)  ·  or point a GitHub webhook at /api/webhooks/github (see: aorch pr secret)'));
           return;
@@ -769,26 +946,31 @@ async function main() {
         return;
       }
       if (sub === 'secret') {
-        let sec = process.env.AORCH_WEBHOOK_SECRET || settings.webhookSecret;
-        if (!sec || v.generate) {
-          sec = randomBytes(24).toString('hex');
-          saveSettings(cfg.home, { ...settings, webhookSecret: sec });
-          console.log(`${green('✔')} new webhook secret saved to ${join(cfg.home, 'pr.json')}`);
-        }
+        const { secret: sec, created } = ensureWebhookSecret(cfg.home, v.generate);
+        if (created) console.log(`${green('✔')} new webhook secret saved to ${join(cfg.home, 'pr.json')}`);
         console.log(`\n  secret      ${bold(sec)}\n  payload URL ${dim('https://<your tunnel>/api/webhooks/github')}   ${dim('(content type: application/json, event: Pull requests)')}\n`);
         console.log(dim('  aorch serve listens on this machine only. To receive GitHub webhooks, expose it with a tunnel (cloudflared, ngrok, tailscale funnel).\n  Only the webhook path is reachable that way and it needs this signature; the rest of the API still refuses outside hosts.\n  No tunnel? aorch pr watch polls GitHub instead.'));
         return;
       }
       const ctx = open(v);
       if (sub === 'watch') {
-        const rules = (settings.rules ?? []).filter((r) => r.repo !== '*');
-        if (!rules.length) fail('no rules to watch. Add one: aorch pr rule add <owner/repo> --workflow full-review --comment');
+        const polled = () => (loadSettings(cfg.home).rules ?? []).filter((r) => r.repo !== '*' && r.enabled !== false);
+        if (!polled().length) fail('no rules to watch. Add one: aorch pr rule add <owner/repo> --workflow full-review --comment');
         const every = Math.max(20, Number(v.interval ?? 60)) * 1000;
         await banner('watching pull requests');
-        for (const r of rules) console.log(ruleLine(r));
+        for (const r of polled()) console.log(ruleLine(r));
         let busy = 0;
+        let starNote = false;
+        // a failure is shown and logged once per (trigger, PR, commit, reason), not on every sweep
+        const lastBad = new Map<string, string>();
         const sweep = async () => {
-          for (const r of rules) {
+          // rules are re-read every sweep, so enabling, disabling, editing, adding and removing apply while it runs
+          const all = loadSettings(cfg.home).rules ?? [];
+          if (!starNote && all.some((r) => r.repo === '*' && r.enabled !== false)) {
+            starNote = true;
+            console.log(dim('  note: triggers for * (any repo) only work through the webhook; polling needs a named repo'));
+          }
+          for (const r of polled()) {
             const list = await defaultExec('gh', ['pr', 'list', '-R', r.repo, '--state', 'open', '--limit', '30', '--json', 'number,headRefOid,isDraft,isCrossRepository,labels']);
             if (list.code !== 0) { console.log(`${amber('!')} ${r.repo}: ${list.stderr.trim().split('\n')[0] || 'gh failed'}`); continue; }
             let prs: { number: number; headRefOid: string; isDraft: boolean; isCrossRepository: boolean; labels: { name: string }[] }[] = [];
@@ -796,16 +978,24 @@ async function main() {
             for (const p of prs) {
               const ref = { provider: 'github' as const, repo: r.repo, number: p.number, url: `https://github.com/${r.repo}/pull/${p.number}` };
               if (alreadyRan(cfg.home, ref, p.headRefOid)) continue;
+              const key = `${r.id ?? r.repo}#${p.number}`;
               const hit = matchRule([r], { repo: r.repo, action: (r.events ?? DEFAULT_EVENTS).includes('synchronize') ? 'synchronize' : 'opened', labels: p.labels.map((l) => l.name), draft: p.isDraft, fork: p.isCrossRepository });
               if (!hit || busy >= 2) continue;
               try {
                 busy++;
-                const run = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: hit.workflow, comment: hit.comment, onComment: (e) => console.log(e ? `${red('✘')} ${r.repo}#${p.number}: ${e.message}` : `${green('✔')} commented on ${r.repo}#${p.number}`) });
+                lastBad.delete(key);
+                const run = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: hit.workflow, comment: hit.comment, workspace: hit.workspace, agent: hit.agent, model: hit.model, onComment: (e) => console.log(e ? `${red('✘')} ${r.repo}#${p.number}: ${e.message}` : `${green('✔')} commented on ${r.repo}#${p.number}`) });
+                recordDelivery(cfg.home, { at: new Date().toISOString(), trigger: hit.id, source: 'poll', repo: r.repo, pr: p.number, outcome: 'started', runId: run.runId });
                 console.log(`${cyan('▶')} ${r.repo}#${p.number} ${dim('→ ' + hit.workflow + ' · run ' + run.runId)}`);
                 void run.done.then((st) => console.log(`${st.status === 'done' ? green('✔') : red('✘')} ${r.repo}#${p.number} ${dim(st.status + ' · $' + st.costUsd.toFixed(2))}`)).finally(() => busy--);
               } catch (e) {
                 busy--;
-                console.log(`${amber('!')} ${r.repo}#${p.number}: ${(e as Error).message}`);
+                const msg = (e as Error).message;
+                const sig = `${p.headRefOid}|${msg.slice(0, 300)}`;
+                if (reportOnce(lastBad, key, sig)) {
+                  recordDelivery(cfg.home, { at: new Date().toISOString(), trigger: hit.id, source: 'poll', repo: r.repo, pr: p.number, outcome: classifyFailure(msg), reason: msg.slice(0, 300) });
+                  console.log(`${amber('!')} ${r.repo}#${p.number}: ${msg}`);
+                }
               }
             }
           }
