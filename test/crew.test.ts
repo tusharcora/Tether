@@ -119,8 +119,11 @@ describe('crew', () => {
     const eyes = (m: Mood, t: number) => lookSprite(look, m, t).map((r, y) => [...r].map((c, x) => (c === 'E' ? `${x},${y}` : '')).filter(Boolean)).flat();
     expect(eyes('idle', 0)).toHaveLength(2);
     expect(eyes('asleep', 0)).toHaveLength(0);
-    expect(eyes('working', 0)).not.toEqual(eyes('working', 7));
-    expect(eyes('waiting', 0)).not.toEqual(eyes('idle', 0));
+    // life comes from the mouth, so the frames differ while the eyes stay where they are
+    const talking = { ...look, mouth: 'flat' };
+    expect(lookSprite(talking, 'working', 0)).not.toEqual(lookSprite(talking, 'working', 7));
+    expect(lookSprite(talking, 'waiting', 0)).not.toEqual(lookSprite(talking, 'idle', 0));
+    expect(eyes('sad', 0)).toEqual(eyes('idle', 0));
     setCrewStyle('pebble');
   });
 

@@ -115,7 +115,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   if (pat === 'blush') { put(per[2]![0], 2, 'P'); put(per[2]![1], 2, 'P'); }
   else if (pat === 'band') for (let x = per[0]![0]; x <= per[0]![1]; x++) put(x, 0, 'A');
   else if (pat === 'belly') { put(cx1, 4, 'h'); put(cx2, 4, 'h'); }
-  else if (pat === 'badge') put(per[4]![0], 4, 'A');
+  else if (pat === 'badge') put(per[2]![1] - 1, 2, 'A'); // a pin on the chest, not a stray corner pixel
   else if (pat === 'spots') { put(per[2]![0] + 1, 2, 'b'); put(per[4]![1], 4, 'b'); put(per[3]![0], 3, 'h'); }
   const side = (ys: number[], k: string) => ys.forEach((y) => { const p = per[y]; if (p) { put(p[0] - 1, y, k); put(p[1] + 1, y, k); } });
   if (look.side === 'arms') side([3, 4], 'b');
@@ -144,6 +144,9 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   if (mood === 'happy' && mouth === 'none') mouth = 'smile';
   if (mood === 'sad' && mouth === 'smile') mouth = 'frown';
   if (mood === 'asleep' && mouth === 'smile') mouth = 'flat';
+  // life comes from the mouth and the blink, not from eyes jumping around the face
+  if (mouth !== 'none' && mood === 'working' && Math.floor(tick / 7) % 2 === 1) mouth = 'open';
+  if (mouth !== 'none' && mood === 'waiting') mouth = 'open';
   if (mouth === 'flat') { putDark(cx1, 3); putDark(cx2, 3); }
   else if (mouth === 'smile') { putDark(cx1 - 1, 3); putDark(cx1, 4); putDark(cx2, 4); putDark(cx2 + 1, 3); }
   else if (mouth === 'frown') { putDark(cx1 - 1, 4); putDark(cx1, 3); putDark(cx2, 3); putDark(cx2 + 1, 4); }
@@ -151,7 +154,6 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   let dx = 0, dy = 0, closed = false;
   if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 7) % 4]!; // a slow glance left, centre, right, centre
   else if (mood === 'waiting') dx = tick % 50 < 25 ? -1 : 1;
-  else if (mood === 'sad') dy = 1;
   else if (mood === 'asleep' || (mood === 'idle' && tick % 40 > 37)) closed = true;
   const eyes: [number, number, string, boolean][] = [];
   const e = (x: number, y: number, k: string, mv: boolean) => eyes.push([x, y, k, mv]);
@@ -166,12 +168,12 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
     default: e(2, 1, 'E', true); e(5, 1, 'E', true);
   }
   // The eyes move as one piece and never onto the outline (that punches notches in the silhouette) or into the mouth rows.
-  // Try the wanted shift, then each axis alone, then a glance down, then stay put.
+  // Try the wanted shift, then each axis alone, then stay put.
   const solid = (x: number, y: number) => inBody(x - 1, y) && inBody(x + 1, y) && inBody(x, y - 1) && inBody(x, y + 1);
   const fits = (ox: number, oy: number) => (ox === 0 && oy === 0) || eyes.every(([x, y, , mv]) => !mv || !inBody(x, y) || (solid(x + ox, y + oy) && y + oy <= 2));
   const wanted: [number, number][] = [];
   const restOk = eyes.every(([x, y, , mv]) => !mv || solid(x, y)); // an eye that already hugs the edge stays where it is
-  if (restOk && (dx !== 0 || dy !== 0)) for (const c of [[dx, dy], [dx, 0], [0, dy], [0, 1]] as [number, number][]) if (c[0] !== 0 || c[1] !== 0) wanted.push(c);
+  if (restOk && (dx !== 0 || dy !== 0)) for (const c of [[dx, dy], [dx, 0], [0, dy]] as [number, number][]) if (c[0] !== 0 || c[1] !== 0) wanted.push(c);
   wanted.push([0, 0]);
   const [ox, oy2] = wanted.find(([a, b]) => fits(a, b)) ?? [0, 0];
   for (const [x0, y0, k0, mv] of eyes) {
