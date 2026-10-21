@@ -147,7 +147,10 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   // life comes from the mouth and the blink, not from eyes jumping around the face
   if (mouth !== 'none' && mood === 'working' && Math.floor(tick / 7) % 2 === 1) mouth = 'open';
   if (mouth !== 'none' && mood === 'waiting') mouth = 'open';
-  if (mouth === 'flat') { putDark(cx1, 3); putDark(cx2, 3); }
+  // two-row eyes leave no room above the mouth, so the mouth drops to the bottom row and loses its corners (they would fuse with the eyes)
+  const eyesLow = look.eyes === 'tall' || look.eyes === 'cyclops' || look.eyes === 'sleepy';
+  if (mouth !== 'none' && eyesLow) { putDark(cx1, 4); putDark(cx2, 4); }
+  else if (mouth === 'flat') { putDark(cx1, 3); putDark(cx2, 3); }
   else if (mouth === 'smile') { putDark(cx1 - 1, 3); putDark(cx1, 4); putDark(cx2, 4); putDark(cx2 + 1, 3); }
   else if (mouth === 'frown') { putDark(cx1 - 1, 4); putDark(cx1, 3); putDark(cx2, 3); putDark(cx2 + 1, 4); }
   else if (mouth === 'open') { putDark(cx1, 3); putDark(cx2, 3); putDark(cx1, 4); putDark(cx2, 4); }
@@ -157,15 +160,29 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   else if (mood === 'asleep' || (mood === 'idle' && tick % 40 > 37)) closed = true;
   const eyes: [number, number, string, boolean][] = [];
   const e = (x: number, y: number, k: string, mv: boolean) => eyes.push([x, y, k, mv]);
+  // Eyes follow the body: they sit just inside the widest part of the face row, so every shape gets a face that fits it.
+  const face = per[1] ?? per[0]!;
+  const iL = face[0] + 1, iR = face[1] - 1; // interior columns of the face row
+  const xl = Math.max(iL, Math.min(cx1 - 1, iR)), xr = Math.min(iR, Math.max(cx2 + 1, iL));
+  const roomy = iR - iL >= 5; // wide and square bodies
   switch (look.eyes) {
-    case 'tall': e(2, 1, 'E', true); e(2, 2, 'E', true); e(5, 1, 'E', true); e(5, 2, 'E', true); break;
-    case 'wide': e(1, 1, 'E', true); e(2, 1, 'E', true); e(5, 1, 'E', true); e(6, 1, 'E', true); break;
-    case 'visor': for (let x = 1; x <= 6; x++) e(x, 1, 'E', false); e(2, 1, 'Z', true); e(5, 1, 'Z', true); break;
-    case 'cyclops': e(3, 1, 'E', true); e(4, 1, 'E', true); e(3, 2, 'E', true); e(4, 2, 'E', true); break;
-    case 'sleepy': e(2, 2, 'E', true); e(5, 2, 'E', true); e(2, 1, 'b', false); e(5, 1, 'b', false); break;
-    case 'wink': e(2, 1, 'E', true); e(4, 1, 'E', true); e(5, 1, 'E', true); break; // the open eye and the winking dash move together
-    case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', false); e(5, 1, 'E', false); break; // pupils stay inside the lenses
-    default: e(2, 1, 'E', true); e(5, 1, 'E', true);
+    case 'tall': e(xl, 1, 'E', true); e(xl, 2, 'E', true); e(xr, 1, 'E', true); e(xr, 2, 'E', true); break;
+    case 'wide':
+      if (roomy) { e(xl, 1, 'E', true); e(xl + 1, 1, 'E', true); e(xr - 1, 1, 'E', true); e(xr, 1, 'E', true); }
+      else { e(xl, 1, 'E', true); e(xr, 1, 'E', true); }
+      break;
+    case 'visor': for (let x = iL; x <= iR; x++) e(x, 1, 'E', false); e(xl, 1, 'Z', true); e(xr, 1, 'Z', true); break;
+    case 'cyclops': e(cx1, 1, 'E', true); e(cx2, 1, 'E', true); e(cx1, 2, 'E', true); e(cx2, 2, 'E', true); break;
+    case 'sleepy': e(xl, 2, 'E', true); e(xr, 2, 'E', true); e(xl, 1, 'b', false); e(xr, 1, 'b', false); break;
+    case 'wink': e(xl, 1, 'E', true); e(xr, 1, 'E', true); if (xr - 1 > xl + 1) e(xr - 1, 1, 'E', true); break; // the open eye and the winking dash move together
+    case 'glasses':
+      e(face[0], 1, 'A', false); e(face[1], 1, 'A', false);
+      for (let x = xl + 1; x <= xr - 1; x++) e(x, 1, 'A', false);
+      if (xl - 1 > face[0]) e(xl - 1, 1, 'A', false);
+      if (xr + 1 < face[1]) e(xr + 1, 1, 'A', false);
+      e(xl, 1, 'E', false); e(xr, 1, 'E', false);
+      break; // pupils stay inside the lenses
+    default: e(xl, 1, 'E', true); e(xr, 1, 'E', true);
   }
   // The eyes move as one piece and never onto the outline (that punches notches in the silhouette) or into the mouth rows.
   // Try the wanted shift, then each axis alone, then stay put.
