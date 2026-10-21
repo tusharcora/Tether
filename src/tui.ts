@@ -970,7 +970,13 @@ export class Tui {
     }
     for (const e of sess.log) {
       add('');
-      if (e.k === 'you') para(bold(cyan('› ')), e.text);
+      if (e.k === 'you') {
+        // Your own messages sit on a soft background so they stand out from Maestro's replies.
+        const bgc = caps.level ? bgCode(mix([[0, 0, 0], pal.slate], 0.55)) : '';
+        const from = out.length;
+        para(bold(cyan('› ')), e.text);
+        if (bgc) for (let i = from; i < out.length; i++) out[i]!.text = bgc + padEnd(out[i]!.text, w - 2).replace(/\x1b\[(?:0|49)m/g, (r) => r + bgc) + '\x1b[0m';
+      }
       else if (e.k === 'maestro') para(bot + ' ', e.text);
       else if (e.k === 'note') para(dim('  ⎿ '), e.text, '    ');
       else if (e.k === 'choice') {
@@ -2303,10 +2309,7 @@ export class Tui {
     const line = m?.kind === 'prompt' ? `${bold(paint(pal.cyan, '›'))} ${m.value.length > w - 6 ? '…' + m.value.slice(-(w - 7)) : m.value}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`   : m?.kind === 'palette' ? `${bold(paint(pal.cyan, '›'))} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`
       : m?.kind === 'confirm' ? `${bold(paint(pal.amber, '›'))} ${dim('press')} ${bold('y')} ${dim('to confirm,')} ${bold('n')} ${dim('to cancel')}` : this.chatLine();
     const asked = m?.kind === 'prompt' && m.hint ? `${hint} · ${m.hint}` : hint;
-    // The line you type on gets a soft background so it reads as the input.
-    const bgc = caps.level ? bgCode(mix([[0, 0, 0], pal.slate], 0.55)) : '';
-    const lit = bgc ? bgc + padEnd(line, w).replace(/\x1b\[(?:0|49)m/g, (r) => r + bgc) + '\x1b[0m' : line;
-    return [top, lit, rule(w), asking ? dim(asked) : hintLine];
+    return [top, line, rule(w), asking ? dim(asked) : hintLine];
   }
 
   private body(h: number): string[] {
