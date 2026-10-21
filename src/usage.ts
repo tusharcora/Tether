@@ -78,7 +78,17 @@ async function call(f: Fetch, url: string, key: string, body?: unknown): Promise
   if (res.status === 404) throw new Error('404: wrong organisation id, or the key belongs to another organisation');
   if (res.status === 429) throw new Error('rate limited by the Spend API; try again in a minute');
   if (res.status === 503) throw new Error('the Spend API is warming up (503); try again shortly. This is not zero usage');
-  if (!res.ok) throw new Error(`HTTP ${res.status} from the Spend API`);
+  if (!res.ok) {
+    let why = '';
+    try {
+      const j = (await res.json()) as { detail?: unknown; error?: unknown; error_code?: unknown };
+      const d = j.detail ?? j.error ?? j.error_code;
+      why = typeof d === 'string' ? d : d ? JSON.stringify(d).slice(0, 300) : '';
+    } catch {
+      /* no body */
+    }
+    throw new Error(`HTTP ${res.status} from the Spend API${why ? ': ' + why : ''}`);
+  }
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -99,8 +109,18 @@ export async function fetchUsage(cfg: EndpointConfig, o: { days?: number; groupB
   const org = await orgIdOf(cfg, f);
   const end = o.now ?? new Date();
   const start = new Date(end.getTime() - days * 86_400_000);
-  const query = { start: start.toISOString(), end: end.toISOString(), time_zone: 'UTC', scope: 'org', basis: 'requests', group_by: o.groupBy ?? 'model', grain: 'day', filters: [], tags: [], sort: 'spend', direction: 'desc', offset: 0, limit: 50 };
-  const rep = await call(f, `${origin(cfg)}/api/orgs/${encodeURIComponent(org)}/spend/query`, key, query);
+  const query = { start: start.toISOString().replace(/\.\d+Z$/, 'Z'), end: end.toISOString().replace(/\.\d+Z$/, 'Z'), time_zone: 'UTC', scope: 'org', basis: 'requests', group_by: o.groupBy ?? 'model', grain: 'day', filters: [], tags: [], sort: 'spend', direction: 'desc', offset: 0, limit: 50 };
+  const base = `${origin(cfg)}/api/orgs/${encodeURIComponent(org)}/spend`;
+  // The documented flow for an unpinned query: start a load, then poll it until it is ready.
+  let env = await call(f, `${base}/analytics`, key, { query, refresh: false });
+  const until = Date.now() + 70_000;
+  while (env.status === 'loading' && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, o.fetch ? 0 : 1500));
+    env = await call(f, `${base}/analytics/${encodeURIComponent(String(env.id))}`, key);
+  }
+  if (env.status === 'failed') throw new Error(`the Spend API could not build the report (${String(env.error_code ?? 'failed')})`);
+  if (env.status !== 'ready' || !env.report) throw new Error('the report is still loading; try again in a moment');
+  const rep = env.report as Record<string, unknown>;
   const totals = (rep.totals ?? {}) as Record<string, unknown>;
   const groups = (Array.isArray(rep.groups) ? rep.groups : []) as Record<string, unknown>[];
   const cov = (rep.coverage ?? {}) as Record<string, unknown>;
