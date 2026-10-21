@@ -20,6 +20,8 @@ export type { Proposal, Turn };
 export interface Reply {
   text: string;
   proposal?: Proposal;
+  /** A shell command Maestro wants to run. Only ever shown to the person; it runs if they allow it. */
+  command?: { command: string; why?: string };
   warnings: string[];
 }
 
@@ -77,7 +79,9 @@ Reply with ONLY a JSON object, no prose, no code fences:
  "name":"workflow-name (letters, digits, . _ -)",
  "steps":[ "planner", {"type":"coder","prompt":"optional extra instructions for this step"} ],
  "maxCostUsd": 5,
- "task":"what to do (only for run)"}
+ "task":"what to do (only for run)",
+ "command":{"command":"one shell command","why":"what it tells us"}}
+"command" is optional and at most one: use it only when you need to look at or change something on disk to help (prefer read-only ones such as git status, ls, cat, npm test). The person must approve it first, so say what it is for. Never anything destructive.
 Use "answer" for questions and advice (leave out the other fields). Use "save" to create a new workflow from the user's needs. Use "optimize" to improve a saved workflow (name = that workflow; the steps are the improved version, and your reply says what changed and why). Use "run" to start a saved workflow (name + task). Prefer few steps; always put a coder before tester or reviewer; add approval for risky or user-facing changes.`;
 }
 
@@ -141,13 +145,15 @@ export async function chat(message: string, o: ChatOpts): Promise<Reply> {
 
 /** Read the agent's JSON. If it answered in plain prose, that prose is the reply. */
 export function interpret(output: string, o: Pick<ChatOpts, 'home' | 'repo' | 'registry'>, warnings: string[] = []): Reply {
-  let raw: { reply?: unknown; intent?: unknown; name?: unknown; steps?: unknown; maxCostUsd?: unknown; task?: unknown };
+  let raw: { command?: unknown; reply?: unknown; intent?: unknown; name?: unknown; steps?: unknown; maxCostUsd?: unknown; task?: unknown };
   try {
     raw = extractJson(output) as typeof raw;
   } catch {
     return { text: output.trim().slice(0, 600) || 'I have nothing to say to that.', warnings };
   }
   const text = typeof raw.reply === 'string' && raw.reply.trim() ? raw.reply.trim().slice(0, 600) : 'Done.';
+  const cmd = (raw.command ?? undefined) as { command?: unknown; why?: unknown } | undefined;
+  const command = cmd && typeof cmd.command === 'string' && cmd.command.trim() ? { command: cmd.command.trim().slice(0, 600), ...(typeof cmd.why === 'string' ? { why: cmd.why.slice(0, 200) } : {}) } : undefined;
   const intent = String(raw.intent ?? 'answer');
   try {
     if (intent === 'save' || intent === 'optimize') {
@@ -167,7 +173,7 @@ export function interpret(output: string, o: Pick<ChatOpts, 'home' | 'repo' | 'r
   } catch (e) {
     return { text: `${text} (I could not use that: ${(e as Error).message.slice(0, 140)})`, warnings };
   }
-  return { text, warnings };
+  return { text, warnings, ...(command ? { command } : {}) };
 }
 
 /** Save a confirmed workflow. An existing file is copied to pipelines/.backup first. Returns the backup path, if any. */

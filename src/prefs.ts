@@ -13,7 +13,7 @@ export interface Prefs {
   activity?: boolean;
   /** Cost, duration and stream-rate panel in the run view. Default on. */
   metrics?: boolean;
-  /** Mouse clicks and wheel in the terminal UI. Default on (hold shift to select text). */
+  /** Mouse clicks in the terminal UI. Default off, so text can be selected and copied. */
   mouse?: boolean;
   /** Bots cheer, shake and hand over batons as steps finish. Default on. */
   reactions?: boolean;
@@ -25,6 +25,8 @@ export interface Prefs {
   diff?: DiffLayout;
   /** Custom colour themes made in the theme editor, by name. Validated on load. */
   themes?: Record<string, unknown>;
+  /** Commands Maestro proposes: ask each time (default), run without asking, or never. */
+  commands?: 'ask' | 'always' | 'off';
 }
 
 export function loadPrefs(home: string): Prefs {
@@ -41,6 +43,7 @@ export function loadPrefs(home: string): Prefs {
     if (j.split === 'auto' || j.split === 'off' || j.split === 'diff' || j.split === 'events') out.split = j.split;
     if (typeof j.graphics === 'boolean') out.graphics = j.graphics;
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
+    if (j.commands === 'ask' || j.commands === 'always' || j.commands === 'off') out.commands = j.commands;
     if (j.themes && typeof j.themes === 'object' && !Array.isArray(j.themes)) out.themes = j.themes as Record<string, unknown>;
     return out;
   } catch {

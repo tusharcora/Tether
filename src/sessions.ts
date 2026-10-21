@@ -25,6 +25,7 @@ export type RunAction =
   | { type: 'guide'; node: string; guidance: string }
   | { type: 'stop' }
   | { type: 'open' }
+  | { type: 'command'; command: string }
   | { type: 'manual'; steps: string };
 
 export interface Choice {
@@ -39,6 +40,7 @@ export type Entry =
   | { k: 'note'; text: string }
   | { k: 'offer'; r: { text: string; warnings: string[]; proposal?: Proposal }; st: 'pending' | 'done' | 'skipped' | 'failed'; note?: string }
   | { k: 'run'; runId: string; workflow: string }
+  | { k: 'permit'; command: string; cwd: string; why?: string; st: 'pending' | 'running' | 'done' | 'denied' | 'blocked'; sel: number; how?: string; exit?: number | null; output?: string; ms?: number; note?: string }
   | { k: 'choice'; title: string; options: Choice[]; recommended: number; sel: number; st: 'pending' | 'done' | 'skipped' | 'failed'; note?: string };
 
 export interface Session {

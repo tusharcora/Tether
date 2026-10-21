@@ -56,10 +56,11 @@ const SCHEMA = (agents: string[]) => `Each option is one of these actions (exact
 - {"type":"guide","node":"<step id>","guidance":"<extra instructions, max 400 chars>"}   give that agent step new direction, then retry
 - {"type":"manual","steps":"<what the person should do by hand in the worktree, then ask to retry>"}
 - {"type":"stop"}                                                       stop the run
-- {"type":"open"}                                                       open the run view`;
+- {"type":"open"}                                                       open the run view
+- {"type":"command","command":"<one shell command run in the worktree>"}      e.g. a read-only check; shown to the person, who must allow it`;
 
 const OPTIONS_FORMAT = `Reply with ONLY a JSON object, no prose, no code fences:
-{"reply":"your message to the user","options":[{"label":"short title","detail":"one line on what it does and its trade-off","action":{...}}],"recommended":0}
+{"reply":"your message to the user","command":{"command":"optional one shell command","why":"what it tells us"},"options":[{"label":"short title","detail":"one line on what it does and its trade-off","action":{...}}],"recommended":0}
 Give 2 to 4 options, most useful first, and "recommended" is the index of the one you would pick. Only offer actions that make sense for the run's current status.`;
 
 export function parseChoices(raw: unknown, s: RunState, agents: string[]): Choice[] {
@@ -78,6 +79,7 @@ export function parseChoices(raw: unknown, s: RunState, agents: string[]): Choic
     else if (a.type === 'manual' && typeof a.steps === 'string' && a.steps.trim()) action = { type: 'manual', steps: a.steps.trim().slice(0, 400) };
     else if (a.type === 'stop' && (s.status === 'running' || s.status === 'paused')) action = { type: 'stop' };
     else if (a.type === 'open') action = { type: 'open' };
+    else if (a.type === 'command' && typeof a.command === 'string' && a.command.trim()) action = { type: 'command', command: a.command.trim().slice(0, 600) };
     if (action) out.push({ label: clip(o.label.trim(), 70), ...(typeof o.detail === 'string' && o.detail.trim() ? { detail: clip(o.detail.trim(), 200) } : {}), action });
   }
   return out.slice(0, 4);
@@ -139,7 +141,7 @@ In "reply", say in one to three plain sentences what went wrong and the most lik
 }
 
 /** One message from the person inside a run's conversation. */
-export async function chatAboutRun(message: string, s: RunState, history: Turn[], o: RunChatOpts): Promise<{ text: string; choices?: Choices }> {
+export async function chatAboutRun(message: string, s: RunState, history: Turn[], o: RunChatOpts): Promise<{ text: string; choices?: Choices; command?: { command: string; why?: string } }> {
   const agents = o.registry.ids().filter((i) => i !== 'mock');
   const hist = history.slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Maestro'}: ${clip(t.text, 400)}`).join('\n');
   const prompt = `You are Maestro, supervising a team of coding agents, in a conversation about ONE run. Answer the user's message in one to three plain sentences. If they want something changed, or the run needs action, include options. Do NOT modify any files.
@@ -152,12 +154,14 @@ ${hist ? 'Conversation so far:\n' + hist + '\n\n' : ''}User: ${message}
 
 ${OPTIONS_FORMAT} Leave "options" empty ([]) when they only asked a question.`;
   try {
-    const raw = (await ask(prompt, { ...o, cwd: s.repo })) as { reply?: unknown; options?: unknown; recommended?: unknown };
+    const raw = (await ask(prompt, { ...o, cwd: s.repo })) as { reply?: unknown; options?: unknown; recommended?: unknown; command?: { command?: unknown; why?: unknown } };
     const text = typeof raw.reply === 'string' && raw.reply.trim() ? clip(raw.reply.trim(), 700) : 'Done.';
+    const c = raw.command;
+    const command = c && typeof c.command === 'string' && c.command.trim() ? { command: c.command.trim().slice(0, 600), ...(typeof c.why === 'string' ? { why: c.why.slice(0, 200) } : {}) } : undefined;
     const options = parseChoices(raw.options, s, agents);
-    if (!options.length) return { text };
+    if (!options.length) return { text, ...(command ? { command } : {}) };
     const rec = Number.isInteger(raw.recommended) && (raw.recommended as number) >= 0 && (raw.recommended as number) < options.length ? (raw.recommended as number) : 0;
-    return { text, choices: { text, options, recommended: rec } };
+    return { text, choices: { text, options, recommended: rec }, ...(command ? { command } : {}) };
   } catch (e) {
     return { text: `I could not answer (${clip((e as Error).message.split('\n')[0]!, 140)}).` };
   }
@@ -188,6 +192,8 @@ export async function perform(engine: Engine, runId: string, a: RunAction, bindi
       return `guidance added to ${a.node}; retrying`;
     case 'stop':
       return engine.stop(runId) ? 'stopping…' : 'the run is not live in this window';
+    case 'command':
+      throw new Error('commands go through the permission prompt');
     case 'manual':
     case 'open':
       return a.type === 'manual' ? 'noted: do that, then ask me to retry' : 'opened';

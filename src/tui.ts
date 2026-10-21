@@ -25,6 +25,7 @@ import { supervise } from './supervisor.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
 import { chat as askMaestro, savePipeline } from './maestro.js';
+import { allowAlways, blockedReason, isAllowed, loadAllowed, clearAllowed, normalizeCommand, runCommand } from './permissions.js';
 import { chatAboutRun, diagnose, failureKey, perform } from './runchat.js';
 import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberLast, saveSession, sessionIdForRun, type Choice, type Entry, type Session } from './sessions.js';
 import { rank } from './palette.js';
@@ -95,6 +96,7 @@ const padCenter = (s: string, w: number) => {
   return ' '.repeat(l) + s + ' '.repeat(w - n - l);
 };
 /** Wrap on spaces (long words are split), for reading text. */
+const clipStr = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
 const words = (text: string, w: number): string[] => {
   const out: string[] = [];
   for (const raw of strip(text).split('\n')) {
@@ -505,6 +507,10 @@ export class Tui {
     const last = [...this.sess.log].reverse().find((e) => e.k === 'offer');
     return last && last.k === 'offer' && last.st === 'pending' ? last : undefined;
   }
+  private pendingPermit(): Extract<Entry, { k: 'permit' }> | undefined {
+    const last = [...this.sess.log].reverse().find((e) => e.k === 'permit');
+    return last && last.k === 'permit' && last.st === 'pending' ? last : undefined;
+  }
   private pendingChoice(): Extract<Entry, { k: 'choice' }> | undefined {
     const last = [...this.sess.log].reverse().find((e) => e.k === 'choice');
     return last && last.k === 'choice' && last.st === 'pending' ? last : undefined;
@@ -514,6 +520,14 @@ export class Tui {
     const t = this.talk;
     const pending = this.pendingOffer();
     const choice = this.pendingChoice();
+    const permit = this.pendingPermit();
+    if (permit && !t.text) {
+      if (k === 'up') return void (permit.sel = (permit.sel + 2) % 3);
+      if (k === 'down') return void (permit.sel = (permit.sel + 1) % 3);
+      if (k === '1' || k === '2' || k === '3') return this.answerPermit(permit, Number(k) - 1);
+      if (k === 'enter') return this.answerPermit(permit, permit.sel);
+      if (k === 'esc') return this.answerPermit(permit, 2);
+    }
     if (choice && !t.text) {
       if (k === 'up') return void (choice.sel = (choice.sel + choice.options.length - 1) % choice.options.length);
       if (k === 'down') return void (choice.sel = (choice.sel + 1) % choice.options.length);
@@ -543,7 +557,7 @@ export class Tui {
 
   /** A greyed-out next step for the empty input; tab fills it in. `text` is what is typed, `label` what is shown. */
   private suggestion(): { text: string; label: string } | undefined {
-    if (this.isBusy() || this.pendingOffer() || this.pendingChoice()) return undefined;
+    if (this.isBusy() || this.pendingOffer() || this.pendingChoice() || this.pendingPermit()) return undefined;
     const id = this.curRunId();
     const st = id ? this.state(id) : undefined;
     if (id && st) {
@@ -617,6 +631,15 @@ export class Tui {
         perform(this.d.engine, id, action).then((m) => this.say(m), (e: Error) => this.say(e.message, 'err'));
         note(cmd === 'retry' ? `retrying the failed step in run ${id.slice(-8)}` : `resuming run ${id.slice(-8)} where it left off`);
       }
+    } else if (cmd === 'allowed' || cmd === 'permissions') {
+      if (rest[0] === 'clear') {
+        clearAllowed(this.d.cfg.home);
+        note('cleared the list of always-allowed commands');
+      } else {
+        const list = loadAllowed(this.d.cfg.home);
+        note(`commands: ${this.prefs.commands ?? 'ask'} (Settings → Maestro commands)`);
+        note(list.length ? `always allowed:  ${list.join('   ')}` : 'no always-allowed commands yet');
+      }
     } else if (cmd === 'mouse') {
       this.setPref({ mouse: this.prefs.mouse !== true });
       this.applyMouse();
@@ -636,6 +659,7 @@ export class Tui {
       note('/sessions  /main                       switch conversation (each run has its own)');
       note('/runs  /workflows  /crew  /settings   switch screen');
       note('/run <workflow> <task>                 start a saved workflow');
+      note('/allowed [clear]                       commands you always allow for Maestro');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');
       note('Anything else is a message to Maestro. In a run\'s conversation he can change that run for you.');
@@ -675,10 +699,11 @@ export class Tui {
     return { registry: this.registry, agent: b.orchestrator?.agent, model: b.orchestrator?.model, escalate: b.escalate };
   }
 
-  private sendTalk(msg: string) {
+  private sendTalk(msg: string, o: { hidden?: boolean; depth?: number; sess?: Session } = {}) {
     const t = this.talk;
-    const sess = this.sess;
-    sess.log.push({ k: 'you', text: msg });
+    const sess = o.sess ?? this.sess;
+    const depth = o.depth ?? 0;
+    if (!o.hidden) sess.log.push({ k: 'you', text: msg });
     t.scroll = 0;
     this.busyIds.add(sess.id);
     const done = () => {
@@ -692,6 +717,7 @@ export class Tui {
         sess.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
         sess.log.push({ k: 'maestro', text: r.text });
         if (r.choices) sess.log.push(this.choiceEntry(r.choices.options, r.choices.recommended));
+        if (r.command) this.requestCommand(sess, r.command.command, r.command.why, depth);
         done();
       });
       return;
@@ -703,12 +729,75 @@ export class Tui {
         sess.log.push({ k: 'maestro', text: r.text });
         for (const w of r.warnings) this.note(w, sess);
         if (r.proposal) sess.log.push({ k: 'offer', r, st: 'pending' });
+        if (r.command) this.requestCommand(sess, r.command.command, r.command.why, depth);
         done();
       })
       .catch((e: Error) => {
         this.note(e.message.split('\n')[0]!, sess);
         done();
       });
+  }
+
+  /** Where a command runs: the run's worktree in a run conversation, otherwise here. */
+  private cwdFor(sess: Session): string {
+    const st = sess.runId ? this.state(sess.runId) : undefined;
+    return (st && existsSync(st.workdir) ? st.workdir : st?.repo) ?? process.cwd();
+  }
+
+  /** Maestro wants to run a command: refuse it, run it, or ask, depending on Settings and what you allowed before. */
+  private requestCommand(sess: Session, command: string, why: string | undefined, depth: number, explicit = false) {
+    const mode = this.prefs.commands ?? 'ask';
+    const cmd = normalizeCommand(command);
+    const e: Extract<Entry, { k: 'permit' }> = { k: 'permit', command: cmd, cwd: this.cwdFor(sess), why, st: 'pending', sel: 0 };
+    sess.log.push(e);
+    const block = blockedReason(cmd);
+    if (block) {
+      e.st = 'blocked';
+      e.note = `refused: ${block}`;
+      return this.save(sess);
+    }
+    if (mode === 'off' && !explicit) {
+      e.st = 'denied';
+      e.note = 'Maestro commands are off (Settings → Maestro commands)';
+      return this.save(sess);
+    }
+    if (explicit || mode === 'always' || isAllowed(this.d.cfg.home, cmd)) {
+      e.how = explicit ? 'you picked it' : mode === 'always' ? 'always on in settings' : 'always allowed';
+      return this.execCommand(sess, e, depth);
+    }
+    this.save(sess);
+    if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro wants to run a command. Open /sessions to answer`, 'err');
+  }
+
+  private answerPermit(e: Extract<Entry, { k: 'permit' }>, i: number) {
+    const sess = this.sess;
+    if (i === 2) {
+      e.st = 'denied';
+      e.note = 'you denied it';
+      sess.history.push({ who: 'you', text: `[I denied the command: ${e.command}]` });
+      return this.save(sess);
+    }
+    if (i === 1) {
+      allowAlways(this.d.cfg.home, e.command);
+      e.how = 'always allowed from now on';
+    } else e.how = 'allowed once';
+    this.execCommand(sess, e, 0);
+  }
+
+  private execCommand(sess: Session, e: Extract<Entry, { k: 'permit' }>, depth: number) {
+    e.st = 'running';
+    runCommand(e.command, e.cwd).then((r) => {
+      e.st = 'done';
+      e.exit = r.exit;
+      e.ms = r.ms;
+      e.output = r.output.trim().split('\n').slice(-40).join('\n');
+      if (r.timedOut) e.note = 'timed out after 2 minutes';
+      const report = `Command finished: ${e.command}\nexit code ${r.exit ?? 'none'}${r.timedOut ? ' (timed out)' : ''}\n${r.output.trim().slice(-3000)}`;
+      sess.history.push({ who: 'you', text: report });
+      this.save(sess);
+      // let Maestro read the result and carry on, a few times at most
+      if (depth < 3 && !this.isBusy(sess)) this.sendTalk(`${report}\n\n(This is the output of the command you proposed. Say what it means and what to do next. Only propose another command if you really need to.)`, { hidden: true, depth: depth + 1, sess });
+    });
   }
 
   private choiceEntry(options: Choice[], recommended: number, title = ''): Extract<Entry, { k: 'choice' }> {
@@ -726,6 +815,12 @@ export class Tui {
       e.st = 'done';
       e.note = `chose: ${o.label}`;
       this.push({ kind: 'run', runId, sel: 0 });
+      return this.persist();
+    }
+    if (o.action.type === 'command') {
+      e.st = 'done';
+      e.note = `chose: ${o.label}`;
+      this.requestCommand(sess, o.action.command, o.detail, 0, true);
       return this.persist();
     }
     if (o.action.type === 'manual') {
@@ -887,6 +982,19 @@ export class Tui {
           if (o.detail && (e.st === 'pending' || chosen)) words(o.detail, Math.max(20, w - 10)).forEach((l) => add(dim('       ' + l)));
         });
         add('  ' + (e.st === 'pending' ? `${cyan('enter')} ${dim('choose')}  ${cyan('↑↓')} ${dim('move')}  ${cyan('1-' + e.options.length)} ${dim('pick')}  ${cyan('esc')} ${dim('skip')}` : e.st === 'failed' ? red('✘ ') + (e.note ?? 'failed') : e.st === 'done' ? dim(e.note ?? 'done') : dim('skipped')));
+      } else if (e.k === 'permit') {
+        add(`${bot} ${bold(e.st === 'pending' ? 'Maestro wants to run a command' : 'Command')}`);
+        add('  ' + bold(paint(pal.amber, '$ ')) + e.command);
+        add(dim(`  in ${e.cwd}`));
+        if (e.why) para(dim('  why: '), e.why, '       ');
+        if (e.st === 'pending') {
+          ['Allow once', `Always allow “${clipStr(e.command, 40)}”`, 'Deny'].forEach((l, i) => add(`  ${i === e.sel ? cyan('❯') : ' '} ${i === e.sel ? bold(`${i + 1}. ${l}`) : `${i + 1}. ${l}`}`));
+          add('  ' + `${cyan('enter')} ${dim('choose')}  ${cyan('1-3')} ${dim('pick')}  ${cyan('esc')} ${dim('deny')}`);
+        } else if (e.st === 'running') add('  ' + `${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim('running…' + (e.how ? ' (' + e.how + ')' : ''))}`);
+        else if (e.st === 'done') {
+          add('  ' + (e.exit === 0 ? green('✔ exit 0') : red(`✘ exit ${e.exit ?? '?'}`)) + dim(`  ${dur(e.ms ?? 0)}${e.how ? ' · ' + e.how : ''}${e.note ? ' · ' + e.note : ''}`));
+          for (const l of (e.output ?? '').split('\n').slice(-12)) add(dim('    ' + clipStr(l, Math.max(20, w - 8))));
+        } else add('  ' + (e.st === 'blocked' ? red('✘ ') : dim('— ')) + (e.note ?? e.st));
       } else if (e.k === 'offer') {
         const pr = e.r.proposal!;
         if (pr.kind === 'run') {
@@ -1748,6 +1856,7 @@ export class Tui {
       { label: 'Inline graphics', value: onOff(this.prefs.graphics), hint: 'timeline + cost charts in the run view (needs a colour terminal and 34+ rows)', change: flip('graphics') },
       { label: 'Side pane', value: cyan(this.prefs.split ?? 'auto'), hint: 'run view: diff or events beside the live output (100+ columns)', change: (d) => this.setPref({ split: cycle(['auto', 'diff', 'events', 'off'] as const, this.prefs.split ?? 'auto', d) }) },
       { label: 'Diff layout', value: cyan(this.prefs.diff ?? 'auto'), hint: 'auto = side by side on wide terminals', change: (d) => this.setPref({ diff: cycle(['auto', 'unified', 'split'] as const, this.prefs.diff ?? 'auto', d) }) },
+      { label: 'Maestro commands', value: this.prefs.commands === 'always' ? amber('always run') : this.prefs.commands === 'off' ? dim('off') : green('ask first'), hint: 'ask first: allow once / always allow / deny · always run: no prompt (obvious dangers still refused) · off: never. /allowed lists approvals', change: (d) => this.setPref({ commands: cycle(['ask', 'always', 'off'] as const, this.prefs.commands ?? 'ask', d) }) },
       { label: 'LLM providers', value: cyan(`${Object.values(this.avail).filter((a) => a.ok).length} ready`), hint: 'enter: view what is set up, add DeepSeek, OpenRouter, your own server…', change: () => this.providers() },
       { label: 'Theme editor', value: dim('open'), hint: 'edit colours with a live preview', change: () => this.openThemeEditor() },
     ];
@@ -2175,7 +2284,7 @@ export class Tui {
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
-      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
+      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingPermit() ? 'enter choose · 1 allow once · 2 always allow · 3 deny · esc deny' : this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
