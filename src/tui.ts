@@ -31,7 +31,7 @@ import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberL
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
-import { SPIN } from './ui.js';
+import { SPIN, bgCode, mix } from './ui.js';
 import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
@@ -2303,7 +2303,10 @@ export class Tui {
     const line = m?.kind === 'prompt' ? `${bold(paint(pal.cyan, '›'))} ${m.value.length > w - 6 ? '…' + m.value.slice(-(w - 7)) : m.value}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`   : m?.kind === 'palette' ? `${bold(paint(pal.cyan, '›'))} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`
       : m?.kind === 'confirm' ? `${bold(paint(pal.amber, '›'))} ${dim('press')} ${bold('y')} ${dim('to confirm,')} ${bold('n')} ${dim('to cancel')}` : this.chatLine();
     const asked = m?.kind === 'prompt' && m.hint ? `${hint} · ${m.hint}` : hint;
-    return [top, line, rule(w), asking ? dim(asked) : hintLine];
+    // The line you type on gets a soft background so it reads as the input.
+    const bgc = caps.level ? bgCode(mix([[0, 0, 0], pal.slate], 0.55)) : '';
+    const lit = bgc ? bgc + padEnd(line, w).replace(/\x1b\[(?:0|49)m/g, (r) => r + bgc) + '\x1b[0m' : line;
+    return [top, lit, rule(w), asking ? dim(asked) : hintLine];
   }
 
   private body(h: number): string[] {
