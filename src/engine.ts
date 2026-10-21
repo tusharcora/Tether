@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
 import { commitAll, commitFiles, createWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
+import { answersBlock, askable, consultPrompt, parseAsks, resolveTarget, stripAsks, type Ask } from './consult.js';
 import { parentsOf, preflight } from './pipeline.js';
 import { buildPrompt } from './prompt.js';
 import { runProcess } from './proc.js';
@@ -341,6 +342,56 @@ export class Engine {
     }
   }
 
+  /** Put one question to a finished step, read-only, and log it. Always yields an answer (even "no such step"). */
+  private async consultStep(runId: string, asker: PipelineNode, ask: Ask, round: number, sig: AbortSignal): Promise<{ to: string; answer: string; cost: number }> {
+    const st = this.state(runId);
+    const target = resolveTarget(st, asker, ask.target);
+    const done = (to: string, answer: string, cost = 0) => {
+      this.store.append(runId, { type: 'consult', from: asker.id, to, question: ask.question, answer: answer.slice(0, 8000), round, costUsd: cost || undefined });
+      return { to, answer, cost };
+    };
+    if (!target) {
+      const names = askable(st, asker).map((n) => n.id).join(', ') || 'none yet';
+      return done(ask.target, `There is no finished step called "${ask.target}". Steps that can be asked: ${names}.`);
+    }
+    const remaining = st.pipeline.settings.maxCostUsd !== undefined ? st.pipeline.settings.maxCostUsd - st.costUsd : undefined;
+    if (remaining !== undefined && remaining <= 0) return done(target.id, 'The run is out of budget, so this question was not asked. Proceed on your best assumption.');
+    const adapter = this.opts.registry.get(target.agent ?? 'claude');
+    const tns = st.nodes[target.id]!;
+    const resumed = adapter.supportsResume && !!tns.sessionId;
+    const dirtyBefore = new Set(await statusEntries(st.workdir));
+    let res: AgentResult;
+    try {
+      res = await adapter.run({
+        runId,
+        nodeId: `${target.id}.consult`,
+        prompt: consultPrompt(st, asker, target, ask.question, resumed),
+        cwd: st.workdir,
+        model: target.model,
+        readOnly: true,
+        permissionMode: target.permissionMode,
+        attempt: 1,
+        timeoutMs: Math.min(st.pipeline.settings.nodeTimeoutMs, 300_000),
+        budgetUsd: remaining,
+        resumeSessionId: resumed ? tns.sessionId : undefined,
+        signal: sig,
+        mock: target.mock ? { output: `(${target.id}) answer to: ${ask.question.slice(0, 80)}`, costUsd: target.mock.costUsd ?? 0, delayMs: 50 } : undefined,
+        onChunk: () => undefined,
+        onSession: () => undefined,
+      });
+    } catch (err) {
+      res = { output: '', exitCode: 1, error: (err as Error).message };
+    }
+    try {
+      const touched = (await statusEntries(st.workdir)).filter((l) => !dirtyBefore.has(l));
+      if (touched.length) await revertEntries(st.workdir, touched);
+    } catch {
+      /* best effort: a consult must not break the run */
+    }
+    const answer = res.exitCode === 0 && res.output.trim() ? res.output.trim() : `${target.id} could not answer (${res.error ?? 'no output'}). Proceed on your best assumption.`;
+    return done(target.id, answer, res.costUsd ?? 0);
+  }
+
   private async runAgentOnce(
     runId: string,
     node: PipelineNode,
@@ -390,12 +441,12 @@ export class Engine {
       state.pipeline.settings.maxCostUsd !== undefined ? Math.max(0, state.pipeline.settings.maxCostUsd - state.costUsd) : undefined;
     const t0 = Date.now();
 
-    const call = async (resumeSessionId?: string): Promise<AgentResult> => {
+    const call = async (resumeSessionId?: string, promptText: string = prompt): Promise<AgentResult> => {
       try {
         return await adapter.run({
           runId,
           nodeId: node.id,
-          prompt,
+          prompt: promptText,
           cwd: state.workdir,
           model: node.model,
           readOnly: !!node.readOnly,
@@ -420,6 +471,28 @@ export class Engine {
     // A vendor session can expire; fall back to a fresh one rather than failing the node.
     if (resumeId && res.exitCode !== 0 && !res.output && !sig.aborted) res = await call(undefined);
     flush();
+
+    // Bots asking bots: a question at the end of the answer goes to a finished step; the answer comes back and this step finishes.
+    let extraCost = 0;
+    const rounds = node.kind === 'agent' ? state.pipeline.settings.consult ?? 0 : 0;
+    for (let round = 1; round <= rounds && res.exitCode === 0 && !sig.aborted && !runSignal.aborted; round++) {
+      const asks = parseAsks(res.output).slice(0, 2);
+      if (!asks.length) break;
+      const answered: { to: string; question: string; answer: string }[] = [];
+      for (const a of asks) {
+        const r = await this.consultStep(runId, node, a, round, sig);
+        extraCost += r.cost;
+        answered.push({ to: r.to, question: a.question, answer: r.answer });
+      }
+      const live = this.state(runId).nodes[node.id]!;
+      const canResume = adapter.supportsResume && !!live.sessionId;
+      const follow = canResume ? answersBlock(answered) : `${prompt}\n\n# Your answer so far\n${stripAsks(res.output)}\n\n${answersBlock(answered)}`;
+      const before = res;
+      res = await call(canResume ? live.sessionId : undefined, follow);
+      extraCost += before.costUsd ?? 0;
+      flush();
+    }
+    if (rounds) res = { ...res, output: stripAsks(res.output), costUsd: res.costUsd !== undefined || extraCost ? (res.costUsd ?? 0) + extraCost : undefined };
 
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
     const timedOut = sig.aborted;

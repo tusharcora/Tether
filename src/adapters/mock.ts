@@ -14,14 +14,14 @@ export class MockAdapter implements AgentAdapter {
   readonly reportsCost = true;
   readonly supportsResume = false;
   /** Every request the adapter has served, for assertions. */
-  readonly calls: { nodeId: string; attempt: number; prompt: string }[] = [];
+  readonly calls: { nodeId: string; attempt: number; prompt: string; readOnly: boolean }[] = [];
 
   async detect() {
     return { ok: true, version: 'mock' };
   }
 
   async run(req: AgentRequest): Promise<AgentResult> {
-    this.calls.push({ nodeId: req.nodeId, attempt: req.attempt, prompt: req.prompt });
+    this.calls.push({ nodeId: req.nodeId, attempt: req.attempt, prompt: req.prompt, readOnly: req.readOnly });
     const m = req.mock ?? {};
     if (m.delayMs) await sleep(m.delayMs, req.signal);
     if (req.signal.aborted) return { output: '', exitCode: 130, error: 'aborted' };

@@ -1679,6 +1679,8 @@ export class Tui {
       if (ns.startedAt && prev?.finishedAt && now - ns.startedAt < 1500 && ns.startedAt - prev.finishedAt < 3000) f.baton = (now - ns.startedAt) / 1200;
       const act = [...st.actions].reverse().find((a) => a.node === n.id && now - a.ts < 5000);
       if (act) f.tag = act.action === 'retry' ? '↻' : act.action === 'escalate' ? '⇧' : '■';
+      const talk = (st.talk ?? []).find((t) => now - t.ts < 6000 && (t.from === n.id || t.to === n.id));
+      if (talk && !f.tag) f.tag = talk.from === n.id ? '?' : '…';
       return Object.keys(f).length ? f : undefined;
     };
   }

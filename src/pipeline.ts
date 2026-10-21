@@ -78,6 +78,7 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
     wallClockMs: num(rs.wallClockMs),
     pipeMode: rs.pipeMode === 'direct' ? 'direct' : 'ancestors',
     setup: str(rs.setup),
+    consult: rs.consult === true ? 2 : num(rs.consult) ? Math.min(4, Math.max(0, Math.trunc(num(rs.consult)!))) : undefined,
   };
   return { name, version: 1, mode, nodes, edges, settings };
 }

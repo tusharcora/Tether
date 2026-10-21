@@ -138,7 +138,7 @@ export function moveStep(p: Pipeline, index: number, delta: -1 | 1): number {
 }
 
 export function blankPipeline(name: string): Pipeline {
-  return { name, version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 4, nodeTimeoutMs: 600_000, pipeMode: 'ancestors', maxCostUsd: 5 } };
+  return { name, version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 4, nodeTimeoutMs: 600_000, pipeMode: 'ancestors', maxCostUsd: 5, consult: 2 } };
 }
 
 export type Template = 'feature' | 'bugfix' | 'refactor' | 'docs' | 'review' | 'research';

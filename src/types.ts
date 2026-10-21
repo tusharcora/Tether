@@ -69,6 +69,8 @@ export interface PipelineSettings {
   pipeMode: PipeMode;
   /** Shell command run once in the fresh worktree before any node (e.g. `npm ci`). */
   setup?: string;
+  /** Rounds a step may spend asking already-finished steps questions (0 or unset: off). */
+  consult?: number;
 }
 
 export interface Pipeline {
@@ -131,6 +133,7 @@ export type RunEvent =
   | { type: 'node.skipped'; node: string; reason: string }
   | { type: 'gate.result'; node: string; ok: boolean; exitCode: number | null; output: string; durationMs: number }
   | { type: 'loop'; check: string; fixNode: string; n: number }
+  | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number }
   | { type: 'approval.requested'; node: string }
   | { type: 'approval.resolved'; node: string; approved: boolean; by?: string }
   /** A step was re-pointed at a different agent/model (by the supervisor or a person). The run records exactly what ran. */
@@ -189,6 +192,8 @@ export interface RunState {
   notes: string[];
   /** What the supervisor did about failures, in order. */
   actions: { round: number; action: string; node?: string; detail: string; ts: number }[];
+  /** Questions steps put to each other, in order. */
+  talk?: { from: string; to: string; question: string; answer: string; round: number; ts: number }[];
 }
 
 const LIVE_TAIL = 4000;
@@ -303,6 +308,9 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'node.amended':
         s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.model } : x)) };
+        break;
+      case 'consult':
+        (s.talk ??= []).push({ from: e.from, to: e.to, question: e.question, answer: e.answer, round: e.round, ts });
         break;
       case 'supervisor.action':
         s.actions.push({ round: e.round, action: e.action, node: e.node, detail: e.detail, ts });

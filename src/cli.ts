@@ -185,6 +185,9 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
       case 'loop':
         say(`${ts()}  ${amber('↻')} ${amber(`fix loop ${e.n}`)} ${faint('·')} ${name(e.check)} ${amber('→')} ${name(e.fixNode)}`);
         break;
+      case 'consult':
+        say(`${ts()}  ${paint(pal.cyan, '?')} ${name(e.from)} ${dim('asks')} ${name(e.to)}${dim(':')} ${e.question.replace(/\s+/g, ' ').slice(0, 110)}\n${' '.repeat(12)}${dim('↳')} ${dim(e.answer.replace(/\s+/g, ' ').slice(0, 140))}`);
+        break;
       case 'node.skipped':
         say(`${ts()}  ${dim('◌')} ${name(e.node)} ${dim(`skipped: ${e.reason}`)}`);
         break;

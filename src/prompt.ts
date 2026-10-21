@@ -1,4 +1,5 @@
 import { ancestorsOf, childrenOf, parentsOf } from './pipeline.js';
+import { askable } from './consult.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
 
 export const DEFAULT_ROLE_PROMPTS: Record<string, string> = {
@@ -23,7 +24,7 @@ const clip = (s: string, max: number) =>
   s.length <= max ? s : `${s.slice(0, Math.floor(max / 2))}\n[... ${s.length - max} chars omitted ...]\n${s.slice(-Math.floor(max / 2))}`;
 
 /** A card is an ordinary agent session and knows nothing of the graph it sits in; tell it. */
-export function briefing(p: Pipeline, node: PipelineNode): string {
+export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[] = []): string {
   const byId = new Map(p.nodes.map((n) => [n.id, n]));
   const lines = p.nodes.map((n) => {
     const from = parentsOf(p, n.id).map((i) => label(byId.get(i)!)).join(', ') || '—';
@@ -35,9 +36,17 @@ export function briefing(p: Pipeline, node: PipelineNode): string {
     `You are one step in an automated software-development pipeline ("${p.name}"). The steps:`,
     ...lines,
     '',
-    'Rules: do your own role\'s part and stop; do not redo upstream work; nobody is available to answer ' +
+    'Rules: do your own role\'s part and stop; do not redo upstream work; no person is available to answer ' +
       'questions, so state your assumptions instead of asking; ' +
       (next.length ? 'write for the next step, not for a human.' : 'you are the last step, so your output is the run\'s answer.'),
+    ...(canAsk.length
+      ? [
+          '',
+          'You may consult a step that has already finished when its reasoning would change your work (why it did something, a bug it may have caused, a detail it left out). ' +
+            'End your answer with a line `@ASK <step-id>: <your question>` (up to two such lines) and stop; the answer comes back and you then finish. ' +
+            'Ask only when it is essential; otherwise state your assumptions. Steps you can ask: ' + canAsk.map((n) => `${n.id} (${n.role ?? n.kind})`).join(', ') + '.',
+        ]
+      : []),
   ].join('\n');
 }
 
@@ -54,7 +63,8 @@ export interface PromptInput {
 
 export function buildPrompt(i: PromptInput): string {
   const { pipeline: p, node, state } = i;
-  const parts: string[] = [`# Pipeline briefing\n${briefing(p, node)}`];
+  const canAsk = node.kind === 'agent' && (p.settings.consult ?? 0) > 0 ? askable(state, node) : [];
+  const parts: string[] = [`# Pipeline briefing\n${briefing(p, node, canAsk)}`];
 
   const role = node.prompt ?? DEFAULT_ROLE_PROMPTS[node.role ?? ''] ?? '';
   if (role) parts.push(`# Your role\n${role}`);
