@@ -49,7 +49,7 @@ Usage
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
-  aorch crew [classic|pebble]         bot style: classic, or minimal pebble bots
+  aorch crew [style]                  bot style: pebble · classic · sigil · tile · ticker · orbit
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
   aorch runs                          list runs
   aorch show <runId>                  node table, cost, coach findings

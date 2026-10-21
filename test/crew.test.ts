@@ -161,3 +161,63 @@ describe('themes and keys', () => {
     expect(strip(parseKeys('héllo').join(''))).toBe('héllo');
   });
 });
+
+describe('mark styles (sigil, ticker, orbit)', () => {
+  const MARKS = ['sigil', 'tile', 'ticker', 'orbit'];
+  const moods: Mood[] = ['idle', 'working', 'happy', 'sad', 'waiting', 'asleep'];
+
+  it('are crew styles, render 4×10, and mini marks are exactly 5 columns', async () => {
+    const { miniBot } = await import('../src/bots.js');
+    for (const style of MARKS) {
+      expect(setCrewStyle(style)).toBe(true);
+      for (const role of Object.keys(CREW)) {
+        for (const m of moods) {
+          for (const t of [0, 5, 31]) {
+            const rows = renderBot(role, m, t);
+            expect(rows).toHaveLength(4);
+            for (const r of rows) expect(vlen(r)).toBe(10);
+            expect(vlen(miniBot(role, m, t))).toBe(5);
+          }
+        }
+      }
+    }
+    setCrewStyle('pebble');
+  });
+
+  it('symbols and initials come from the name; shapes are stable per bot', async () => {
+    const { symbolOf, initialsOf, shapeOf } = await import('../src/marks.js');
+    expect(symbolOf('Scout')).toBe('SCT');
+    expect(symbolOf('Quant')).toBe('QNT');
+    expect(symbolOf('Gate')).toBe('GTE');
+    expect(symbolOf('Ox')).toBe('OXX');
+    expect(initialsOf('Scout')).toBe('SC');
+    expect(shapeOf('coder')).toBe('triangle');
+    expect(shapeOf('my-custom-bot')).toBe(shapeOf('my-custom-bot'));
+  });
+
+  it('a working sigil keeps its shape while the light moves; idle is an outline', async () => {
+    const { sigil } = await import('../src/marks.js');
+    const { caps } = await import('../src/ui.js');
+    const keep = caps.level;
+    caps.level = 3; // animation is colour; with none there is nothing to move
+    const bot = { id: 'planner', name: 'Scout', color: [90, 160, 250] as [number, number, number] };
+    const strip = (rows: string[]) => rows.map((r) => r.replace(/\x1b\[[0-9;]*m/g, '').replace(/[▀▄█]/g, '#'));
+    const a = strip(sigil(bot, 'working', 0)), b = strip(sigil(bot, 'working', 6));
+    expect(a).toEqual(b); // same silhouette every frame
+    expect(sigil(bot, 'working', 0)).not.toEqual(sigil(bot, 'working', 6)); // the light moved
+    const idle = strip(sigil(bot, 'idle', 0)).join('');
+    expect(idle.replace(/ /g, '').length).toBeLessThan(a.join('').replace(/ /g, '').length);
+    caps.level = keep;
+  });
+
+  it('a working orbit spins and always keeps its initials', async () => {
+    const { orbit } = await import('../src/marks.js');
+    const { caps } = await import('../src/ui.js');
+    const keep = caps.level;
+    caps.level = 3;
+    const bot = { id: 'coder', name: 'Bolt', color: [60, 200, 130] as [number, number, number] };
+    expect(orbit(bot, 'working', 0)).not.toEqual(orbit(bot, 'working', 8));
+    for (const m of moods) expect(orbit(bot, m, 3).join('').replace(/\x1b\[[0-9;]*m/g, '')).toContain('BO');
+    caps.level = keep;
+  });
+});

@@ -4,7 +4,9 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
-import { CREW, lookPixels, refreshCrew } from './bots.js';
+import { CREW, CREW_STYLES, lookPixels, refreshCrew } from './bots.js';
+import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
+import { loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
 import { loadSettings, matchRule, parseWebhook, startPrRun, verifySignature } from './pr.js';
@@ -216,8 +218,15 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
 
     // ---- crew roster: the bots themselves (looks, personas), built-in and your own ----
     if (p === '/api/crew' && m === 'GET') {
-      const px = (b: BotDef) => ({ ...b, pixels: lookPixels(b.look) });
-      return send(res, 200, { bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
+      const px = (b: BotDef) => ({ ...b, pixels: lookPixels(b.look), mark: { shape: shapeOf(b.id), symbol: symbolOf(b.name), initials: initialsOf(b.name) } });
+      const style = loadPrefs(cfg.home).crew ?? 'pebble';
+      return send(res, 200, { style, styles: Object.entries(CREW_STYLES).filter(([k]) => k !== 'classic').map(([id, blurb]) => ({ id, blurb })), shapes: SHAPES, glyphs: GLYPHS, bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
+    }
+    if (p === '/api/crew/style' && m === 'PUT') {
+      const style = String((await readJson(req)).style ?? '');
+      if (!(style in CREW_STYLES)) throw new HttpError(400, `unknown style "${style}"; options: ${Object.keys(CREW_STYLES).join(', ')}`);
+      savePrefs(cfg.home, { crew: style });
+      return send(res, 200, { style }), true;
     }
     if (p === '/api/crew/preview' && m === 'POST') {
       const { bot, error } = sanitizeBot({ id: 'preview', name: 'preview', kind: 'agent', ...(await readJson(req)) });

@@ -4,6 +4,7 @@
  */
 import { hslToRgb, parseHex, rgbToHsl, toHex } from './color.js';
 import { BUILTIN_BOTS, loadCrew, type BotDef, type Look } from './crew.js';
+import { MARK_STYLES, isMarkStyle, miniMark, renderMark, type MarkBot } from './marks.js';
 import { bgCode, caps, fgCode, mix, pal, paint, vlen, type RGB } from './ui.js';
 
 export type Mood = 'idle' | 'working' | 'happy' | 'sad' | 'waiting' | 'asleep';
@@ -68,8 +69,18 @@ export function crewFor(node: { kind: string; role?: string }): string {
   return 'coder';
 }
 
-export type CrewStyle = 'classic' | 'pebble';
-export const CREW_STYLES: Record<CrewStyle, string> = { classic: 'visor bots with antennae and faces (built-in crew only)', pebble: 'the family: one pebble base, swappable parts' };
+export type CrewStyle = 'classic' | 'pebble' | 'sigil' | 'ticker' | 'orbit';
+export const CREW_STYLES: Record<CrewStyle, string> = {
+  classic: 'visor bots with antennae and faces (built-in crew only)',
+  pebble: 'the family: one pebble base, swappable parts',
+  ...MARK_STYLES,
+};
+
+/** A bot as the mark renderers see it. */
+const markBot = (role: string): MarkBot => {
+  const info = CREW[role] ?? CREW.coder!;
+  return { id: CREW[role] ? role : 'coder', name: info.name, color: info.color() };
+};
 export let crewStyle: CrewStyle = 'pebble';
 export function setCrewStyle(s: string): boolean {
   if (!(s in CREW_STYLES)) return false;
@@ -334,6 +345,7 @@ function paintGrid(grid: string[], colors: Record<string, RGB | undefined>): str
 
 /** Render a bot to 4 terminal rows (10 columns wide). */
 export function renderBot(role: string, mood: Mood = 'idle', tick = 0): string[] {
+  if (isMarkStyle(crewStyle)) return renderMark(crewStyle, markBot(role), mood, tick);
   const px = sprite(role, mood, tick);
   const looks = (crewStyle === 'pebble' || !(role in HEAD)) && !!lookOf(role);
   // a classic bot that is happy hops: shift up by one pixel row on alternate beats (look-based bots hop inside their sprite)
@@ -355,6 +367,7 @@ export function renderLook(look: Look, mood: Mood = 'idle', tick = 0): string[] 
 /** One-line emoticon version for table rows. */
 /** One-line face for lists: built from the bot's own look so it matches its pixel sprite. Always 5 columns wide. */
 export function miniBot(role: string, mood: Mood = 'idle', tick = 0): string {
+  if (isMarkStyle(crewStyle)) return miniMark(crewStyle, markBot(role), mood, tick);
   const info = CREW[role] ?? CREW.coder!;
   const look = info.def?.look;
   const eyeFor = (side: 'l' | 'r'): string => {

@@ -72,3 +72,18 @@ Rules can limit by `--labels`, `--events`, and opt in to `--drafts` and `--forks
 ## Bots asking each other
 
 A step can ask a step that already finished: why it did something, or about a bug it may have caused. It ends its answer with `@ASK <step-id>: <question>`; aorch puts the question to that step (read-only, resuming its own session when the agent supports it), then gives the answer back so the asker finishes. At most 2 questions per round, 2 rounds, billed to the asker, and every exchange is logged as a `consult` event (shown in `aorch run`, the run's event list, and as a `?` / `…` mark over the two bots in the strip). Turn it on per workflow with `"settings": { "consult": 2 }` (new workflows have it on; `0` or leaving it out turns it off). Fix loops use it too: the fixing step can ask the reviewer that sent it back.
+
+## Crew styles
+
+The crew can be drawn five ways. Switch with `aorch crew <style>`, `--crew <style>` / `AORCH_CREW` for one run, `c` in the dashboard, or the picker at the top of the Crew tab in the web dashboard.
+
+| style | what a bot looks like | good for |
+| --- | --- | --- |
+| `pebble` | the pixel family (default), fully customisable | everyone |
+| `classic` | the original visor bots (built-in crew only) | nostalgia |
+| `sigil` | a bold glyph: hollow when idle, solid with a moving light when working | engineers, tmux, SSH |
+| `tile` | a coloured square holding the glyph, with a status light | app-icon lovers |
+| `ticker` | a three-letter symbol chip, a stance arrow and a sparkline | traders, the Trading desk |
+| `orbit` | two initials in a ring that spins while the bot works | shared dashboards |
+
+The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. Every style draws the same 4×10 block in the terminal and a 5-column mini mark in lists, so no screen changes layout when you switch. The bot editor still edits the pixel look, which `pebble` uses.

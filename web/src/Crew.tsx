@@ -1,9 +1,9 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { api } from './api';
-import { Pebble, Sprite, applyCrew, type BotDef, type Pixels } from './bots';
+import { MARK_STYLES, Mark, Pebble, Sprite, applyCrew, crewStyle, type BotDef, type Pixels } from './bots';
 
 interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
-interface Meta { parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; packs: Pack[] }
+interface Meta { parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; packs: Pack[]; styles: { id: string; blurb: string }[] }
 const PARTS = ['body', 'eyes', 'mouth', 'top', 'side', 'pattern'];
 const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
@@ -18,7 +18,7 @@ export function Crew() {
   const [draft, setDraft] = createSignal<Record<string, { agent: string; model: string }>>({});
   const [msg, setMsg] = createSignal('');
   const [loading, setLoading] = createSignal(true);
-  const [meta, setMeta] = createSignal<Meta>({ parts: {}, kinds: [], packs: [] });
+  const [meta, setMeta] = createSignal<Meta>({ parts: {}, kinds: [], packs: [], styles: [] });
   const [defs, setDefs] = createSignal<BotDef[]>([]);
   const [edit, setEdit] = createSignal<BotDef | null>(null);
   const [isNew, setIsNew] = createSignal(false);
@@ -50,10 +50,19 @@ export function Crew() {
   };
 
   async function loadDefs() {
-    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[] }>('GET', '/api/crew');
-    applyCrew(r.bots);
+    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]> }>('GET', '/api/crew');
+    applyCrew(r.bots, r);
     setDefs(r.bots);
-    setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs });
+    setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs, styles: r.styles });
+  }
+  async function pickStyle(id: string) {
+    try {
+      await api('PUT', '/api/crew/style', { style: id });
+      await loadDefs();
+      setMsg(`style: ${id}`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
   }
   async function saveEdit() {
     const b = edit()!;
@@ -133,6 +142,20 @@ export function Crew() {
         </p>
         <button class="primary" onClick={() => open(blank(), true)}>+ New bot</button>
         <Show when={msg()}><span class="chip">{msg()}</span></Show>
+        <div class="style-pick" role="radiogroup" aria-label="Crew style">
+          <For each={meta().styles}>
+            {(s) => (
+              <button role="radio" aria-checked={crewStyle() === s.id} classList={{ on: crewStyle() === s.id }} title={s.blurb} onClick={() => void pickStyle(s.id)}>
+                {s.id}
+              </button>
+            )}
+          </For>
+        </div>
+        <Show when={MARK_STYLES.includes(crewStyle())}>
+          <p class="muted small">
+            {meta().styles.find((s) => s.id === crewStyle())?.blurb}. The bot editor below still edits the pixel look, which the pebble style and the terminal's pebble style use.
+          </p>
+        </Show>
       </div>
       <Show when={!loading()} fallback={<p class="muted">Checking which agents are installed…</p>}>
         <div class="crew-grid">
@@ -250,7 +273,7 @@ export function Crew() {
                   <h4>{k.name} <span class="muted">{k.bots.length} bots</span></h4>
                   <p class="muted small">{k.blurb}</p>
                   <div class="row pack-sprites">
-                    <For each={k.bots}>{(b) => <span title={`${b.name}: ${b.persona}`}>{b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}</span>}</For>
+                    <For each={k.bots}>{(b) => <span title={`${b.name}: ${b.persona}`}>{MARK_STYLES.includes(crewStyle()) && b.mark ? <Mark style={crewStyle()} mark={b.mark} hue={b.look.color} size={34} label={b.name} /> : b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}</span>}</For>
                   </div>
                   <p class="muted small">{k.bots.map((b) => b.name).join(' · ')}</p>
                   <div class="row"><button onClick={() => void addPack(k)}>Add to my crew</button></div>

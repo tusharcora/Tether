@@ -170,6 +170,19 @@ describe('http security', () => {
     expect((await api('GET', '/api/bots')).json.crew.find((c: any) => c.role === 'coder').binding).toBeNull();
   });
 
+  it('saves the crew style and sends the marks the web needs', async () => {
+    const first = await api('GET', '/api/crew');
+    expect(first.json.style).toBe('pebble');
+    expect(first.json.styles.map((x: any) => x.id)).toEqual(expect.arrayContaining(['sigil', 'tile', 'ticker', 'orbit']));
+    expect(first.json.bots.find((b: any) => b.id === 'planner').mark).toEqual({ shape: 'diamond', symbol: 'SCT', initials: 'SC' });
+    expect(Object.keys(first.json.shapes)).toContain('triangle');
+    expect(Object.keys(first.json.glyphs)).toContain('triangle');
+    expect((await api('PUT', '/api/crew/style', { style: 'nope' })).status).toBe(400);
+    expect((await api('PUT', '/api/crew/style', { style: 'orbit' })).status).toBe(200);
+    expect((await api('GET', '/api/crew')).json.style).toBe('orbit');
+    await api('PUT', '/api/crew/style', { style: 'pebble' });
+  });
+
   it('caps request bodies', async () => {
     const big = 'x'.repeat(1_100_000);
     const r = await raw('POST', '/api/preflight', { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pad: big }) }).catch(() => ({ status: 413, body: '' }));
