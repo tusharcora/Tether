@@ -51,6 +51,12 @@ export async function removeWorktree(repo: string, workdir: string): Promise<voi
   await git(top, ['worktree', 'remove', '--force', workdir]);
 }
 
+export async function removeBranch(repo: string, branch: string): Promise<void> {
+  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
+  await git(top, ['worktree', 'prune']);
+  await git(top, ['branch', '-D', branch]);
+}
+
 /** Pathspec that selects the whole tree except `exclude` (e.g. artifacts the setup command produced). */
 function specs(exclude: string[] = []): string[] {
   return ['--', '.', ...exclude.map((p) => `:(exclude,literal)${p.replace(/\/$/, '')}`)];

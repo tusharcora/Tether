@@ -146,6 +146,12 @@ export class Store {
     return out;
   }
 
+  /** Remove a run's whole event log. */
+  deleteRun(runId: string): void {
+    this.db.prepare('DELETE FROM events WHERE run_id = ?').run(runId);
+    this.cache.delete(runId);
+  }
+
   onAppend(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);

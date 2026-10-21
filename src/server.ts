@@ -319,6 +319,15 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       }
     }
     if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'GET') return send(res, 200, runView(g[1]!)), true;
+    if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'DELETE') {
+      if (!store.state(g[1]!)) throw new HttpError(404, 'unknown run');
+      try {
+        await engine.deleteRun(g[1]!, { keepWork: url.searchParams.get('keepWork') === '1' });
+      } catch (e) {
+        throw new HttpError(409, (e as Error).message);
+      }
+      return send(res, 200, { deleted: g[1] }), true;
+    }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/events$/)) && m === 'GET') {
       const id = g[1]!;
       runView(id);

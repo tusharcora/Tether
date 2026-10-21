@@ -133,3 +133,7 @@ aorch usage --days 30 --by key   # group by key, member, app, provider…
 ```
 
 The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `aorch providers org-id <name> <id>` if that fails. If the key needs to differ for usage, `aorch providers usage-key <name> <ENV_VAR>` sets an override. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.
+
+## Deleting runs
+
+In the Runs tab press `D` on a run (or `D` inside the run) and confirm: the run's history, worktree, `aorch/<id>` branch and its chat are removed. A live run must be stopped first. From the shell: `aorch delete <runId>…` (add `--keep-work` to keep the branch and files), or `aorch delete all --finished` to clear every done or failed run. The dashboard API has `DELETE /api/runs/:id`.

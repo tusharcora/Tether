@@ -1395,7 +1395,23 @@ export class Tui {
       const id = (list[sel] as { id: string }).id;
       if (k === 's') this.say(this.d.engine.stop(id) ? `stopping ${id}…` : 'that run is not live in this window');
       else if (k === 'u') this.resumeRun(id, false);
+      else if (k === 'D' || k === 'delete') this.deleteRunUi(id, false);
     }
+  }
+
+  /** Ask, then delete a run with its worktree, branch and chat. */
+  private deleteRunUi(id: string, leave: boolean) {
+    if (this.d.engine.isLive(id)) return this.say('that run is still live: press s to stop it first');
+    const st = this.d.store.state(id);
+    if (!st) return this.say('unknown run');
+    this.modal = { kind: 'confirm', title: `Delete run ${id} (${st.pipeline.name}) with its branch, files and chat? This cannot be undone. (y/n)`, onYes: () => {
+      if (this.sess.runId === id) this.talk.session = loadSession(this.d.cfg.home, MAIN) ?? blankSession(MAIN, 'Maestro');
+      this.d.engine.deleteRun(id).then(() => {
+        if (this.screen.kind === 'run' && this.screen.runId === id) this.pop();
+        this.say(`deleted ${id}`);
+      }).catch((e: Error) => this.say(e.message, 'err'));
+    } };
+    void leave;
   }
 
   /** Choose a model for an agent: whatever it reports, its default, or a typed name. */
@@ -1663,6 +1679,7 @@ export class Tui {
       this.say(k === 'a' ? `approved ${awaiting}` : `rejected ${awaiting}`);
     } else if (k === 's') this.say(this.d.engine.stop(s.runId) ? 'stopping…' : 'not live in this window');
     else if (k === 'u') this.resumeRun(s.runId, false);
+    else if (k === 'D') this.deleteRunUi(s.runId, false);
     else if (k === '|') {
       const order = ['auto', 'diff', 'events', 'off'] as const;
       const next = order[(order.indexOf(this.prefs.split ?? 'auto') + 1) % order.length]!;
@@ -2294,8 +2311,8 @@ export class Tui {
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
-      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · tab switch · t theme · c crew style · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
-      : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · R retry failed · m fix · w shell · esc back'
+      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · D delete · tab switch · t theme · c crew style · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
+      : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · D delete · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';

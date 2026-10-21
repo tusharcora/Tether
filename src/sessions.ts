@@ -3,7 +3,7 @@
  * `<home>/chats/<id>.json`, so closing aorch and coming back (or a run failing while you are away)
  * loses nothing: the transcript, what Maestro proposed, and what you answered are all still there.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Pipeline } from './types.js';
 
@@ -91,6 +91,12 @@ export function saveSession(home: string, s: Session): void {
   const tmp = `${file(home, s.id)}.tmp`;
   writeFileSync(tmp, JSON.stringify(slim) + '\n');
   renameSync(tmp, file(home, s.id));
+}
+
+export function deleteSession(home: string, id: string): void {
+  if (!ID_RE.test(id)) return;
+  rmSync(file(home, id), { force: true });
+  if (lastSessionId(home) === id) rmSync(lastFile(home), { force: true });
 }
 
 export function listSessions(home: string): Session[] {

@@ -204,3 +204,18 @@ describe('engine', () => {
     expect(store.list().length).toBe(1);
   });
 });
+
+describe('deleting runs', () => {
+  it('removes the log, worktree, branch and chat of a finished run, and refuses a live one', async () => {
+    const { engine, store } = setup();
+    const repo = makeRepo();
+    const id = await engine.start({ pipeline: pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'x\n' } } }], []), task: 'x', repo });
+    const s = await engine.wait(id);
+    expect(existsSync(s.workdir)).toBe(true);
+    await engine.deleteRun(id);
+    expect(store.state(id)).toBeUndefined();
+    expect(store.runIds()).not.toContain(id);
+    expect(existsSync(s.workdir)).toBe(false);
+    await expect(engine.deleteRun(id)).rejects.toThrow(/unknown run/);
+  });
+});

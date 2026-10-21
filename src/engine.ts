@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
-import { commitAll, commitFiles, createWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
+import { commitAll, commitFiles, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, resolveTarget, stripAsks, type Ask } from './consult.js';
 import { parentsOf, preflight } from './pipeline.js';
 import { buildPrompt } from './prompt.js';
 import { runProcess } from './proc.js';
+import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
 import type { AgentResult, Pipeline, PipelineNode, RunState } from './types.js';
 import { applyBindings, type Bindings } from './bindings.js';
@@ -51,6 +52,23 @@ export class Engine {
 
   isLive(runId: string): boolean {
     return this.active.has(runId);
+  }
+
+  /**
+   * Delete a run: its event log, its worktree and branch, and its chat. A live run must be stopped first.
+   * `keepWork` leaves the worktree and branch on disk so the changes are not lost.
+   */
+  async deleteRun(runId: string, o: { keepWork?: boolean } = {}): Promise<void> {
+    if (this.active.has(runId)) throw new Error('that run is still live: stop it first');
+    const s = this.store.state(runId);
+    if (!s) throw new Error(`unknown run ${runId}`);
+    if (!o.keepWork) {
+      await removeWorktree(s.repo, s.workdir).catch(() => {});
+      if (existsSync(s.workdir)) rmSync(s.workdir, { recursive: true, force: true });
+      if (s.branch) await removeBranch(s.repo, s.branch).catch(() => {});
+    }
+    deleteSession(this.opts.home, sessionIdForRun(runId));
+    this.store.deleteRun(runId);
   }
 
   /** Resolves when the run's current execution pass ends (done, error, paused or stopped). */

@@ -60,6 +60,7 @@ Usage
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
   aorch runs                          list runs
+  aorch delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
   aorch show <runId>                  node table, cost, coach findings
   aorch serve [--port 4177]           API + dashboard (loopback only)
   aorch doctor                        which agent CLIs are installed
@@ -288,6 +289,8 @@ async function main() {
       host: { type: 'string' },
       'auto-approve': { type: 'boolean' },
       'retry-failed': { type: 'boolean' },
+      'keep-work': { type: 'boolean' },
+      finished: { type: 'boolean' },
       reject: { type: 'boolean' },
       resume: { type: 'boolean' },
       json: { type: 'boolean' },
@@ -889,6 +892,21 @@ async function main() {
         ]),
       );
       console.log(box(t, { title: `runs ${faint('·')} ${rows.length}`, width: Math.min(caps.cols + 20, process.stdout.columns || 100), border: BRAND }).join('\n'));
+      return;
+    }
+    case 'delete':
+    case 'rm': {
+      const ids = pos.length ? pos : fail('usage: aorch delete <runId>… [--keep-work] [--finished]');
+      const ctx = open(v);
+      const targets = ids[0] === 'all' && v.finished ? ctx.store.list().filter((r) => r.status === 'done' || r.status === 'error').map((r) => r.id) : ids;
+      for (const id of targets) {
+        try {
+          await ctx.engine.deleteRun(id, { keepWork: !!v['keep-work'] });
+          console.log(`${green('✔')} deleted ${id}`);
+        } catch (e) {
+          console.log(`${red('✘')} ${id}: ${(e as Error).message}`);
+        }
+      }
       return;
     }
     case 'show': {
