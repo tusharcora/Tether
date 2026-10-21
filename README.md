@@ -104,13 +104,11 @@ Settings → **LLM providers** lists every agent and model server aorch can use 
 
 ### Usage and spend (Experiential Labs)
 
-Providers on `experientiallabs.ai` also expose a Spend API. It needs a *provisioning* key (`xpl_…`), which is different from the inference key:
+Providers on `experientiallabs.ai` also expose a Spend API, read with the same API key you added the provider with:
 
 ```
-export EXPLABS_USAGE_KEY=xpl_...
-aorch providers usage-key experientiallabs EXPLABS_USAGE_KEY
 aorch usage                      # last 7 days: all-in spend, tokens, per model
 aorch usage --days 30 --by key   # group by key, member, app, provider…
 ```
 
-The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `aorch providers org-id <name> <id>` if that fails. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.
+The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `aorch providers org-id <name> <id>` if that fails. If the key needs to differ for usage, `aorch providers usage-key <name> <ENV_VAR>` sets an override. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.

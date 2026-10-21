@@ -26,8 +26,8 @@ describe('usage (Spend API)', () => {
   it('explains a 403 and ignores other hosts', async () => {
     process.env.T_USAGE_KEY = 'sk-inference';
     const f = (async () => json({}, 403)) as unknown as typeof fetch;
-    await expect(fetchUsage({ baseUrl: 'https://api.experientiallabs.ai/v1', usageKey: 'env:T_USAGE_KEY', orgId: 'o' }, { fetch: f })).rejects.toThrow(/provisioning key/);
+    await expect(fetchUsage({ baseUrl: 'https://api.experientiallabs.ai/v1', usageKey: 'env:T_USAGE_KEY', orgId: 'o' }, { fetch: f })).rejects.toThrow(/not allowed to read spend|no API key/);
     expect(supportsUsage({ baseUrl: 'https://api.openai.com/v1' })).toBe(false);
-    await expect(fetchUsage({ baseUrl: 'https://api.experientiallabs.ai/v1' }, { fetch: f })).rejects.toThrow(/provisioning key/);
+    await expect(fetchUsage({ baseUrl: 'https://api.experientiallabs.ai/v1' }, { fetch: f })).rejects.toThrow(/not allowed to read spend|no API key/);
   });
 });

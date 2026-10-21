@@ -1289,7 +1289,7 @@ export class Tui {
       { label: 'Models', hint: models.length ? `${models.length} found` : 'none listed', value: 'models' },
       ...(this.d.cfg.endpoints[r.id] && supportsUsage(this.d.cfg.endpoints[r.id]!) ? [
         { label: 'Usage and spend', hint: 'last 7 days', value: 'usage' },
-        { label: 'Set usage key', hint: this.d.cfg.endpoints[r.id]!.usageKey ?? 'env var with your xpl_ provisioning key', value: 'ukey' },
+        { label: 'Use a different key for usage', hint: this.d.cfg.endpoints[r.id]!.usageKey ?? 'optional: by default the provider key is used', value: 'ukey' },
       ] : []),
       { label: 'Test connection', value: 'test' },
       ...(r.removable ? [{ label: 'Remove', hint: 'bots linked to it fall back to their defaults', value: 'rm' }] : []),
@@ -1306,14 +1306,14 @@ export class Tui {
           ], () => this.providerMenu(r));
         }, (e: Error) => this.say(e.message, 'err'));
       } else if (v === 'ukey') {
-        this.ask('Environment variable holding your provisioning key (xpl_…):', (k) => {
+        this.ask('Environment variable holding the key to use for usage:', (k) => {
           try {
             updateEndpoint(this.d.cfg, r.id, { usageKey: keyRef(k) });
             this.say('usage key saved');
           } catch (e) {
             this.say((e as Error).message, 'err');
           }
-        }, 'EXPERIENTIALLABS_USAGE_KEY', 'a provisioning key, separate from the inference key. Only its name is stored');
+        }, '', 'optional. Only the variable name is stored');
       } else if (v === 'test') {
         this.refreshAvail();
         this.say(`checking ${r.id}…`);

@@ -1,4 +1,4 @@
-/** Spend and token usage from a provider that has a Spend API (Experiential Labs). Read-only. */
+/** Spend and token usage from a provider that has a Spend API (Experiential Labs). Read-only. Uses the provider's own API key; `usageKey` is only an optional override. */
 import type { EndpointConfig } from './adapters/openai.js';
 
 export interface UsageRow {
@@ -39,7 +39,7 @@ const origin = (cfg: EndpointConfig) => new URL(cfg.baseUrl).origin;
 function keyOf(cfg: EndpointConfig): string {
   const ref = cfg.usageKey ?? cfg.apiKey;
   const key = ref?.startsWith('env:') ? process.env[ref.slice(4)] : ref;
-  if (!key) throw new Error(cfg.usageKey ? `set ${cfg.usageKey.slice(4)} to your provisioning key (starts with xpl_)` : 'usage needs a provisioning key: aorch providers usage-key <name> <ENV_VAR>');
+  if (!key) throw new Error(cfg.usageKey ? `set ${cfg.usageKey.slice(4)} (the usage key you configured)` : 'no API key: set the key variable this provider was added with');
   return key;
 }
 
@@ -74,7 +74,7 @@ export const usd = (nano: bigint): string => {
 async function call(f: Fetch, url: string, key: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await f(url, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(70_000) });
   if (res.status === 401) throw new Error('the usage key was rejected (401)');
-  if (res.status === 403) throw new Error('403: the Spend API needs a provisioning key (xpl_…), not an inference key');
+  if (res.status === 403) throw new Error('403: this key is not allowed to read spend. Check the key has spend access for this organisation');
   if (res.status === 404) throw new Error('404: wrong organisation id, or the key belongs to another organisation');
   if (res.status === 429) throw new Error('rate limited by the Spend API; try again in a minute');
   if (res.status === 503) throw new Error('the Spend API is warming up (503); try again shortly. This is not zero usage');
