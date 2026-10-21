@@ -138,14 +138,16 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
       break;
     case 'sprout': put(cx1, -1, 'q'); put(cx2, -1, 'Q'); put(cx2 + 1, -1, flick ? 'Z' : 'Q'); break;
   }
+  // dark pixels (eyes, mouth) never sit on the outline: that punches notches in the silhouette
+  const putDark = (x: number, y: number) => { if (inBody(x - 1, y) && inBody(x + 1, y)) put(x, y, 'E'); };
   let mouth = look.mouth;
   if (mood === 'happy' && mouth === 'none') mouth = 'smile';
   if (mood === 'sad' && mouth === 'smile') mouth = 'frown';
   if (mood === 'asleep' && mouth === 'smile') mouth = 'flat';
-  if (mouth === 'flat') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); }
-  else if (mouth === 'smile') { put(cx1 - 1, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); put(cx2 + 1, 3, 'E'); }
-  else if (mouth === 'frown') { put(cx1 - 1, 4, 'E'); put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx2 + 1, 4, 'E'); }
-  else if (mouth === 'open') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); }
+  if (mouth === 'flat') { putDark(cx1, 3); putDark(cx2, 3); }
+  else if (mouth === 'smile') { putDark(cx1 - 1, 3); putDark(cx1, 4); putDark(cx2, 4); putDark(cx2 + 1, 3); }
+  else if (mouth === 'frown') { putDark(cx1 - 1, 4); putDark(cx1, 3); putDark(cx2, 3); putDark(cx2 + 1, 4); }
+  else if (mouth === 'open') { putDark(cx1, 3); putDark(cx2, 3); putDark(cx1, 4); putDark(cx2, 4); }
   let dx = 0, dy = 0, closed = false;
   if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 7) % 4]!; // a slow glance left, centre, right, centre
   else if (mood === 'waiting') dx = tick % 50 < 25 ? -1 : 1;
@@ -159,7 +161,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
     case 'visor': for (let x = 1; x <= 6; x++) e(x, 1, 'E', false); e(2, 1, 'Z', true); e(5, 1, 'Z', true); break;
     case 'cyclops': e(3, 1, 'E', true); e(4, 1, 'E', true); e(3, 2, 'E', true); e(4, 2, 'E', true); break;
     case 'sleepy': e(2, 2, 'E', true); e(5, 2, 'E', true); e(2, 1, 'b', false); e(5, 1, 'b', false); break;
-    case 'wink': e(2, 1, 'E', true); e(5, 1, 'E', false); e(6, 1, 'E', false); break;
+    case 'wink': e(2, 1, 'E', true); e(4, 1, 'E', true); e(5, 1, 'E', true); break; // the open eye and the winking dash move together
     case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', false); e(5, 1, 'E', false); break; // pupils stay inside the lenses
     default: e(2, 1, 'E', true); e(5, 1, 'E', true);
   }
@@ -168,13 +170,14 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   const solid = (x: number, y: number) => inBody(x - 1, y) && inBody(x + 1, y) && inBody(x, y - 1) && inBody(x, y + 1);
   const fits = (ox: number, oy: number) => (ox === 0 && oy === 0) || eyes.every(([x, y, , mv]) => !mv || !inBody(x, y) || (solid(x + ox, y + oy) && y + oy <= 2));
   const wanted: [number, number][] = [];
-  if (dx !== 0 || dy !== 0) for (const c of [[dx, dy], [dx, 0], [0, dy], [0, 1]] as [number, number][]) if (c[0] !== 0 || c[1] !== 0) wanted.push(c);
+  const restOk = eyes.every(([x, y, , mv]) => !mv || solid(x, y)); // an eye that already hugs the edge stays where it is
+  if (restOk && (dx !== 0 || dy !== 0)) for (const c of [[dx, dy], [dx, 0], [0, dy], [0, 1]] as [number, number][]) if (c[0] !== 0 || c[1] !== 0) wanted.push(c);
   wanted.push([0, 0]);
   const [ox, oy2] = wanted.find(([a, b]) => fits(a, b)) ?? [0, 0];
   for (const [x0, y0, k0, mv] of eyes) {
     const x = mv ? x0 + ox : x0, y = mv ? y0 + oy2 : y0;
     const k = closed && mv ? 'b' : k0;
-    if (inBody(x, y)) put(x, y, k);
+    if (k === 'E' ? inBody(x - 1, y) && inBody(x + 1, y) && inBody(x, y) : inBody(x, y)) put(x, y, k);
   }
   if (mood === 'asleep') {
     const zt = Math.floor(tick / 10) % 3;
