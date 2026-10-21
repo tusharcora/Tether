@@ -22,7 +22,7 @@ import { sampleRun } from './sample.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, refreshCrew, renderBot, renderLook, type Mood } from './bots.js';
 import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, removeBot, saveBot, type BotDef, type PartKey } from './crew.js';
 import { supervise } from './supervisor.js';
-import { PRESETS, addEndpoint, keyRef, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
+import { PRESETS, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
 import { chat as askMaestro, savePipeline, stepsOf, type Reply, type Turn } from './maestro.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
@@ -353,7 +353,7 @@ export class Tui {
   }
 
   private say(text: string, tone: 'ok' | 'err' = 'ok') {
-    this.toast = { text, tone, until: Date.now() + 4500 };
+    this.toast = { text, tone, until: Date.now() + (tone === 'err' ? 12000 : 4500) };
   }
 
   // ---------- input ----------
@@ -1318,11 +1318,13 @@ export class Tui {
       const finish = (id: string, baseUrl: string, keyEnv: string) => {
         try {
           const key = keyRef(keyEnv);
-          addEndpoint(this.d.cfg, id, { baseUrl: baseUrl.trim().replace(/\/+$/, ''), ...(key ? { apiKey: key } : {}) });
+          const name = providerName(id);
+          const url = baseUrlOf(baseUrl);
+          addEndpoint(this.d.cfg, name, { baseUrl: url, ...(key ? { apiKey: key } : {}) });
           this.registry = makeRegistry(this.d.cfg);
           this.refreshAvail();
           const missing = key && !process.env[key.slice(4)];
-          this.say(`added ${id}${missing ? `  ·  set ${key!.slice(4)} in your shell and restart aorch` : ''}`, missing ? 'err' : 'ok');
+          this.say(`added ${name} → ${url}${missing ? `  ·  set ${key!.slice(4)} in your shell and restart aorch` : ''}`, missing ? 'err' : 'ok');
         } catch (e) {
           this.say((e as Error).message, 'err');
         }

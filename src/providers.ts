@@ -60,6 +60,23 @@ export function keyRef(input: string): string | undefined {
   return `env:${name}`;
 }
 
+/** `Experimental Labs.ai` → `experimental-labs-ai`; a host or URL works as a name too. */
+export function providerName(input: string): string {
+  return input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(api|www)\./, '').split('/')[0]!.replace(/\.(ai|com|io|dev|net|org|app|co)$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 24);
+}
+
+/** Accept `api.example.com` or `https://api.example.com` and make a URL of it (https, and /v1 when no path is given). */
+export function baseUrlOf(input: string): string {
+  let t = input.trim().replace(/\/+$/, '');
+  if (!/^[a-z]+:\/\//i.test(t)) t = (/^(localhost|127\.|\[::1\])/.test(t) ? 'http://' : 'https://') + t;
+  try {
+    if (new URL(t).pathname === '/') t += '/v1';
+  } catch {
+    /* checkEndpoint reports it */
+  }
+  return t;
+}
+
 export function checkEndpoint(id: string, cfg: EndpointConfig, existing: Record<string, unknown>): void {
   if (!PROVIDER_NAME_RE.test(id)) throw new Error('name: lowercase letters, digits and - (start with a letter, max 24)');
   if (RESERVED.has(id)) throw new Error(`"${id}" is built in`);

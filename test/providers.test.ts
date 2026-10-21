@@ -35,3 +35,14 @@ describe('providers', () => {
     expect(keyRef('')).toBeUndefined();
   });
 });
+
+describe('forgiving input', () => {
+  it('turns hosts and sites into names and URLs', async () => {
+    const { providerName, baseUrlOf } = await import('../src/providers.js');
+    expect(providerName('experimentallabs.ai')).toBe('experimentallabs');
+    expect(providerName('https://api.Foo-Bar.com/v1')).toBe('foo-bar');
+    expect(baseUrlOf('api.experimentallabs.ai')).toBe('https://api.experimentallabs.ai/v1');
+    expect(baseUrlOf('https://x.io/custom/v2/')).toBe('https://x.io/custom/v2');
+    expect(baseUrlOf('localhost:8000')).toBe('http://localhost:8000/v1');
+  });
+});

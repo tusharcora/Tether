@@ -28,7 +28,7 @@ import { createInterface } from 'node:readline/promises';
 import { renderLook } from './bots.js';
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, loadSettings, matchRule, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
 import { randomBytes } from 'node:crypto';
-import { PRESETS, addEndpoint, keyRef, listProviders, removeEndpoint } from './providers.js';
+import { PRESETS, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
@@ -573,11 +573,11 @@ async function main() {
       }
       if (sub === 'add') {
         const preset = PRESETS.find((p) => p.id === pos[1]);
-        const id = v.name ?? pos[1];
+        const id = providerName(v.name ?? pos[1] ?? '');
         const url = v.url ?? preset?.baseUrl;
         if (!id || !url) fail('usage: aorch providers add <preset>   or   aorch providers add --name mybox --url https://host/v1 [--key-env MYBOX_KEY]');
         const key = keyRef(v['key-env'] ?? preset?.keyEnv ?? '');
-        addEndpoint(cfg, id!, { baseUrl: url!.replace(/\/+$/, ''), ...(key ? { apiKey: key } : {}) });
+        addEndpoint(cfg, id!, { baseUrl: baseUrlOf(url!), ...(key ? { apiKey: key } : {}) });
         console.log(`${green('✔')} added ${id}${key && !process.env[key.slice(4)] ? '  ' + amber(`(set ${key.slice(4)} in your shell before using it)`) : ''}`);
         return;
       }
