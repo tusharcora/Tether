@@ -122,8 +122,8 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   else if (look.side === 'ears') side([1], 'A');
   else if (look.side === 'cans') side([1, 2, 3], 'A');
   else if (look.side === 'wings') { side([2, 3], 'A'); put(per[3]![0] - 2, 3, 'A'); put(per[3]![1] + 2, 3, 'A'); }
-  const flick = mood === 'working' && tick % 14 < 7;
-  const A = flick ? 'h' : 'A', Z = flick ? 'Z' : 'A';
+  const flick = mood === 'working' && tick % 16 < 8; // only the little lights blink; crowns and horns stay put
+  const A = 'A', Z = flick ? 'Z' : 'A';
   switch (look.top) {
     case 'antenna': put(cx1, -1, Z); put(cx2, -1, Z); break;
     case 'horns': put(tL, -1, A); put(tR, -1, A); break;
@@ -133,7 +133,7 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
       for (let x = gl; x <= gr; x++) if (inBody(x, 0)) put(x, 0, 'A');
       break;
     case 'crown':
-      for (let x = tL; x <= tR; x += 2) put(x, -1, flick ? 'h' : 'G');
+      for (let x = tL; x <= tR; x += 2) put(x, -1, 'G');
       for (let x = tL; x <= tR; x++) put(x, 0, 'G');
       break;
     case 'sprout': put(cx1, -1, 'q'); put(cx2, -1, 'Q'); put(cx2 + 1, -1, flick ? 'Z' : 'Q'); break;
@@ -147,8 +147,8 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
   else if (mouth === 'frown') { put(cx1 - 1, 4, 'E'); put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx2 + 1, 4, 'E'); }
   else if (mouth === 'open') { put(cx1, 3, 'E'); put(cx2, 3, 'E'); put(cx1, 4, 'E'); put(cx2, 4, 'E'); }
   let dx = 0, dy = 0, closed = false;
-  if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 3) % 4]!;
-  else if (mood === 'waiting') { dy = -1; dx = tick % 30 < 15 ? -1 : 0; }
+  if (mood === 'working') dx = [-1, 0, 1, 0][Math.floor(tick / 7) % 4]!; // a slow glance left, centre, right, centre
+  else if (mood === 'waiting') { dy = -1; dx = tick % 50 < 25 ? -1 : 0; }
   else if (mood === 'sad') dy = 1;
   else if (mood === 'asleep' || (mood === 'idle' && tick % 40 > 37)) closed = true;
   const eyes: [number, number, string, boolean][] = [];
@@ -160,17 +160,19 @@ export function lookSprite(look: Look, mood: Mood, tick: number): string[] {
     case 'cyclops': e(3, 1, 'E', true); e(4, 1, 'E', true); e(3, 2, 'E', true); e(4, 2, 'E', true); break;
     case 'sleepy': e(2, 2, 'E', true); e(5, 2, 'E', true); e(2, 1, 'b', false); e(5, 1, 'b', false); break;
     case 'wink': e(2, 1, 'E', true); e(5, 1, 'E', false); e(6, 1, 'E', false); break;
-    case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', true); e(5, 1, 'E', true); break;
+    case 'glasses': e(1, 1, 'A', false); e(3, 1, 'A', false); e(4, 1, 'A', false); e(6, 1, 'A', false); e(2, 1, 'E', false); e(5, 1, 'E', false); break; // pupils stay inside the lenses
     default: e(2, 1, 'E', true); e(5, 1, 'E', true);
   }
+  // The eyes move as one piece. Try the full shift, then each axis alone, then stay put, so a pair never stretches or loses an eye at the edge.
+  const fits = (ox: number, oy: number) => eyes.every(([x, y, , mv]) => !mv || !inBody(x, y) || inBody(x + ox, y + oy));
+  const [ox, oy2] = ([[dx, dy], [dx, 0], [0, dy], [0, 0]] as [number, number][]).find(([a, b]) => fits(a, b)) ?? [0, 0];
   for (const [x0, y0, k0, mv] of eyes) {
-    let x = x0, y = y0, k = k0;
-    if (mv && inBody(x + dx, y + dy)) (x += dx), (y += dy);
-    if (closed && mv) k = 'b';
+    const x = mv ? x0 + ox : x0, y = mv ? y0 + oy2 : y0;
+    const k = closed && mv ? 'b' : k0;
     if (inBody(x, y)) put(x, y, k);
   }
   if (mood === 'asleep') {
-    const zt = Math.floor(tick / 6) % 3;
+    const zt = Math.floor(tick / 10) % 3;
     put(8, -1 + (zt % 2), 'Z');
     if (zt > 0) put(9, -2 + zt, 'Z');
   }

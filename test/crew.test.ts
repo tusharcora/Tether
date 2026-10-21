@@ -119,9 +119,20 @@ describe('crew', () => {
     const eyes = (m: Mood, t: number) => lookSprite(look, m, t).map((r, y) => [...r].map((c, x) => (c === 'E' ? `${x},${y}` : '')).filter(Boolean)).flat();
     expect(eyes('idle', 0)).toHaveLength(2);
     expect(eyes('asleep', 0)).toHaveLength(0);
-    expect(eyes('working', 0)).not.toEqual(eyes('working', 3));
+    expect(eyes('working', 0)).not.toEqual(eyes('working', 7));
     expect(eyes('waiting', 0)).not.toEqual(eyes('idle', 0));
     setCrewStyle('pebble');
+  });
+
+  it('eyes move as one piece: no eye is ever lost or stretched while animating', () => {
+    const count = (look: object, m: Mood, t: number) => lookSprite(look as never, m, t).join('').replace(/[^EA]/g, '').length;
+    for (const body of ['pebble', 'wide', 'tall', 'square', 'blob']) {
+      for (const eyes of ['dots', 'tall', 'wide', 'cyclops', 'glasses']) {
+        const look = { body, eyes, mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#5b9dff', accent: 'auto', guard: true };
+        const base = count(look, 'idle', 0);
+        for (const m of ['working', 'waiting', 'sad'] as Mood[]) for (let t = 0; t < 120; t++) expect(count(look, m, t), `${body}/${eyes}/${m}/${t}`).toBe(base);
+      }
+    }
   });
 });
 
