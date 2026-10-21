@@ -1,4 +1,4 @@
-import type { NodeState, Pipeline, RunState, StoredEvent } from '../../src/types';
+import type { NodeState, Pipeline, RunState, StoredEvent } from '../../src/types.js';
 
 export type { NodeState, Pipeline, RunState, StoredEvent };
 export type RunView = RunState & { live: boolean };
@@ -79,6 +79,11 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       return { text: `${nameOf(e.node)} skipped — ${e.reason}`, tone: 'skipped' };
     case 'node.spawned':
       return { text: e.node.kind === 'approval' ? `${nameOf(e.parent)} asks for plan approval (${e.node.id})` : `${nameOf(e.parent)} hands ${e.node.id} to ${e.node.role ?? 'agent'}: ${e.node.spawn?.contract.goal ?? ''}`, tone: 'info' };
+    case 'handoff':
+      // a refused hand-off names the bot asked for (no step was spawned); otherwise `to` is the child step
+      return e.answer.startsWith('refused: ')
+        ? { text: `${nameOf(e.from)} → ${nameOf(e.to)}: ${e.goal} · ${e.answer}`, tone: 'wait' }
+        : { text: `${nameOf(e.from)} → ${nameOf(e.to)}: ${e.goal} · ${nameOf(e.to)} answered`, tone: 'info' };
     case 'node.requeued':
       return { text: `${nameOf(e.node)} queued again — ${e.reason}`, tone: 'wait' };
     case 'manager.cost':

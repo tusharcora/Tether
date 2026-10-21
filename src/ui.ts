@@ -411,10 +411,11 @@ export function underManagers(nodes: PipelineNode[]): PipelineNode[] {
   return out;
 }
 
-/** A step a manager handed out: `↳ <bot name>` plus its title. Other steps get their plain label. */
+/** A step a manager handed out: `↳ <bot name>` plus its title; a worker handoff reads `↳ <bot name> (handoff)`. Other steps get their plain label. */
 export function spawnedLabel(n: PipelineNode): string {
   if (!n.spawn) return n.title ?? n.role ?? n.kind;
   const bot = CREW[crewFor(n)]?.name ?? n.role ?? 'bot';
+  if (n.spawn.kind === 'hand') return n.title ? `↳ ${bot} (handoff) · ${n.title}` : `↳ ${bot} (handoff)`;
   return n.title ? `↳ ${bot} · ${n.title}` : `↳ ${bot}`;
 }
 

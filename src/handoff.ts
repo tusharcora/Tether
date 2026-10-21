@@ -244,3 +244,95 @@ export function reviewPrompt(state: RunState, manager: PipelineNode, children: P
 function clip(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, Math.floor(max / 2))}\n[... ${s.length - max} chars omitted ...]\n${s.slice(-Math.floor(max / 2))}`;
 }
+
+// ---- Worker hand-offs: a working step ends its answer with `@HAND <bot>: <goal> | expect: <expected> | context: <ids>` ----
+
+export interface HandRequest {
+  to: string;
+  goal: string;
+  expected?: string;
+  context: string[];
+  write: boolean;
+}
+
+const HAND_LINE = /^@HAND(!)?[ \t]+([^\s:]+)[ \t]*:[ \t]*(.*)$/i;
+const MAX_HANDS = 2;
+const RESULT_CLIP = 6000;
+
+/** Hand-off requests a step put on their own lines (at most two). */
+export function parseHands(output: string): HandRequest[] {
+  const out: HandRequest[] = [];
+  for (const { line, hand } of scanHands(output)) {
+    const m = hand ? HAND_LINE.exec(line) : null;
+    if (!m) continue;
+    const [goalPart = '', ...rest] = m[3]!.split(' | ');
+    let expected: string | undefined;
+    let context: string[] = [];
+    for (const part of rest) {
+      const kv = /^\s*(expect|context)\s*:\s*(.*)$/i.exec(part);
+      if (!kv) continue;
+      if (kv[1]!.toLowerCase() === 'expect') expected = kv[2]!.trim().slice(0, PLAN_CAPS.expected) || undefined;
+      else context = kv[2]!.split(',').map((s) => s.trim()).filter(Boolean).slice(0, PLAN_CAPS.context);
+    }
+    out.push({ to: m[2]!.toLowerCase().replace(/^[`'"]+|[`'",.]+$/g, ''), goal: goalPart.trim().slice(0, PLAN_CAPS.goal), expected, context, write: !!m[1] });
+    if (out.length >= MAX_HANDS) break;
+  }
+  return out;
+}
+
+export function stripHands(output: string): string {
+  return scanHands(output).filter((l) => !l.hand).map((l) => l.raw).join('\n').trimEnd();
+}
+
+/** Lines of the output, flagged when they are a real @HAND line: at column 0 and outside ``` fences. CRLF tolerated. */
+function scanHands(output: string): { raw: string; line: string; hand: boolean }[] {
+  let fenced = false;
+  return output.split('\n').map((raw) => {
+    const line = raw.replace(/\r$/, '');
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced;
+      return { raw, line, hand: false };
+    }
+    return { raw, line, hand: !fenced && HAND_LINE.test(line) };
+  });
+}
+
+/** Why this hand-off cannot be run, or undefined when it can. `used` is the spawn budget already spent. */
+export function validateHand(req: HandRequest, o: { delegator: PipelineNode; state: RunState; roster: string[]; allowWrite: boolean; used: number }): string | undefined {
+  if (!req.goal.trim()) return 'the hand-off has an empty goal';
+  if (!o.roster.includes(req.to)) return `unknown bot "${req.to}" (you may hand to: ${o.roster.join(', ')})`;
+  const byId = new Map(o.state.pipeline.nodes.map((n) => [n.id, n]));
+  const chain = new Set<string>([o.delegator.role ?? o.delegator.id, o.delegator.id]);
+  const seen = new Set<string>([o.delegator.id]);
+  for (let p = o.delegator.spawn?.parent; p && !seen.has(p); p = byId.get(p)?.spawn?.parent) {
+    seen.add(p);
+    const n = byId.get(p);
+    chain.add(p);
+    chain.add(n?.role ?? p);
+  }
+  if (chain.has(req.to)) return `handing to "${req.to}" would loop back to a bot already in this chain of hand-offs`;
+  if (req.write) {
+    if (!o.allowWrite) return 'write hand-offs are not allowed in this workflow (settings.allowWorkerWrites is off); use @HAND instead of @HAND!';
+    if (baseStep(req.to).readOnly) return `"${req.to}" is read-only and cannot take a write hand-off; use @HAND`;
+  }
+  const { maxDepth, maxSpawn } = limitsOf(o.state.pipeline);
+  if ((o.delegator.spawn?.depth ?? 0) + 1 > maxDepth) return `nesting depth would exceed the limit (${maxDepth})`;
+  if (o.used >= maxSpawn) return `the spawn budget is used up (${maxSpawn})`;
+  for (const c of req.context) if (!byId.has(c)) return `context names unknown step "${c}"`;
+  return undefined;
+}
+
+/** The step a validated hand-off becomes. `n` numbers the delegator's hand-offs from 1. */
+export function handNode(req: HandRequest, delegator: PipelineNode, n: number): PipelineNode {
+  const depth = (delegator.spawn?.depth ?? 0) + 1;
+  const node = toNode({ id: `h${n}`, to: req.to, goal: req.goal, expected: req.expected, context: req.context, mode: req.write ? 'write' : 'read', after: [] }, delegator, depth, undefined, []);
+  return { ...node, spawn: { ...node.spawn!, kind: 'hand' } };
+}
+
+/** What the delegator receives for its next call. `last`: no further round of hand-offs is allowed. */
+export function handoffBlock(results: { to: string; goal: string; answer: string; ok: boolean }[], last = true): string {
+  const body = results
+    .map((r, i) => `${i + 1}. You handed to ${r.to}: ${r.goal}\n   Result: ${(r.ok ? clip(r.answer, RESULT_CLIP) : `failed: ${clip(r.answer, RESULT_CLIP)}`).replace(/\n/g, '\n   ')}`)
+    .join('\n\n');
+  return `# Handoff results\n${body}\n\n${last ? 'Now give your complete final answer using these results. Do not add new @HAND lines.' : 'Now give your complete final answer using these results. Hand off again (a new @HAND line) only if more work is clearly needed.'}`;
+}

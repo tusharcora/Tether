@@ -87,6 +87,8 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
     maxSpawn: num(rs.maxSpawn) !== undefined ? Math.min(30, Math.max(1, Math.trunc(num(rs.maxSpawn)!))) : undefined,
     planApproval: bool(rs.planApproval),
     allowWrites: bool(rs.allowWrites),
+    handoff: num(rs.handoff) !== undefined && num(rs.handoff)! >= 1 ? Math.min(3, Math.trunc(num(rs.handoff)!)) : undefined,
+    allowWorkerWrites: bool(rs.allowWorkerWrites),
   };
   return { name, version: 1, mode, nodes, edges, settings };
 }

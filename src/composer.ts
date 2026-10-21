@@ -167,7 +167,10 @@ export function fromTemplate(t: Template, name: string, agent?: string, testComm
     p.nodes.push(makeStep(s, p, agent, testCommand));
   }
   // the team workflow exists so a manager can hand out real work, including file edits (still approved first)
-  if (t === 'team') p.settings.allowWrites = true;
+  if (t === 'team') {
+    p.settings.allowWrites = true;
+    p.settings.handoff = 1; // workers may pass a sub-task to a teammate with @HAND
+  }
   return relink(p);
 }
 

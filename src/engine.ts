@@ -5,7 +5,7 @@ import { computeCoach } from './coach.js';
 import { commitAll, commitFiles, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, resolveTarget, stripAsks, type Ask } from './consult.js';
 import { childrenOf, parentsOf, preflight } from './pipeline.js';
-import { limitsOf, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, toNode, validatePlan, type PlanTask } from './handoff.js';
+import { handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
 import { buildPrompt } from './prompt.js';
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
@@ -46,6 +46,18 @@ interface NodeOutcome {
   ok: boolean;
   aborted?: boolean;
 }
+
+interface HandResult {
+  to: string;
+  goal: string;
+  answer: string;
+  ok: boolean;
+  aborted?: boolean;
+}
+
+const HAND_ORPHAN = 'delegator finished without using it';
+/** A worker's hand-off step whose delegator is done: its failure is the delegator's business, not the run's. */
+const handOfDone = (s: RunState, n: PipelineNode) => n.spawn?.kind === 'hand' && s.nodes[n.spawn.parent]?.status === 'done';
 
 export class Engine {
   private active = new Map<string, AbortController>();
@@ -222,10 +234,15 @@ export class Engine {
     }
 
     state = this.state(runId);
-    const nodes = Object.values(state.nodes);
+    // a hand-off step whose delegator already finished will never run (e.g. requeued by a retry): skip it
+    const stale = state.pipeline.nodes.filter((n) => handOfDone(state, n) && ['queued', 'running'].includes(state.nodes[n.id]?.status ?? ''));
+    for (const n of stale) this.store.append(runId, { type: 'node.skipped', node: n.id, reason: HAND_ORPHAN });
+    if (stale.length) state = this.state(runId);
+    const ignored = new Set(state.pipeline.nodes.filter((n) => handOfDone(state, n) && ['error', 'skipped'].includes(state.nodes[n.id]?.status ?? '')).map((n) => n.id));
+    const nodes = Object.entries(state.nodes).filter(([id]) => !ignored.has(id)).map(([, n]) => n);
     if (nodes.some((n) => n.status === 'awaiting')) return this.finish(runId, 'paused');
     if (nodes.some((n) => n.status === 'error' || n.status === 'skipped')) {
-      const failed = state.pipeline.nodes.find((n) => state.nodes[n.id]?.status === 'error');
+      const failed = state.pipeline.nodes.find((n) => !ignored.has(n.id) && state.nodes[n.id]?.status === 'error');
       return this.finish(runId, 'error', failed ? `node "${failed.id}" failed: ${state.nodes[failed.id]?.error ?? 'unknown error'}` : undefined);
     }
     // fail closed: a step that never finished must not let the run report success
@@ -275,7 +292,9 @@ export class Engine {
     const work = ready.filter((x) => x.kind !== 'approval');
     // Read-only agents without a fix loop can't disturb each other: run those concurrently.
     // A manager runs its spawned (possibly writing) steps itself, so it never shares the worktree with a read-only batch.
-    const concurrent = work.filter((n) => n.kind === 'agent' && n.readOnly && !n.fixNode && !n.manager);
+    // A worker that may hand out write work changes the worktree mid-step, so with worker writes on nothing shares it.
+    const writeHands = (st.handoff ?? 0) > 0 && st.allowWorkerWrites === true;
+    const concurrent = work.filter((n) => n.kind === 'agent' && n.readOnly && !n.fixNode && !n.manager && !writeHands);
     const serial = work.filter((n) => !concurrent.includes(n));
 
     await pool(concurrent, st.parallel, (n) => this.runNode(runId, n, signal));
@@ -342,8 +361,94 @@ export class Engine {
         durationMs: 0,
         attempt,
       });
+      this.skipOrphans(runId, node);
       return { ok: false };
     }
+  }
+
+  /** The run's wall-clock limit, when this execution pass has passed it. */
+  private overClock(runId: string): string | undefined {
+    const limit = this.state(runId).pipeline.settings.wallClockMs;
+    const since = this.wallStart.get(runId);
+    return limit !== undefined && since !== undefined && Date.now() - since > limit ? 'wall-clock limit reached' : undefined;
+  }
+
+  /** A delegator finished: its hand-off steps that never ran (or were cut off) will not be used. */
+  private skipOrphans(runId: string, delegator: PipelineNode): void {
+    const s = this.state(runId);
+    for (const n of s.pipeline.nodes) {
+      if (n.spawn?.kind !== 'hand' || n.spawn.parent !== delegator.id) continue;
+      if (['queued', 'running'].includes(s.nodes[n.id]?.status ?? '')) this.store.append(runId, { type: 'node.skipped', node: n.id, reason: HAND_ORPHAN });
+    }
+  }
+
+  /**
+   * One worker hand-off: reuse the delegator's existing step for the same bot, goal and mode from its current attempt
+   * (a resumed run), or validate and spawn a new one, then run it now through runAgentOnce while the delegator waits.
+   * A refusal is an answer too. `spent` is the delegators' spend not yet in the log (their own calls so far).
+   */
+  private async handoffStep(runId: string, delegator: PipelineNode, req: HandRequest, round: number, sig: AbortSignal, spent = 0): Promise<HandResult> {
+    const st = this.state(runId);
+    const settings = st.pipeline.settings;
+    const log = (to: string, answer: string, costUsd?: number) =>
+      this.store.append(runId, { type: 'handoff', from: delegator.id, to, goal: req.goal, answer: answer.slice(0, 8000), round, costUsd: costUsd || undefined });
+    const result = (answer: string, ok: boolean): HandResult => ({ to: req.to, goal: req.goal, answer, ok });
+    const mine = st.pipeline.nodes.filter((n) => n.spawn?.kind === 'hand' && n.spawn.parent === delegator.id);
+    const mode = req.write ? 'write' : 'read';
+    // a child from an attempt of the delegator that already finished (a redo, a fix loop, a retry) is not reused
+    const events = this.store.eventsNoChunks(runId);
+    const current = (c: PipelineNode) => {
+      const born = events.find((e) => e.event.type === 'node.spawned' && e.event.node.id === c.id)?.seq ?? 0;
+      return !events.some((e) => e.seq > born && e.event.type === 'node.finished' && e.event.node === delegator.id);
+    };
+    let child = mine.filter((n) => n.spawn!.contract.to === req.to && n.spawn!.contract.goal === req.goal && n.spawn!.contract.mode === mode && current(n)).at(-1);
+    if (child && st.nodes[child.id]?.status === 'done') {
+      const out = st.nodes[child.id]!.output ?? '';
+      const id = child.id;
+      if (!events.some((e) => e.event.type === 'handoff' && e.event.to === id)) log(id, out, st.nodes[id]!.costUsd);
+      return result(out, true);
+    }
+    const refuse = (why: string) => {
+      log(req.to, `refused: ${why}`);
+      return result(`refused: ${why}`, false);
+    };
+    // re-running an existing step costs time too
+    const late = this.overClock(runId);
+    if (child && late) return refuse(late);
+    if (!child) {
+      const why =
+        validateHand(req, { delegator, state: st, roster: rosterOf(delegator), allowWrite: settings.allowWorkerWrites === true, used: this.spawnUsed(st) }) ??
+        (settings.maxCostUsd !== undefined && st.costUsd + spent >= settings.maxCostUsd ? 'the run is out of budget' : undefined) ??
+        late;
+      if (why) return refuse(why);
+      const taken = new Set(st.pipeline.nodes.map((n) => n.id));
+      let n = mine.length + 1;
+      while (taken.has(`${delegator.id}-h${n}`)) n++;
+      const draft = handNode(req, delegator, n);
+      const bound = this.resolve({ ...st.pipeline, nodes: [draft] }).nodes[0]!;
+      const agent = bound.agent ?? delegator.agent;
+      const model = bound.model ?? (agent === delegator.agent ? delegator.model : undefined);
+      const script = delegator.mock?.spawned?.[req.to];
+      // below the delegator, three to a row, after anything it spawned before
+      const k = this.spawnedBy(st, delegator.id).length;
+      child = { ...bound, agent, ...(model ? { model } : {}), ...(script ? { mock: script } : {}), x: delegator.x + SPAWN_DX * (k % 3), y: delegator.y + SPAWN_DY * (1 + Math.floor(k / 3)) };
+      this.store.append(runId, { type: 'node.spawned', node: child, parent: delegator.id, depth: child.spawn!.depth, after: [] });
+    }
+    const id = child.id;
+    const node = this.state(runId).pipeline.nodes.find((x) => x.id === id)!;
+    let r: { ok: boolean; aborted?: boolean; output: string; error?: string };
+    try {
+      r = await this.runAgentOnce(runId, node, sig, undefined, spent);
+    } catch (err) {
+      const error = `engine error: ${(err as Error).message}`;
+      this.store.append(runId, { type: 'node.finished', node: id, status: 'error', output: '', error, durationMs: 0, attempt: this.state(runId).nodes[id]?.attempts ?? 0 });
+      this.skipOrphans(runId, node);
+      r = { ok: false, output: '', error };
+    }
+    if (r.aborted) return { ...result('', false), aborted: true };
+    const answer = r.ok ? r.output : [r.error, r.output].filter(Boolean).join('\n') || 'no output';
+    log(id, answer, this.state(runId).nodes[id]?.costUsd);
+    return result(answer, r.ok);
   }
 
   /** Gate or verdict node, with the fix loop: failure output goes back to `fixNode`. */
@@ -794,6 +899,8 @@ export class Engine {
     node: PipelineNode,
     runSignal: AbortSignal,
     failure?: { check: string; output: string },
+    /** Spend of the steps waiting on this one (hand-off delegators) that is not in the log yet. */
+    unrecorded = 0,
   ): Promise<{ ok: boolean; aborted?: boolean; output: string; error?: string }> {
     const state = this.state(runId);
     const ns = state.nodes[node.id]!;
@@ -833,9 +940,9 @@ export class Engine {
     };
 
     const timeoutMs = state.pipeline.settings.nodeTimeoutMs;
-    const sig = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
-    const budgetUsd =
-      state.pipeline.settings.maxCostUsd !== undefined ? Math.max(0, state.pipeline.settings.maxCostUsd - state.costUsd) : undefined;
+    let sig = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
+    let budgetUsd =
+      state.pipeline.settings.maxCostUsd !== undefined ? Math.max(0, state.pipeline.settings.maxCostUsd - state.costUsd - unrecorded) : undefined;
     const t0 = Date.now();
 
     const call = async (resumeSessionId?: string, promptText: string = prompt): Promise<AgentResult> => {
@@ -891,6 +998,37 @@ export class Engine {
     }
     if (rounds) res = { ...res, output: stripAsks(res.output), costUsd: res.costUsd !== undefined || extraCost ? (res.costUsd ?? 0) + extraCost : undefined };
 
+    // Workers handing work to teammates: a @HAND line spawns a step that runs now; its result comes back and this step finishes.
+    const handRounds = node.kind === 'agent' && !node.manager ? state.pipeline.settings.handoff ?? 0 : 0;
+    let handCost = 0;
+    for (let round = 1; round <= handRounds && res.exitCode === 0 && !sig.aborted && !runSignal.aborted; round++) {
+      // out of time: finish with the answer as it stands (its @HAND lines are stripped below)
+      if (this.overClock(runId)) break;
+      const reqs = parseHands(res.output);
+      if (!reqs.length) break;
+      const results: HandResult[] = [];
+      for (const q of reqs) {
+        const r = await this.handoffStep(runId, node, q, round, runSignal, unrecorded + handCost + (res.costUsd ?? 0));
+        if (r.aborted || runSignal.aborted) return { ok: false, aborted: true, output: res.output };
+        results.push(r);
+      }
+      if (this.overClock(runId)) break;
+      // this step's own clock does not run while its teammates work
+      sig = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
+      const live = this.state(runId);
+      const canResume = adapter.supportsResume && !!live.nodes[node.id]!.sessionId;
+      const block = handoffBlock(results, round === handRounds);
+      const follow = canResume ? block : `${prompt}\n\n# Your answer so far\n${stripHands(res.output)}\n\n${block}`;
+      const before = res;
+      handCost += before.costUsd ?? 0;
+      // what is left after the teammates' recorded spend and this step's own spend so far
+      const cap = live.pipeline.settings.maxCostUsd;
+      if (cap !== undefined) budgetUsd = Math.max(0, cap - live.costUsd - handCost - unrecorded);
+      res = await call(canResume ? live.nodes[node.id]!.sessionId : undefined, follow);
+      flush();
+    }
+    if (handRounds) res = { ...res, output: stripHands(res.output), costUsd: res.costUsd !== undefined || handCost ? (res.costUsd ?? 0) + handCost : undefined };
+
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
     const timedOut = sig.aborted;
 
@@ -936,6 +1074,7 @@ export class Engine {
       verdict,
       attempt,
     });
+    if (handRounds) this.skipOrphans(runId, node);
     return { ok: status === 'done' && verdict !== 'FAIL', output: res.output, error };
   }
 }

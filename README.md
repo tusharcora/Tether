@@ -89,11 +89,29 @@ A spawned step is the receiving bot's usual step (its persona, read-only setting
 
 Spawned steps show up under their manager in the run view, `aorch show` and the run board, marked `↳` with the receiving bot's name, and open like any other step. After they finish the manager reviews the results and replies `{"decision":"accept"}`, `{"redo":[…]}` (send some back) or `{"more":[…]}` (plan more work).
 
-Limits live in the workflow's `settings`: `allowWrites` (managers may hand out write tasks, default off), `maxDepth` (how deep managers may nest, default 3, 1 to 5; it only matters once managers can nest, planned for stage 2, since spawned steps today are always at depth 1), `maxSpawn` (steps spawned per run, default 12, 1 to 30) and `planApproval` (the manager's plan must be approved before anything is spawned). Unless you set `planApproval` yourself, a plan that includes write tasks pauses for approval (`planApproval: false` turns that off). Redos count against `maxSpawn`, and the run's cost cap and wall-clock limit apply to everything a manager spawns, including the manager's own plan and review calls.
+Limits live in the workflow's `settings`: `allowWrites` (managers may hand out write tasks, default off), `maxDepth` (how deep managers may nest, default 3, 1 to 5; it also bounds worker handoff chains), `maxSpawn` (steps spawned per run, default 12, 1 to 30) and `planApproval` (the manager's plan must be approved before anything is spawned). Unless you set `planApproval` yourself, a plan that includes write tasks pauses for approval (`planApproval: false` turns that off). Redos count against `maxSpawn`, and the run's cost cap and wall-clock limit apply to everything a manager spawns, including the manager's own plan and review calls.
 
 In this first stage the `team` workflow has no automatic fix loop for the tests or the reviewer after the manager: if they fail, the run ends as an error, and you retry or resume it (`aorch resume`, or Retry in the run chat). Feeding such a failure back into the manager's review is planned. A pull request from a fork is refused for any workflow with a manager step unless you pass `--trust-code`, because spawned steps may run and edit code.
 
-Worker-to-worker hand-offs (`@HAND`, a step passing work straight to another step) are the next stage and are not part of this release.
+### Worker handoffs: `@HAND`
+
+A worker (any agent step, including one a manager spawned) can pass a sub-task to a teammate while it works. It ends its answer with a line that starts in column 0:
+
+```
+@HAND reviewer: check a.txt | expect: PASS or a list of problems | context: step-1
+@HAND! coder: add the missing test | expect: the test passes
+```
+
+`@HAND <bot>: <goal>` is a read-only handoff; `@HAND!` asks for a write handoff. `expect:` and `context:` (ids of finished steps) are optional. The line must start at column 0 (indented lines, quoted lines and lines inside code fences are ignored), and a step may make at most 2 requests per round.
+
+- `handoff` (1 to 3) in the workflow's `settings` is how many rounds of handoffs a step may start. Off when unset; the `team` workflow sets it to 1.
+- `allowWorkerWrites` is the write permission for workers: `@HAND!` is refused unless it is `true`. Write handoffs can only go to bots that edit files. A write handoff gets no per-handoff human approval: setting `allowWorkerWrites: true` is the opt-in, so only set it for workflows where workers may change files unattended.
+- The receiving step is a child of the worker (ids like `<worker>-h1`), shown under it as `↳ <bot> (handoff)` in the run view, `aorch show` and the board, and logged as a `handoff` event.
+- Handoffs share the manager limits: they count against `maxSpawn` and `maxDepth`, and the run's cost cap and wall-clock limit cover them.
+- Loop rule: a worker cannot hand to its own role or to any step or role already in its chain of delegators (including the manager that started the chain). A refused request is not run; the reason goes back to the worker.
+- The child's answer comes back to the worker, which then finishes its own step with it. A failed handoff does not fail the run: the worker is told it failed and decides what to do.
+- `@ASK` is still the cheap way to ask a question: it consults a step that already finished and spawns nothing. Use `@HAND` when someone needs to do new work.
+
 
 ## Crew styles
 

@@ -72,7 +72,7 @@ export interface PipelineNode {
   /** Bot ids / built-in roles a manager may spawn (default: any). */
   roster?: string[];
   /** Set on steps created at run time by a manager. */
-  spawn?: { parent: string; depth: number; contract: Contract };
+  spawn?: { parent: string; depth: number; contract: Contract; /** 'hand' = worker handoff; absent = 'plan' (manager). */ kind?: 'plan' | 'hand' };
   mock?: MockScript;
 }
 
@@ -101,6 +101,10 @@ export interface PipelineSettings {
   planApproval?: boolean;
   /** Managers may hand out write tasks (spawned steps that edit files). Default off: read-only plans only. */
   allowWrites?: boolean;
+  /** Rounds of worker-to-worker @HAND handoffs a step may start (1..3; unset: off). */
+  handoff?: number;
+  /** Handed-off workers may edit files. Default off: read-only. */
+  allowWorkerWrites?: boolean;
 }
 
 export interface Pipeline {
@@ -176,6 +180,7 @@ export type RunEvent =
   | { type: 'manager.cost'; node: string; costUsd: number }
   /** A skipped step is queued again (its failed upstream was redone). */
   | { type: 'node.requeued'; node: string; reason: string }
+  | { type: 'handoff'; from: string; to: string; goal: string; answer: string; round: number; costUsd?: number }
   | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number }
   | { type: 'approval.requested'; node: string }
   | { type: 'approval.resolved'; node: string; approved: boolean; by?: string }
@@ -381,6 +386,10 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'consult':
         (s.talk ??= []).push({ from: e.from, to: e.to, question: e.question, answer: e.answer, round: e.round, ts });
+        break;
+      case 'handoff':
+        // the child step's own node.finished already records its cost
+        (s.talk ??= []).push({ from: e.from, to: e.to, question: e.goal, answer: e.answer, round: e.round, ts });
         break;
       case 'supervisor.action':
         s.actions.push({ round: e.round, action: e.action, node: e.node, detail: e.detail, ts });

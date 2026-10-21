@@ -197,6 +197,9 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
       case 'consult':
         say(`${ts()}  ${paint(pal.cyan, '?')} ${name(e.from)} ${dim('asks')} ${name(e.to)}${dim(':')} ${e.question.replace(/\s+/g, ' ').slice(0, 110)}\n${' '.repeat(12)}${dim('↳')} ${dim(e.answer.replace(/\s+/g, ' ').slice(0, 140))}`);
         break;
+      case 'handoff':
+        say(`${ts()}  ${paint(pal.cyan, '⇢')} ${name(e.from)} ${dim('→')} ${name(e.to)}${dim(':')} ${e.goal.replace(/\s+/g, ' ').slice(0, 110)}\n${' '.repeat(12)}${dim('↳')} ${dim(e.answer.startsWith('refused: ') ? e.answer.slice(0, 140) : `${name(e.to)} answered`)}`);
+        break;
       case 'node.skipped':
         say(`${ts()}  ${dim('◌')} ${name(e.node)} ${dim(`skipped: ${e.reason}`)}`);
         break;

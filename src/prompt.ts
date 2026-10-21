@@ -1,5 +1,6 @@
 import { ancestorsOf, childrenOf, parentsOf } from './pipeline.js';
 import { askable } from './consult.js';
+import { rosterOf } from './handoff.js';
 import type { Pipeline, PipelineNode, RunState } from './types.js';
 
 export const DEFAULT_ROLE_PROMPTS: Record<string, string> = {
@@ -28,7 +29,7 @@ const clip = (s: string, max: number) =>
   s.length <= max ? s : `${s.slice(0, Math.floor(max / 2))}\n[... ${s.length - max} chars omitted ...]\n${s.slice(-Math.floor(max / 2))}`;
 
 /** A card is an ordinary agent session and knows nothing of the graph it sits in; tell it. */
-export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[] = []): string {
+export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[] = [], canHand?: string[]): string {
   const byId = new Map(p.nodes.map((n) => [n.id, n]));
   const lines = p.nodes.map((n) => {
     const from = parentsOf(p, n.id).map((i) => label(byId.get(i)!)).join(', ') || '—';
@@ -51,6 +52,15 @@ export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[]
             'Ask only when it is essential; otherwise state your assumptions. Steps you can ask: ' + canAsk.map((n) => `${n.id} (${n.role ?? n.kind})`).join(', ') + '.',
         ]
       : []),
+    ...(canHand?.length
+      ? [
+          '',
+          'You may hand part of your work to a teammate bot. End your answer with a line `@HAND <bot>: <goal> | expect: <expected> | context: <ids>` ' +
+            '(`expect` and `context` are optional; context lists ids of finished steps whose output the bot needs; up to two such lines) and stop. ' +
+            'The bot works read-only; if it must change files, write `@HAND!` instead. The result comes back and you then finish. ' +
+            'Hand off only what is clearly worth delegating. Bots you can hand to: ' + canHand.join(', ') + '.',
+        ]
+      : []),
   ].join('\n');
 }
 
@@ -68,7 +78,8 @@ export interface PromptInput {
 export function buildPrompt(i: PromptInput): string {
   const { pipeline: p, node, state } = i;
   const canAsk = node.kind === 'agent' && (p.settings.consult ?? 0) > 0 ? askable(state, node) : [];
-  const parts: string[] = [`# Pipeline briefing\n${briefing(p, node, canAsk)}`];
+  const canHand = node.kind === 'agent' && !node.manager && (p.settings.handoff ?? 0) > 0 ? rosterOf(node) : undefined;
+  const parts: string[] = [`# Pipeline briefing\n${briefing(p, node, canAsk, canHand)}`];
 
   const role = node.prompt ?? DEFAULT_ROLE_PROMPTS[node.role ?? ''] ?? '';
   if (role) parts.push(`# Your role\n${role}`);
