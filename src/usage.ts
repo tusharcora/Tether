@@ -75,7 +75,7 @@ async function call(f: Fetch, url: string, key: string, body?: unknown): Promise
   const res = await f(url, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(70_000) });
   if (res.status === 401) throw new Error('the usage key was rejected (401)');
   if (res.status === 403) throw new Error('403: this key is not allowed to read spend. Check the key has spend access for this organisation');
-  if (res.status === 404) throw new Error('404: wrong organisation id, or the key belongs to another organisation');
+  if (res.status === 404) throw new Error(`404 at ${new URL(url).pathname}: wrong organisation id, or the key belongs to another organisation`);
   if (res.status === 429) throw new Error('rate limited by the Spend API; try again in a minute');
   if (res.status === 503) throw new Error('the Spend API is warming up (503); try again shortly. This is not zero usage');
   if (!res.ok) {
@@ -87,7 +87,7 @@ async function call(f: Fetch, url: string, key: string, body?: unknown): Promise
     } catch {
       /* no body */
     }
-    throw new Error(`HTTP ${res.status} from the Spend API${why ? ': ' + why : ''}`);
+    throw new Error(`HTTP ${res.status} from ${new URL(url).pathname}${why ? ': ' + why : ''}`);
   }
   return (await res.json()) as Record<string, unknown>;
 }
