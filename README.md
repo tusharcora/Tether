@@ -90,13 +90,17 @@ The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, s
 
 ## Talking to Maestro
 
-The line above the key hints is a chat with Maestro. Press `/` (or click it), type, and press enter; `esc` leaves it. Maestro answers in the header bubble and can:
+The first tab, **chat**, is a conversation with Maestro like the one in Claude Code: just start typing, enter sends, and the transcript scrolls (↑↓, PgUp/PgDn). Maestro's replies, the workflows he proposes, and the runs he starts all appear in the transcript, and the live crew board sits under it while a run is going, so you watch the orchestration without leaving the chat. Click a run card to open the full run view.
+
+Maestro can:
 
 - **plan and save** a workflow from what you need ("a careful flow for payment code, with a human sign-off"),
-- **optimize** a saved one ("make full-review cheaper"), and
-- **run** a saved workflow on a task.
+- **optimize** a saved one ("make full-review cheaper"),
+- **run** a saved workflow on a task, and **answer questions** about what the crew is doing.
 
-Maestro only proposes. Nothing is saved or started until you confirm in the menu that appears, and replacing a workflow copies the old one to `pipelines/.backup/` first. Proposals are checked the same way as hand-built workflows (known step types, a test gate only when the repo has a test command).
+He only proposes. A proposal shows up as a card; `enter` accepts it and `esc` declines. Replacing a workflow copies the old one to `pipelines/.backup/` first. Proposals are checked the same way as hand-built workflows (known step types, a test gate only when the repo has a test command).
+
+Slash commands: `/runs` `/workflows` `/crew` `/settings` switch screen, `/run <workflow> <task>` starts a workflow, `/approve` and `/reject` answer a run that is waiting for you, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
 
 ## LLM providers
 

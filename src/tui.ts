@@ -24,10 +24,11 @@ import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, rem
 import { supervise } from './supervisor.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
-import { chat as askMaestro, savePipeline, stepsOf, type Reply, type Turn } from './maestro.js';
+import { chat as askMaestro, savePipeline, type Reply, type Turn } from './maestro.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
+import { SPIN } from './ui.js';
 import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
@@ -90,6 +91,24 @@ const padCenter = (s: string, w: number) => {
   if (n >= w) return clip(s, w);
   const l = Math.floor((w - n) / 2);
   return ' '.repeat(l) + s + ' '.repeat(w - n - l);
+};
+/** Wrap on spaces (long words are split), for reading text. */
+const words = (text: string, w: number): string[] => {
+  const out: string[] = [];
+  for (const raw of strip(text).split('\n')) {
+    let line = '';
+    for (let word of raw.split(/\s+/).filter(Boolean)) {
+      while (word.length > w) {
+        if (line) (out.push(line), (line = ''));
+        out.push(word.slice(0, w));
+        word = word.slice(w);
+      }
+      if (line && line.length + 1 + word.length > w) (out.push(line), (line = word));
+      else line = line ? `${line} ${word}` : word;
+    }
+    out.push(line);
+  }
+  return out;
 };
 const wrap = (text: string, w: number): string[] => {
   const out: string[] = [];
@@ -197,12 +216,19 @@ function overlay(line: string, x: number, glyphStr: string): string {
 }
 
 // ---------- state ----------
-type Tab = 'runs' | 'workflows' | 'crew' | 'settings';
-const TABS: Tab[] = ['runs', 'workflows', 'crew', 'settings'];
+type Tab = 'chat' | 'runs' | 'workflows' | 'crew' | 'settings';
+const TABS: Tab[] = ['chat', 'runs', 'workflows', 'crew', 'settings'];
 
 interface Prompt { kind: 'prompt'; title: string; hint?: string; value: string; /** value is a suggestion: the first keystroke replaces it */ fresh?: boolean; onSubmit: (v: string) => void }
 interface Menu { kind: 'menu'; title: string; items: { label: string; hint?: string; value: string }[]; sel: number; onPick: (v: string) => void }
 interface Confirm { kind: 'confirm'; title: string; onYes: () => void }
+/** One thing in the chat transcript. */
+type Entry =
+  | { k: 'you'; text: string }
+  | { k: 'maestro'; text: string }
+  | { k: 'note'; text: string }
+  | { k: 'offer'; r: Reply; st: 'pending' | 'done' | 'skipped' | 'failed'; note?: string }
+  | { k: 'run'; runId: string; workflow: string };
 interface Cmd { group: string; label: string; hint: string; run: () => void }
 interface Palette { kind: 'palette'; query: string; sel: number; all: Cmd[] }
 type Modal = Prompt | Menu | Confirm | Palette;
@@ -223,7 +249,7 @@ export interface TuiDeps {
 }
 
 export class Tui {
-  private stack: Screen[] = [{ kind: 'dash', tab: 'runs', sel: { runs: 0, workflows: 0, crew: 0, settings: 0 } }];
+  private stack: Screen[] = [{ kind: 'dash', tab: 'chat', sel: { chat: 0, runs: 0, workflows: 0, crew: 0, settings: 0 } }];
   private prefs: Prefs;
   private readonly pulse = new Pulse();
   private unsub?: () => void;
@@ -244,7 +270,7 @@ export class Tui {
   private avail: Record<string, { ok: boolean; detail?: string; version?: string; models: string[] }> = {};
   private availAt = 0;
   /** The line at the bottom that talks to Maestro. */
-  private talk = { focus: false, text: '', busy: false, history: [] as Turn[], reply: undefined as { text: string; mood: Mood; until: number } | undefined };
+  private talk = { text: '', busy: false, history: [] as Turn[], log: [] as Entry[], scroll: 0 };
 
   constructor(private readonly d: TuiDeps, private readonly out: NodeJS.WriteStream = process.stdout) {
     this.registry = makeRegistry(d.cfg);
@@ -374,8 +400,7 @@ export class Tui {
     if (k.startsWith('mouse:')) return this.mouse(k);
     if (k === 'ctrl-k' && (!this.modal || this.modal.kind === 'palette')) return this.modal ? (this.modal = undefined) : this.openPalette();
     if (this.modal) return this.modalKey(k);
-    if (this.talk.focus) return this.talkKey(k);
-    if (k === '/') return this.focusTalk();
+    if (k === '/' && this.screen.kind === 'dash' && this.screen.tab !== 'chat') return void ((this.screen.tab = 'chat'), (this.talk.text = ''));
     const s = this.screen;
     switch (s.kind) {
       case 'dash':
@@ -395,89 +420,213 @@ export class Tui {
     }
   }
 
-  // ---------- Maestro chat line ----------
-  private focusTalk() {
-    this.talk.focus = true;
+  // ---------- chat with Maestro ----------
+  private pendingOffer(): Extract<Entry, { k: 'offer' }> | undefined {
+    const last = [...this.talk.log].reverse().find((e) => e.k === 'offer');
+    return last && last.k === 'offer' && last.st === 'pending' ? last : undefined;
   }
 
-  private talkKey(k: string) {
+  private chatKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
     const t = this.talk;
-    if (k === 'esc') t.focus = false;
-    else if (k === 'enter') {
+    const pending = this.pendingOffer();
+    if (k === 'enter') {
       const msg = t.text.trim();
-      if (!msg || t.busy) return;
+      if (!msg) return pending ? this.acceptOffer(pending) : undefined;
+      if (t.busy && !msg.startsWith('/')) return this.say('Maestro is still thinking', 'err');
       t.text = '';
-      this.sendTalk(msg);
-    } else if (k === 'backspace') t.text = t.text.slice(0, -1);
+      return msg.startsWith('/') ? this.slash(s, msg) : this.sendTalk(msg);
+    }
+    if (k === 'esc') {
+      if (t.text) t.text = '';
+      else if (pending) pending.st = 'skipped';
+    } else if (k === 'up') t.scroll += 3;
+    else if (k === 'down') t.scroll = Math.max(0, t.scroll - 3);
+    else if (k === 'pgup') t.scroll += 12;
+    else if (k === 'pgdn') t.scroll = Math.max(0, t.scroll - 12);
+    else if (k === 'end') t.scroll = 0;
+    else if (k === 'backspace') t.text = t.text.slice(0, -1);
     else if (k === 'ctrl-u') t.text = '';
     else if (([...k].length === 1 && k >= ' ') || (k.length > 1 && !/^[a-z0-9-]+$/.test(k))) t.text += k;
   }
 
+  private slash(s: Extract<Screen, { kind: 'dash' }>, line: string) {
+    const [cmd = '', ...rest] = line.slice(1).trim().split(/\s+/);
+    const t = this.talk;
+    const note = (text: string) => t.log.push({ k: 'note', text });
+    if (['runs', 'workflows', 'crew', 'settings'].includes(cmd)) s.tab = cmd as Tab;
+    else if (cmd === 'clear') ((t.log = []), (t.history = []), (t.scroll = 0));
+    else if (cmd === 'approve' || cmd === 'reject') {
+      const hit = this.runs().map((r) => ({ r, st: this.state(r.id) })).find(({ st }) => st && Object.values(st.nodes).some((n) => n.status === 'awaiting'));
+      const node = hit?.st && Object.entries(hit.st.nodes).find(([, v]) => v.status === 'awaiting')?.[0];
+      if (!hit || !node) note('nothing is waiting for your approval');
+      else {
+        this.d.engine.approve(hit.r.id, node, cmd === 'approve');
+        if (!this.d.engine.isLive(hit.r.id)) this.d.engine.resume(hit.r.id).catch(() => {});
+        note(`${cmd === 'approve' ? 'approved' : 'rejected'} ${node} in run ${hit.r.id.slice(-8)}`);
+      }
+    } else if (cmd === 'providers') this.providers();
+    else if (cmd === 'quit' || cmd === 'exit') this.quit();
+    else if (cmd === 'run') {
+      const [name, ...task] = rest;
+      if (!name || !task.length) return void note('usage: /run <workflow> <what to do>');
+      if (!NAME_RE.test(name) || !this.flows().some((f) => f.name === name)) return void note(`no saved workflow called "${name}" (try /workflows)`);
+      t.log.push({ k: 'you', text: line });
+      t.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'run', workflow: name, task: task.join(' ') } }, st: 'pending' });
+    } else if (cmd === 'help' || cmd === '') {
+      note('/runs  /workflows  /crew  /settings   switch screen');
+      note('/run <workflow> <task>              start a saved workflow');
+      note('/approve  /reject                   answer a run that is waiting for you');
+      note('/providers                          LLM providers');
+      note('/clear                              clear this conversation  ·  /quit leaves aorch');
+      note('Anything else is a message to Maestro: ask for a plan, an improved workflow, or a run.');
+    } else note(`unknown command /${cmd} (try /help)`);
+    t.scroll = 0;
+  }
+
+  /** What is running right now, in one line each, so Maestro can answer questions about the crew. */
+  private runsContext(): string {
+    return this.runs()
+      .slice(0, 5)
+      .map((r) => {
+        const st = this.state(r.id);
+        const cur = st ? st.pipeline.nodes.filter((n) => st.nodes[n.id]?.status === 'running').map((n) => n.id).join(',') : '';
+        return `- ${r.id.slice(-8)} ${r.pipeline} ${r.status}${cur ? ` (now: ${cur})` : ''} $${r.costUsd.toFixed(2)}: ${r.task.split('\n')[0]!.slice(0, 80)}`;
+      })
+      .join('\n');
+  }
+
   private sendTalk(msg: string) {
     const t = this.talk;
-    t.history.push({ who: 'you', text: msg });
+    t.log.push({ k: 'you', text: msg });
+    t.scroll = 0;
     t.busy = true;
-    t.reply = undefined;
-    const s = this.screen;
-    const current = s.kind === 'editor' ? s.pipeline.name : undefined;
     const b = this.bindings().orchestrator;
-    askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: t.history.slice(0, -1), current })
+    askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: t.history.slice(), runs: this.runsContext() })
       .then((r) => {
         t.busy = false;
-        t.history.push({ who: 'maestro', text: r.text });
-        t.reply = { text: r.text, mood: r.proposal ? 'happy' : 'idle', until: Date.now() + 90_000 };
-        if (r.warnings.length) this.say(r.warnings[0]!, 'err');
-        if (r.proposal) this.offer(r);
+        t.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
+        t.log.push({ k: 'maestro', text: r.text });
+        for (const w of r.warnings) t.log.push({ k: 'note', text: w });
+        if (r.proposal) t.log.push({ k: 'offer', r, st: 'pending' });
+        t.scroll = 0;
       })
       .catch((e: Error) => {
         t.busy = false;
-        this.say(e.message.split('\n')[0]!, 'err');
+        t.log.push({ k: 'note', text: e.message.split('\n')[0]! });
       });
   }
 
-  /** Maestro proposed something: show what it is and only do it on a yes. */
-  private offer(r: Reply) {
-    const pr = r.proposal!;
-    if (pr.kind === 'run') {
-      return this.choose(`Maestro wants to run “${pr.workflow}”: ${pr.task.slice(0, 60)}`, [
-        { label: 'Run it', hint: 'in this folder', value: 'run' },
-        { label: 'Not now', value: 'no' },
-      ], (v) => {
-        if (v !== 'run') return;
-        try {
-          this.startRun(readPipeline(this.d.cfg.home, pr.workflow), process.cwd(), pr.task);
-        } catch (e) {
-          this.say((e as Error).message.split('\n')[0]!, 'err');
-        }
-      });
-    }
-    const p = pr.pipeline;
-    const verb = pr.kind === 'optimize' ? 'Replace' : 'Save';
-    const detail = pr.kind === 'optimize' ? `${pr.before[0]} ⇒ ${stepsOf(p)}` : stepsOf(p);
-    this.choose(`${verb} workflow “${p.name}”?  ${detail}`, [
-      { label: `${verb} it`, hint: pr.kind === 'optimize' ? 'the old version is kept in pipelines/.backup' : 'to your workflows', value: 'save' },
-      { label: 'Save it and open the editor', value: 'edit' },
-      { label: 'Not now', value: 'no' },
-    ], (v) => {
-      if (v === 'no') return;
-      try {
-        savePipeline(this.d.cfg.home, p);
-        this.say(`saved workflow ${p.name}`);
-        if (v === 'edit') this.push({ kind: 'editor', pipeline: readPipeline(this.d.cfg.home, p.name), saved: true, dirty: false, sel: 0 });
-      } catch (e) {
-        this.say((e as Error).message.split('\n')[0]!, 'err');
+  /** The person said yes to what Maestro proposed. */
+  private acceptOffer(e: Extract<Entry, { k: 'offer' }>) {
+    const pr = e.r.proposal!;
+    try {
+      if (pr.kind === 'run') {
+        this.startRun(readPipeline(this.d.cfg.home, pr.workflow), process.cwd(), pr.task, false, false, (id) => {
+          e.st = 'done';
+          e.note = `started run ${id.slice(-8)}`;
+          this.talk.log.push({ k: 'run', runId: id, workflow: pr.workflow });
+        });
+        e.st = 'done';
+        e.note = 'starting…';
+      } else {
+        savePipeline(this.d.cfg.home, pr.pipeline);
+        e.st = 'done';
+        e.note = pr.kind === 'optimize' ? 'replaced (the old version is in pipelines/.backup)' : 'saved. /workflows to edit it, or ask me to run it';
       }
-    });
+    } catch (err) {
+      e.st = 'failed';
+      e.note = (err as Error).message.split('\n')[0];
+    }
+    this.talk.scroll = 0;
   }
 
-  private talkLine(): string {
+  /** The conversation as lines, newest last. Lines that open a run are tagged. */
+  private transcript(w: number): { text: string; run?: string }[] {
     const t = this.talk;
+    const out: { text: string; run?: string }[] = [];
+    const add = (text: string, run?: string) => out.push({ text, run });
+    const para = (head: string, text: string, indent = '  ') => words(text, Math.max(20, w - 6)).forEach((l, i) => add((i === 0 ? head : indent) + l));
+    const bot = paint(CREW.orchestrator!.color(), '●');
+    if (!t.log.length) {
+      add('');
+      add(`${bot} ${bold('Maestro')}`);
+      para('  ', 'Tell me what you want built or fixed. I will plan a workflow, you confirm it, and the crew runs it right here.');
+      add('');
+      add(dim('  try: “plan a careful flow for payment code with a human sign-off”'));
+      add(dim('       “make full-review cheaper”   ·   “what is running?”   ·   /help'));
+    }
+    for (const e of t.log) {
+      add('');
+      if (e.k === 'you') para(bold(cyan('› ')), e.text);
+      else if (e.k === 'maestro') para(bot + ' ', e.text);
+      else if (e.k === 'note') para(dim('  ⎿ '), e.text, '    ');
+      else if (e.k === 'offer') {
+        const pr = e.r.proposal!;
+        if (pr.kind === 'run') {
+          add(`${bot} ${bold(`Run “${pr.workflow}”`)}`);
+          para('  ', pr.task);
+        } else {
+          add(`${bot} ${bold(`${pr.kind === 'optimize' ? 'Replace' : 'Save'} workflow “${pr.pipeline.name}”`)}`);
+          add('  ' + (pr.kind === 'optimize' ? `${dim(pr.before[0]!)} ${cyan('⇒')} ` : '') + pr.pipeline.nodes.map((n) => paint(CREW[crewFor(n)]!.color(), CREW[crewFor(n)]!.name)).join(dim(' › ')));
+        }
+        add('  ' + (e.st === 'pending' ? `${cyan('enter')} ${dim('yes')}   ${cyan('esc')} ${dim('no')}` : e.st === 'done' ? green('✔ ') + dim(e.note ?? 'done') : e.st === 'failed' ? red('✘ ') + (e.note ?? 'failed') : dim('skipped')));
+      } else {
+        const st = this.state(e.runId);
+        add(`${bot} ${bold(`Running “${e.workflow}”`)} ${dim('run ' + e.runId.slice(-8))}`, e.runId);
+        if (st) {
+          const chain = st.pipeline.nodes.map((n) => `${glyph(st.nodes[n.id]?.status ?? 'queued', this.tick)} ${CREW[crewFor(n)]!.name}`).join(dim('  ›  '));
+          add('  ' + chain, e.runId);
+          add('  ' + `${st.status === 'done' ? green('done') : st.status === 'error' ? red('failed') : st.status === 'paused' ? amber('needs your approval') + dim('  ·  /approve or /reject') : cyan(st.status)}  ${dim(usd(st.costUsd ?? 0))}  ${dim('click to open')}`, e.runId);
+        }
+      }
+    }
+    if (t.busy) {
+      add('');
+      add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim('Maestro is thinking…')}`);
+    }
+    return out;
+  }
+
+  /** The crew at work: the live run's board, under the conversation. */
+  private crewPane(w: number, h: number): { lines: string[]; run?: string } {
+    const live = this.runs().filter((r) => r.status === 'running' || r.status === 'paused');
+    const r = live[0];
+    const st = r ? this.state(r.id) : undefined;
+    if (!r || !st || h < 18) return { lines: [] };
+    const board = renderBoard({ state: st, frame: this.tick, now: Date.now() }, Math.min(w - 2, 100)).map((l) => ' ' + l);
+    const room = Math.max(4, Math.min(11, Math.floor(h / 2.2)));
+    const label = `crew · ${r.pipeline} ${r.id.slice(-8)}${live.length > 1 ? ` · +${live.length - 1} more (/runs)` : ''}`;
+    return { lines: [rule(w, label), ...board.slice(0, room)], run: r.id };
+  }
+
+  private chatBody(h: number): string[] {
     const w = this.cols;
-    if (t.busy) return `${paint(pal.cyan, '◆')} ${dim('Maestro is thinking' + '.'.repeat(1 + (this.tick % 12) / 4 | 0))}`;
-    if (!t.focus) return dim(`› ask Maestro to plan, improve or save a workflow  ·  / to type`);
-    const room = Math.max(8, w - 12);
-    const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
-    return `${bold(paint(pal.cyan, 'Maestro ›'))} ${shown}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`;
+    const t = this.talk;
+    const pane = this.crewPane(w, h);
+    const viewH = Math.max(3, h - pane.lines.length);
+    const all = this.transcript(w);
+    t.scroll = Math.max(0, Math.min(t.scroll, Math.max(0, all.length - viewH)));
+    const end = all.length - t.scroll;
+    const view = all.slice(Math.max(0, end - viewH), end);
+    const pad = viewH - view.length;
+    view.forEach((l, i) => l.run && this.bodyHit(pad + i, 0, w, () => this.push({ kind: 'run', runId: l.run!, sel: 0 })));
+    if (pane.run) pane.lines.forEach((_, i) => this.bodyHit(viewH + i, 0, w, () => this.push({ kind: 'run', runId: pane.run!, sel: 0 })));
+    const more = t.scroll > 0 ? [dim(`  ↓ ${t.scroll} more line${t.scroll === 1 ? '' : 's'} below  ·  end to jump`)] : [];
+    const lines = [...Array(Math.max(0, pad)).fill(''), ...view.map((l) => l.text)];
+    if (more.length) lines[lines.length - 1] = more[0]!;
+    return [...lines, ...pane.lines];
+  }
+
+  private chatLine(): string {
+    const t = this.talk;
+    const dash = this.screen.kind === 'dash' ? this.screen : undefined;
+    if (dash?.tab === 'chat') {
+      const cur = this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' ';
+      const room = Math.max(8, this.cols - 6);
+      const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
+      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim('Message Maestro… (/ for commands)')}`;
+    }
+    return dim(dash ? '› chat with Maestro  ·  press / to open the chat' : '› esc back to the home screen to chat with Maestro');
   }
 
   private modalKey(k: string) {
@@ -714,7 +863,7 @@ export class Tui {
     }).catch((e: Error) => this.say(e.message.split('\n')[0]!, 'err'));
   }
 
-  private startRun(pipeline: Pipeline, repo: string, task: string, auto = false, watch = false) {
+  private startRun(pipeline: Pipeline, repo: string, task: string, auto = false, watch = false, onStarted?: (id: string) => void) {
     const r = resolve(repo.replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
     if (!existsSync(r) || !statSync(r).isDirectory()) return this.say(`not a directory: ${r}`, 'err');
     this.d.engine
@@ -722,6 +871,7 @@ export class Tui {
       .then((id) => {
         this.say(`started ${id}${watch ? '  ·  Maestro is watching' : ''}`);
         if (watch) this.superviseRun(id);
+        if (onStarted) return onStarted(id);
         this.stack = [this.stack[0]!, { kind: 'run', runId: id, sel: 0 }];
         (this.stack[0] as { tab: Tab; sel: Record<Tab, number> }).tab = 'runs';
       })
@@ -760,17 +910,19 @@ export class Tui {
 
   // ---------- dashboard ----------
   private dashKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
+    if (s.tab === 'chat' && k !== 'tab' && k !== 'shift-tab') return this.chatKey(s, k);
     const list = s.tab === 'runs' ? this.runs() : s.tab === 'workflows' ? this.flows() : s.tab === 'settings' ? [] : Object.keys(CREW);
     const n = list.length;
     const sel = s.sel[s.tab];
     if (k === 'q') return this.quit();
-    if (s.tab === 'settings' && k !== 'tab' && k !== 'shift-tab' && !/^[1-4]$/.test(k)) return this.settingsKey(s, k);
+    if (s.tab === 'settings' && k !== 'tab' && k !== 'shift-tab' && !/^[1-5]$/.test(k)) return this.settingsKey(s, k);
     if (k === 'tab' || (k === 'right' || k === 'l')) s.tab = TABS[(TABS.indexOf(s.tab) + 1) % TABS.length]!;
     else if (k === 'shift-tab' || k === 'left' || k === 'h') s.tab = TABS[(TABS.indexOf(s.tab) + TABS.length - 1) % TABS.length]!;
-    else if (k === '1') s.tab = 'runs';
-    else if (k === '2') s.tab = 'workflows';
-    else if (k === '3') s.tab = 'crew';
-    else if (k === '4') s.tab = 'settings';
+    else if (k === '1') s.tab = 'chat';
+    else if (k === '2') s.tab = 'runs';
+    else if (k === '3') s.tab = 'workflows';
+    else if (k === '4') s.tab = 'crew';
+    else if (k === '5') s.tab = 'settings';
     if (s.tab === 'crew' && Date.now() - this.availAt > 15_000) this.refreshAvail();
     else if ((k === 'up' || k === 'k') && n) s.sel[s.tab] = (sel + n - 1) % n;
     else if ((k === 'down' || k === 'j') && n) s.sel[s.tab] = (sel + 1) % n;
@@ -1618,8 +1770,6 @@ export class Tui {
 
   // ---------- drawing ----------
   private maestro(): { mood: Mood; text: string } {
-    const tr = this.talk.reply;
-    if (tr && tr.until > Date.now() && !this.modal) return { mood: tr.mood, text: tr.text };
     if (this.talk.busy) return { mood: 'working', text: 'Thinking it over…' };
     const runs = this.runs();
     const live = runs.filter((r) => r.status === 'running');
@@ -1647,7 +1797,7 @@ export class Tui {
     if (paused.length) return { mood: 'waiting', text: `${paused.length} run${paused.length > 1 ? 's are' : ' is'} waiting for your approval. Open it and press a to approve.` };
     if (live.length) return { mood: 'working', text: `${live.length} run${live.length > 1 ? 's' : ''} in motion. Open one to watch the crew, or step into an agent's session.` };
     if (runs[0]?.status === 'error') return { mood: 'sad', text: 'The last run hit an error. Open it, then press R to retry just the failed branch.' };
-    return { mood: 'idle', text: 'All quiet. Press o and tell me what to build, and I will design the workflow and run it.' };
+    return { mood: 'idle', text: 'All quiet. Tell me what to build in the chat below, and I will plan it and run it.' };
   }
 
   private header(): string[] {
@@ -1692,6 +1842,7 @@ export class Tui {
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
+      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : 'enter send · /help commands · ↑↓ PgUp PgDn scroll · tab next screen · ctrl-c quit')
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
@@ -1701,14 +1852,14 @@ export class Tui {
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';
     const t = this.toast && this.toast.until > Date.now() ? this.toast : undefined;
-    const hintLine = this.talk.focus && !this.modal ? dim('enter send · esc back · ctrl-u clear') : t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `/ chat · ^K commands · ${hint}`);
+    const hintLine = t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `${s.kind === 'dash' && s.tab !== 'chat' ? '/ chat · ' : ''}^K commands · ${hint}`);
     // Typing never happens in a box in the middle of the screen: a question is asked on the chat line itself.
     const m = this.modal;
     const asking = m?.kind === 'prompt' || m?.kind === 'confirm' || m?.kind === 'palette';
     const w = this.cols;
     const top = asking ? rule(w, clip(m.kind === 'palette' ? 'Command palette' : m.title, Math.max(10, w - 8))) : rule(w);
     const line = m?.kind === 'prompt' ? `${bold(paint(pal.cyan, '›'))} ${m.value.length > w - 6 ? '…' + m.value.slice(-(w - 7)) : m.value}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`   : m?.kind === 'palette' ? `${bold(paint(pal.cyan, '›'))} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`
-      : m?.kind === 'confirm' ? `${bold(paint(pal.amber, '›'))} ${dim('press')} ${bold('y')} ${dim('to confirm,')} ${bold('n')} ${dim('to cancel')}` : this.talkLine();
+      : m?.kind === 'confirm' ? `${bold(paint(pal.amber, '›'))} ${dim('press')} ${bold('y')} ${dim('to confirm,')} ${bold('n')} ${dim('to cancel')}` : this.chatLine();
     const asked = m?.kind === 'prompt' && m.hint ? `${hint} · ${m.hint}` : hint;
     return [top, line, rule(w), asking ? dim(asked) : hintLine];
   }
@@ -1719,7 +1870,7 @@ export class Tui {
     const s = this.screen;
     switch (s.kind) {
       case 'dash':
-        return s.tab === 'runs' ? this.runsBody(s, h) : s.tab === 'workflows' ? this.flowsBody(s, h) : s.tab === 'settings' ? this.settingsBody(s, h) : this.crewBody(h);
+        return s.tab === 'chat' ? this.chatBody(h) : s.tab === 'runs' ? this.runsBody(s, h) : s.tab === 'workflows' ? this.flowsBody(s, h) : s.tab === 'settings' ? this.settingsBody(s, h) : this.crewBody(h);
       case 'run':
         return this.runBody(s, h);
       case 'session':
@@ -1785,7 +1936,7 @@ export class Tui {
 
   private runsBody(s: Extract<Screen, { kind: 'dash' }>, h: number): string[] {
     const runs = this.runs();
-    if (!runs.length) return ['', `  ${dim('No runs yet.')}`, `  ${cyan('o')} ${dim('describe a task and let Maestro build and run a workflow')}`, `  ${cyan('2')} ${dim('pick a saved workflow and press r')}`];
+    if (!runs.length) return ['', `  ${dim('No runs yet.')}`, `  ${cyan('o')} ${dim('describe a task and let Maestro build and run a workflow')}`, `  ${cyan('3')} ${dim('pick a saved workflow and press r')}`];
     const listH = Math.max(3, Math.min(runs.length, h - 11));
     const [view, start] = this.window(runs, s.sel.runs, listH);
     const lines = view.map((r, vi) => {
@@ -2075,7 +2226,7 @@ export class Tui {
     this.bodyY = head.length;
     const body = this.body(bodyH);
     this.hits = this.hits.filter((h) => h.y < head.length + bodyH);
-    if (!this.modal) this.hit(rows - 3, 0, this.cols, () => this.focusTalk());
+    if (!this.modal && this.screen.kind === 'dash' && this.screen.tab !== 'chat') this.hit(rows - 3, 0, this.cols, () => void ((this.screen as { tab: Tab }).tab = 'chat'));
     const lines = [...head, ...body.slice(0, bodyH), ...Array(Math.max(0, bodyH - body.length)).fill(''), ...foot];
     let buf = '';
     for (let i = 0; i < lines.length; i++) {

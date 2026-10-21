@@ -39,6 +39,8 @@ export interface ChatOpts {
   history?: Turn[];
   /** The workflow the person is looking at right now, if any. */
   current?: string;
+  /** One line per recent run, so Maestro can say what the crew is doing. */
+  runs?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -69,7 +71,7 @@ function prompt(message: string, o: ChatOpts, tests: string | undefined): string
 
 ${ws ? contextOf(ws).slice(0, 2500) + '\n' : ''}Saved workflows:
 ${lines.join('\n') || '(none yet)'}
-${o.current ? `The user is looking at: ${o.current}\n` : ''}Test command detected in the repo: ${tests ?? 'none'}
+${o.current ? `The user is looking at: ${o.current}\n` : ''}${o.runs ? `Recent runs (newest first):\n${o.runs}\n` : ''}Test command detected in the repo: ${tests ?? 'none'}
 
 Allowed step types (1 to 8 steps, in order): planner, architect, coder, tester (a gate that runs the test command; only if one exists), reviewer, approval (human sign-off).
 ${crewLines() ? 'Custom crew you may also use:\n' + crewLines() + '\n' : ''}
