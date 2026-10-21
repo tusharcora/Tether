@@ -1702,12 +1702,20 @@ export class Tui {
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';
     const t = this.toast && this.toast.until > Date.now() ? this.toast : undefined;
     const hintLine = this.talk.focus && !this.modal ? dim('enter send · esc back · ctrl-u clear') : t ? (t.tone === 'err' ? red('✘ ') : green('✔ ')) + t.text : dim(this.modal ? hint : `/ chat · ^K commands · ${hint}`);
-    return [rule(this.cols), this.talkLine(), hintLine];
+    // Typing never happens in a box in the middle of the screen: a question is asked on the chat line itself.
+    const m = this.modal;
+    const asking = m?.kind === 'prompt' || m?.kind === 'confirm' || m?.kind === 'palette';
+    const w = this.cols;
+    const top = asking ? rule(w, clip(m.kind === 'palette' ? 'Command palette' : m.title, Math.max(10, w - 8))) : rule(w);
+    const line = m?.kind === 'prompt' ? `${bold(paint(pal.cyan, '›'))} ${m.value.length > w - 6 ? '…' + m.value.slice(-(w - 7)) : m.value}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}`   : m?.kind === 'palette' ? `${bold(paint(pal.cyan, '›'))} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`
+      : m?.kind === 'confirm' ? `${bold(paint(pal.amber, '›'))} ${dim('press')} ${bold('y')} ${dim('to confirm,')} ${bold('n')} ${dim('to cancel')}` : this.talkLine();
+    const asked = m?.kind === 'prompt' && m.hint ? `${hint} · ${m.hint}` : hint;
+    return [top, line, rule(w), asking ? dim(asked) : hintLine];
   }
 
   private body(h: number): string[] {
     const w = this.cols;
-    if (this.modal) return this.modalBox(h);
+    if (this.modal && this.modal.kind !== 'prompt' && this.modal.kind !== 'confirm') return this.modalBox(h);
     const s = this.screen;
     switch (s.kind) {
       case 'dash':
@@ -1742,7 +1750,6 @@ export class Tui {
     if (m.kind === 'palette') {
       const items = this.paletteItems(m);
       m.sel = Math.min(m.sel, Math.max(0, items.length - 1));
-      lines.push(row(`${cyan('›')} ${m.query}${this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' '}${m.query ? '' : dim('type to filter: runs, workflows, skills, settings…')}`));
       const room = Math.max(4, h - 7);
       const start = Math.max(0, Math.min(Math.max(0, items.length - room), m.sel - Math.floor(room / 2)));
       items.slice(start, start + room).forEach((it, vi) => {
@@ -2068,7 +2075,7 @@ export class Tui {
     this.bodyY = head.length;
     const body = this.body(bodyH);
     this.hits = this.hits.filter((h) => h.y < head.length + bodyH);
-    if (!this.modal) this.hit(rows - 2, 0, this.cols, () => this.focusTalk());
+    if (!this.modal) this.hit(rows - 3, 0, this.cols, () => this.focusTalk());
     const lines = [...head, ...body.slice(0, bodyH), ...Array(Math.max(0, bodyH - body.length)).fill(''), ...foot];
     let buf = '';
     for (let i = 0; i < lines.length; i++) {
