@@ -81,9 +81,9 @@ The crew can be drawn five ways. Switch with `aorch crew <style>`, `--crew <styl
 | --- | --- | --- |
 | `pebble` | the pixel family (default), fully customisable | everyone |
 | `classic` | the original visor bots (built-in crew only) | nostalgia |
-| `sigil` | a bold glyph: hollow when idle, solid with a moving light when working | engineers, tmux, SSH |
-| `tile` | a coloured square holding the glyph, with a status light | app-icon lovers |
+| `sigil` | one glyph: hollow when idle, solid with a spinner when working | engineers, tmux, SSH |
+| `tile` | a small coloured tile holding the glyph, with a status light | app-icon lovers |
 | `ticker` | a three-letter symbol chip, a stance arrow and a sparkline | traders, the Trading desk |
-| `orbit` | two initials in a ring that spins while the bot works | shared dashboards |
+| `orbit` | two initials in a small ring; a lit arc runs round it while the bot works | shared dashboards |
 
-The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. Every style draws the same 4×10 block in the terminal and a 5-column mini mark in lists, so no screen changes layout when you switch. The bot editor still edits the pixel look, which `pebble` uses.
+The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. Every mark is small (one to three rows) and sits in the same 4×10 slot a pixel bot uses and a 5-column mini mark in lists, so no screen changes layout when you switch. The bot editor still edits the pixel look, which `pebble` uses.

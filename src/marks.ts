@@ -108,23 +108,14 @@ function hollow(shape: string[]): string[] {
   );
 }
 
+/** A bot as a single glyph with its state mark beneath, the way it appears in a log line, just centred in the slot. */
 export function sigil(bot: MarkBot, mood: MarkMood, tick: number): string[] {
-  const shape = SHAPES[shapeOf(bot.id)]!;
+  const shape = shapeOf(bot.id);
   const col = moodColor(bot.color, mood);
   const open = mood === 'idle' || mood === 'asleep' || mood === 'sad' || (mood === 'waiting' && tick % 16 >= 10);
-  const grid = (open ? hollow(shape) : shape).map((r) => r.replace(/#/g, 'B'));
-  if (mood === 'sad') {
-    // a failed bot is an outline with a solid core, like a target that was hit
-    for (const [x, y] of [[4, 3], [5, 3], [4, 4], [5, 4]] as const) grid[y] = grid[y]!.slice(0, x) + 'B' + grid[y]!.slice(x + 1);
-  }
-  const colors: Record<string, RGB> = { B: col };
-  if (mood === 'working') {
-    // a soft band of light sweeps down the shape; the shape itself never changes
-    const band = Math.floor(tick / 2) % 12 - 2;
-    colors.L = mix([col, LIGHT], 0.4);
-    for (let y = 0; y < 8; y++) if (y === band || y === band + 1) grid[y] = grid[y]!.replace(/B/g, 'L');
-  }
-  return paintRows(grid, colors);
+  const glyph = open ? HOLLOW_CHAR[shape]! : SOLID_CHAR[shape]!;
+  const mark = mood === 'working' ? SPIN[Math.floor(tick / 2) % SPIN.length]! : mood === 'happy' ? '✔' : mood === 'sad' ? '✘' : mood === 'waiting' ? '…' : ' ';
+  return [blank(), centre(paint(col, `\x1b[1m${glyph}\x1b[22m`), 1), centre(paint(col, mark), 1), blank()];
 }
 
 export function miniSigil(bot: MarkBot, mood: MarkMood, tick: number): string {
@@ -160,14 +151,20 @@ function light(base: RGB, mood: MarkMood, tick: number): RGB {
   }
 }
 
+/** A 5×3 tile: the glyph dead centre on the bot's colour, the status light in the top-right corner. */
 export function tile(bot: MarkBot, mood: MarkMood, tick: number): string[] {
   const body = mood === 'idle' ? mix([bot.color, pal.slate], 0.3) : mood === 'asleep' ? mix([bot.color, pal.slate], 0.6) : bot.color;
-  const g = GLYPH[shapeOf(bot.id)]!;
-  const grid = [...Array(8)].map(() => Array(W).fill('.'));
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (!((y === 0 || y === 7) && (x === 0 || x === 7))) grid[y]![x] = 'B';
-  g.forEach((row, y) => [...row].forEach((c, x) => c === '#' && (grid[y + 1]![x + 1] = 'D')));
-  for (const [x, y] of [[8, 0], [9, 0], [8, 1], [9, 1]] as const) grid[y]![x] = 'L';
-  return paintRows(grid.map((r) => r.join('')), { B: body, D: inkOn(bot.color), L: light(bot.color, mood, tick) });
+  const glyph = SOLID_TILE_CHAR[shapeOf(bot.id)]!;
+  const lamp = light(bot.color, mood, tick);
+  if (!caps.level) return [centre(`[ ${glyph} ]`, 5), blank(), blank(), blank()];
+  const on = `${bgCode(body)}${fgCode(inkOn(bot.color))}`;
+  const row = (inner: string) => centre(`${on}${inner}\x1b[0m`, 5);
+  return [
+    row(`   ${fgCode(lamp)}●${fgCode(inkOn(bot.color))} `),
+    row(`  \x1b[1m${glyph}\x1b[22m  `),
+    row('     '),
+    blank(),
+  ];
 }
 
 const SOLID_TILE_CHAR: Record<string, string> = { diamond: '◆', triangle: '▲', square: '■', circle: '●', hex: '◉', plus: '✚', arrow: '▶' };
@@ -191,7 +188,7 @@ export function symbolOf(name: string): string {
   return out.join('');
 }
 
-const BLOCKS = '▁▂▃▄▅▆▇█';
+const BLOCKS = '▁▁▂▂▃▃▄▄';
 /** A repeatable series for a bot: the same id always draws the same line. */
 function series(id: string, n: number, offset: number): number[] {
   // a gentle random walk, so it reads as a price line and not as noise; the same id and offset always give the same values
@@ -220,9 +217,9 @@ export function ticker(bot: MarkBot, mood: MarkMood, tick: number): string[] {
   const col = moodColor(bot.color, mood);
   const sym = symbolOf(bot.name);
   const stance = mood === 'working' || mood === 'happy' ? STANCE[mood] : STANCE[mood];
-  const line = `${paint(col, stance)} ${paint(col, spark(bot.id, mood, tick, 6))}`;
+  const line = `${paint(col, stance)} ${paint(mix([col, pal.slate], 0.25), spark(bot.id, mood, tick, 5))}`;
   const chipW = caps.level ? 5 : 5; // " SCT " or "[SCT]"
-  return [blank(), centre(chip(sym, mood === 'sad' ? pal.red : mood === 'waiting' ? pal.amber : col), chipW), centre(line, 8), blank()];
+  return [blank(), centre(chip(sym, mood === 'sad' ? pal.red : mood === 'waiting' ? pal.amber : col), chipW), centre(line, 7), blank()];
 }
 
 export function miniTicker(bot: MarkBot, mood: MarkMood, tick: number): string {
@@ -248,29 +245,23 @@ export const initialsOf = (name: string): string => {
   return ((l[0] ?? 'B') + (l[1] ?? '')).padEnd(2, ' ').slice(0, 2);
 };
 
+/** The ring as ten pieces, clockwise from the top-left corner. */
+const PIECES = ['╭', '─', '─', '╮', '│', '╯', '─', '─', '╰', '│'];
+
+/** A small rounded ring with the initials inside. While working, a lit arc of four pieces runs round it. */
 export function orbit(bot: MarkBot, mood: MarkMood, tick: number): string[] {
-  const body = bot.color;
-  const track = mix([body, pal.slate], 0.7);
-  const dim = mood === 'idle' || mood === 'asleep';
-  const core = dim ? mix([body, pal.slate], mood === 'asleep' ? 0.75 : 0.5) : mood === 'sad' ? mix([body, pal.red], 0.5) : body;
-  const hot = mood === 'happy' ? pal.green : mood === 'sad' ? pal.red : mood === 'waiting' ? pal.amber : body;
-  const grid: string[][] = [...Array(8)].map(() => Array(W).fill('.'));
-  const put = (x: number, y: number, c: string) => void (grid[y]![x] = c);
-  for (const [x, y] of CORE) put(x, y, 'C');
-  RING.forEach(([x, y], i) => {
-    let lit = false;
-    if (mood === 'working') lit = (i - Math.floor(tick / 2) + 180) % RING.length < 6;
-    else if (mood === 'happy' || mood === 'sad') lit = true;
-    else if (mood === 'waiting') lit = (i + Math.floor(tick / 8)) % 2 === 0;
-    put(x, y, lit ? 'R' : 'T');
-  });
-  // the initials sit in the core: cell row 1, columns 4 and 5
-  const letters = initialsOf(bot.name);
-  const ink = inkOn(core);
-  return paintRows(grid.map((r) => r.join('')), { C: core, R: hot, T: track }, {
-    '1,4': { ch: letters[0]!, bg: core, fg: ink },
-    '1,5': { ch: letters[1]!, bg: core, fg: ink },
-  });
+  const track = mix([bot.color, pal.slate], 0.7);
+  const lit = mood === 'happy' ? pal.green : mood === 'sad' ? pal.red : mood === 'waiting' ? pal.amber : bot.color;
+  const ink = mood === 'idle' || mood === 'asleep' ? mix([bot.color, pal.slate], 0.45) : bot.color;
+  const piece = (i: number): string => {
+    let on = false;
+    if (mood === 'working') on = (i - Math.floor(tick / 2) + 100) % PIECES.length < 4;
+    else if (mood === 'happy' || mood === 'sad') on = true;
+    else if (mood === 'waiting') on = (i + Math.floor(tick / 8)) % 2 === 0;
+    return paint(on ? lit : track, PIECES[i]!);
+  };
+  const letters = paint(ink, `\x1b[1m${initialsOf(bot.name)}\x1b[22m`);
+  return [blank(), centre(`${piece(0)}${piece(1)}${piece(2)}${piece(3)}`, 4), centre(`${piece(9)}${letters}${piece(4)}`, 4), centre(`${piece(8)}${piece(7)}${piece(6)}${piece(5)}`, 4)];
 }
 
 const DIAL = ['○', '◔', '◑', '◕'];

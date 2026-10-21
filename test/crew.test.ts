@@ -195,18 +195,24 @@ describe('mark styles (sigil, ticker, orbit)', () => {
     expect(shapeOf('my-custom-bot')).toBe(shapeOf('my-custom-bot'));
   });
 
-  it('a working sigil keeps its shape while the light moves; idle is an outline', async () => {
+  it('a sigil is one glyph: hollow when idle, solid when working, with a state mark that moves', async () => {
     const { sigil } = await import('../src/marks.js');
+    const bot = { id: 'planner', name: 'Scout', color: [90, 160, 250] as [number, number, number] };
+    const strip = (rows: string[]) => rows.join('\n').replace(/\x1b\[[0-9;]*m/g, '');
+    expect(strip(sigil(bot, 'idle', 0))).toContain('◇');
+    expect(strip(sigil(bot, 'working', 0))).toContain('◆');
+    expect(strip(sigil(bot, 'working', 0))).not.toEqual(strip(sigil(bot, 'working', 4)));
+    expect(strip(sigil(bot, 'happy', 0))).toContain('✔');
+  });
+
+  it('a tile keeps its glyph and the light changes with the mood', async () => {
+    const { tile } = await import('../src/marks.js');
     const { caps } = await import('../src/ui.js');
     const keep = caps.level;
-    caps.level = 3; // animation is colour; with none there is nothing to move
-    const bot = { id: 'planner', name: 'Scout', color: [90, 160, 250] as [number, number, number] };
-    const strip = (rows: string[]) => rows.map((r) => r.replace(/\x1b\[[0-9;]*m/g, '').replace(/[▀▄█]/g, '#'));
-    const a = strip(sigil(bot, 'working', 0)), b = strip(sigil(bot, 'working', 6));
-    expect(a).toEqual(b); // same silhouette every frame
-    expect(sigil(bot, 'working', 0)).not.toEqual(sigil(bot, 'working', 6)); // the light moved
-    const idle = strip(sigil(bot, 'idle', 0)).join('');
-    expect(idle.replace(/ /g, '').length).toBeLessThan(a.join('').replace(/ /g, '').length);
+    caps.level = 3;
+    const bot = { id: 'coder', name: 'Bolt', color: [60, 200, 130] as [number, number, number] };
+    expect(tile(bot, 'happy', 0).join('')).not.toEqual(tile(bot, 'sad', 0).join(''));
+    expect(tile(bot, 'idle', 0).join('').replace(/\x1b\[[0-9;]*m/g, '')).toContain('▲');
     caps.level = keep;
   });
 
