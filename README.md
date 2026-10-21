@@ -101,3 +101,16 @@ Maestro only proposes. Nothing is saved or started until you confirm in the menu
 ## LLM providers
 
 Settings → **LLM providers** lists every agent and model server aorch can use (installed? reachable? which models?) and adds new ones: DeepSeek, OpenAI, OpenRouter, Groq, Together, Fireworks, or any OpenAI-compatible URL. The same from the shell: `aorch providers`, `aorch providers add deepseek`, `aorch providers add --name mybox --url https://host/v1 --key-env MYBOX_KEY`, `aorch providers remove mybox`. Keys are never stored: you give the *name* of the environment variable that holds the key. Link a provider's model to a bot in the Crew tab.
+
+### Usage and spend (Experiential Labs)
+
+Providers on `experientiallabs.ai` also expose a Spend API. It needs a *provisioning* key (`xpl_…`), which is different from the inference key:
+
+```
+export EXPLABS_USAGE_KEY=xpl_...
+aorch providers usage-key experientiallabs EXPLABS_USAGE_KEY
+aorch usage                      # last 7 days: all-in spend, tokens, per model
+aorch usage --days 30 --by key   # group by key, member, app, provider…
+```
+
+The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `aorch providers org-id <name> <id>` if that fails. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.

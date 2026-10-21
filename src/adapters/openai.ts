@@ -20,6 +20,10 @@ export interface EndpointConfig {
   model?: string;
   /** Per-request timeout for each model call. Local models can be slow to load. */
   requestTimeoutMs?: number;
+  /** Spend API (Experiential Labs): env var holding a provisioning key (`xpl_…`), separate from the inference key. */
+  usageKey?: string;
+  /** Organisation id for the Spend API. Looked up from /api/whoami when absent. */
+  orgId?: string;
 }
 
 export const LOCAL_ENDPOINTS: Record<string, EndpointConfig> = {
@@ -160,7 +164,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
 
   async listModels(): Promise<string[]> {
     try {
-      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(2500) });
+      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(this.local() ? 2500 : 8000) });
       if (!res.ok) return [];
       const j = (await res.json()) as { data?: { id?: string }[] };
       return (j.data ?? []).map((m) => m.id).filter((x): x is string => typeof x === 'string').sort();
@@ -169,15 +173,28 @@ export class OpenAICompatAdapter implements AgentAdapter {
     }
   }
 
-  async detect() {
+  private local(): boolean {
     try {
-      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(1500) });
+      return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(new URL(this.cfg.baseUrl).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  async detect() {
+    const local = this.local();
+    try {
+      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(local ? 1500 : 8000) });
+      if (res.status === 401 || res.status === 403) return { ok: false, detail: `${this.cfg.baseUrl} rejected the API key (HTTP ${res.status}): check the key and the variable name` };
+      if (res.status === 404) return { ok: true, version: `reachable · ${this.cfg.baseUrl} (no /models list: name a model per bot)` };
       if (!res.ok) return { ok: false, detail: `HTTP ${res.status} from ${this.cfg.baseUrl}` };
       const j = (await res.json()) as { data?: unknown[] };
       const n = j.data?.length ?? 0;
       return { ok: true, version: `${n} model${n === 1 ? '' : 's'} · ${this.cfg.baseUrl}` };
-    } catch {
-      return { ok: false, detail: `not running at ${this.cfg.baseUrl}` };
+    } catch (e) {
+      const err = e as { name?: string; cause?: { code?: string; message?: string } };
+      const why = err.name === 'TimeoutError' ? 'timed out' : err.cause?.code === 'ENOTFOUND' ? 'no such host (check the URL)' : err.cause?.code ?? err.cause?.message ?? 'connection failed';
+      return { ok: false, detail: local ? `not running at ${this.cfg.baseUrl}` : `cannot reach ${this.cfg.baseUrl}: ${why}` };
     }
   }
 

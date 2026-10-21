@@ -121,3 +121,15 @@ export function removeEndpoint(cfg: Config, id: string): void {
   delete next[id];
   cfg.endpoints = next;
 }
+
+/** Change one setting of an endpoint you added (usage key, org id). */
+export function updateEndpoint(cfg: Config, id: string, patch: Partial<Pick<EndpointConfig, 'usageKey' | 'orgId'>>): void {
+  const cur = cfg.endpoints[id];
+  if (!cur) throw new Error(`"${id}" is not an endpoint you added`);
+  const next = { ...cur, ...patch };
+  for (const k of ['usageKey', 'orgId'] as const) if (next[k] === undefined || next[k] === '') delete next[k];
+  const file = readFile(cfg.home);
+  const endpoints = { ...((file.endpoints as Record<string, EndpointConfig>) ?? {}), [id]: next };
+  writeFileSync(join(cfg.home, 'aorch.config.json'), JSON.stringify({ ...file, endpoints }, null, 2) + '\n');
+  cfg.endpoints = { ...cfg.endpoints, [id]: next };
+}

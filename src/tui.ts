@@ -22,7 +22,8 @@ import { sampleRun } from './sample.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, refreshCrew, renderBot, renderLook, type Mood } from './bots.js';
 import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, removeBot, saveBot, type BotDef, type PartKey } from './crew.js';
 import { supervise } from './supervisor.js';
-import { PRESETS, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
+import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
+import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
 import { chat as askMaestro, savePipeline, stepsOf, type Reply, type Turn } from './maestro.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
@@ -1286,12 +1287,34 @@ export class Tui {
     const models = a?.models ?? [];
     this.choose(`${r.id} · ${r.kind} · ${r.where}`, [
       { label: 'Models', hint: models.length ? `${models.length} found` : 'none listed', value: 'models' },
+      ...(this.d.cfg.endpoints[r.id] && supportsUsage(this.d.cfg.endpoints[r.id]!) ? [
+        { label: 'Usage and spend', hint: 'last 7 days', value: 'usage' },
+        { label: 'Set usage key', hint: this.d.cfg.endpoints[r.id]!.usageKey ?? 'env var with your xpl_ provisioning key', value: 'ukey' },
+      ] : []),
       { label: 'Test connection', value: 'test' },
       ...(r.removable ? [{ label: 'Remove', hint: 'bots linked to it fall back to their defaults', value: 'rm' }] : []),
       { label: 'Back', value: 'back' },
     ], (v) => {
       if (v === 'models') this.say(models.length ? models.slice(0, 12).join(', ') + (models.length > 12 ? ` … +${models.length - 12}` : '') : `no models listed${a?.ok ? ' (name one per bot in the Crew tab)' : ': not reachable'}`);
-      else if (v === 'test') {
+      else if (v === 'usage') {
+        this.say('reading usage…');
+        fetchUsage(this.d.cfg.endpoints[r.id]!).then((u) => {
+          const t = u.totals;
+          this.choose(`${r.id} · last ${u.days} days · ${usdOf(spendNano(t))} · ${t.requests} requests${u.provisional ? ' · provisional' : ''}`, [
+            ...u.groups.slice(0, 12).map((g) => ({ label: g.name, hint: `${usdOf(spendNano(g))} · ${g.requests} req · ${(g.inputTokens + g.outputTokens).toLocaleString()} tok`, value: g.name })),
+            { label: 'Back', value: '_back' },
+          ], () => this.providerMenu(r));
+        }, (e: Error) => this.say(e.message, 'err'));
+      } else if (v === 'ukey') {
+        this.ask('Environment variable holding your provisioning key (xpl_…):', (k) => {
+          try {
+            updateEndpoint(this.d.cfg, r.id, { usageKey: keyRef(k) });
+            this.say('usage key saved');
+          } catch (e) {
+            this.say((e as Error).message, 'err');
+          }
+        }, 'EXPERIENTIALLABS_USAGE_KEY', 'a provisioning key, separate from the inference key. Only its name is stored');
+      } else if (v === 'test') {
         this.refreshAvail();
         this.say(`checking ${r.id}…`);
       } else if (v === 'rm') {

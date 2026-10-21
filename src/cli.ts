@@ -28,7 +28,8 @@ import { createInterface } from 'node:readline/promises';
 import { renderLook } from './bots.js';
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, loadSettings, matchRule, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
 import { randomBytes } from 'node:crypto';
-import { PRESETS, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
+import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
+import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
 import { CREW, botSays, crewFor, miniBot, moodFor, renderBot, type Mood } from './bots.js';
@@ -55,6 +56,7 @@ Usage
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
   aorch models [agent]                list what each agent can run (local servers included)
   aorch crew [style]                  bot style: pebble · classic · sigil · tile · ticker · orbit
+  aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
   aorch runs                          list runs
@@ -298,6 +300,8 @@ async function main() {
       'rules-only': { type: 'boolean' },
       name: { type: 'string' },
       url: { type: 'string' },
+      days: { type: 'string' },
+      by: { type: 'string' },
       'key-env': { type: 'string' },
       title: { type: 'string' },
       kind: { type: 'string' },
@@ -557,6 +561,22 @@ async function main() {
       console.log(dim(`\n  switch with: aorch theme <name>   or per run: --theme <name> / AORCH_THEME`));
       return;
     }
+    case 'usage': {
+      const cfg = loadConfig(v);
+      const names = Object.keys(cfg.endpoints).filter((n) => supportsUsage(cfg.endpoints[n]!));
+      const name = pos[0] ?? names[0];
+      if (!name || !cfg.endpoints[name]) return fail(names.length ? `usage: aorch usage [${names.join('|')}] [--days 7] [--by model|key|member|app]` : 'no provider with a Spend API yet. Add one: aorch providers add --name experientiallabs --url https://api.experientiallabs.ai/v1 --key-env EXPLABS_API_KEY');
+      if (!supportsUsage(cfg.endpoints[name]!)) return fail(`${name} has no Spend API`);
+      const u = await fetchUsage(cfg.endpoints[name]!, { days: v.days ? Number(v.days) : 7, groupBy: v.by });
+      if (v.json) return console.log(JSON.stringify({ ...u, totals: { ...u.totals, paid: String(u.totals.paid), byok: String(u.totals.byok), free: String(u.totals.free) }, groups: u.groups.map((g) => ({ ...g, paid: String(g.paid), byok: String(g.byok), free: String(g.free) })) }));
+      const t = u.totals;
+      console.log(`${bold(name)}  last ${u.days} days   ${bold(usdOf(spendNano(t)))}  ${dim(`(paid ${usdOf(t.paid)} · BYOK ${usdOf(t.byok)} · free ${usdOf(t.free)})`)}`);
+      console.log(dim(`  ${t.requests} requests · ${t.errors} errors · ${t.inputTokens.toLocaleString()} in (${t.cachedTokens.toLocaleString()} cached) · ${t.outputTokens.toLocaleString()} out`));
+      for (const g of u.groups.slice(0, 15)) console.log(`  ${padEndV(g.name, 34)} ${padEndV(usdOf(spendNano(g)), 9)} ${dim(`${g.requests} req · ${g.inputTokens.toLocaleString()} in · ${g.outputTokens.toLocaleString()} out`)}`);
+      if (u.provisional) console.log(amber('\n  some usage has unknown provider accounting, so money figures are provisional'));
+      if (!u.complete) console.log(amber('  the report was still catching up; run again for final numbers'));
+      return;
+    }
     case 'providers': {
       const cfg = loadConfig(v);
       const sub = pos[0] ?? 'list';
@@ -579,6 +599,12 @@ async function main() {
         const key = keyRef(v['key-env'] ?? preset?.keyEnv ?? '');
         addEndpoint(cfg, id!, { baseUrl: baseUrlOf(url!), ...(key ? { apiKey: key } : {}) });
         console.log(`${green('✔')} added ${id}${key && !process.env[key.slice(4)] ? '  ' + amber(`(set ${key.slice(4)} in your shell before using it)`) : ''}`);
+        return;
+      }
+      if (sub === 'usage-key' || sub === 'org-id') {
+        if (!pos[1] || !pos[2]) fail(`usage: aorch providers ${sub} <name> ${sub === 'org-id' ? '<id>' : '<ENV_VAR>'}`);
+        updateEndpoint(cfg, pos[1]!, sub === 'org-id' ? { orgId: pos[2] } : { usageKey: keyRef(pos[2]!) });
+        console.log(`${green('✔')} ${pos[1]}: ${sub} saved`);
         return;
       }
       if (sub === 'remove' || sub === 'rm') {
