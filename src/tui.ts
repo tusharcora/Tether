@@ -336,7 +336,7 @@ export class Tui {
     this.applyMouse();
   }
   private applyMouse() {
-    this.out.write(this.prefs.mouse === false ? `${ESC}?1006l${ESC}?1000l` : `${ESC}?1000h${ESC}?1006h`);
+    this.out.write(this.prefs.mouse !== true ? `${ESC}?1006l${ESC}?1000l` : `${ESC}?1000h${ESC}?1006h`);
   }
   private leave() {
     this.out.write(`${ESC}?1006l${ESC}?1000l${ESC}?25h${ESC}?1049l`);
@@ -617,6 +617,10 @@ export class Tui {
         perform(this.d.engine, id, action).then((m) => this.say(m), (e: Error) => this.say(e.message, 'err'));
         note(cmd === 'retry' ? `retrying the failed step in run ${id.slice(-8)}` : `resuming run ${id.slice(-8)} where it left off`);
       }
+    } else if (cmd === 'mouse') {
+      this.setPref({ mouse: this.prefs.mouse !== true });
+      this.applyMouse();
+      note(this.prefs.mouse === true ? 'mouse on: click tabs, rows and run cards. Text selection needs Option/Shift held. /mouse turns it off' : 'mouse off: you can select and copy text normally. /mouse turns clicking back on');
     } else if (cmd === 'providers') this.providers();
     else if (cmd === 'quit' || cmd === 'exit') this.quit();
     else if (cmd === 'run') {
@@ -632,6 +636,7 @@ export class Tui {
       note('/sessions  /main                       switch conversation (each run has its own)');
       note('/runs  /workflows  /crew  /settings   switch screen');
       note('/run <workflow> <task>                 start a saved workflow');
+      note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');
       note('Anything else is a message to Maestro. In a run\'s conversation he can change that run for you.');
     } else note(`unknown command /${cmd} (try /help)`);
@@ -1012,7 +1017,7 @@ export class Tui {
   }
 
   private mouse(k: string): void {
-    if (this.prefs.mouse === false) return;
+    if (this.prefs.mouse !== true) return;
     const [, kind, xs, ys] = k.split(':');
     const x = Number(xs) - 1;
     const y = Number(ys) - 1;
@@ -1119,8 +1124,8 @@ export class Tui {
     add('do', 'Next crew style', 'c', () => this.cycleCrew());
     add('do', 'Toggle animations', this.prefs.animate === false ? 'off' : 'on', () => this.setPref({ animate: this.prefs.animate === false }));
     add('do', 'Toggle bot reactions', this.prefs.reactions === false ? 'off' : 'on', () => this.setPref({ reactions: this.prefs.reactions === false }));
-    add('do', 'Toggle mouse support', this.prefs.mouse === false ? 'off' : 'on', () => {
-      this.setPref({ mouse: this.prefs.mouse === false });
+    add('do', 'Toggle mouse support', this.prefs.mouse === true ? 'on' : 'off (text can be selected)', () => {
+      this.setPref({ mouse: this.prefs.mouse !== true });
       this.applyMouse();
     });
     for (const role of Object.keys(CREW).filter((r) => r !== 'approval')) add('link', `Link ${CREW[role]!.name} to a model`, CREW[role]!.title, () => this.bindBot(role));
@@ -1735,8 +1740,8 @@ export class Tui {
       { label: 'Animations', value: onOff(this.prefs.animate), hint: 'off freezes spinners and bots', change: flip('animate') },
       { label: 'Live activity lines', value: onOff(this.prefs.activity), hint: 'what each running agent is doing', change: flip('activity') },
       { label: 'Metrics panel', value: onOff(this.prefs.metrics), hint: 'cost, budget, stream rate, step times (v in a run)', change: flip('metrics') },
-      { label: 'Mouse', value: onOff(this.prefs.mouse), hint: 'click rows, tabs and bots; wheel scrolls (shift-drag selects text)', change: () => {
-        this.setPref({ mouse: this.prefs.mouse === false });
+      { label: 'Mouse', value: this.prefs.mouse === true ? green('on') : dim('off'), hint: 'on: click rows, tabs and run cards, but the terminal cannot select text (hold Option/Shift to select anyway)', change: () => {
+        this.setPref({ mouse: this.prefs.mouse !== true });
         this.applyMouse();
       } },
       { label: 'Bot reactions', value: onOff(this.prefs.reactions), hint: 'cheers, shudders, batons passed between steps', change: flip('reactions') },
