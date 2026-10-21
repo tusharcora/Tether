@@ -68,6 +68,7 @@ export function buildPrompt(i: PromptInput): string {
 
   const role = node.prompt ?? DEFAULT_ROLE_PROMPTS[node.role ?? ''] ?? '';
   if (role) parts.push(`# Your role\n${role}`);
+  if (node.guidance) parts.push(`# Guidance from the person in charge (follow it)\n${node.guidance}`);
   if (node.verdict && !/VERDICT:/.test(role)) {
     parts.push('End your answer with exactly one line: `VERDICT: PASS` or `VERDICT: FAIL`.');
   }

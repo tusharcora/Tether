@@ -105,7 +105,7 @@ export class Engine {
   }
 
   /** Re-point one agent step at another agent/model before a resume. Recorded in the log. */
-  amend(runId: string, node: string, patch: { agent?: string; model?: string }, reason: string): void {
+  amend(runId: string, node: string, patch: { agent?: string; model?: string; guidance?: string }, reason: string): void {
     const s = this.store.state(runId);
     const n = s?.pipeline.nodes.find((x) => x.id === node);
     if (!s || !n) throw new Error(`unknown step "${node}"`);
@@ -113,7 +113,7 @@ export class Engine {
     if (this.active.has(runId)) throw new Error('stop the run before amending it');
     const agent = patch.agent ?? n.agent ?? 'claude';
     if (!this.opts.registry.has(agent)) throw new Error(`unknown agent adapter "${agent}"`);
-    this.store.append(runId, { type: 'node.amended', node, agent, model: patch.model, reason });
+    this.store.append(runId, { type: 'node.amended', node, agent: patch.agent ?? n.agent, model: patch.agent ? patch.model : n.model, guidance: patch.guidance?.slice(0, 1000), reason });
   }
 
   stop(runId: string): boolean {

@@ -203,7 +203,7 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
         say(`${ts()}  ${amber('◉')} ${name(e.node)} ${amber('waiting for approval')}`);
         break;
       case 'node.amended':
-        say(`${ts()}  ${amber('⇄')} ${name(e.node)} ${dim('now runs on')} ${cyan(e.agent ?? '')}${e.model ? dim(' · ' + e.model) : ''}`);
+        say(e.guidance ? `${ts()}  ${amber('✎')} ${name(e.node)} ${dim('guidance added: ' + e.guidance.split('\n').pop()!.slice(0, 80))}` : `${ts()}  ${amber('⇄')} ${name(e.node)} ${dim('now runs on')} ${cyan(e.agent ?? '')}${e.model ? dim(' · ' + e.model) : ''}`);
         break;
       case 'supervisor.action':
         say(`${ts()}  ${paint(pal.violet, '◈')} ${bold(paint(pal.violet, 'Maestro'))} ${e.action === 'stop' ? amber('stops: ') : cyan(e.action + ': ')}${e.detail}`);

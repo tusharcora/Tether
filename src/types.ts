@@ -35,6 +35,8 @@ export interface PipelineNode {
   model?: string;
   /** Role instructions. Falls back to a default for the role. */
   prompt?: string;
+  /** Extra direction added mid-run (by you or Maestro) after an attempt went wrong. Appended to the prompt. */
+  guidance?: string;
   /** Claude Code permission mode override (default: plan if readOnly else acceptEdits). */
   permissionMode?: string;
   /** Does not modify files. Read-only agent nodes in the same frontier run concurrently. */
@@ -145,7 +147,7 @@ export type RunEvent =
   | { type: 'approval.requested'; node: string }
   | { type: 'approval.resolved'; node: string; approved: boolean; by?: string }
   /** A step was re-pointed at a different agent/model (by the supervisor or a person). The run records exactly what ran. */
-  | { type: 'node.amended'; node: string; agent?: string; model?: string; reason: string }
+  | { type: 'node.amended'; node: string; agent?: string; model?: string; guidance?: string; reason: string }
   | { type: 'supervisor.action'; round: number; action: 'retry' | 'escalate' | 'stop'; node?: string; detail: string }
   | { type: 'run.coach'; findings: CoachFinding[] }
   | { type: 'vault.note'; path: string }
@@ -318,7 +320,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         }
         break;
       case 'node.amended':
-        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.model } : x)) };
+        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: [x.guidance, e.guidance].filter(Boolean).join('\n').slice(-2000) } : {}) } : x)) };
         break;
       case 'consult':
         (s.talk ??= []).push({ from: e.from, to: e.to, question: e.question, answer: e.answer, round: e.round, ts });

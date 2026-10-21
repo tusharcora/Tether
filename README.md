@@ -102,7 +102,16 @@ He only proposes. A proposal shows up as a card; `enter` accepts it and `esc` de
 
 When the input is empty, a greyed-out suggestion for the next step is shown, based on the latest run (`/approve` when it is waiting for you, `/retry` after a failure, `/open` when it finished); press `tab` to fill it in, then enter to send. While a suggestion is showing, `shift-tab` switches screens.
 
-Slash commands: `/runs` `/workflows` `/crew` `/settings` switch screen, `/run <workflow> <task>` starts a workflow, `/approve` and `/reject` answer a run that is waiting for you, `/open` and `/retry` open the latest run or retry its failed step, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
+### Every run has its own conversation
+
+Starting a run opens a conversation just for it (switch with `/sessions`, go back with `/main`; `/` on a run's screen jumps to its chat). It is saved to `<home>/chats/`, so closing aorch and coming back puts you exactly where you were: the transcript, what Maestro proposed, and what you chose.
+
+- **Progress reports.** Maestro reports as steps finish ("Scout finished: PASS · 3 of 5 steps · $0.12"), when a step needs your approval, and when the run is done. `/status` gives the picture any time. Reports for a run you are not looking at appear as a notice.
+- **When a run fails**, Maestro reads the failure and tells you in plain words what went wrong, then offers numbered options with a ★ recommended one: retry the failed step, move a step to a stronger model, give a step new instructions ("guidance", added to its prompt), do it by hand, or open the run. Pick with `enter` or `1`–`9`. Options are a fixed set of actions checked against the real run, never shell commands, and nothing happens until you pick one. Without a model to ask, rule-based options are offered.
+- **Pick up where it stopped.** Retrying or resuming continues from the first unfinished step; nothing already done is repeated. If aorch was closed mid-run, the conversation offers to resume it when you return.
+- **Change things any time.** Tell Maestro in the run's conversation ("use a stronger model for the coder", "keep the change small") and he offers the matching option.
+
+Slash commands: `/status`, `/approve` `/reject` `/retry` `/resume`, `/open` `/chat [run]`, `/sessions` `/main`, `/runs` `/workflows` `/crew` `/settings` to switch screen, `/run <workflow> <task>`, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
 
 ## LLM providers
 

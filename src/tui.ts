@@ -24,7 +24,9 @@ import { BOT_KINDS, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, PART_KEYS, freshId, rem
 import { supervise } from './supervisor.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
-import { chat as askMaestro, savePipeline, type Reply, type Turn } from './maestro.js';
+import { chat as askMaestro, savePipeline } from './maestro.js';
+import { chatAboutRun, diagnose, failureKey, perform } from './runchat.js';
+import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberLast, saveSession, sessionIdForRun, type Choice, type Entry, type Session } from './sessions.js';
 import { rank } from './palette.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
@@ -222,13 +224,6 @@ const TABS: Tab[] = ['chat', 'runs', 'workflows', 'crew', 'settings'];
 interface Prompt { kind: 'prompt'; title: string; hint?: string; value: string; /** value is a suggestion: the first keystroke replaces it */ fresh?: boolean; onSubmit: (v: string) => void }
 interface Menu { kind: 'menu'; title: string; items: { label: string; hint?: string; value: string }[]; sel: number; onPick: (v: string) => void }
 interface Confirm { kind: 'confirm'; title: string; onYes: () => void }
-/** One thing in the chat transcript. */
-type Entry =
-  | { k: 'you'; text: string }
-  | { k: 'maestro'; text: string }
-  | { k: 'note'; text: string }
-  | { k: 'offer'; r: Reply; st: 'pending' | 'done' | 'skipped' | 'failed'; note?: string }
-  | { k: 'run'; runId: string; workflow: string };
 interface Cmd { group: string; label: string; hint: string; run: () => void }
 interface Palette { kind: 'palette'; query: string; sel: number; all: Cmd[] }
 type Modal = Prompt | Menu | Confirm | Palette;
@@ -270,12 +265,20 @@ export class Tui {
   private avail: Record<string, { ok: boolean; detail?: string; version?: string; models: string[] }> = {};
   private availAt = 0;
   /** The line at the bottom that talks to Maestro. */
-  private talk = { text: '', busy: false, history: [] as Turn[], log: [] as Entry[], scroll: 0 };
+  private talk = { text: '', scroll: 0, session: blankSession(MAIN, 'Maestro') };
+  private known = new Map<string, Session>();
+  private busyIds = new Set<string>();
+  private diagBusy = new Set<string>();
 
   constructor(private readonly d: TuiDeps, private readonly out: NodeJS.WriteStream = process.stdout) {
     this.registry = makeRegistry(d.cfg);
     this.prefs = loadPrefs(d.cfg.home);
     refreshCrew(d.cfg.home);
+    const main = loadSession(d.cfg.home, MAIN) ?? blankSession(MAIN, 'Maestro');
+    this.known.set(MAIN, main);
+    for (const sn of listSessions(d.cfg.home)) this.known.set(sn.id, sn);
+    const last = lastSessionId(d.cfg.home);
+    this.talk.session = (last && this.known.get(last)) || main;
   }
 
   private setPref(patch: Prefs) {
@@ -321,10 +324,7 @@ export class Tui {
       process.stdin.on('data', this.onData);
       this.out.on('resize', this.onResize);
       this.unsub = this.d.store.onAppend((e) => this.pulse.observe(e.runId, e.event));
-      this.timer = setInterval(() => {
-        if (this.prefs.animate !== false) this.tick++;
-        this.draw();
-      }, 100);
+      this.timer = setInterval(this.onTick, 100);
     });
   }
 
@@ -343,7 +343,22 @@ export class Tui {
     process.stdin.setRawMode(false);
   }
 
+  private beat = 0;
+  private onTick = () => {
+    if (this.prefs.animate !== false) this.tick++;
+    if (++this.beat % 10 === 0) {
+      try {
+        this.watchTick();
+      } catch (e) {
+        this.say((e as Error).message.split('\n')[0]!, 'err');
+      }
+    }
+    this.draw();
+  };
+
   private quit = () => {
+    this.persist();
+    for (const sn of this.known.values()) if (sn.id !== this.sess.id) this.save(sn);
     clearInterval(this.timer);
     this.unsub?.();
     process.stdin.off('data', this.onData);
@@ -371,10 +386,7 @@ export class Tui {
     });
     this.enter();
     process.stdin.on('data', this.onData);
-    this.timer = setInterval(() => {
-      if (this.prefs.animate !== false) this.tick++;
-      this.draw();
-    }, 100);
+    this.timer = setInterval(this.onTick, 100);
     this.lastRender = [];
     return code;
   }
@@ -392,14 +404,21 @@ export class Tui {
         this.say((e as Error).message.split('\n')[0]!, 'err');
       }
     }
+    const sig = `${this.sess.id}:${this.sess.log.length}:${this.sess.log.map((e) => (e.k === 'choice' ? `${e.st}${e.sel}` : e.k === 'offer' ? e.st : '')).join('')}`;
+    if (sig !== this.sig) {
+      this.sig = sig;
+      this.persist();
+    }
     this.draw();
   };
+  private sig = '';
 
   private key(k: string): void {
     if (k === 'ctrl-c') return this.quit();
     if (k.startsWith('mouse:')) return this.mouse(k);
     if (k === 'ctrl-k' && (!this.modal || this.modal.kind === 'palette')) return this.modal ? (this.modal = undefined) : this.openPalette();
     if (this.modal) return this.modalKey(k);
+    if (k === '/' && this.screen.kind === 'run') return this.openRunSession(this.screen.runId);
     if (k === '/' && this.screen.kind === 'dash' && this.screen.tab !== 'chat') return void ((this.screen.tab = 'chat'), (this.talk.text = ''));
     const s = this.screen;
     switch (s.kind) {
@@ -420,25 +439,98 @@ export class Tui {
     }
   }
 
-  // ---------- chat with Maestro ----------
+  // ---------- chat sessions: the main chat, and one conversation per run ----------
+  private get sess(): Session {
+    return this.talk.session;
+  }
+  private isBusy(s: Session = this.sess) {
+    return this.busyIds.has(s.id);
+  }
+
+  private save(s: Session = this.sess) {
+    try {
+      saveSession(this.d.cfg.home, s);
+    } catch {
+      /* best effort: a full disk must not take the dashboard down */
+    }
+  }
+  private persist() {
+    this.save();
+    rememberLast(this.d.cfg.home, this.sess.id);
+  }
+
+  private session(id: string): Session | undefined {
+    return this.known.get(id) ?? (() => {
+      const s = loadSession(this.d.cfg.home, id);
+      if (s) this.known.set(id, s);
+      return s;
+    })();
+  }
+
+  private switchTo(s: Session) {
+    this.persist();
+    this.known.set(s.id, s);
+    this.talk.session = s;
+    this.talk.scroll = 0;
+    this.talk.text = '';
+    const d = this.stack[0] as Extract<Screen, { kind: 'dash' }>;
+    this.stack = [d];
+    d.tab = 'chat';
+    this.persist();
+  }
+
+  /** The conversation about one run: created the first time, then resumed from disk. */
+  private openRunSession(runId: string) {
+    const id = sessionIdForRun(runId);
+    let s = this.session(id);
+    if (!s) {
+      const st = this.state(runId);
+      const name = st?.pipeline.name ?? this.runs().find((r) => r.id === runId)?.pipeline ?? 'run';
+      s = blankSession(id, `${name} · ${runId.slice(-8)}`, { runId, workflow: name });
+      s.log.push({ k: 'run', runId, workflow: name });
+      if (st) s.log.push({ k: 'note', text: `task: ${st.task.split('\n')[0]!.slice(0, 200)}` });
+      this.save(s);
+    }
+    this.switchTo(s);
+  }
+
+  /** The run this conversation is about, or the latest one the main chat knows. */
+  private curRunId(): string | undefined {
+    if (this.sess.runId) return this.sess.runId;
+    const last = [...this.sess.log].reverse().find((e) => e.k === 'run');
+    return last?.k === 'run' ? last.runId : this.runs()[0]?.id;
+  }
+
   private pendingOffer(): Extract<Entry, { k: 'offer' }> | undefined {
-    const last = [...this.talk.log].reverse().find((e) => e.k === 'offer');
+    const last = [...this.sess.log].reverse().find((e) => e.k === 'offer');
     return last && last.k === 'offer' && last.st === 'pending' ? last : undefined;
+  }
+  private pendingChoice(): Extract<Entry, { k: 'choice' }> | undefined {
+    const last = [...this.sess.log].reverse().find((e) => e.k === 'choice');
+    return last && last.k === 'choice' && last.st === 'pending' ? last : undefined;
   }
 
   private chatKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
     const t = this.talk;
     const pending = this.pendingOffer();
+    const choice = this.pendingChoice();
+    if (choice && !t.text) {
+      if (k === 'up') return void (choice.sel = (choice.sel + choice.options.length - 1) % choice.options.length);
+      if (k === 'down') return void (choice.sel = (choice.sel + 1) % choice.options.length);
+      if (/^[1-9]$/.test(k) && Number(k) <= choice.options.length) return this.takeChoice(choice, Number(k) - 1);
+      if (k === 'enter') return this.takeChoice(choice, choice.sel);
+      if (k === 'esc') return void ((choice.st = 'skipped'), this.persist());
+    }
     if (k === 'enter') {
       const msg = t.text.trim();
       if (!msg) return pending ? this.acceptOffer(pending) : undefined;
-      if (t.busy && !msg.startsWith('/')) return this.say('Maestro is still thinking', 'err');
+      if (this.isBusy() && !msg.startsWith('/')) return this.say('Maestro is still thinking', 'err');
       t.text = '';
       return msg.startsWith('/') ? this.slash(s, msg) : this.sendTalk(msg);
     }
     if (k === 'esc') {
       if (t.text) t.text = '';
-      else if (pending) pending.st = 'skipped';
+      else if (pending) ((pending.st = 'skipped'), this.persist());
     } else if (k === 'up') t.scroll += 3;
     else if (k === 'down') t.scroll = Math.max(0, t.scroll - 3);
     else if (k === 'pgup') t.scroll += 12;
@@ -451,30 +543,64 @@ export class Tui {
 
   /** A greyed-out next step for the empty input; tab fills it in. `text` is what is typed, `label` what is shown. */
   private suggestion(): { text: string; label: string } | undefined {
-    if (this.talk.busy || this.pendingOffer()) return undefined;
-    const last = [...this.talk.log].reverse().find((e) => e.k === 'run');
-    const id = last?.k === 'run' ? last.runId : this.runs()[0]?.id;
+    if (this.isBusy() || this.pendingOffer() || this.pendingChoice()) return undefined;
+    const id = this.curRunId();
     const st = id ? this.state(id) : undefined;
     if (id && st) {
       const tag = id.slice(-8);
       if (st.status === 'paused' && Object.values(st.nodes).some((n) => n.status === 'awaiting')) return { text: '/approve', label: `/approve   sign off run ${tag}` };
       if (st.status === 'error') return { text: '/retry', label: `/retry   run ${tag} again, only the failed step` };
+      if (st.status === 'running' && !this.d.engine.isLive(id)) return { text: '/resume', label: `/resume   pick run ${tag} up where it left off` };
       if (st.status === 'done') return { text: '/open', label: `/open   review what run ${tag} did` };
-      if (st.status === 'running') return undefined;
+      if (st.status === 'running') return { text: '/status', label: `/status   how run ${tag} is going` };
     }
     const flow = this.flows()[0];
-    if (this.talk.log.length && flow) return { text: `/run ${flow.name} `, label: `/run ${flow.name} …   start a saved workflow` };
+    if (this.sess.log.length && flow) return { text: `/run ${flow.name} `, label: `/run ${flow.name} …   start a saved workflow` };
     return { text: 'plan a workflow for this repo', label: 'plan a workflow for this repo' };
+  }
+
+  private note(text: string, s: Session = this.sess) {
+    s.log.push({ k: 'note', text });
+  }
+
+  /** Progress in one line: steps done, cost, time. */
+  private progressLine(st: RunState): string {
+    const total = st.pipeline.nodes.length;
+    const done = st.pipeline.nodes.filter((n) => st.nodes[n.id]?.status === 'done').length;
+    const running = st.pipeline.nodes.filter((n) => st.nodes[n.id]?.status === 'running').map((n) => CREW[crewFor(n)]!.name);
+    const waiting = st.pipeline.nodes.filter((n) => st.nodes[n.id]?.status === 'awaiting').map((n) => CREW[crewFor(n)]!.name);
+    const head = st.status === 'done' ? `done: all ${total} steps` : st.status === 'error' ? `failed after ${done} of ${total} steps` : `${done} of ${total} steps done`;
+    return `${head}${running.length ? ` · ${running.join(', ')} working` : ''}${waiting.length ? ` · ${waiting.join(', ')} waiting for you` : ''} · ${usd(st.costUsd)} · ${dur((st.finishedAt ?? Date.now()) - st.startedAt)}`;
   }
 
   private slash(s: Extract<Screen, { kind: 'dash' }>, line: string) {
     const [cmd = '', ...rest] = line.slice(1).trim().split(/\s+/);
     const t = this.talk;
-    const note = (text: string) => t.log.push({ k: 'note', text });
+    const note = (text: string) => this.note(text);
+    const runTag = rest[0];
+    const findRun = () => (runTag ? this.runs().find((r) => r.id.endsWith(runTag))?.id : undefined) ?? this.curRunId();
     if (['runs', 'workflows', 'crew', 'settings'].includes(cmd)) s.tab = cmd as Tab;
-    else if (cmd === 'clear') ((t.log = []), (t.history = []), (t.scroll = 0));
-    else if (cmd === 'approve' || cmd === 'reject') {
-      const hit = this.runs().map((r) => ({ r, st: this.state(r.id) })).find(({ st }) => st && Object.values(st.nodes).some((n) => n.status === 'awaiting'));
+    else if (cmd === 'clear') {
+      this.sess.log = [];
+      this.sess.history = [];
+      t.scroll = 0;
+    } else if (cmd === 'main') this.switchTo(this.session(MAIN) ?? blankSession(MAIN, 'Maestro'));
+    else if (cmd === 'sessions' || cmd === 'chats') this.pickSession();
+    else if (cmd === 'chat') {
+      const id = findRun();
+      if (!id) note('no run to chat about yet');
+      else this.openRunSession(id);
+    } else if (cmd === 'status') {
+      const runs = this.sess.runId ? this.runs().filter((r) => r.id === this.sess.runId) : this.runs().filter((r) => r.status === 'running' || r.status === 'paused').slice(0, 4);
+      if (!runs.length) note('nothing is running right now');
+      for (const r of runs) {
+        const st = this.state(r.id);
+        if (st) this.sess.log.push({ k: 'maestro', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
+      }
+    } else if (cmd === 'approve' || cmd === 'reject') {
+      const mine = this.curRunId();
+      const pool = [...this.runs()].sort((a, b) => Number(b.id === mine) - Number(a.id === mine));
+      const hit = pool.map((r) => ({ r, st: this.state(r.id) })).find(({ st }) => st && Object.values(st.nodes).some((n) => n.status === 'awaiting'));
       const node = hit?.st && Object.entries(hit.st.nodes).find(([, v]) => v.status === 'awaiting')?.[0];
       if (!hit || !node) note('nothing is waiting for your approval');
       else {
@@ -482,13 +608,14 @@ export class Tui {
         if (!this.d.engine.isLive(hit.r.id)) this.d.engine.resume(hit.r.id).catch(() => {});
         note(`${cmd === 'approve' ? 'approved' : 'rejected'} ${node} in run ${hit.r.id.slice(-8)}`);
       }
-    } else if (cmd === 'open' || cmd === 'retry') {
-      const id = (rest[0] ? this.runs().find((r) => r.id.endsWith(rest[0]!)) : undefined)?.id ?? [...t.log].reverse().flatMap((e) => (e.k === 'run' ? [e.runId] : []))[0] ?? this.runs()[0]?.id;
+    } else if (cmd === 'open' || cmd === 'retry' || cmd === 'resume') {
+      const id = findRun();
       if (!id) note('no runs yet');
       else if (cmd === 'open') this.push({ kind: 'run', runId: id, sel: 0 });
       else {
-        this.resumeRun(id, true);
-        note(`retrying the failed step in run ${id.slice(-8)}`);
+        const action = cmd === 'retry' ? ({ type: 'retry' } as const) : ({ type: 'resume' } as const);
+        perform(this.d.engine, id, action).then((m) => this.say(m), (e: Error) => this.say(e.message, 'err'));
+        note(cmd === 'retry' ? `retrying the failed step in run ${id.slice(-8)}` : `resuming run ${id.slice(-8)} where it left off`);
       }
     } else if (cmd === 'providers') this.providers();
     else if (cmd === 'quit' || cmd === 'exit') this.quit();
@@ -496,18 +623,34 @@ export class Tui {
       const [name, ...task] = rest;
       if (!name || !task.length) return void note('usage: /run <workflow> <what to do>');
       if (!NAME_RE.test(name) || !this.flows().some((f) => f.name === name)) return void note(`no saved workflow called "${name}" (try /workflows)`);
-      t.log.push({ k: 'you', text: line });
-      t.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'run', workflow: name, task: task.join(' ') } }, st: 'pending' });
+      this.sess.log.push({ k: 'you', text: line });
+      this.sess.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'run', workflow: name, task: task.join(' ') } }, st: 'pending' });
     } else if (cmd === 'help' || cmd === '') {
+      note('/status                                how the work is going');
+      note('/approve  /reject  /retry  /resume    answer or continue a run');
+      note('/open  /chat [run]                     open a run, or its own conversation');
+      note('/sessions  /main                       switch conversation (each run has its own)');
       note('/runs  /workflows  /crew  /settings   switch screen');
-      note('/run <workflow> <task>              start a saved workflow');
-      note('/approve  /reject                   answer a run that is waiting for you');
-      note('/open  /retry                       open the latest run, or retry its failed step');
-      note('/providers                          LLM providers');
-      note('/clear                              clear this conversation  ·  /quit leaves aorch');
-      note('Anything else is a message to Maestro: ask for a plan, an improved workflow, or a run.');
+      note('/run <workflow> <task>                 start a saved workflow');
+      note('/providers  /clear  /quit');
+      note('Anything else is a message to Maestro. In a run\'s conversation he can change that run for you.');
     } else note(`unknown command /${cmd} (try /help)`);
     t.scroll = 0;
+    this.persist();
+  }
+
+  private pickSession() {
+    const runs = this.runs();
+    const rows: { label: string; hint: string; value: string }[] = [{ label: '● Maestro', hint: 'the main conversation', value: MAIN }];
+    const seen = new Set<string>();
+    for (const sn of [...this.known.values()].sort((a, b) => b.updatedAt - a.updatedAt)) {
+      if (sn.id === MAIN || !sn.runId) continue;
+      seen.add(sn.runId);
+      const st = runs.find((r) => r.id === sn.runId)?.status ?? 'gone';
+      rows.push({ label: `${sn.id === this.sess.id ? '▸ ' : '  '}${sn.title}`, hint: `${st} · ${ago(sn.updatedAt)}`, value: sn.id });
+    }
+    for (const r of runs.slice(0, 15)) if (!seen.has(r.id)) rows.push({ label: `  ${r.pipeline} · ${r.id.slice(-8)}`, hint: `${r.status} · no conversation yet`, value: `run:${r.id}` });
+    this.choose('Conversations', rows, (v) => (v.startsWith('run:') ? this.openRunSession(v.slice(4)) : this.switchTo(this.session(v) ?? blankSession(MAIN, 'Maestro'))));
   }
 
   /** What is running right now, in one line each, so Maestro can answer questions about the crew. */
@@ -517,41 +660,107 @@ export class Tui {
       .map((r) => {
         const st = this.state(r.id);
         const cur = st ? st.pipeline.nodes.filter((n) => st.nodes[n.id]?.status === 'running').map((n) => n.id).join(',') : '';
-        return `- ${r.id.slice(-8)} ${r.pipeline} ${r.status}${cur ? ` (now: ${cur})` : ''} $${r.costUsd.toFixed(2)}: ${r.task.split('\n')[0]!.slice(0, 80)}`;
+        return `- ${r.id.slice(-8)} ${r.pipeline} ${r.status}${cur ? ` (now: ${cur})` : ''}${st ? ` · ${this.progressLine(st)}` : ''}: ${r.task.split('\n')[0]!.slice(0, 80)}`;
       })
       .join('\n');
   }
 
+  private runOpts() {
+    const b = this.bindings();
+    return { registry: this.registry, agent: b.orchestrator?.agent, model: b.orchestrator?.model, escalate: b.escalate };
+  }
+
   private sendTalk(msg: string) {
     const t = this.talk;
-    t.log.push({ k: 'you', text: msg });
+    const sess = this.sess;
+    sess.log.push({ k: 'you', text: msg });
     t.scroll = 0;
-    t.busy = true;
+    this.busyIds.add(sess.id);
+    const done = () => {
+      this.busyIds.delete(sess.id);
+      this.save(sess);
+      if (this.sess.id === sess.id) this.talk.scroll = 0;
+    };
+    const st = sess.runId ? this.state(sess.runId) : undefined;
+    if (sess.runId && st) {
+      chatAboutRun(msg, st, sess.history.slice(), this.runOpts()).then((r) => {
+        sess.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
+        sess.log.push({ k: 'maestro', text: r.text });
+        if (r.choices) sess.log.push(this.choiceEntry(r.choices.options, r.choices.recommended));
+        done();
+      });
+      return;
+    }
     const b = this.bindings().orchestrator;
-    askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: t.history.slice(), runs: this.runsContext() })
+    askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: sess.history.slice(), runs: this.runsContext() })
       .then((r) => {
-        t.busy = false;
-        t.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
-        t.log.push({ k: 'maestro', text: r.text });
-        for (const w of r.warnings) t.log.push({ k: 'note', text: w });
-        if (r.proposal) t.log.push({ k: 'offer', r, st: 'pending' });
-        t.scroll = 0;
+        sess.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
+        sess.log.push({ k: 'maestro', text: r.text });
+        for (const w of r.warnings) this.note(w, sess);
+        if (r.proposal) sess.log.push({ k: 'offer', r, st: 'pending' });
+        done();
       })
       .catch((e: Error) => {
-        t.busy = false;
-        t.log.push({ k: 'note', text: e.message.split('\n')[0]! });
+        this.note(e.message.split('\n')[0]!, sess);
+        done();
       });
+  }
+
+  private choiceEntry(options: Choice[], recommended: number, title = ''): Extract<Entry, { k: 'choice' }> {
+    return { k: 'choice', title, options, recommended, sel: recommended, st: 'pending' };
+  }
+
+  /** The person picked one of Maestro's options. */
+  private takeChoice(e: Extract<Entry, { k: 'choice' }>, i: number) {
+    const sess = this.sess;
+    const o = e.options[i];
+    if (!o) return;
+    e.sel = i;
+    const runId = sess.runId;
+    if (o.action.type === 'open' && runId) {
+      e.st = 'done';
+      e.note = `chose: ${o.label}`;
+      this.push({ kind: 'run', runId, sel: 0 });
+      return this.persist();
+    }
+    if (o.action.type === 'manual') {
+      e.st = 'done';
+      e.note = `chose: ${o.label}`;
+      this.note(`to do by hand: ${o.action.steps}  ·  then /retry`, sess);
+      return this.persist();
+    }
+    if (!runId) {
+      e.st = 'failed';
+      e.note = 'this conversation has no run';
+      return;
+    }
+    e.st = 'done';
+    e.note = `chose: ${o.label}`;
+    perform(this.d.engine, runId, o.action).then(
+      (m) => {
+        this.note(m, sess);
+        this.save(sess);
+      },
+      (err: Error) => {
+        e.st = 'failed';
+        e.note = err.message.split('\n')[0];
+        this.save(sess);
+      },
+    );
+    this.persist();
   }
 
   /** The person said yes to what Maestro proposed. */
   private acceptOffer(e: Extract<Entry, { k: 'offer' }>) {
     const pr = e.r.proposal!;
+    const from = this.sess;
     try {
       if (pr.kind === 'run') {
         this.startRun(readPipeline(this.d.cfg.home, pr.workflow), process.cwd(), pr.task, false, false, (id) => {
-          e.st = 'done';
           e.note = `started run ${id.slice(-8)}`;
-          this.talk.log.push({ k: 'run', runId: id, workflow: pr.workflow });
+          from.log.push({ k: 'run', runId: id, workflow: pr.workflow });
+          this.openRunSession(id);
+          this.note(`started from your chat “${from.title}”`);
         });
         e.st = 'done';
         e.note = 'starting…';
@@ -565,16 +774,93 @@ export class Tui {
       e.note = (err as Error).message.split('\n')[0];
     }
     this.talk.scroll = 0;
+    this.persist();
+  }
+
+  // ---------- watching runs: progress reports, failures, interrupted runs ----------
+  private watchTick() {
+    const runs = new Map(this.runs().map((r) => [r.id, r.status]));
+    for (const sess of this.known.values()) {
+      if (!sess.runId) continue;
+      const status = runs.get(sess.runId);
+      if (!status) continue;
+      const rep = (sess.reported ??= []);
+      if ((status === 'done' && rep.includes('final')) || (status === 'stopped' && rep.includes('final'))) continue;
+      const st = this.state(sess.runId);
+      if (st) this.report(sess, st);
+    }
+  }
+
+  private report(sess: Session, st: RunState) {
+    const rep = (sess.reported ??= []);
+    const fresh: string[] = [];
+    const total = st.pipeline.nodes.length;
+    let done = 0;
+    for (const n of st.pipeline.nodes) {
+      const ns = st.nodes[n.id];
+      if (!ns) continue;
+      if (ns.status === 'done') done++;
+      const key = `${n.id}:${ns.status}:${ns.attempts}:${ns.loops}`;
+      if ((ns.status === 'done' || ns.status === 'awaiting') && !rep.includes(key)) {
+        rep.push(key);
+        const name = CREW[crewFor(n)]!.name;
+        fresh.push(ns.status === 'awaiting' ? `${name} is waiting for your approval (/approve)` : `${name} finished${ns.verdict ? `: ${ns.verdict}` : ns.gate ? (ns.gate.ok ? ': checks passed' : '') : ''}`);
+      }
+    }
+    const active = this.sess.id === sess.id;
+    const tell = (text: string, tone: 'ok' | 'err' = 'ok') => {
+      sess.log.push({ k: 'maestro', text });
+      if (!active) this.say(`${sess.title}: ${text}`, tone);
+      else this.talk.scroll = 0;
+      rep.splice(0, Math.max(0, rep.length - 200));
+      this.save(sess);
+    };
+    if (fresh.length) tell(`${fresh.length > 2 ? `${fresh.slice(-2).join('; ')} (+${fresh.length - 2} earlier)` : fresh.join('; ')}  ·  ${done} of ${total} steps · ${usd(st.costUsd)}`);
+    if (st.status === 'done' && !rep.includes('final')) {
+      rep.push('final');
+      tell(`Finished: all ${total} steps done in ${dur((st.finishedAt ?? Date.now()) - st.startedAt)} · ${usd(st.costUsd)}. The work is on branch ${st.branch}; /open to review it.`);
+    } else if (st.status === 'error') {
+      const key = failureKey(st);
+      if (!sess.diagnosed.includes(key) && !this.diagBusy.has(sess.runId!)) {
+        sess.diagnosed.push(key);
+        this.diagBusy.add(sess.runId!);
+        diagnose(st, this.runOpts())
+          .then((c) => {
+            sess.log.push({ k: 'maestro', text: c.text });
+            sess.log.push(this.choiceEntry(c.options, c.recommended));
+            if (this.sess.id !== sess.id) this.say(`${sess.title} failed: Maestro has options (/sessions)`, 'err');
+            else this.talk.scroll = 0;
+          })
+          .finally(() => {
+            this.diagBusy.delete(sess.runId!);
+            this.save(sess);
+          });
+      }
+    } else if (st.status === 'running' && !this.d.engine.isLive(st.id)) {
+      const key = `interrupted:${done}`;
+      if (!sess.diagnosed.includes(key) && !this.diagBusy.has(st.id)) {
+        sess.diagnosed.push(key);
+        sess.log.push({ k: 'maestro', text: `This run stopped when aorch was closed, ${done} of ${total} steps in. Nothing done so far is lost; it can continue from here.` });
+        sess.log.push(this.choiceEntry([
+          { label: 'Resume where it left off', detail: 'continue from the first unfinished step', action: { type: 'resume' } },
+          { label: 'Open the run', detail: 'look at what it has done so far', action: { type: 'open' } },
+        ], 0));
+        if (!active) this.say(`${sess.title}: interrupted. Resume it from /sessions`, 'err');
+        this.save(sess);
+      }
+    }
   }
 
   /** The conversation as lines, newest last. Lines that open a run are tagged. */
   private transcript(w: number): { text: string; run?: string }[] {
     const t = this.talk;
+    const sess = this.sess;
     const out: { text: string; run?: string }[] = [];
     const add = (text: string, run?: string) => out.push({ text, run });
     const para = (head: string, text: string, indent = '  ') => words(text, Math.max(20, w - 6)).forEach((l, i) => add((i === 0 ? head : indent) + l));
     const bot = paint(CREW.orchestrator!.color(), '●');
-    if (!t.log.length) {
+    add(dim(`  ${sess.runId ? 'run conversation' : 'conversation'}  `) + bold(sess.title) + dim(`   /sessions switch · ${sess.runId ? '/main back' : '/chat open the latest run’s chat'}`));
+    if (!sess.log.length) {
       add('');
       add(`${bot} ${bold('Maestro')}`);
       para('  ', 'Tell me what you want built or fixed. I will plan a workflow, you confirm it, and the crew runs it right here.');
@@ -582,12 +868,21 @@ export class Tui {
       add(dim('  try: “plan a careful flow for payment code with a human sign-off”'));
       add(dim('       “make full-review cheaper”   ·   “what is running?”   ·   /help'));
     }
-    for (const e of t.log) {
+    for (const e of sess.log) {
       add('');
       if (e.k === 'you') para(bold(cyan('› ')), e.text);
       else if (e.k === 'maestro') para(bot + ' ', e.text);
       else if (e.k === 'note') para(dim('  ⎿ '), e.text, '    ');
-      else if (e.k === 'offer') {
+      else if (e.k === 'choice') {
+        add(`${bot} ${bold(e.title || 'What would you like to do?')}`);
+        e.options.forEach((o, i) => {
+          const sel = e.st === 'pending' && i === e.sel;
+          const chosen = e.st !== 'pending' && i === e.sel;
+          add(`  ${sel ? cyan('❯') : chosen ? green('✔') : ' '} ${sel ? bold(`${i + 1}. ${o.label}`) : `${i + 1}. ${o.label}`}${i === e.recommended ? green('  ★ recommended') : ''}`);
+          if (o.detail && (e.st === 'pending' || chosen)) words(o.detail, Math.max(20, w - 10)).forEach((l) => add(dim('       ' + l)));
+        });
+        add('  ' + (e.st === 'pending' ? `${cyan('enter')} ${dim('choose')}  ${cyan('↑↓')} ${dim('move')}  ${cyan('1-' + e.options.length)} ${dim('pick')}  ${cyan('esc')} ${dim('skip')}` : e.st === 'failed' ? red('✘ ') + (e.note ?? 'failed') : e.st === 'done' ? dim(e.note ?? 'done') : dim('skipped')));
+      } else if (e.k === 'offer') {
         const pr = e.r.proposal!;
         if (pr.kind === 'run') {
           add(`${bot} ${bold(`Run “${pr.workflow}”`)}`);
@@ -607,22 +902,24 @@ export class Tui {
         }
       }
     }
-    if (t.busy) {
+    if (this.isBusy() || (sess.runId && this.diagBusy.has(sess.runId))) {
       add('');
-      add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim('Maestro is thinking…')}`);
+      add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim(this.isBusy() ? 'Maestro is thinking…' : 'Maestro is working out what went wrong…')}`);
     }
+    void t;
     return out;
   }
 
   /** The crew at work: the live run's board, under the conversation. */
   private crewPane(w: number, h: number): { lines: string[]; run?: string } {
-    const live = this.runs().filter((r) => r.status === 'running' || r.status === 'paused');
-    const r = live[0];
+    const mine = this.sess.runId ? this.runs().find((x) => x.id === this.sess.runId) : undefined;
+    const live = this.runs().filter((x) => x.status === 'running' || x.status === 'paused');
+    const r = mine ?? live[0];
     const st = r ? this.state(r.id) : undefined;
     if (!r || !st || h < 18) return { lines: [] };
     const board = renderBoard({ state: st, frame: this.tick, now: Date.now() }, Math.min(w - 2, 100)).map((l) => ' ' + l);
     const room = Math.max(4, Math.min(11, Math.floor(h / 2.2)));
-    const label = `crew · ${r.pipeline} ${r.id.slice(-8)}${live.length > 1 ? ` · +${live.length - 1} more (/runs)` : ''}`;
+    const label = `crew · ${r.pipeline} ${r.id.slice(-8)}${!mine && live.length > 1 ? ` · +${live.length - 1} more (/sessions)` : ''}`;
     return { lines: [rule(w, label), ...board.slice(0, room)], run: r.id };
   }
 
@@ -638,9 +935,8 @@ export class Tui {
     const pad = viewH - view.length;
     view.forEach((l, i) => l.run && this.bodyHit(pad + i, 0, w, () => this.push({ kind: 'run', runId: l.run!, sel: 0 })));
     if (pane.run) pane.lines.forEach((_, i) => this.bodyHit(viewH + i, 0, w, () => this.push({ kind: 'run', runId: pane.run!, sel: 0 })));
-    const more = t.scroll > 0 ? [dim(`  ↓ ${t.scroll} more line${t.scroll === 1 ? '' : 's'} below  ·  end to jump`)] : [];
     const lines = [...Array(Math.max(0, pad)).fill(''), ...view.map((l) => l.text)];
-    if (more.length) lines[lines.length - 1] = more[0]!;
+    if (t.scroll > 0) lines[lines.length - 1] = dim(`  ↓ ${t.scroll} more line${t.scroll === 1 ? '' : 's'} below  ·  end to jump`);
     return [...lines, ...pane.lines];
   }
 
@@ -651,9 +947,10 @@ export class Tui {
       const cur = this.tick % 8 < 5 ? paint(pal.cyan, '▏') : ' ';
       const room = Math.max(8, this.cols - 6);
       const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
-      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim(this.suggestion()?.label ?? 'Message Maestro… (/ for commands)')}${!t.text && this.suggestion() ? dim('   tab ⇥') : ''}`;
+      const hint = this.suggestion();
+      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim(hint?.label ?? (this.sess.runId ? 'Ask about this run, or tell me what to change…' : 'Message Maestro… (/ for commands)'))}${!t.text && hint ? dim('   tab ⇥') : ''}`;
     }
-    return dim(dash ? '› chat with Maestro  ·  press / to open the chat' : '› esc back to the home screen to chat with Maestro');
+    return dim(dash ? '› chat with Maestro  ·  press / to open the chat' : this.screen.kind === 'run' ? '› press / to talk to Maestro about this run' : '› esc back to the home screen to chat with Maestro');
   }
 
   private modalKey(k: string) {
@@ -1801,7 +2098,7 @@ export class Tui {
 
   // ---------- drawing ----------
   private maestro(): { mood: Mood; text: string } {
-    if (this.talk.busy) return { mood: 'working', text: 'Thinking it over…' };
+    if (this.isBusy()) return { mood: 'working', text: 'Thinking it over…' };
     const runs = this.runs();
     const live = runs.filter((r) => r.status === 'running');
     const paused = runs.filter((r) => r.status === 'paused');
@@ -1873,7 +2170,7 @@ export class Tui {
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
-      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
+      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'

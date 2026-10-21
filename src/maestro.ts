@@ -11,18 +11,11 @@ import { listPipelines, pipelinesDir, readPipeline, writePipeline } from './conf
 import { CREW } from './bots.js';
 import { BUILTIN_IDS } from './crew.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
+import type { Proposal, Turn } from './sessions.js';
 import type { Pipeline } from './types.js';
 import { contextOf, resolveWorkspace } from './workspace.js';
 
-export interface Turn {
-  who: 'you' | 'maestro';
-  text: string;
-}
-
-export type Proposal =
-  | { kind: 'save'; pipeline: Pipeline; overwrite: boolean; before?: string[] }
-  | { kind: 'optimize'; pipeline: Pipeline; overwrite: true; before: string[] }
-  | { kind: 'run'; workflow: string; task: string };
+export type { Proposal, Turn };
 
 export interface Reply {
   text: string;
