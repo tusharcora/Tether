@@ -5,7 +5,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Pipeline } from './types.js';
+import type { Pipeline, TeamMode } from './types.js';
 
 export interface Turn {
   who: 'you' | 'maestro';
@@ -15,7 +15,8 @@ export interface Turn {
 export type Proposal =
   | { kind: 'save'; pipeline: Pipeline; overwrite: boolean; before?: string[] }
   | { kind: 'optimize'; pipeline: Pipeline; overwrite: true; before: string[] }
-  | { kind: 'run'; workflow: string; task: string };
+  | { kind: 'run'; workflow: string; task: string }
+  | { kind: 'team'; task: string; mode?: TeamMode };
 
 /** What Maestro can do about a run, validated before it is ever shown. Never a shell command. */
 export type RunAction =

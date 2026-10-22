@@ -26,11 +26,15 @@ import { supervise } from './supervisor.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint, type ProviderRow } from './providers.js';
 import { chat as askMaestro, savePipeline } from './maestro.js';
-import { allowAlways, blockedReason, isAllowed, loadAllowed, clearAllowed, normalizeCommand, runCommand } from './permissions.js';
+import { allowAlways, blockedReason, needsApproval, isAllowed, loadAllowed, clearAllowed, normalizeCommand, runCommand } from './permissions.js';
 import { chatAboutRun, diagnose, failureKey, perform } from './runchat.js';
 import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberLast, saveSession, sessionIdForRun, type Choice, type Entry, type Session } from './sessions.js';
 import { rank } from './palette.js';
+import { CardInput, cardLines, finalSummary, modeCommand, planDecision, planWaiting, progressLines, runNeedsYou } from './teamchat.js';
 import { costChart, timelineChart, toLines } from './raster.js';
+import { adopt, decline, evolveData, evolveSummary, type EvolveData } from './evolveops.js';
+import { evolveKey, evolveLines, type EvolveState } from './evolveview.js';
+import { Vault } from './vault.js';
 import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
 import { SPIN, bgCode, mix } from './ui.js';
 import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
@@ -39,8 +43,8 @@ import type { Engine } from './engine.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
-import type { Pipeline, PipelineNode, RunState } from './types.js';
-import { PAL_KEYS, THEMES, BRAND, THEME_NAME_RE, BUILTIN_THEMES, applyPalette, basePalette, registerThemes, spark, type PalKey, type RGB, ago, amber, bold, caps, clip, cyan, dim, dur, faint, glyph, gradient, green, meter, padEnd, paint, pal, red, renderBoard, setTheme, strip, themeName, underManagers, usd, vlen } from './ui.js';
+import type { Answer, Pipeline, PipelineNode, Question, RunState, TeamMode } from './types.js';
+import { PAL_KEYS, THEMES, BRAND, THEME_NAME_RE, BUILTIN_THEMES, applyPalette, basePalette, registerThemes, spark, type PalKey, type RGB, ago, amber, bold, caps, clip, cyan, dim, dur, faint, glyph, gradient, green, meter, padEnd, paint, pal, red, renderBoard, safeText, setTheme, strip, themeName, underManagers, usd, vlen } from './ui.js';
 
 const ESC = '\x1b[';
 
@@ -285,7 +289,8 @@ type Screen =
   | { kind: 'botedit'; bot: BotDef; isNew: boolean; sel: number; dirty: boolean }
   | { kind: 'theme'; prev: string; pal: Record<PalKey, RGB>; sel: number; dirty: boolean }
   | { kind: 'editor'; pipeline: Pipeline; saved: boolean; dirty: boolean; sel: number; stray?: boolean }
-  | { kind: 'plan'; comp?: Composition; task: string; repo: string; error?: string };
+  | { kind: 'plan'; comp?: Composition; task: string; repo: string; error?: string }
+  | { kind: 'evolve'; st: EvolveState; data?: EvolveData; at: number; error?: string };
 
 export interface TuiDeps {
   cfg: Config;
@@ -320,10 +325,16 @@ export class Tui {
   private avail: Record<string, { ok: boolean; detail?: string; version?: string; models: string[] }> = {};
   private availAt = 0;
   /** The line at the bottom that talks to Maestro. */
-  private talk = { text: '', scroll: 0, session: blankSession(MAIN, 'Maestro') };
+  private cardIn = new CardInput();
+  private talk: { text: string; scroll: number; session: Session } = { text: '', scroll: 0, session: blankSession(MAIN, 'Maestro') };
   private known = new Map<string, Session>();
   private busyIds = new Set<string>();
   private diagBusy = new Set<string>();
+  /** Crew tab: each bot's harness version and open proposals, re-read every few seconds (reads only). */
+  private evolveSum: Record<string, { version: number; open: number }> = {};
+  private evolveAt = 0;
+  /** Runs tab: Evolve probe replays are hidden unless this is on (P). */
+  private showProbes = false;
 
   constructor(private readonly d: TuiDeps, private readonly out: NodeJS.WriteStream = process.stdout) {
     this.registry = makeRegistry(d.cfg);
@@ -493,6 +504,8 @@ export class Tui {
         return this.themeKey(s, k);
       case 'botedit':
         return this.botKey(s, k);
+      case 'evolve':
+        return this.evolveScreenKey(s, k);
     }
   }
 
@@ -571,11 +584,50 @@ export class Tui {
     return last && last.k === 'choice' && last.st === 'pending' ? last : undefined;
   }
 
+  /** The team card this conversation shows: only a run's own conversation answers its run's questions. */
+  private pendingTeam(): { runId: string; st: RunState; q: Question; all: Question[] } | undefined {
+    const runId = this.sess.runId;
+    const st = runId ? this.state(runId) : undefined;
+    if (runId && st && st.kind === 'team' && (st.status === 'running' || st.status === 'paused') && st.pending.length) return { runId, st, q: st.pending[0]!, all: st.pending };
+    return undefined;
+  }
+
+  /** A team run whose plan is finished and waits for the person's go-ahead. */
+  private planReady(id: string | undefined): RunState | undefined {
+    const st = id ? this.state(id) : undefined;
+    return st && planWaiting(st) ? st : undefined;
+  }
+
+  private teamKey(k: string): boolean {
+    const team = this.pendingTeam();
+    if (!team) {
+      this.cardIn.reset();
+      return false;
+    }
+    // only a card the person can see takes keys: scrolled up, the chat keeps them
+    if (this.talk.scroll > 0 && !this.cardIn.other) {
+      this.cardIn.focus = false;
+      return false;
+    }
+    const r = this.cardIn.key(this.d.engine, team.runId, team.st, k, this.talk.text, (m) => this.say(m, 'err'));
+    if (r.clearText) this.talk.text = '';
+    if (r.used) this.talk.scroll = 0;
+    return r.used;
+  }
+
   private chatKey(s: Extract<Screen, { kind: 'dash' }>, k: string) {
     const t = this.talk;
     const pending = this.pendingOffer();
     const choice = this.pendingChoice();
     const permit = this.pendingPermit();
+    // Free text for a card (after `o`) owns the input: enter and esc belong to it, every other key only types, and a
+    // permit, choice or offer that appears meanwhile waits until the answer is sent or abandoned.
+    if (this.cardIn.other && this.pendingTeam()) {
+      if (this.teamKey(k)) return void this.persist();
+      return this.editKey(k);
+    }
+    // permission, choice and offer prompts come first; a team card only takes keys when none of them is waiting
+    if (!permit && !choice && !pending && this.teamKey(k)) return void this.persist();
     if (permit && !t.text) {
       if (k === 'up') return void (permit.sel = (permit.sel + 2) % 3);
       if (k === 'down') return void (permit.sel = (permit.sel + 1) % 3);
@@ -600,7 +652,13 @@ export class Tui {
     if (k === 'esc') {
       if (t.text) t.text = '';
       else if (pending) ((pending.st = 'skipped'), this.persist());
-    } else if (k === 'up') t.scroll += 3;
+    } else this.editKey(k);
+  }
+
+  /** Scrolling and editing the chat input; never sends anything. */
+  private editKey(k: string) {
+    const t = this.talk;
+    if (k === 'up') t.scroll += 3;
     else if (k === 'down') t.scroll = Math.max(0, t.scroll - 3);
     else if (k === 'pgup') t.scroll += 12;
     else if (k === 'pgdn') t.scroll = Math.max(0, t.scroll - 12);
@@ -612,11 +670,12 @@ export class Tui {
 
   /** A greyed-out next step for the empty input; tab fills it in. `text` is what is typed, `label` what is shown. */
   private suggestion(): { text: string; label: string } | undefined {
-    if (this.isBusy() || this.pendingOffer() || this.pendingChoice() || this.pendingPermit()) return undefined;
+    if (this.isBusy() || this.pendingOffer() || this.pendingChoice() || this.pendingPermit() || this.pendingTeam()) return undefined;
     const id = this.curRunId();
     const st = id ? this.state(id) : undefined;
     if (id && st) {
       const tag = id.slice(-8);
+      if (this.planReady(id)) return { text: '/approve', label: '/approve   start the team on this plan' };
       if (st.status === 'paused' && Object.values(st.nodes).some((n) => n.status === 'awaiting')) return { text: '/approve', label: `/approve   sign off run ${tag}` };
       if (st.status === 'error') return { text: '/retry', label: `/retry   run ${tag} again, only the failed step` };
       if (st.status === 'running' && !this.d.engine.isLive(id)) return { text: '/resume', label: `/resume   pick run ${tag} up where it left off` };
@@ -666,6 +725,12 @@ export class Tui {
         const st = this.state(r.id);
         if (st) this.sess.log.push({ k: 'maestro', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
       }
+    } else if ((cmd === 'approve' || cmd === 'reject') && this.planReady(this.curRunId())) {
+      planDecision(this.d.engine, this.curRunId()!, cmd === 'approve').then(
+        (m) => this.say(m),
+        (e: Error) => this.say(e.message.split('\n')[0]!, 'err'),
+      );
+      note(cmd === 'approve' ? 'approving the plan…' : 'rejecting the plan…');
     } else if (cmd === 'approve' || cmd === 'reject') {
       const mine = this.curRunId();
       const pool = [...this.runs()].sort((a, b) => Number(b.id === mine) - Number(a.id === mine));
@@ -707,6 +772,14 @@ export class Tui {
       if (!NAME_RE.test(name) || !this.flows().some((f) => f.name === name)) return void note(`no saved workflow called "${name}" (try /workflows)`);
       this.sess.log.push({ k: 'you', text: line });
       this.sess.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'run', workflow: name, task: task.join(' ') } }, st: 'pending' });
+    } else if (cmd === 'team') {
+      const task = rest.join(' ').trim();
+      if (!task) return void note('usage: /team <what the team should work on>');
+      this.sess.log.push({ k: 'you', text: line });
+      this.sess.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'team', task: task.slice(0, 2000) } }, st: 'pending' });
+    } else if (cmd === 'mode') {
+      const id = this.curRunId();
+      note(modeCommand(this.d.engine, id ?? '', id ? this.state(id) : undefined, rest[0]));
     } else if (cmd === 'help' || cmd === '') {
       note('/status                                how the work is going');
       note('/approve  /reject  /retry  /resume    answer or continue a run');
@@ -714,6 +787,8 @@ export class Tui {
       note('/sessions  /main                       switch conversation (each run has its own)');
       note('/runs  /workflows  /crew  /triggers  /settings   switch screen');
       note('/run <workflow> <task>                 start a saved workflow');
+      note('/team <task>                           start a team run (it asks you questions first)');
+      note('/mode live|autonomous                  how much a team run talks to you');
       note('/allowed [clear]                       commands you always allow for Maestro');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');
@@ -816,6 +891,13 @@ export class Tui {
       e.note = 'Maestro commands are off (Settings → Maestro commands)';
       return this.save(sess);
     }
+    const ask = needsApproval(cmd);
+    if (ask && !explicit) {
+      e.note = ask;
+      this.save(sess);
+      if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro wants to run a command. Open /sessions to answer`, 'err');
+      return;
+    }
     if (explicit || mode === 'always' || isAllowed(this.d.cfg.home, cmd)) {
       e.how = explicit ? 'you picked it' : mode === 'always' ? 'always on in settings' : 'always allowed';
       return this.execCommand(sess, e, depth);
@@ -832,7 +914,8 @@ export class Tui {
       sess.history.push({ who: 'you', text: `[I denied the command: ${e.command}]` });
       return this.save(sess);
     }
-    if (i === 1) {
+    if (i === 1 && needsApproval(e.command)) e.how = 'allowed once (harness commands always ask)';
+    else if (i === 1) {
       allowAlways(this.d.cfg.home, e.command);
       e.how = 'always allowed from now on';
     } else e.how = 'allowed once';
@@ -910,7 +993,16 @@ export class Tui {
     const pr = e.r.proposal!;
     const from = this.sess;
     try {
-      if (pr.kind === 'run') {
+      if (pr.kind === 'team') {
+        this.startTeamRun(pr.task, process.cwd(), pr.mode ?? 'live', (id) => {
+          e.note = `started team run ${id.slice(-8)}`;
+          from.log.push({ k: 'run', runId: id, workflow: 'team' });
+          this.openRunSession(id);
+          this.note(`started from your chat “${from.title}”`);
+        });
+        e.st = 'done';
+        e.note = 'starting the team…';
+      } else if (pr.kind === 'run') {
         this.startRun(readPipeline(this.d.cfg.home, pr.workflow), process.cwd(), pr.task, false, false, (id) => {
           e.note = `started run ${id.slice(-8)}`;
           from.log.push({ k: 'run', runId: id, workflow: pr.workflow });
@@ -957,7 +1049,37 @@ export class Tui {
     }
   }
 
+  /** A team run's side of the conversation: progress only in live mode, a final summary, and a nudge when a question needs you. */
+  private reportTeam(sess: Session, st: RunState) {
+    const rep = (sess.reported ??= []);
+    const marks = rep.length;
+    const lines = progressLines(st, rep);
+    if (st.status === 'running' || st.status === 'paused') {
+      for (const q of st.pending) if (!rep.includes(`ask:${q.id}`)) {
+        rep.push(`ask:${q.id}`);
+        if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro has a question for you (/sessions)`);
+      }
+      if (planWaiting(st) && !rep.includes('plan')) {
+        rep.push('plan');
+        lines.push('The plan is ready. /approve to start the team, /reject to cancel.');
+      }
+    }
+    let err = false;
+    if ((st.status === 'done' || st.status === 'error' || st.status === 'stopped') && !rep.includes('final')) {
+      rep.push('final');
+      lines.push(finalSummary(st));
+      err = st.status !== 'done';
+    }
+    for (const text of lines) sess.log.push({ k: 'maestro', text });
+    if (lines.length) {
+      if (this.sess.id !== sess.id) this.say(`${sess.title}: ${lines.at(-1)}${lines.length > 1 ? ` (+${lines.length - 1} more)` : ''}`, err ? 'err' : 'ok');
+      else this.talk.scroll = 0;
+    }
+    if (lines.length || rep.length !== marks) this.save(sess);
+  }
+
   private report(sess: Session, st: RunState) {
+    if (st.kind === 'team') return this.reportTeam(sess, st);
     const rep = (sess.reported ??= []);
     const fresh: string[] = [];
     const total = st.pipeline.nodes.length;
@@ -1069,7 +1191,10 @@ export class Tui {
         } else add('  ' + (e.st === 'blocked' ? red('✘ ') : dim('— ')) + (e.note ?? e.st));
       } else if (e.k === 'offer') {
         const pr = e.r.proposal!;
-        if (pr.kind === 'run') {
+        if (pr.kind === 'team') {
+          add(`${bot} ${bold('Start a team run')}${pr.mode ? dim(`  ·  ${pr.mode}`) : ''}`);
+          para('  ', pr.task);
+        } else if (pr.kind === 'run') {
           add(`${bot} ${bold(`Run “${pr.workflow}”`)}`);
           para('  ', pr.task);
         } else {
@@ -1087,11 +1212,28 @@ export class Tui {
         }
       }
     }
+    const team = this.pendingTeam();
+    if (team) {
+      add('');
+      add(`${bot} ${dim(team.st.pipeline.name === 'team' ? 'team run ' + team.runId.slice(-8) : team.st.pipeline.name)}`);
+      for (const l of cardLines(team.all, w - 4, this.cardIn.focus || !!this.cardIn.other)) add('  ' + l);
+      if (this.cardIn.other) add('  ' + amber('type your answer, then enter  ') + dim('esc to go back'));
+    }
+    const plan = this.planReady(sess.runId);
+    if (plan?.plan) {
+      add('');
+      add(`${bot} ${bold('Plan ready')}`);
+      para('  goal: ', safeText(plan.plan.goal), '        ');
+      for (const a of plan.plan.assignments) para(`  ${a.mode === 'write' ? amber('✎') : dim('·')} ${a.bot}: `, safeText(a.goal), '      ');
+      const lim = plan.plan.limits;
+      // the cap covers the whole run: what planning spent is already gone from it
+      const left = lim.maxCostUsd !== undefined ? ` · budget ${usd(lim.maxCostUsd)}${plan.costUsd > 0 ? ` (${usd(Math.max(0, lim.maxCostUsd - plan.costUsd))} left)` : ''}` : '';
+      add('  ' + `${cyan('/approve')} ${dim('start the team')}   ${cyan('/reject')} ${dim('cancel')}` + dim(`   writes ${lim.allowWrites ? 'allowed' : 'off'}${left}${lim.wallClockMs ? ` · ${dur(lim.wallClockMs)}` : ''}`));
+    }
     if (this.isBusy() || (sess.runId && this.diagBusy.has(sess.runId))) {
       add('');
       add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim(this.isBusy() ? 'Maestro is thinking…' : 'Maestro is working out what went wrong…')}`);
     }
-    void t;
     return out;
   }
 
@@ -1104,7 +1246,7 @@ export class Tui {
     if (!r || !st || h < 18) return { lines: [] };
     const board = renderBoard({ state: st, frame: this.tick, now: Date.now() }, Math.min(w - 2, 100)).map((l) => ' ' + l);
     const room = Math.max(4, Math.min(11, Math.floor(h / 2.2)));
-    const label = `crew · ${r.pipeline} ${r.id.slice(-8)}${!mine && live.length > 1 ? ` · +${live.length - 1} more (/sessions)` : ''}`;
+    const label = `crew · ${r.kind === 'team' ? 'team' : r.pipeline} ${r.id.slice(-8)}${!mine && live.length > 1 ? ` · +${live.length - 1} more (/sessions)` : ''}`;
     return { lines: [rule(w, label), ...board.slice(0, room)], run: r.id };
   }
 
@@ -1297,6 +1439,7 @@ export class Tui {
     add('go to', 'Settings', '6', goto('settings'));
     add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
     add('do', 'New workflow', 'n', () => this.newWorkflow());
+    add('do', 'New team run', 'T', () => this.askTeam());
     add('do', 'Review a pull request', 'paste a GitHub PR link', () => this.reviewPr());
     add('crew', 'New bot', 'design a crew member', () => this.openBotEditor());
     for (const role of Object.keys(CREW)) add('crew', `Edit ${CREW[role]!.name}`, CREW[role]!.title, () => this.openBotEditor(role));
@@ -1352,7 +1495,8 @@ export class Tui {
 
   // ---------- data ----------
   private runs() {
-    return this.d.store.list();
+    const all = this.d.store.list();
+    return this.showProbes ? all : all.filter((r) => !r.probe);
   }
   private flows() {
     return listPipelines(this.d.cfg.home);
@@ -1386,6 +1530,30 @@ export class Tui {
         (this.stack[0] as { tab: Tab; sel: Record<Tab, number> }).tab = 'runs';
       })
       .catch((e: Error) => this.say(e.message.split('\n').slice(0, 2).join(' '), 'err'));
+  }
+
+  /** Start a team run: the team plans with the person first (cards in the chat), then works. */
+  private startTeamRun(task: string, repo: string, mode: TeamMode, onStarted?: (id: string) => void) {
+    const r = resolve(repo.replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
+    if (!existsSync(r) || !statSync(r).isDirectory()) return this.say(`not a directory: ${r}`, 'err');
+    this.say('the team is reading your task…');
+    this.d.engine
+      .startTeam({ task, repo: r, mode })
+      .then((id) => {
+        (this.mine.set(id, 'running'), (this.failedAt = 0));
+        this.say(`started team run ${id}`);
+        if (onStarted) return onStarted(id);
+        this.openRunSession(id);
+        this.screen.kind === 'dash' && (this.screen.tab = 'chat');
+      })
+      .catch((e: Error) => this.say(e.message.split('\n').slice(0, 2).join(' '), 'err'));
+  }
+
+  private askTeam() {
+    this.ask('Team run — what should the team work on?', (task) => {
+      if (!task) return;
+      this.ask('Repository (a git repo):', (repo) => this.startTeamRun(task, repo || process.cwd(), 'live'), process.cwd());
+    });
   }
 
   /** Paste a PR link, pick a workflow, and run it on that PR. */
@@ -1440,13 +1608,21 @@ export class Tui {
     else if (k === '4') s.tab = 'crew';
     else if (k === '5') s.tab = 'triggers';
     else if (k === '6') s.tab = 'settings';
+    // refreshing the agent list must not swallow the key that triggered it
     if (s.tab === 'crew' && Date.now() - this.availAt > 15_000) this.refreshAvail();
-    else if ((k === 'up' || k === 'k') && n) s.sel[s.tab] = (sel + n - 1) % n;
+    if ((k === 'up' || k === 'k') && n) s.sel[s.tab] = (sel + n - 1) % n;
     else if ((k === 'down' || k === 'j') && n) s.sel[s.tab] = (sel + 1) % n;
     else if (s.tab === 'crew' && k === 'n') this.openBotEditor();
     else if (s.tab === 'crew' && k === 'e' && n) this.openBotEditor(list[sel] as string);
     else if (s.tab === 'crew' && k === 'D' && n) this.removeBotUi(list[sel] as string);
+    else if (s.tab === 'crew' && k === 'v' && n) this.openEvolve(list[sel] as string);
+    else if (s.tab === 'runs' && k === 'P') {
+      this.showProbes = !this.showProbes;
+      s.sel.runs = 0;
+      this.say(this.showProbes ? 'showing Evolve probe replays' : 'probe replays hidden (P shows them)');
+    }
     else if (k === 'o') this.orchestrate();
+    else if (k === 'T' && (s.tab === 'runs' || s.tab === 'workflows')) this.askTeam();
     else if (k === 'n') this.newWorkflow();
     else if (k === 't') this.cycleTheme();
     else if (k === 'enter' && n && s.tab === 'crew') this.bindBot(list[sel] as string);
@@ -1466,6 +1642,52 @@ export class Tui {
       else if (k === 'u') this.resumeRun(id, false);
       else if (k === 'D' || k === 'delete') this.deleteRunUi(id, false);
     }
+  }
+
+  // ---------- evolve view: review, accept or reject a bot's harness proposals (never asks the editor: that is the CLI's aorch evolve) ----------
+  private openEvolve(bot: string) {
+    const s: Extract<Screen, { kind: 'evolve' }> = { kind: 'evolve', st: { bot, pick: [] }, at: 0 };
+    this.loadEvolve(s);
+    this.push(s);
+  }
+  private loadEvolve(s: Extract<Screen, { kind: 'evolve' }>) {
+    try {
+      s.data = evolveData(this.d.cfg.home, s.st.bot);
+      s.error = undefined;
+    } catch (e) {
+      s.error = (e as Error).message;
+    }
+    s.at = Date.now();
+    this.evolveAt = 0;
+  }
+  private evolveScreenKey(s: Extract<Screen, { kind: 'evolve' }>, k: string) {
+    if (!s.data) return k === 'esc' ? this.pop() : undefined;
+    const r = evolveKey(s.data, s.st, k);
+    if (r.msg) this.say(r.msg);
+    const act = r.act;
+    if (!act) return;
+    if (act.kind === 'back') return this.pop();
+    const home = this.d.cfg.home;
+    if (act.kind === 'reject') {
+      try {
+        decline(home, act.id);
+        this.say(`rejected ${act.id}: its edits will not be proposed again`);
+      } catch (e) {
+        this.say((e as Error).message, 'err');
+      }
+      return this.loadEvolve(s);
+    }
+    s.st.pick = [];
+    // the version is saved before adopt's first await; the vault note follows
+    adopt(home, act.id, act.pick, new Vault(this.d.cfg.vault))
+      .then((x) => this.say(`${s.st.bot} harness is now v${x.harness.version} · roll back with aorch harness ${s.st.bot} rollback ${x.harness.base ?? x.harness.version - 1}`))
+      .catch((e: Error) => this.say(e.message, 'err'))
+      .finally(() => this.loadEvolve(s));
+  }
+  private evolveBody(s: Extract<Screen, { kind: 'evolve' }>): string[] {
+    if (Date.now() - s.at > 3000) this.loadEvolve(s);
+    if (!s.data) return ['', `  ${red(s.error ?? 'cannot read this bot')}`, '', `  ${dim('esc back')}`];
+    return evolveLines(s.data, s.st, this.cols - 2);
   }
 
   /** Ask, then delete a run with its worktree, branch and chat. */
@@ -1738,6 +1960,14 @@ export class Tui {
       this.d.engine.approve(s.runId, awaiting, k === 'a');
       if (!this.d.engine.isLive(s.runId)) this.d.engine.resume(s.runId).catch(() => {});
       this.say(k === 'a' ? `approved ${awaiting}` : `rejected ${awaiting}`);
+    } else if (k === '+' || k === '-') {
+      const n = nodes[s.sel]!;
+      try {
+        this.d.engine.feedback(s.runId, n.id, k === '+' ? 'up' : 'down');
+        this.say(`thumbs ${k === '+' ? 'up' : 'down'} for ${n.id}`);
+      } catch (e) {
+        this.say((e as Error).message, 'err');
+      }
     } else if (k === 's') this.say(this.d.engine.stop(s.runId) ? 'stopping…' : 'not live in this window');
     else if (k === 'u') this.resumeRun(s.runId, false);
     else if (k === 'D') this.deleteRunUi(s.runId, false);
@@ -2300,6 +2530,8 @@ export class Tui {
     }
     if (s.kind === 'run') {
       const st = this.state(s.runId);
+      const asked = !!st && runNeedsYou({ status: st.status, pending: st.pending.length, planReady: planWaiting(st) });
+      if (asked) return { mood: 'waiting', text: 'The team needs you: a question to answer or a plan to approve. Press / to open this run\'s chat.' };
       const waiting = st && Object.values(st.nodes).some((n) => n.status === 'awaiting');
       const last = st?.actions[st.actions.length - 1];
       if (last && st?.status !== 'done') return { mood: last.action === 'stop' ? 'sad' : 'working', text: `Maestro ${last.action === 'stop' ? 'stopped' : last.action}: ${last.detail}` };
@@ -2312,6 +2544,8 @@ export class Tui {
     }
     if (s.kind === 'botedit') return { mood: 'happy', text: 'Every bot shares the same pebble base. Change a part and the preview updates instantly.' };
     if (s.kind === 'editor') return { mood: 'idle', text: 'Arrange the crew: shift+←/→ or [ ] moves a step, a adds one, enter edits its settings.' };
+    const asking = runs.filter(runNeedsYou);
+    if (asking.length) return { mood: 'waiting', text: `${asking.length > 1 ? asking.length + ' team runs have' : 'A team run has'} something for you (a question, or a plan to approve). Press / to open its chat, then 1-9 to pick, enter for the recommended answer, or /approve.` };
     if (paused.length) return { mood: 'waiting', text: `${paused.length} run${paused.length > 1 ? 's are' : ' is'} waiting for your approval. Open it and press a to approve.` };
     if (live.length) return { mood: 'working', text: `${live.length} run${live.length > 1 ? 's' : ''} in motion. Open one to watch the crew, or step into an agent's session.` };
     if (runs[0]?.status === 'error') return { mood: 'sad', text: 'The last run hit an error. Open it, then press R to retry just the failed branch.' };
@@ -2322,7 +2556,7 @@ export class Tui {
   private faceMood(runs: ReturnType<Tui['runs']>): FaceMood {
     const live = runs.some((r) => r.status === 'running' || r.status === 'paused') || this.busyIds.size > 0;
     return faceMoodFor({
-      waiting: runs.some((r) => r.status === 'paused') || !!(this.pendingPermit() || this.pendingChoice() || this.pendingOffer()),
+      waiting: runs.some((r) => r.status === 'paused' || runNeedsYou(r)) || !!(this.pendingPermit() || this.pendingChoice() || this.pendingOffer()),
       working: runs.some((r) => r.status === 'running') || this.busyIds.size > 0,
       live,
       now: Date.now(),
@@ -2381,13 +2615,14 @@ export class Tui {
       : this.modal?.kind === 'menu' ? '↑↓ choose · enter select · esc cancel'
       : this.modal?.kind === 'confirm' ? 'y yes · n no'
       : this.modal?.kind === 'palette' ? 'type to filter · ↑↓ choose · enter run · esc close'
-      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingPermit() ? 'enter choose · 1 allow once · 2 always allow · 3 deny · esc deny' : this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
+      : s.kind === 'dash' && s.tab === 'chat' ? (this.pendingPermit() ? 'enter choose · 1 allow once · 2 always allow · 3 deny · esc deny' : this.cardIn.other ? 'type your answer · enter send · esc back' : this.pendingTeam() ? (this.cardIn.focus ? 'card: 1-9 pick · enter recommended · o type your own · esc back to chat' : 'a question is waiting · enter to answer it · or type to chat') : this.pendingChoice() ? 'enter choose · ↑↓ move · 1-9 pick · esc skip' : this.pendingOffer() ? 'enter yes · esc no · or keep typing to change your mind' : `enter send · ${this.suggestion() && !this.talk.text ? 'tab accept suggestion · ' : ''}/help commands · ↑↓ scroll · ${this.suggestion() && !this.talk.text ? 'shift-tab' : 'tab'} next screen · ctrl-c quit`)
       : s.kind === 'dash' && s.tab === 'triggers' ? '↑↓ select · space pause/enable · t test a PR · d delete · l deliveries · s webhook setup · tab switch · q quit'
       : s.kind === 'dash' && s.tab === 'settings' ? '↑↓ choose · ←→ change · enter pick · x delete custom theme · tab switch · q quit'
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
+      : s.kind === 'evolve' ? (s.st.confirm ? 'y reject · any other key cancels' : '↑↓ proposal · 1-9 pick edits · K pick kept · a accept · r reject · esc back')
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
-      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · s stop · u resume · D delete · tab switch · t theme · q quit' : 'enter link model · e edit look · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
-      : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · s stop · u resume · D delete · R retry failed · m fix · w shell · esc back'
+      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · T team run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · T new team run · s stop · u resume · D delete · P probe replays · tab switch · t theme · q quit' : 'enter link model · e edit look · v evolve · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
+      : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · + good · - bad · s stop · u resume · D delete · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
       : s.comp ? 'enter run it · e edit first · r re-plan with rules · esc cancel' : 'esc cancel';
@@ -2423,6 +2658,8 @@ export class Tui {
         return this.themeBody(s, h);
       case 'botedit':
         return this.botBody(s, h);
+      case 'evolve':
+        return this.evolveBody(s);
     }
     void w;
     return [];
@@ -2483,13 +2720,14 @@ export class Tui {
       const sel = start + vi === s.sel.runs;
       const stc = r.status === 'done' ? green(r.status) : r.status === 'error' ? red(r.status) : r.status === 'running' ? cyan(r.status) : amber(r.status);
       this.bodyHit(vi, 0, this.cols, () => (s.sel.runs === start + vi ? this.key('enter') : (s.sel.runs = start + vi)));
-      const row = `${sel ? cyan('▍') : ' '} ${glyph(r.status, this.tick)} ${padEnd(cyan(r.id.slice(-8)), 9)} ${padEnd(bold(r.pipeline), 22)} ${padEnd(stc, 9)} ${padEnd(usd(r.costUsd), 7)} ${padEnd(dim(ago(r.startedAt)), 10)} ${dim(r.task.split('\n')[0]!.slice(0, Math.max(10, this.cols - 70)))}`;
+      const row = `${sel ? cyan('▍') : ' '} ${glyph(r.status, this.tick)} ${padEnd(cyan(r.id.slice(-8)), 9)} ${padEnd(bold(r.kind === 'team' ? 'team' : r.pipeline) + (r.kind === 'team' && runNeedsYou(r) ? amber(' ?') : ''), 22)} ${padEnd(stc, 9)} ${padEnd(usd(r.costUsd), 7)} ${padEnd(dim(ago(r.startedAt)), 10)} ${dim(r.task.split('\n')[0]!.slice(0, Math.max(10, this.cols - 70)))}`;
       return sel ? row : row;
     });
     const sel = runs[s.sel.runs];
     const st = sel ? this.state(sel.id) : undefined;
     const preview = st ? renderBoard({ state: st, frame: this.tick, now: Date.now() }, Math.min(this.cols - 2, 96)).map((l) => ' ' + l) : [];
-    return [...lines, '', ...preview];
+    const hidden = this.showProbes ? 0 : this.d.store.list().filter((r) => r.probe).length;
+    return [...lines, ...(hidden ? [`  ${dim(`${hidden} Evolve probe replay${hidden > 1 ? 's' : ''} hidden · P shows them · aorch probes --clean deletes finished ones`)}`] : []), '', ...preview];
   }
 
   private flowsBody(s: Extract<Screen, { kind: 'dash' }>, h: number): string[] {
@@ -2590,6 +2828,11 @@ export class Tui {
     ds.sel.crew = Math.min(ds.sel.crew, Math.max(0, roles.length - 1));
     const sel = ds.sel.crew;
     const b = this.bindings();
+    if (Date.now() - this.evolveAt > 3000) {
+      this.evolveSum = evolveSummary(this.d.cfg.home, roles);
+      this.evolveAt = Date.now();
+    }
+    const sum = this.evolveSum;
     const lines: string[] = [''];
     const rowsH = Math.max(6, h - 6);
     const [view, start] = this.window(roles, sel, Math.max(8, rowsH));
@@ -2603,17 +2846,20 @@ export class Tui {
       const status = person ? '' : a ? (a.ok ? green('✔') : red('✘')) : dim('…');
       const model = person ? dim('you (a person)') : bd ? `${cyan(agent)}${bd.model ? dim(' · ' + bd.model) : ''}` : dim('claude (default)');
       this.bodyHit(1 + vi, 0, 58, () => (ds.sel.crew === i ? this.key('enter') : (ds.sel.crew = i)));
-      return `${i === sel ? cyan('▍') : ' '} ${paint(c.color(), i === sel ? '◉' : '●')} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${status} ${model}`;
+      const ev = sum[role];
+      const ver = person || !ev ? '   ' : dim(`v${ev.version}`.padEnd(3));
+      const row = `${i === sel ? cyan('▍') : ' '} ${paint(c.color(), i === sel ? '◉' : '●')} ${padEnd(bold(paint(c.color(), c.name)), 9)} ${padEnd(dim(c.title), 13)} ${ver} ${status} ${model}`;
+      return ev?.open ? `${clip(row, 46)} ${amber('● proposal')}` : clip(row, 58);
     });
     const role = roles[sel]!;
     const def = CREW[role]?.def;
     const persona = wrap(def?.persona ?? '', 40).slice(0, 3).map((l) => dim(l));
-    const info = [bold(paint(CREW[role]!.color(), CREW[role]!.name)), dim(`${CREW[role]!.title} · ${def ? def.kind : ''}`), '', dim('enter  link to an agent / model'), dim('e      edit name, persona and look'), dim('x      follow the default'), '', ...persona];
+    const info = [bold(paint(CREW[role]!.color(), CREW[role]!.name)), dim(`${CREW[role]!.title} · ${def ? def.kind : ''}`), '', dim('enter  link to an agent / model'), dim('e      edit name, persona and look'), dim('v      evolve: proposals and lessons'), dim('x      follow the default'), ...(sum[role] && def?.kind !== 'approval' ? [dim(`harness v${sum[role]!.version}${sum[role]!.open ? ` · ${sum[role]!.open} open proposal${sum[role]!.open > 1 ? 's' : ''}` : ''}`)] : []), '', ...persona];
     for (let i = 0; i < Math.max(list.length, 8); i++) {
       const left = padEnd(list[i] ?? '', 58);
       lines.push(`${left}  ${info[i] ?? ''}`);
     }
-    lines.push('', `  ${dim(`${roles.length} bots · n adds one · D removes yours (or resets a built-in you changed). Local models: start Ollama, LM Studio or llama.cpp and they appear here.`)}`);
+    lines.push('', clip(`  ${dim(`${roles.length} bots · n adds one · D removes yours (or resets a built-in you changed). Local models: start Ollama, LM Studio or llama.cpp and they appear here.`)}`, this.cols));
     return lines;
   }
 

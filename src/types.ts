@@ -5,6 +5,8 @@ export type Mode = 'pipeline' | 'swarm' | 'orchestration';
 /** Modes the engine has a scheduler for. Others are refused in preflight AND in the engine. */
 export const SUPPORTED_MODES: Mode[] = ['pipeline'];
 
+/** A person's thumbs up or down on a step's output. */
+export type Rating = 'up' | 'down';
 export type NodeKind = 'agent' | 'gate' | 'approval';
 export type PipeMode = 'ancestors' | 'direct';
 
@@ -23,8 +25,18 @@ export interface MockScript {
   replies?: Record<string, string[]>;
   /** On a manager: scripts for the steps it spawns, keyed by the plan's local task id. */
   spawned?: Record<string, MockScript>;
+  /** Planning dialogue: card batches per round (a string is a raw, possibly malformed reply). After the last, the plan is returned. */
+  questions?: (Question[] | string)[];
+  /** Planning dialogue: the plan (object, or a raw string) returned once the questions run out. */
+  plan?: Record<string, unknown> | string;
+  /** Evolve editor: the reply to the harness-editing prompt (an object is wrapped in a ```json block; a string is returned as is). */
+  proposal?: unknown;
+  /** Test hook: the first entry whose `includes` text is in the prompt overrides this script with `then` (probes: react to harness guidance). */
+  whenPrompt?: { includes: string; then: MockScript }[];
   delayMs?: number;
   costUsd?: number;
+  /** Report no cost at all (like an adapter cut off before its final result). */
+  noCost?: boolean;
 }
 
 /** The hand-off a manager gives a step it spawns. */
@@ -99,6 +111,8 @@ export interface PipelineSettings {
   maxSpawn?: number;
   /** Managers must have their plan approved before spawning. */
   planApproval?: boolean;
+  /** Team runs: the person already approved the plan, so the manager's first batch needs no second approval. */
+  planPreapproved?: boolean;
   /** Managers may hand out write tasks (spawned steps that edit files). Default off: read-only plans only. */
   allowWrites?: boolean;
   /** Rounds of worker-to-worker @HAND handoffs a step may start (1..3; unset: off). */
@@ -141,6 +155,50 @@ export interface RunWorkspace {
   context: string;
 }
 
+export type RunKind = 'workflow' | 'team';
+export type TeamMode = 'live' | 'autonomous';
+
+export interface Question {
+  id: string;
+  ask: string;
+  why?: string;
+  options: { id: string; label: string; detail?: string }[];
+  /** One of the option ids. */
+  recommended: string;
+  allowOther?: boolean;
+  /** The step that asked (worker questions). */
+  from?: string;
+}
+
+export interface Answer {
+  question: string;
+  option?: string;
+  text?: string;
+  by: 'user' | 'default' | 'maestro';
+}
+
+export interface TeamPlan {
+  goal: string;
+  success: string[];
+  assignments: { bot: string; goal: string; expected?: string; mode: 'read' | 'write' }[];
+  limits: { maxCostUsd?: number; wallClockMs?: number; allowWrites: boolean };
+  answers: Answer[];
+}
+
+/** A probe replay's tag: the proposal it tests, the side, and (candidate) which edit of the proposal was applied alone. */
+export interface ProbeTag {
+  proposal: string;
+  side: 'baseline' | 'candidate';
+  edit?: number;
+}
+
+/** Which bot harness an attempt ran with. `probe`: a probe replay's harness override (not a saved version's content; the version is the base it was built on). */
+export interface HarnessRef {
+  bot: string;
+  version: number;
+  probe?: ProbeTag['side'];
+}
+
 export type RunEvent =
   | {
       type: 'run.started';
@@ -153,11 +211,32 @@ export type RunEvent =
       vault?: string;
       autoApprove?: boolean;
       workspace?: RunWorkspace;
+      kind?: RunKind;
+      mode?: TeamMode;
+      /** Team runs: planning settings, kept in the log so a restart honours them. */
+      roster?: string[];
+      maxRounds?: number;
+      yes?: boolean;
+      /** Team runs: spend cap chosen at start; it overrides the plan's own cap. */
+      budgetUsd?: number;
+      /** Evolve probe replay: which proposal it tests and on which side. Probe runs never teach lessons or count in signals. */
+      probe?: ProbeTag;
     }
+  | { type: 'plan.question'; round: number; questions: Question[] }
+  | { type: 'plan.answer'; answers: Answer[] }
+  | { type: 'plan.ready'; plan: TeamPlan }
+  /** A background planning step failed; the run stays as it was and the person can try again. */
+  | { type: 'team.error'; message: string }
+  | { type: 'team.mode'; mode: TeamMode }
+  /** A worker's question for the person. `wait`: the asking step pauses (awaiting) until the answer; `false`: answered at once by Maestro. */
+  | { type: 'user.ask'; node: string; question: Question; wait?: boolean }
+  | { type: 'user.answer'; question: string; answer: Answer }
+  /** A team run's approved plan became its pipeline: replaces the empty placeholder made at start (ignored once the pipeline has steps). */
+  | { type: 'team.pipeline'; pipeline: Pipeline }
   | { type: 'node.spawned'; node: PipelineNode; parent: string; depth: number; after: string[] }
   | { type: 'run.resumed'; retryFailed?: boolean }
   | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
-  | { type: 'node.started'; node: string; attempt: number }
+  | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef }
   | { type: 'node.session'; node: string; sessionId: string }
   | { type: 'node.chunk'; node: string; text: string }
   | {
@@ -172,6 +251,8 @@ export type RunEvent =
       sessionId?: string;
       verdict?: 'PASS' | 'FAIL';
       attempt: number;
+      /** The step was refused or cut short by the run's spend cap (structured; never inferred from error text). */
+      budget?: true;
     }
   | { type: 'node.skipped'; node: string; reason: string }
   | { type: 'gate.result'; node: string; ok: boolean; exitCode: number | null; output: string; durationMs: number }
@@ -181,7 +262,9 @@ export type RunEvent =
   /** A skipped step is queued again (its failed upstream was redone). */
   | { type: 'node.requeued'; node: string; reason: string }
   | { type: 'handoff'; from: string; to: string; goal: string; answer: string; round: number; costUsd?: number }
-  | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number }
+  | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number; /** The consulted step's bot and harness version (the one its session ran with). */ harness?: { bot: string; version: number } }
+  /** The person's thumbs up/down on a step's output. Last one per step wins. `note` is free text from a person: data, capped at 500 chars. */
+  | { type: 'feedback'; node: string; rating: Rating; note?: string }
   | { type: 'approval.requested'; node: string }
   | { type: 'approval.resolved'; node: string; approved: boolean; by?: string }
   /** A step was re-pointed at a different agent/model (by the supervisor or a person). The run records exactly what ran. */
@@ -189,7 +272,7 @@ export type RunEvent =
   | { type: 'supervisor.action'; round: number; action: 'retry' | 'escalate' | 'stop'; node?: string; detail: string }
   | { type: 'run.coach'; findings: CoachFinding[] }
   | { type: 'vault.note'; path: string }
-  | { type: 'run.finished'; status: RunStatus; error?: string };
+  | { type: 'run.finished'; status: RunStatus; error?: string; /** The run ended because its spend cap was reached. */ budget?: true };
 
 export interface StoredEvent {
   runId: string;
@@ -215,6 +298,14 @@ export interface NodeState {
   finishedAt?: number;
   gate?: { ok: boolean; exitCode: number | null; output: string };
   loops: number;
+  /** Team runs: this attempt is the step carrying on after the person answered its question (not a redo or a retry). */
+  resumedWithAnswer?: boolean;
+  /** Team runs: the person answered while the step waited; the next attempt carries on with the answer. */
+  answeredWhileWaiting?: boolean;
+  /** The bot and harness version the latest attempt ran with (absent in logs from before Evolve). */
+  harness?: HarnessRef;
+  /** The person's latest thumbs up/down on this step (absent in logs from before Evolve). */
+  feedback?: { rating: Rating; note?: string };
 }
 
 export interface RunState {
@@ -230,6 +321,24 @@ export interface RunState {
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
   autoApprove: boolean;
+  /** 'workflow' unless the run was started as a team run. */
+  kind: RunKind;
+  mode: TeamMode;
+  /** A team run is planning until plan.ready. */
+  planning: boolean;
+  /** Latest planning round asked. */
+  round: number;
+  /** Unanswered plan.question / user.ask questions, oldest first. */
+  pending: Question[];
+  plan?: TeamPlan;
+  /** Team runs: the planning settings chosen at start. */
+  team?: { roster?: string[]; maxRounds: number; yes: boolean; budgetUsd?: number };
+  /** Answers given in the planning dialogue, in order. */
+  answers: Answer[];
+  /** Every card ever asked (planning questions and worker questions), in order, so answers can be shown with their question. */
+  cards?: Question[];
+  /** Worker questions to the person: who asked, whether the step waits, and the answer once given. */
+  userAsks?: { node: string; question: Question; wait: boolean; answer?: Answer }[];
   setupDone: boolean;
   /** Paths the setup command left in the worktree; kept out of agent commits and diffs. */
   setupArtifacts: string[];
@@ -246,6 +355,15 @@ export interface RunState {
   actions: { round: number; action: string; node?: string; detail: string; ts: number }[];
   /** Questions steps put to each other, in order. */
   talk?: { from: string; to: string; question: string; answer: string; round: number; ts: number }[];
+  /** Set on Evolve probe replays (from run.started). */
+  probe?: ProbeTag;
+  /** The spend cap stopped the run or one of its steps (run.finished.budget / node.finished.budget). */
+  budgetStop?: true;
+}
+
+/** A team run whose plan is finished and waits for the person's go-ahead. */
+export function planWaiting(s: RunState): boolean {
+  return s.kind === 'team' && s.status === 'running' && !s.planning && !!s.plan && s.pipeline.nodes.length === 0 && s.pending.length === 0;
 }
 
 const LIVE_TAIL = 4000;
@@ -267,6 +385,14 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,
+        kind: e.kind ?? 'workflow',
+        mode: e.mode ?? 'live',
+        planning: e.kind === 'team',
+        ...(e.probe ? { probe: e.probe } : {}),
+        ...(e.kind === 'team' ? { team: { ...(e.roster?.length ? { roster: e.roster } : {}), maxRounds: e.maxRounds ?? 3, yes: !!e.yes, ...(e.budgetUsd !== undefined ? { budgetUsd: e.budgetUsd } : {}) } } : {}),
+        round: 0,
+        pending: [],
+        answers: [],
         setupDone: false,
         setupArtifacts: [],
         nodes: Object.fromEntries(
@@ -292,12 +418,64 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       if (e.node.kind !== 'approval') s.spawned += 1;
       continue;
     }
-    const n = 'node' in e && e.node ? s.nodes[e.node] : undefined;
+    if (e.type === 'team.pipeline') {
+      if (!s.pipeline.nodes.length) {
+        s.pipeline = e.pipeline;
+        for (const n of e.pipeline.nodes) s.nodes[n.id] ??= { status: 'queued', attempts: 0, costUsd: 0, loops: 0 };
+      }
+      continue;
+    }
+    if (e.type === 'plan.question') {
+      s.planning = true;
+      s.round = e.round;
+      s.pending = [...s.pending, ...e.questions];
+      s.cards = [...(s.cards ?? []), ...e.questions];
+      continue;
+    }
+    if (e.type === 'plan.answer') {
+      const done = new Set(e.answers.map((a) => a.question));
+      s.pending = s.pending.filter((x) => !done.has(x.id));
+      s.answers = [...s.answers, ...e.answers];
+      continue;
+    }
+    if (e.type === 'plan.ready') {
+      s.planning = false;
+      s.plan = e.plan;
+      continue;
+    }
+    if (e.type === 'team.mode') {
+      s.mode = e.mode;
+      continue;
+    }
+    if (e.type === 'user.ask') {
+      const question = { ...e.question, from: e.question.from ?? e.node };
+      // absent means waiting (the engine always writes it): the card is pending and its step awaits, never one without the other
+      const wait = e.wait !== false;
+      // an ask answered at once by Maestro never shows as a pending card
+      if (wait) s.pending = [...s.pending, question];
+      s.cards = [...(s.cards ?? []), question];
+      (s.userAsks ??= []).push({ node: e.node, question, wait });
+      const ns = s.nodes[e.node];
+      if (wait && ns && ns.status === 'running') ns.status = 'awaiting';
+      continue;
+    }
+    if (e.type === 'user.answer') {
+      s.pending = s.pending.filter((x) => x.id !== e.question);
+      const a = s.userAsks?.find((x) => x.question.id === e.question && !x.answer);
+      if (a) a.answer = e.answer;
+      const asker = a ? s.nodes[a.node] : undefined;
+      if (asker?.status === 'awaiting') asker.answeredWhileWaiting = true;
+      continue;
+    }
+    // own keys only: an id like "__proto__" or "constructor" in a persisted event must never resolve to a prototype member
+    const n = 'node' in e && e.node && Object.hasOwn(s.nodes, e.node) ? s.nodes[e.node] : undefined;
     switch (e.type) {
       case 'run.resumed':
         s.status = 'running';
         s.finishedAt = undefined;
         s.error = undefined;
+        // a team run stopped before its plan existed plans again
+        if (s.kind === 'team' && !s.pipeline.nodes.length && !s.plan) s.planning = true;
         for (const ns of Object.values(s.nodes)) {
           if (ns.status === 'running') ns.status = 'queued';
           else if (e.retryFailed && (ns.status === 'error' || ns.status === 'skipped')) {
@@ -313,9 +491,12 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'node.started':
         if (n) {
+          n.resumedWithAnswer = n.answeredWhileWaiting || undefined;
+          n.answeredWhileWaiting = undefined;
           n.status = 'running';
           n.attempts = e.attempt;
           n.startedAt = ts;
+          n.harness = e.harness;
           n.live = '';
           n.error = undefined;
         }
@@ -339,6 +520,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
           s.costUsd += e.costUsd ?? 0;
           n.live = undefined;
         }
+        if (e.budget) s.budgetStop = true;
         break;
       case 'node.skipped':
         if (n) {
@@ -384,6 +566,9 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
           n.error = undefined;
         }
         break;
+      case 'feedback':
+        if (n) n.feedback = { rating: e.rating, ...(e.note ? { note: e.note } : {}) };
+        break;
       case 'consult':
         (s.talk ??= []).push({ from: e.from, to: e.to, question: e.question, answer: e.answer, round: e.round, ts });
         break;
@@ -401,9 +586,25 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         if (!s.notes.includes(e.path)) s.notes.push(e.path);
         break;
       case 'run.finished':
+        if (e.budget) s.budgetStop = true;
         s.status = e.status;
         s.error = e.error;
         s.finishedAt = ts;
+        // a run that is over (stopped, failed, done) has no open cards: drop them, and let a step that waited on one run again if the run is resumed
+        if (e.status !== 'paused') {
+          if (s.userAsks?.some((a) => !a.answer)) {
+            for (const a of s.userAsks) if (!a.answer && s.nodes[a.node]?.status === 'awaiting') s.nodes[a.node]!.status = 'queued';
+            s.userAsks = s.userAsks.filter((a) => a.answer);
+          }
+          // planning cards nobody answered: gone, and their round counts as not asked, so a resume asks it again
+          const dropped = new Set(s.pending.map((q) => q.id));
+          if (s.kind === 'team' && s.planning && dropped.size) {
+            s.cards = (s.cards ?? []).filter((q) => !dropped.has(q.id));
+            s.round = Math.max(0, s.round - 1);
+          }
+          s.pending = [];
+          s.planning = false;
+        }
         break;
     }
   }
@@ -448,6 +649,8 @@ export interface AgentAdapter {
   run(req: AgentRequest): Promise<AgentResult>;
   /** Does this adapter report USD cost (so spend caps are enforceable)? */
   reportsCost: boolean;
+  /** Does it stop a call at the request's budgetUsd? Probe replays only use adapters that do. */
+  enforcesBudget?: boolean;
   supportsResume: boolean;
   /** Models this adapter can offer for `--model` (best effort; empty when unknown). */
   listModels?(): Promise<string[]>;

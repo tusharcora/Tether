@@ -42,6 +42,7 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
     if (!isObj(rn)) throw new Error(`nodes[${i}] must be an object`);
     const id = str(rn.id);
     if (!id || !/^[A-Za-z0-9_-]{1,40}$/.test(id)) throw new Error(`nodes[${i}].id must match [A-Za-z0-9_-]{1,40}`);
+    if (id.toLowerCase() === 'user') throw new Error(`nodes[${i}].id "user" is reserved (it is how a step addresses the person: @ASK user:)`);
     const kind = (str(rn.kind) ?? 'agent') as PipelineNode['kind'];
     if (!KINDS.has(kind)) throw new Error(`node "${id}": unknown kind "${kind}"`);
     const n: PipelineNode = {
@@ -86,6 +87,7 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
     maxDepth: num(rs.maxDepth) !== undefined ? Math.min(5, Math.max(1, Math.trunc(num(rs.maxDepth)!))) : undefined,
     maxSpawn: num(rs.maxSpawn) !== undefined ? Math.min(30, Math.max(1, Math.trunc(num(rs.maxSpawn)!))) : undefined,
     planApproval: bool(rs.planApproval),
+    planPreapproved: bool(rs.planPreapproved),
     allowWrites: bool(rs.allowWrites),
     handoff: num(rs.handoff) !== undefined && num(rs.handoff)! >= 1 ? Math.min(3, Math.trunc(num(rs.handoff)!)) : undefined,
     allowWorkerWrites: bool(rs.allowWorkerWrites),

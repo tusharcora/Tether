@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from 'solid-js';
 import { ago, api, describeEvent, fmtDur, fmtUsd, type RunRow, type RunView, type StoredEvent } from './api';
 import { Canvas } from './Canvas';
+import { TeamPanel } from './Team';
 
 function Diff(props: { text: string }) {
   const lines = () => props.text.split('\n').slice(0, 3000);
@@ -24,10 +25,16 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
   const [diff, setDiff] = createSignal<string | undefined>();
   const [pane, setPane] = createSignal<'node' | 'timeline' | 'branch'>('node');
   const [err, setErr] = createSignal<string | undefined>();
+  const [probes, setProbes] = createSignal(false);
+  // one draft note per step, so a note typed under one step can never be sent with another
+  const [fbNotes, setFbNotes] = createSignal<Record<string, string>>({});
+  const fbKey = () => `${props.selected ?? ''}\0${selNode() ?? ''}`;
+  const fbNote = () => fbNotes()[fbKey()] ?? '';
+  const setFbNote = (t: string) => setFbNotes({ ...fbNotes(), [fbKey()]: t });
 
   async function refreshList() {
     try {
-      setRuns(await api('GET', '/api/runs'));
+      setRuns(await api('GET', probes() ? '/api/runs?all=1' : '/api/runs'));
     } catch {
       /* server briefly unavailable */
     }
@@ -89,13 +96,16 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
   const node = () => (run() && selNode() ? run()!.nodes[selNode()!] : undefined);
   const pnode = () => run()?.pipeline.nodes.find((n) => n.id === selNode());
 
-  async function act(path: string, body: unknown = {}) {
+  /** Post an action to the selected run. Resolves true when it went through; a failure is shown on the page. */
+  async function act(path: string, body: unknown = {}): Promise<boolean> {
     try {
       setErr(undefined);
       setRun(await api('POST', `/api/runs/${props.selected}/${path}`, body));
       void refreshList();
+      return true;
     } catch (e) {
       setErr((e as Error).message);
+      return false;
     }
   }
 
@@ -103,6 +113,9 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
     <div class="runs">
       <aside class="run-list">
         <h4>Runs</h4>
+        <label class="check small pad" title="Evolve probe replays are experiments and are hidden by default; aorch probes --clean deletes finished ones">
+          <input type="checkbox" checked={probes()} onChange={(e) => { setProbes(e.currentTarget.checked); void refreshList(); }} /> show probe replays
+        </label>
         <Show when={runs().length === 0}>
           <p class="muted small pad">No runs yet. Build a pipeline and press Run.</p>
         </Show>
@@ -111,7 +124,12 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
             <button class="run-item" classList={{ active: props.selected === r.id }} onClick={() => props.onSelect(r.id)}>
               <span class={`dot s-${r.status}`} classList={{ pulse: r.live && r.status === 'running' }} />
               <span class="run-main">
-                <b>{r.pipeline}</b>
+                <b>
+                  {r.kind === 'team' ? 'Team run' : r.pipeline}
+                  <Show when={r.kind === 'team'}><span class="badge s-team">Team</span></Show>
+                  <Show when={r.probe}><span class="badge s-stopped" title="Evolve probe replay">probe</span></Show>
+                  <Show when={(r.pending > 0 || r.planReady) && (r.status === 'running' || r.status === 'paused')}><span class="badge s-paused" title={r.planReady ? 'A plan is waiting for your approval' : 'A question is waiting for you'}>{r.planReady ? 'plan' : `? ${r.pending}`}</span></Show>
+                </b>
                 <small>{r.task.split('\n')[0]!.slice(0, 60)}</small>
               </span>
               <span class="run-side">
@@ -130,7 +148,8 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
               <header class="run-head">
                 <div>
                   <h3>
-                    {r().pipeline.name} <span class={`badge s-${r().status}`}>{r().status}</span>
+                    {r().kind === 'team' ? 'Team run' : r().pipeline.name} <span class={`badge s-${r().status}`}>{r().status}</span>
+                    <Show when={r().kind === 'team'}><span class="badge s-team">Team</span></Show>
                     <Show when={r().status === 'running' && !r().live}>
                       <span class="badge s-error" title="No process is driving this run. Resume it.">interrupted</span>
                     </Show>
@@ -142,7 +161,8 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
                   </p>
                 </div>
                 <div class="row">
-                  <Show when={r().live && r().status === 'running'}>
+                  {/* a paused run, or a team run waiting on a card or its plan (the server reports it live), can be ended too */}
+                  <Show when={(r().live && r().status === 'running') || r().status === 'paused'}>
                     <button class="danger" onClick={() => act('stop')}>Stop</button>
                   </Show>
                   <Show when={!r().live && ['stopped', 'running', 'error'].includes(r().status)}>
@@ -152,6 +172,9 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
               </header>
 
               <Show when={err()}><div class="alert error">{err()}</div></Show>
+              <Show when={r().kind === 'team'}>
+                <TeamPanel run={r()} send={(path, body) => act(path, body)} />
+              </Show>
               <Show when={r().error}><div class="alert error">{r().error}</div></Show>
 
               <For each={awaiting()}>
@@ -252,6 +275,14 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
                         </Show>
                         <Show when={pnode()?.kind === 'agent' && !pnode()!.readOnly && n().status === 'done' && !n().commit}>
                           <p class="muted small">This step finished without changing any files.</p>
+                        </Show>
+                        <Show when={pnode()?.kind === 'agent' && (n().status === 'done' || n().status === 'error') && !r().probe}>
+                          <div class="row feedback" title="Evolve learns from this: a note says why">
+                            <span class="muted small">Was this step good?{n().feedback ? ` You said ${n().feedback!.rating === 'up' ? 'good' : 'bad'}.` : ''}</span>
+                            <input class="small" maxLength={500} placeholder="why (optional)" value={fbNote()} onInput={(e) => setFbNote(e.currentTarget.value)} />
+                            <button onClick={async () => { if (await act('feedback', { node: selNode(), rating: 'up', ...(fbNote().trim() ? { note: fbNote().trim() } : {}) })) setFbNote(''); }}>Good</button>
+                            <button onClick={async () => { if (await act('feedback', { node: selNode(), rating: 'down', ...(fbNote().trim() ? { note: fbNote().trim() } : {}) })) setFbNote(''); }}>Bad</button>
+                          </div>
                         </Show>
                       </div>
                     )}

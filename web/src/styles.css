@@ -315,3 +315,40 @@ main { flex: 1; min-height: 0; }
 .trig-setup button { padding: 1px 8px; font-size: 11px; margin-left: 6px; }
 .secret { background: color-mix(in srgb, var(--wait) 18%, var(--panel-2)); user-select: all; }
 .trig-warn { color: var(--wait); margin: 4px 0 0; }
+
+/* team runs */
+.badge.s-team { background: var(--accent, #6d5bd0); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: var(--panel); padding: 5px 12px; }
+.seg button.active { background: var(--accent, #6d5bd0); color: #fff; }
+.team-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 16px 8px; }
+.qpanel { margin: 0 16px 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
+.qpanel h4, .qpanel h5, .qpanel p, .qpanel ul { margin: 0; }
+.qpanel ul { padding-left: 18px; }
+.qcard { display: flex; flex-direction: column; gap: 6px; }
+.qcard p { margin: 0; }
+.qopts { display: flex; flex-direction: column; gap: 6px; }
+.qopt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; border: 1px solid var(--border); background: var(--panel-2); }
+.qopt.chosen { border-color: var(--run); box-shadow: 0 0 0 1px var(--run) inset; }
+.qlabel { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rec { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 99px; background: var(--done); color: #fff; }
+.qother { display: flex; flex-direction: column; gap: 4px; }
+.qother textarea { width: 100%; box-sizing: border-box; }
+.dialogue { margin: 0 16px 10px; }
+.dialogue p { margin: 6px 0; }
+.assign { list-style: none; padding-left: 0 !important; display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 640px) { .team-bar, .qpanel, .dialogue { margin-left: 8px; margin-right: 8px; } }
+
+/* Evolve (Crew tab) */
+.evolve-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 14px 0; display: flex; flex-direction: column; gap: 10px; }
+.evolve-panel h3, .evolve-panel h4 { margin: 0; }
+.evolve-panel .proposal { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.evolve-panel .edit { padding-left: 8px; }
+.evolve-panel pre.diff { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
+.evolve-panel pre.diff .del { color: var(--err); }
+.evolve-panel pre.diff .add { color: var(--done); }
+.evolve-panel .versions li { margin: 3px 0; }
+.chip.probe-dropped { color: var(--err); }
+.chip.probe-unprobed { color: var(--wait); }
+.chip.probe-kept { color: var(--done); }
+.chip.proposal-mark { color: var(--wait); margin-left: 4px; }

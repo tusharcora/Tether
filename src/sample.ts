@@ -20,6 +20,12 @@ export function sampleRun(now = Date.now()): RunState {
     baseSha: '0',
     branch: 'aorch/sample',
     autoApprove: false,
+    kind: 'workflow',
+    mode: 'live',
+    planning: false,
+    round: 0,
+    pending: [],
+    answers: [],
     setupDone: true,
     setupArtifacts: [],
     nodes: {

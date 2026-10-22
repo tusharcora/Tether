@@ -75,14 +75,16 @@ User: ${message}
 
 Reply with ONLY a JSON object, no prose, no code fences:
 {"reply":"what you say to the user",
- "intent":"answer" | "save" | "optimize" | "run",
+ "intent":"answer" | "save" | "optimize" | "run" | "team",
  "name":"workflow-name (letters, digits, . _ -)",
  "steps":[ "planner", {"type":"coder","prompt":"optional extra instructions for this step"} ],
  "maxCostUsd": 5,
- "task":"what to do (only for run)",
+ "task":"what to do (only for run and team)",
+ "mode":"live" | "autonomous" (only for team),
  "command":{"command":"one shell command","why":"what it tells us"}}
 "command" is optional and at most one: use it only when you need to look at or change something on disk to help (prefer read-only ones such as git status, ls, cat, npm test). The person must approve it first, so say what it is for. Never anything destructive.
-Use "answer" for questions and advice (leave out the other fields). Use "save" to create a new workflow from the user's needs. Use "optimize" to improve a saved workflow (name = that workflow; the steps are the improved version, and your reply says what changed and why). Use "run" to start a saved workflow (name + task). Prefer few steps; always put a coder before tester or reviewer; add approval for risky or user-facing changes.`;
+Use "answer" for questions and advice (leave out the other fields). Use "save" to create a new workflow from the user's needs. Use "optimize" to improve a saved workflow (name = that workflow; the steps are the improved version, and your reply says what changed and why). Use "run" to start a saved workflow (name + task). Use "team" (task, optional mode) when the work is open-ended or the user asks to "use a team": a team of bots plans the work with the user, asking questions first, instead of following a fixed pipeline. "live" means Maestro reports as the team works; "autonomous" means Maestro answers for the user and reports at the end. Prefer a saved workflow when the steps are already known. Prefer few steps; always put a coder before tester or reviewer; add approval for risky or user-facing changes.
+Evolve: when the recent runs show the same bot sent back or redone again and again (or the user says a bot keeps making the same mistake), you may offer to run \`aorch evolve <bot>\`, which asks a model (one call, a small cost) to propose edits to that bot's guidance from the lessons learned; nothing changes until the user accepts the proposal. Only offer it: say so in your reply, or put it in "command" so the user can approve it. Never run it yourself and never claim it has run.`;
 }
 
 /** Turn the model's step list into a checked pipeline. Throws with a short reason when it is not usable. */
@@ -145,7 +147,7 @@ export async function chat(message: string, o: ChatOpts): Promise<Reply> {
 
 /** Read the agent's JSON. If it answered in plain prose, that prose is the reply. */
 export function interpret(output: string, o: Pick<ChatOpts, 'home' | 'repo' | 'registry'>, warnings: string[] = []): Reply {
-  let raw: { command?: unknown; reply?: unknown; intent?: unknown; name?: unknown; steps?: unknown; maxCostUsd?: unknown; task?: unknown };
+  let raw: { command?: unknown; reply?: unknown; intent?: unknown; name?: unknown; steps?: unknown; maxCostUsd?: unknown; task?: unknown; mode?: unknown };
   try {
     raw = extractJson(output) as typeof raw;
   } catch {
@@ -162,6 +164,12 @@ export function interpret(output: string, o: Pick<ChatOpts, 'home' | 'repo' | 'r
       const pipeline = pipelineFromReply(raw, { repo: o.repo, registry: o.registry, base: existing }, warnings);
       if (existing) return { text, warnings, proposal: { kind: 'optimize', pipeline, overwrite: true, before: [STEP_LINE(existing)] } };
       return { text, warnings, proposal: { kind: 'save', pipeline, overwrite: false } };
+    }
+    if (intent === 'team') {
+      const task = typeof raw.task === 'string' ? raw.task.trim() : '';
+      if (!task) throw new Error('a team needs a task');
+      const mode = raw.mode === 'live' || raw.mode === 'autonomous' ? raw.mode : undefined;
+      return { text, warnings, proposal: { kind: 'team', task: task.slice(0, 2000), ...(mode ? { mode } : {}) } };
     }
     if (intent === 'run') {
       const workflow = String(raw.name ?? '');

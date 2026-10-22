@@ -8,7 +8,8 @@ import { Engine } from './engine.js';
 import { loadPipelineFile, preflight } from './pipeline.js';
 import { startServer } from './server.js';
 import { Store } from './store.js';
-import type { Pipeline, RunState, StoredEvent } from './types.js';
+import type { Answer, Pipeline, Question, RunState, StoredEvent } from './types.js';
+import { answerFromInput, parseTeamArgs } from './team.js';
 import { Vault } from './vault.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -17,6 +18,10 @@ const webDir = resolve(here, '../web/dist');
 
 import { link, loadBindings, unlink } from './bindings.js';
 import { runTui } from './tui.js';
+import { compose, DEFAULT_PROBE_TASKS, getProposal, listProposals, MAX_PROBE_TASKS, probe, proposeFor, renderProbe, renderProposal, saveProbe } from './evolve.js';
+import { baselinePersona, currentHarness, diffHarness, getVersion, listVersions, peekHarness, readChangelog, type HarnessEdit } from './harness.js';
+import { adopt, decline, EvolveOpError, findBot, harnessView, keptOf, loadProposal, proposalsFor, proposalView, revert, scrubPaths, versionArg, type ProposalView } from './evolveops.js';
+import { loadLessons, type Lesson } from './lessons.js';
 import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.js';
 import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
@@ -33,7 +38,7 @@ import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listW
 import { normalizePipeline } from './pipeline.js';
 import { CREW, crewFor } from './bots.js';
 import { THEMES, registerThemes, setTheme, themeName, spawnedLabel, underManagers } from './ui.js';
-import { LiveBoard, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
+import { LiveBoard, renderQuestion, safeText, ago, amber, banner, bold, box, caps, clock, cyan, dim, dur, faint, glyph, gradient, green, meter, pal, paint, red, resultCard, table, typeLine, usd, vlen, BRAND } from './ui.js';
 
 const yellow = amber;
 /** --workspace <id> picks one; --no-workspace runs without project context. */
@@ -48,8 +53,21 @@ Usage
   aorch run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
   aorch resume <runId> [--retry-failed]
   aorch approve <runId> <node> [--reject] [--resume]
+  aorch feedback <runId> <node> up|down [note…]   thumbs up or down on a step's output (Evolve learns from it)
+  aorch evolve <bot> [--since <date>] [--agent a] [--model m] [--json]   propose edits to a bot's harness from its confident lessons (nothing is applied)
+  aorch evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--allow-commands] [--json]   replay up to n (default 3, max 8) recent read-only runs with the current harness and each proposed edit; spend capped by --budget
+  aorch evolve --accept <id> [--pick 1,3 | --pick kept]   accept a proposal (all edits, or the ones you pick) as the bot's next harness version
+  aorch evolve --reject <id>          reject a proposal; its edits are never proposed again
+  aorch evolve <bot> --list | --show <id>   a bot's proposals (open, accepted, rejected, superseded) · one proposal with its diff, evidence and probe results
+  aorch harness <bot> [show | log | diff <a> <b> | rollback <v>] [--json]   a bot's harness: current version, history, what changed, roll back (as a new version)
+  aorch probes [--clean]              Evolve probe replays (hidden from runs lists); --clean deletes the finished ones
+  aorch lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
   aorch                               interactive dashboard (runs, workflows, agent sessions)
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
+  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes]   Maestro asks questions, you approve a plan, a team of bots does it
+  aorch answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
+  aorch plan <runId> [--reject]       approve (or reject) a team run's finished plan
+  aorch mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
   aorch bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
@@ -58,7 +76,7 @@ Usage
   aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   aorch theme [name]                  aurora · sunset · matrix · amber · mono
-  aorch runs                          list runs
+  aorch runs [--all]                  list runs (--all includes Evolve probe replays)
   aorch delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
   aorch show <runId>                  node table, cost, coach findings
   aorch serve [--port 4177]           API + dashboard (loopback only)
@@ -129,7 +147,7 @@ function open(flags: { home?: string; vault?: string }): Ctx {
 }
 
 /** Print one line per meaningful event while a run executes in this process. */
-function narrate(store: Store, runId: string, json: boolean): { off: () => void; stop: () => void } {
+function narrate(store: Store, runId: string, json: boolean): { off: () => void; stop: () => void; start: () => void } {
   const pipeNodes = () => store.state(runId)?.pipeline.nodes ?? [];
   const name = (id: string) => {
     const n = pipeNodes().find((x) => x.id === id);
@@ -203,7 +221,7 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
         break;
     }
   });
-  return { off, stop: () => live?.stop() };
+  return { off, stop: () => live?.stop(), start: () => live?.start() };
 }
 
 function summary(s: RunState) {
@@ -212,7 +230,9 @@ function summary(s: RunState) {
     extra.push('', `${amber('◆')} ${bold('coach')}`);
     for (const f of s.coach) extra.push(`  ${amber('•')} ${bold(f.title)}`, `    ${f.detail}`, `    ${dim('→ ' + f.action)}`);
   }
-  if (s.status === 'paused') {
+  if (s.status === 'paused' && s.kind === 'team' && s.pending.length) {
+    extra.push('', `${amber('◉')} waiting for your answer${s.pending.length > 1 ? 's' : ''}: ${bold(s.pending.map((q) => q.id).join(', '))}`, `  ${dim('$')} ${cyan(`aorch answer ${s.id} ${s.pending[0]!.id} <option>`)}`);
+  } else if (s.status === 'paused') {
     const waiting = Object.entries(s.nodes).filter(([, n]) => n.status === 'awaiting').map(([id]) => id);
     extra.push('', `${amber('◉')} waiting for approval: ${bold(waiting.join(', '))}`, `  ${dim('$')} ${cyan(`aorch approve ${s.id} ${waiting[0]} --resume`)}`);
   } else if (s.status === 'stopped' || s.status === 'error') {
@@ -222,7 +242,90 @@ function summary(s: RunState) {
   console.log(resultCard(s, extra).join('\n'));
 }
 
+/** Wait for the run; a team run that stops to ask the person is answered in the terminal and carries on. */
+async function waitTeam(ctx: Ctx, runId: string, view: { stop: () => void; start: () => void }, json: boolean): Promise<RunState> {
+  for (;;) {
+    const s = await ctx.engine.wait(runId);
+    if (s.kind !== 'team' || s.status !== 'paused' || !s.pending.length || json || !canAsk()) return s;
+    view.stop();
+    try {
+      await ctx.engine.answerUsers(runId, (await askCards(s.pending)).map((a) => ({ question: a.question, option: a.option, text: a.text })));
+    } catch (e) {
+      console.error(`${red('✘')} ${(e as Error).message}`);
+      return ctx.store.state(runId) ?? s;
+    }
+    view.start();
+  }
+}
+
 const exitFor = (s: RunState) => (s.status === 'done' ? 0 : s.status === 'paused' ? 2 : 1);
+
+const canAsk = () => !!(process.stdin.isTTY && process.stdout.isTTY);
+
+/** Ask each card in the terminal: a number picks, enter takes the recommendation, other text is the person's own words (if the card allows). */
+async function askCards(cards: Question[]): Promise<Answer[]> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const closed = new Promise<undefined>((r) => rl.once('close', () => r(undefined)));
+  try {
+    const out: Answer[] = [];
+    for (const q of cards) {
+      console.log('');
+      console.log(renderQuestion(q, Math.min(caps.cols, process.stdout.columns || 80)).join('\n'));
+      for (;;) {
+        const line = await Promise.race([rl.question(`${dim('›')} `), closed]);
+        if (line === undefined) throw new Error('input closed before every question was answered');
+        try {
+          out.push(answerFromInput(q, line));
+          break;
+        } catch (e) {
+          console.log(`  ${amber('!')} ${(e as Error).message}`);
+        }
+      }
+    }
+    return out;
+  } finally {
+    rl.close();
+  }
+}
+
+async function confirm(text: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const a = (await Promise.race([rl.question(`${text} ${dim('[Y/n]')} `), new Promise<string>((r) => rl.once('close', () => r('n')))])).trim().toLowerCase();
+    return a === '' || a === 'y' || a === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+function showPlan(s: RunState) {
+  const p = s.plan;
+  if (!p) return;
+  const lines = [bold(safeText(p.goal)), ''];
+  if (p.success.length) lines.push(dim('done when'), ...p.success.map((x) => `  ${green('✔')} ${safeText(x)}`), '');
+  lines.push(dim('team'), ...p.assignments.map((a) => `  ${cyan(a.bot)} ${a.mode === 'write' ? amber('writes') : dim('reads')}  ${safeText(a.goal)}`), '');
+  // the cap covers the whole run, planning included: show what planning spent and what is left for the team
+  const cap = p.limits.maxCostUsd;
+  const spend = cap !== undefined ? `up to ${usd(cap)} in all${s.costUsd > 0 ? ` (planning spent ${usd(s.costUsd)}, ${usd(Math.max(0, cap - s.costUsd))} left)` : ''}` : 'no spend cap';
+  lines.push(dim('limits'), `  ${spend}${p.limits.wallClockMs ? ` · ${dur(p.limits.wallClockMs)}` : ''} · ${p.limits.allowWrites ? amber('files may be changed') : 'read-only'}`);
+  console.log('');
+  console.log(box(lines, { title: 'plan', width: Math.min(caps.cols + 10, process.stdout.columns || 100), border: BRAND }).join('\n'));
+}
+
+/** Answer planning cards until Maestro has a plan (interactive), or stop at the first unanswered card. */
+async function planDialogue(ctx: Ctx, id: string, interactive: boolean): Promise<RunState> {
+  for (let i = 0; i < 30; i++) {
+    const s = ctx.store.state(id)!;
+    if (!s.planning || s.status !== 'running') return s;
+    if (!s.pending.length) {
+      await ctx.engine.continuePlanning(id);
+      continue;
+    }
+    if (!interactive) return s;
+    await ctx.engine.answerPlan(id, await askCards(s.pending));
+  }
+  return ctx.store.state(id)!;
+}
 
 async function drive(ctx: Ctx, runId: string, json: boolean, sup?: { rounds: number }, after?: (s: RunState) => Promise<void>): Promise<never> {
   const view = narrate(ctx.store, runId, json);
@@ -240,13 +343,168 @@ async function drive(ctx: Ctx, runId: string, json: boolean, sup?: { rounds: num
         escalate: bind.escalate,
         diagnose: (st) => diagnoseFailure(st, { registry: makeRegistry(ctx.cfg), agent: bind.orchestrator?.agent, model: bind.orchestrator?.model }),
       })
-    : await ctx.engine.wait(runId);
+    : await waitTeam(ctx, runId, view, json);
   view.off();
   view.stop();
   if (after) await after(s);
   if (!json) summary(s);
   else console.log(JSON.stringify({ id: s.id, status: s.status, costUsd: s.costUsd, error: s.error }));
   process.exit(exitFor(s));
+}
+
+/** `aorch evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--json]`: probe a proposal (the newest open one, or a fresh one) and compose it. */
+async function evolveProbe(botId: string, v: { budget?: string; tasks?: string; proposal?: string; json?: boolean; 'allow-commands'?: boolean; home?: string; vault?: string; agent?: string; model?: string; since?: string }): Promise<void> {
+  if (v.budget === undefined) return fail('--probe needs --budget <usd>: a probe replays runs and spends money', 2);
+  const budget = Number(v.budget);
+  if (!/^\s*(\d+(\.\d*)?|\.\d+)\s*$/.test(v.budget) || !(budget > 0)) return fail('--budget must be a positive amount in USD written as a plain decimal, e.g. 2, 0.5 or .5 (no exponents)', 2);
+  let tasks = DEFAULT_PROBE_TASKS;
+  if (v.tasks !== undefined) {
+    if (!/^\d{1,2}$/.test(v.tasks.trim()) || Number(v.tasks) < 1 || Number(v.tasks) > MAX_PROBE_TASKS) return fail(`--tasks must be 1 to ${MAX_PROBE_TASKS}`, 2);
+    tasks = Number(v.tasks);
+  }
+  const ctx = open(v);
+  const home = ctx.cfg.home;
+  const bot = loadCrew(home).find((b) => b.id === botId) ?? fail(`no such bot: ${safeText(botId).slice(0, 40)}`);
+  let editorCostUsd: number | undefined;
+  let p;
+  try {
+    if (v.proposal) {
+      p = getProposal(home, v.proposal);
+      if (p.bot !== bot.id) return fail(`proposal ${safeText(p.id)} is for ${p.bot}, not ${bot.id}`);
+    } else {
+      const cur = currentHarness(home, bot).version;
+      p = listProposals(home, bot.id, 'open').filter((x) => x.base === cur).at(-1);
+    }
+  } catch (e) {
+    return fail(safeText(scrubPaths((e as Error).message, home)));
+  }
+  if (!p) {
+    const r = await proposeFor({ home, bot, registry: makeRegistry(ctx.cfg), agent: v.agent, model: v.model, since: v.since });
+    editorCostUsd = r.costUsd;
+    if (!r.proposal) {
+      if (v.json) return void console.log(JSON.stringify({ reason: r.reason ?? 'no proposal', ...(editorCostUsd !== undefined ? { editorCostUsd } : {}) }));
+      console.log(`${dim('no proposal to probe:')} ${safeText(r.reason ?? 'unknown')}`);
+      return;
+    }
+    p = r.proposal;
+  }
+  const ac = new AbortController();
+  const onInt = () => ac.abort();
+  process.once('SIGINT', onInt);
+  let out;
+  try {
+    out = await probe({ home, bot, proposal: p, budgetUsd: budget, tasks, engine: ctx.engine, signal: ac.signal, allowCommands: v['allow-commands'] === true });
+  } catch (e) {
+    return fail(safeText(scrubPaths((e as Error).message, home)));
+  } finally {
+    process.off('SIGINT', onInt);
+  }
+  if (out.results.length || out.spentUsd > 0) {
+    try {
+      saveProbe(home, p.id, { ...out, budgetUsd: budget });
+    } catch {
+      /* the outcome is still printed */
+    }
+  }
+  const composed = compose(p, out.results);
+  // there is no cheap judge to wire in yet: say what the comparison rests on
+  const judgeNote = 'no judge: steps without gates or reviewer checks are compared on failures, redos and cost only';
+  const cmdNote = v['allow-commands']
+    ? 'replays re-run the original runs\' gate and setup commands (in a throwaway clone)'
+    : 'runs with gate or setup commands were skipped: pass --allow-commands to replay them (their commands re-run in a throwaway clone)';
+  if (v.json) return void console.log(JSON.stringify({ proposal: p.id, ...out, budgetUsd: budget, composed, judge: 'none', ...(editorCostUsd !== undefined ? { editorCostUsd, editorCostOutsideBudget: true } : {}) }));
+  for (const line of renderProbe(p, { ...out, budgetUsd: budget }, composed, baselinePersona(home, bot))) console.log(line.startsWith('-') ? red(line) : line.startsWith('+') ? green(line) : line);
+  console.log(dim(judgeNote));
+  console.log(dim(cmdNote));
+  if (editorCostUsd !== undefined) console.log(dim(`editor cost ${usd(editorCostUsd)} (outside --budget: the probe budget covers replays only)`));
+}
+
+function printEdit(e: HarnessEdit, prefix = '  ') {
+  console.log(`${prefix}${dim(`${e.field} ${e.op}`)}`);
+  if (e.before !== undefined) console.log(red(`${prefix}-   ${safeText(e.before)}`));
+  if (e.after !== undefined) console.log(green(`${prefix}+   ${safeText(e.after)}`));
+}
+
+const labelColour = (pv: ProposalView) => (pv.label === 'open' ? (pv.stale ? amber : green) : pv.label === 'accepted' ? cyan : dim);
+
+/** One proposal for the terminal: status (superseded shown apart from rejected), the diff, cited lessons and the saved probe. */
+function printProposal(pv: ProposalView) {
+  console.log(`${bold(pv.id)} ${labelColour(pv)(pv.label === 'open' && pv.stale ? 'open (stale)' : pv.label)}${pv.note ? dim(` · ${safeText(pv.note)}`) : ''} ${dim(`· based on v${pv.base}${pv.version !== undefined ? ` · made v${pv.version}` : ''}${pv.picked ? ` · picked ${pv.picked.join(',')}` : ''}`)}`);
+  if (pv.stale) console.log(amber(`  written for v${pv.base}; the harness has moved on, so it cannot be accepted: run aorch evolve ${pv.bot} again`));
+  for (const e of pv.edits) {
+    const tag = e.probe === 'dropped' ? red(' (dropped by the probe)') : e.probe === 'unprobed' ? amber(` (kept, not probed${e.probeNote ? `: ${safeText(e.probeNote)}` : ''})`) : e.probe === 'kept' ? green(' (kept by the probe)') : '';
+    console.log(`${e.n}. ${e.roleNote ? `role note ${dim(`(added to the bot's role prompt; ${e.before !== undefined ? 'replaces the earlier role note' : 'nothing is removed'})`)}` : `${e.field} ${e.op}`}${tag}`);
+    if (e.before !== undefined) console.log(red(`-   ${safeText(e.before)}`));
+    if (e.after !== undefined) console.log(green(`+   ${safeText(e.after)}`));
+    for (const l of e.lessons) console.log(dim(`   because ${safeText(l.id)}${l.text !== undefined ? ` (${l.polarity}, ${l.runs} runs, ${l.provenance}): ${safeText(l.text)}` : ''}`));
+  }
+  if (pv.probe) {
+    console.log(`${bold('probe')} ${dim(`spent $${pv.probe.spentUsd.toFixed(4)} of $${pv.probe.budgetUsd.toFixed(2)}${pv.probe.stoppedBy ? ` · stopped by ${pv.probe.stoppedBy}` : ''}`)}`);
+    for (const r of pv.probe.results) console.log(`  ${r.verdict.padEnd(6)} edit ${r.edit ?? 'all'} on "${safeText(r.task).slice(0, 60)}"  ${dim(`baseline: ${r.baseline}; candidate: ${r.candidate}`)}`);
+    if (pv.composed) console.log(dim(`  kept ${pv.composed.kept.join(',') || 'none'} · dropped ${pv.composed.dropped.join(',') || 'none'} · not probed ${pv.composed.unprobed.join(',') || 'none'}`));
+  }
+  if (pv.label === 'open' && !pv.stale) console.log(dim(`accept: aorch evolve --accept ${pv.id} [--pick 1,3${pv.composed ? ' | --pick kept' : ''}]   reject: aorch evolve --reject ${pv.id}`));
+}
+
+/** `aorch evolve <bot> --list`. */
+function evolveList(botId: string, v: { json?: boolean; home?: string; vault?: string }) {
+  const cfg = loadConfig(v);
+  try {
+    const bot = findBot(cfg.home, botId);
+    const cur = peekHarness(cfg.home, bot).version;
+    const lessons = loadLessons(cfg.home, bot.id);
+    const views = proposalsFor(cfg.home, bot.id, 20).map((p) => proposalView(cfg.home, p, lessons, cur));
+    if (v.json) return void console.log(JSON.stringify({ bot: bot.id, version: cur, proposals: views }));
+    if (!views.length) return void console.log(dim(`no proposals for ${bot.id}: aorch evolve ${bot.id} makes one (one model call)`));
+    console.log(dim(`${bot.id} harness v${cur}`));
+    for (const pv of views) console.log(`${labelColour(pv)((pv.label === 'open' && pv.stale ? 'open (stale)' : pv.label).padEnd(12))} ${cyan(pv.id)} ${dim(`${pv.edits.length} edit${pv.edits.length === 1 ? '' : 's'} · based on v${pv.base} · ${pv.createdAt.slice(0, 16)}${pv.probe ? ' · probed' : ''}${pv.note ? ` · ${safeText(pv.note)}` : ''}`)}`);
+  } catch (e) {
+    fail(safeText(scrubPaths((e as Error).message, cfg.home)));
+  }
+}
+
+/** `aorch evolve --accept <id> [--pick 1,3|kept]`, `--reject <id>`, `--show <id>`. Accept and reject never call a model. */
+async function evolveDecide(v: { accept?: string; reject?: boolean; show?: string; pick?: string; json?: boolean; home?: string; vault?: string }, pos: string[]) {
+  const n = [v.accept !== undefined, !!v.reject, v.show !== undefined].filter(Boolean).length;
+  if (n > 1) return fail('use one of --accept <id>, --reject <id> or --show <id>', 2);
+  const id = v.accept ?? v.show ?? pos[0];
+  if (!id) return fail('usage: aorch evolve --reject <id>', 2);
+  if (v.pick !== undefined && v.accept === undefined) return fail('--pick goes with --accept', 2);
+  const cfg = loadConfig(v);
+  const lessonsOf = (bot: string) => {
+    try {
+      return loadLessons(cfg.home, bot);
+    } catch {
+      return [];
+    }
+  };
+  try {
+    if (v.show !== undefined) {
+      const p = loadProposal(cfg.home, id);
+      const pv = proposalView(cfg.home, p, lessonsOf(p.bot));
+      if (v.json) return void console.log(JSON.stringify({ proposal: pv }));
+      return printProposal(pv);
+    }
+    if (v.reject) {
+      const p = decline(cfg.home, id);
+      if (v.json) return void console.log(JSON.stringify({ proposal: proposalView(cfg.home, p, []) }));
+      return void console.log(`${red('rejected')} ${id}: its ${p.edits.length} edit${p.edits.length === 1 ? '' : 's'} will not be proposed again`);
+    }
+    // never pick for the person: when the saved probe dropped an edit, accepting "all" needs to be said out loud
+    const p = loadProposal(cfg.home, id);
+    const c = keptOf(p);
+    if (v.pick === undefined && c?.dropped.length) {
+      return fail(`the probe dropped edit${c.dropped.length > 1 ? 's' : ''} ${c.dropped.map((i) => i + 1).join(',')} of ${id}: say which edits to accept with --pick (--pick kept takes ${c.kept.map((i) => i + 1).join(',') || 'none'}; --pick ${p.edits.map((_, i) => i + 1).join(',')} takes them all). See them with aorch evolve --show ${id}`, 2);
+    }
+    const r = await adopt(cfg.home, id, v.pick, new Vault(cfg.vault));
+    if (v.json) return void console.log(JSON.stringify({ harness: r.harness, proposal: proposalView(cfg.home, r.proposal, lessonsOf(r.proposal.bot), r.harness.version) }));
+    const picked = (r.proposal.picked ?? p.edits.map((_, i) => i)).map((i) => i + 1);
+    console.log(`${green('accepted')} ${id}: ${r.proposal.bot} harness is now v${r.harness.version} (edit${picked.length === 1 ? '' : 's'} ${picked.join(',')} of ${p.edits.length}); the next run uses it`);
+    console.log(dim(`undo: aorch harness ${r.proposal.bot} rollback ${p.base}${r.vaultNote ? ` · noted in the vault: ${r.vaultNote}` : ''}`));
+  } catch (e) {
+    const code = e instanceof EvolveOpError && e.code === 'invalid' ? 2 : 1;
+    fail(safeText(scrubPaths((e as Error).message, cfg.home)), code);
+  }
 }
 
 async function main() {
@@ -337,6 +595,20 @@ async function main() {
       fire: { type: 'boolean' },
       limit: { type: 'string' },
       'no-workspace': { type: 'boolean' },
+      mode: { type: 'string' },
+      roster: { type: 'string' },
+      budget: { type: 'string' },
+      since: { type: 'string' },
+      probe: { type: 'boolean' },
+      'allow-commands': { type: 'boolean' },
+      tasks: { type: 'string' },
+      proposal: { type: 'string' },
+      accept: { type: 'string' },
+      pick: { type: 'string' },
+      show: { type: 'string' },
+      list: { type: 'boolean' },
+      all: { type: 'boolean' },
+      clean: { type: 'boolean' },
     },
   });
   applyTheme(v.theme);
@@ -348,6 +620,123 @@ async function main() {
       await ctx.vault.ensure();
       await runTui({ cfg: ctx.cfg, store: ctx.store, engine: ctx.engine });
       process.exit(0);
+    }
+    case 'team': {
+      const goal = pos.join(' ').trim() || v.task || fail('usage: aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes]');
+      const repo = resolve(v.repo ?? '.');
+      let ta;
+      try {
+        ta = parseTeamArgs({ roster: v.roster, mode: v.mode, budget: v.budget, rounds: v.rounds });
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      const ctx = open(v);
+      let id: string;
+      try {
+        id = await ctx.engine.startTeam({ task: goal, repo, yes: v.yes, workspace: wsOpt(v), ...ta });
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      if (!v.json) {
+        await banner(`team  ${faint('→')}  ${repo}`);
+        await typeLine(`${dim('goal')}  ${s0(goal)}`, 6);
+      }
+      const interactive = canAsk() && !v.json;
+      let s: RunState;
+      try {
+        s = await planDialogue(ctx, id, interactive);
+      } catch (e) {
+        fail(`${(e as Error).message}\n  ${dim('the run is saved:')} aorch show ${id}`);
+      }
+      if (s.planning || !s.plan) {
+        if (s.pending.length && v.json) {
+          console.log(JSON.stringify({ id, status: 'waiting', pending: s.pending }));
+          process.exit(2);
+        }
+        if (s.pending.length) {
+          console.log(`\n${amber('◉')} Maestro has ${s.pending.length} question${s.pending.length > 1 ? 's' : ''} for you`);
+          for (const q of s.pending) console.log(renderQuestion(q, Math.min(caps.cols, process.stdout.columns || 80)).join('\n') + '\n');
+          console.log(`${dim('$')} ${cyan(`aorch answer ${id} ${s.pending[0]!.id} <option>`)}`);
+          process.exit(2);
+        }
+        fail(s.error ? `planning ended without a plan: ${s.error}` : `planning ended without a plan (${s.status})`);
+      }
+      if (!v.json) showPlan(s);
+      let go = !!v.yes;
+      if (!go) {
+        if (!interactive) {
+          if (v.json) console.log(JSON.stringify({ id, status: 'plan-ready', plan: s.plan }));
+          else console.log(`\n${dim('$')} ${cyan(`aorch plan ${id}`)}${dim('   approve and start')}`);
+          process.exit(2);
+        }
+        go = await confirm('\nApprove this plan?');
+      }
+      try {
+        await ctx.engine.approveTeamPlan(id, go);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      if (!go) return console.log(v.json ? JSON.stringify({ id, status: 'stopped' }) : `${red('rejected')} the plan; the run is stopped`);
+      return drive(ctx, id, !!v.json);
+    }
+    case 'plan': {
+      const id = pos[0] ?? fail('usage: aorch plan <runId> [--reject]');
+      const ctx = open(v);
+      const s = ctx.store.state(id) ?? fail(`unknown run ${id}`);
+      if (s.kind !== 'team') fail('not a team run');
+      if (s.plan && !s.pipeline.nodes.length && !v.json && !v.reject) showPlan(s);
+      try {
+        await ctx.engine.approveTeamPlan(id, !v.reject);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      if (v.reject) return console.log(v.json ? JSON.stringify({ id, status: 'stopped' }) : `${red('rejected')} the plan; the run is stopped`);
+      if (!v.json) console.log(`${green('approved')} the plan`);
+      return drive(ctx, id, !!v.json);
+    }
+    case 'answer': {
+      const [id, qid, ...rest] = pos;
+      const input = rest.join(' ');
+      if (!id || !qid || !input.trim()) fail('usage: aorch answer <runId> <question> <option|"your own words">');
+      const ctx = open(v);
+      const s = ctx.store.state(id) ?? fail(`unknown run ${id}`);
+      if (s.kind !== 'team') fail('not a team run');
+      const q = s.pending.find((x) => x.id === qid) ?? fail(s.answers.some((a) => a.question === qid) || s.userAsks?.some((a) => a.question.id === qid && a.answer) ? `already answered: ${qid}` : `unknown question: ${qid} (pending: ${s.pending.map((x) => x.id).join(', ') || 'none'})`);
+      let a: Answer;
+      try {
+        a = answerFromInput(q, input);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      try {
+        if (s.userAsks?.some((x) => x.question.id === qid)) await ctx.engine.answerUser(id, qid, { option: a.option, text: a.text });
+        else await ctx.engine.answerPlan(id, [a]);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      const now = ctx.store.state(id)!;
+      if (v.json && !ctx.engine.isLive(id)) return console.log(JSON.stringify({ id, answered: qid, status: now.status, planning: now.planning, pending: now.pending, plan: now.plan }));
+      if (!v.json) console.log(`${green('✔')} answered ${qid}${a.option ? ` ${dim('→')} ${a.option}` : ''}`);
+      if (ctx.engine.isLive(id)) return drive(ctx, id, !!v.json);
+      if (now.pending.length) {
+        console.log(`${amber('◉')} still waiting on: ${bold(now.pending.map((x) => x.id).join(', '))}`);
+        for (const x of now.pending) console.log(renderQuestion(x, Math.min(caps.cols, process.stdout.columns || 80)).join('\n') + '\n');
+      } else if (now.plan && !now.planning && !now.pipeline.nodes.length) {
+        showPlan(now);
+        console.log(`\n${dim('$')} ${cyan(`aorch plan ${id}`)}${dim('   approve and start')}`);
+      }
+      return;
+    }
+    case 'mode': {
+      const [id, mode] = pos;
+      if (!id || !mode) fail('usage: aorch mode <runId> live|autonomous');
+      const ctx = open(v);
+      try {
+        ctx.engine.setMode(id, mode as 'live');
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      return console.log(v.json ? JSON.stringify({ id, mode }) : `${green('✔')} ${id} is now ${bold(mode)}`);
     }
     case 'orchestrate': {
       const task = pos.join(' ').trim() || v.task || fail('usage: aorch orchestrate "<what you want done>" --repo <dir> [--yes] [--rules-only]');
@@ -1026,7 +1415,10 @@ async function main() {
     }
     case 'runs': {
       const { store } = open(v);
-      const rows = store.list();
+      const listed = store.list();
+      const rows = v.all ? listed : listed.filter((r) => !r.probe);
+      const probes = listed.length - rows.length;
+      if (probes) console.log(dim(`${probes} Evolve probe replay${probes > 1 ? 's' : ''} hidden: aorch runs --all shows them, aorch probes --clean deletes finished ones`));
       if (!rows.length) return console.log(dim('no runs yet — try ') + cyan('aorch run demo-mock --repo . --task "…"'));
       const t = table(
         rows.slice(0, 30).map((r) => [
@@ -1077,6 +1469,18 @@ async function main() {
         ];
       });
       console.log(box(table(rows), { title: 'steps', width: Math.min(caps.cols + 10, process.stdout.columns || 100), border: BRAND }).join('\n'));
+      if (s.kind === 'team') {
+        const lines: string[] = [`${dim('mode')} ${bold(s.mode)}${s.team?.roster ? dim(`  ·  roster ${s.team.roster.join(', ')}`) : ''}`];
+        const answerOf = (id: string) => s.answers.find((a) => a.question === id) ?? s.userAsks?.find((a) => a.question.id === id)?.answer;
+        for (const q of s.cards ?? []) {
+          const a = answerOf(q.id);
+          const open = s.pending.some((x) => x.id === q.id);
+          const label = a ? safeText(a.option ? (q.options.find((o) => o.id === a.option)?.label ?? a.option) : `"${a.text}"`) : open ? amber('waiting for you') : dim('not answered');
+          lines.push('', `${cyan('?')} ${safeText(q.ask).replace(/\s+/g, ' ')}${q.from ? dim(`  (asked by ${safeText(q.from)})`) : ''}`, `  ${green('→')} ${label}${a ? dim(`  by ${a.by}`) : ''}`);
+        }
+        console.log(box(lines, { title: 'team dialogue', width: Math.min(caps.cols + 10, process.stdout.columns || 100), border: BRAND }).join('\n'));
+        if (s.plan) showPlan(s);
+      }
       return summary(s);
     }
     case 'run': {
@@ -1115,6 +1519,19 @@ async function main() {
         fail((e as Error).message);
       }
       console.log(`${bold('resume')} ${id}`);
+      const rs = ctx.store.state(id);
+      // a team run whose plan was not approved yet is planning again: there is nothing to drive, only cards or a plan
+      if (rs?.kind === 'team' && !rs.pipeline.nodes.length) {
+        if (rs.status !== 'running') fail(rs.error ?? `the run is ${rs.status}`);
+        if (rs.pending.length) {
+          for (const q of rs.pending) console.log(renderQuestion(q, Math.min(caps.cols, process.stdout.columns || 80)).join('\n') + '\n');
+          console.log(`${dim('$')} ${cyan(`aorch answer ${id} ${rs.pending[0]!.id} <option>`)}`);
+        } else if (rs.plan) {
+          showPlan(rs);
+          console.log(`\n${dim('$')} ${cyan(`aorch plan ${id}`)}${dim('   approve and start')}`);
+        }
+        process.exit(2);
+      }
       return drive(ctx, id, !!v.json);
     }
     case 'approve': {
@@ -1132,6 +1549,140 @@ async function main() {
         return drive(ctx, id, !!v.json);
       }
       console.log(dim(`continue with: aorch resume ${id}`));
+      return;
+    }
+    case 'feedback': {
+      const [id, node, rating, ...note] = pos;
+      if (!id || !node || (rating !== 'up' && rating !== 'down')) fail('usage: aorch feedback <runId> <node> up|down [note…]');
+      const ctx = open(v);
+      try {
+        ctx.engine.feedback(id, node, rating, note.join(' ') || undefined);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      console.log(`${rating === 'up' ? green('thumbs up') : red('thumbs down')} for ${node}`);
+      return;
+    }
+    case 'lessons': {
+      const cfg = loadConfig(v);
+      const crew = loadCrew(cfg.home);
+      const want = pos[0];
+      if (want && !crew.some((b) => b.id === want)) fail(`no such bot: ${safeText(want).slice(0, 40)}`);
+      const rows: Lesson[] = [];
+      for (const b of crew.filter((b) => !want || b.id === want)) {
+        try {
+          rows.push(...loadLessons(cfg.home, b.id));
+        } catch (e) {
+          fail(`cannot read lessons for ${b.id}: ${(e as Error).message}`);
+        }
+      }
+      if (v.json) return void console.log(JSON.stringify({ lessons: rows }));
+      if (!rows.length) return void console.log(dim('no lessons yet: they appear after runs with rework, handoff problems or feedback'));
+      for (const l of rows) {
+        console.log(`${l.status === 'confident' ? green('confident') : dim('tentative')} ${bold(l.bot)} ${dim(`${l.polarity} · ${l.runs} run${l.runs === 1 ? '' : 's'} · ${l.provenance} · ${l.id}`)}`);
+        console.log(`  ${safeText(l.text)}`);
+      }
+      return;
+    }
+    case 'probes': {
+      const ctx = open(v);
+      const probes = ctx.store.list().filter((r) => r.probe);
+      const finished = probes.filter((r) => r.status !== 'running' && r.status !== 'paused' && !ctx.engine.isLive(r.id));
+      if (!v.clean) {
+        if (v.json) return void console.log(JSON.stringify({ probes: probes.map((r) => ({ id: r.id, status: r.status, costUsd: r.costUsd, startedAt: r.startedAt })) }));
+        if (!probes.length) return void console.log(dim('no probe replays'));
+        for (const r of probes.slice(0, 50)) console.log(`${statusGlyph(r.status)} ${cyan(r.id)} ${dim(r.status)} ${usd(r.costUsd)} ${dim(ago(r.startedAt))}`);
+        return void console.log(dim(`${probes.length} probe replay${probes.length > 1 ? 's' : ''} · ${finished.length} finished · aorch probes --clean deletes the finished ones`));
+      }
+      let n = 0;
+      for (const r of finished) {
+        try {
+          await ctx.engine.deleteRun(r.id);
+          n++;
+        } catch (e) {
+          console.log(`${red('✘')} ${r.id}: ${safeText((e as Error).message)}`);
+        }
+      }
+      if (v.json) return void console.log(JSON.stringify({ deleted: n, kept: probes.length - n }));
+      console.log(`${green('✔')} deleted ${n} probe replay${n === 1 ? '' : 's'}${probes.length - n ? dim(` · ${probes.length - n} still running or not deletable`) : ''}`);
+      return;
+    }
+    case 'harness': {
+      const cfg = loadConfig(v);
+      const [botArg, sub = 'show', a, b] = pos;
+      if (!botArg) fail('usage: aorch harness <bot> [show | log | diff <a> <b> | rollback <v>] [--json]');
+      try {
+        const bot = findBot(cfg.home, botArg);
+        if (sub === 'show') {
+          const hv = harnessView(cfg.home, bot.id);
+          if (v.json) return void console.log(JSON.stringify(hv));
+          const h = hv.current;
+          console.log(`${bold(`${safeText(bot.name)} (${bot.id})`)} ${dim(`harness v${h.version}${h.note ? ` · ${safeText(h.note)}` : ''} · ${hv.total} version${hv.total === 1 ? '' : 's'}${hv.evolvable ? '' : ' · not evolvable'}`)}`);
+          console.log(`${dim('persona ')} ${safeText(h.persona)}`);
+          console.log(dim('guidance'));
+          for (const g of h.guidance) console.log(`  - ${safeText(g)}`);
+          if (!h.guidance.length) console.log(dim('  (none)'));
+          console.log(`${dim('skills  ')} ${h.skills.map(safeText).join(', ') || dim('(none)')}`);
+          return;
+        }
+        if (sub === 'log') {
+          const vs = listVersions(cfg.home, bot);
+          const changes = readChangelog(cfg.home, bot.id);
+          if (v.json) return void console.log(JSON.stringify({ bot: bot.id, versions: vs.map((h) => ({ version: h.version, at: h.at, note: h.note, base: h.base })), changelog: changes }));
+          if (!vs.length) return void console.log(dim(`${bot.id} has no stored harness yet: v1 is made from its definition at its first run`));
+          const top = vs.at(-1)!.version;
+          for (const h of vs) console.log(`${h.version === top ? green('●') : dim('○')} ${bold(`v${h.version}`)} ${dim(h.at)} ${h.base !== undefined ? dim(`from v${h.base}`) : ''} ${h.note ? safeText(h.note) : ''}`);
+          if (changes.length) {
+            console.log(dim('changelog'));
+            for (const c of changes.slice(-20)) console.log(`  ${dim(c.at)} ${c.action === 'adopted' ? green('adopted') : amber('rollback')} v${c.version} ${dim(c.action === 'adopted' ? `from v${c.base} · ${safeText(c.proposal ?? '')} · edits ${(c.picked ?? []).join(',')}` : `copy of v${c.to} (was v${c.base})`)}`);
+          }
+          return;
+        }
+        if (sub === 'diff') {
+          const na = a !== undefined ? versionArg(a) : undefined;
+          const nb = b !== undefined ? versionArg(b) : undefined;
+          if (na === undefined || nb === undefined) fail('usage: aorch harness <bot> diff <a> <b>   (versions, like 1 3 or v1 v3)', 2);
+          const ha = getVersion(cfg.home, bot, na);
+          const hb = getVersion(cfg.home, bot, nb);
+          if (!ha || !hb) fail(`${bot.id} has no version v${!ha ? na : nb}`);
+          const d = diffHarness(ha, hb);
+          if (v.json) return void console.log(JSON.stringify({ bot: bot.id, from: na, to: nb, edits: d }));
+          if (!d.length) return void console.log(dim(`v${na} and v${nb} are the same`));
+          for (const e of d) printEdit(e);
+          return;
+        }
+        if (sub === 'rollback') {
+          const n = a !== undefined ? versionArg(a) : undefined;
+          if (n === undefined) fail('usage: aorch harness <bot> rollback <version>', 2);
+          const h = revert(cfg.home, bot.id, n);
+          if (v.json) return void console.log(JSON.stringify({ harness: h }));
+          return void console.log(`${green('✔')} ${bot.id} harness is now v${h.version} (a copy of v${n}); the next run uses it`);
+        }
+        fail(`unknown harness command "${safeText(sub).slice(0, 20)}": show, log, diff <a> <b> or rollback <v>`, 2);
+      } catch (e) {
+        fail(safeText(scrubPaths((e as Error).message, cfg.home)));
+      }
+      return;
+    }
+    case 'evolve': {
+      if (v.accept !== undefined || v.reject || v.show !== undefined) return evolveDecide(v, pos);
+      const botId = pos[0] ?? fail('usage: aorch evolve <bot> [--since <date>] [--agent a] [--model m] [--json]');
+      if (v.list) return evolveList(botId, v);
+      if (v.probe) return evolveProbe(botId, v);
+      const cfg = loadConfig(v);
+      const bot = loadCrew(cfg.home).find((b) => b.id === botId) ?? fail(`no such bot: ${safeText(botId).slice(0, 40)}`);
+      const r = await proposeFor({ home: cfg.home, bot, registry: makeRegistry(cfg), agent: v.agent, model: v.model, since: v.since });
+      if (v.json) return void console.log(JSON.stringify({ ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.reason ? { reason: r.reason } : {}), ...(r.dropped?.length ? { dropped: r.dropped.map((d) => d.reason) } : {}), ...(r.costUsd !== undefined ? { costUsd: r.costUsd } : {}) }));
+      if (!r.proposal) {
+        console.log(`${dim('no proposal:')} ${safeText(r.reason ?? 'unknown')}`);
+        for (const d of r.dropped ?? []) console.log(dim(`  dropped: ${safeText(d.reason)}`));
+        if (r.costUsd !== undefined) console.log(dim(`editor cost ${usd(r.costUsd)}`));
+        return;
+      }
+      if (r.reason) console.log(dim(safeText(r.reason)));
+      for (const line of renderProposal(r.proposal, bot, loadLessons(cfg.home, bot.id), baselinePersona(cfg.home, bot))) console.log(line.startsWith('-') ? red(line) : line.startsWith('+') ? green(line) : line);
+      for (const d of r.dropped ?? []) console.log(dim(`  dropped: ${safeText(d.reason)}`));
+      if (r.costUsd !== undefined) console.log(dim(`editor cost ${usd(r.costUsd)}`));
       return;
     }
     case 'vault': {

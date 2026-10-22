@@ -4,7 +4,7 @@
  * Everything degrades: truecolor → 256 → 16 → plain text. When stdout is not a TTY, or NO_COLOR is set,
  * nothing animates and nothing is coloured, so piping and CI logs stay clean.
  */
-import type { PipelineNode, RunState } from './types.js';
+import type { PipelineNode, Question, RunState } from './types.js';
 import { CREW, crewFor } from './bots.js'; // used lazily: bots.ts also imports this file
 
 // ---------- capability detection ----------
@@ -539,4 +539,55 @@ export function resultCard(s: RunState, extra: string[] = []): string[] {
   if (s.error) lines.push('', red(s.error.split('\n')[0]!));
   lines.push(...extra);
   return box(lines, { width: caps.cols, border: s.status === 'done' ? [pal.green, pal.cyan] : s.status === 'error' ? [pal.red, pal.pink] : [pal.amber, pal.pink] });
+}
+
+// ---------- question cards ----------
+
+/** Wrap plain or styled text to `width` visible columns at spaces (long words are cut). Each line keeps its own styling. */
+function wrapText(text: string, width: number): string[] {
+  const w = Math.max(8, width);
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      let rest = word;
+      while (vlen(rest) > w) {
+        if (line) (out.push(line), (line = ''));
+        out.push([...rest].slice(0, w).join(''));
+        rest = [...rest].slice(w).join('');
+      }
+      if (!line) line = rest;
+      else if (vlen(line) + 1 + vlen(rest) <= w) line += ' ' + rest;
+      else (out.push(line), (line = rest));
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/** A Question as terminal lines: the ask, why, numbered options with the recommended one marked. Every line fits `width`. */
+/** Model or person text bound for the terminal, without control characters (no escape sequences). Newlines stay. */
+export const safeText = (t: string): string => t.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '');
+
+export function renderQuestion(raw: Question, width: number): string[] {
+  // cards are validated and cleaned when they are made; this also covers logs written before that
+  const q: Question = { ...raw, ask: safeText(raw.ask), ...(raw.why ? { why: safeText(raw.why) } : {}), ...(raw.from ? { from: safeText(raw.from) } : {}), options: raw.options.map((o) => ({ ...o, label: safeText(o.label), ...(o.detail ? { detail: safeText(o.detail) } : {}) })) };
+  const out: string[] = [];
+  const w = Math.max(20, width);
+  for (const l of wrapText(q.ask, w - 2)) out.push(`${out.length ? '  ' : cyan('? ')}${bold(l)}`);
+  if (q.from) out.push(`  ${faint(clip(`asked by ${q.from}`, w - 2))}`);
+  if (q.why) for (const l of wrapText(q.why, w - 2)) out.push(`  ${dim(l)}`);
+  q.options.forEach((o, i) => {
+    const rec = o.id === q.recommended;
+    const head = `${i + 1}) `;
+    const tag = rec ? ' (recommended)' : '';
+    const lines = wrapText(`${o.label}${tag}`, w - 4 - head.length);
+    lines.forEach((l, j) => {
+      const text = rec ? green(l) : l;
+      out.push(j === 0 ? `  ${rec ? green('★') : ' '} ${rec ? green(head) : dim(head)}${text}` : `    ${' '.repeat(head.length)}${text}`);
+    });
+    if (o.detail) for (const l of wrapText(o.detail, w - 4 - head.length)) out.push(`    ${' '.repeat(head.length)}${dim(l)}`);
+  });
+  if (q.allowOther) out.push(`  ${faint('or type your own answer')}`);
+  return out;
 }

@@ -7,9 +7,10 @@ import { join } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { CREW } from './bots.js';
 import { BUILTIN_IDS, KIND_BLURB, type BotDef } from './crew.js';
+import { TEAM_DEFAULT_BUDGET_USD } from './team.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import { failureBrief } from './supervisor.js';
-import type { Pipeline, PipelineNode, RunState } from './types.js';
+import type { Pipeline, PipelineNode, RunState, TeamPlan } from './types.js';
 
 // ---------- step library ----------
 export type StepType = 'planner' | 'architect' | 'coder' | 'tester' | 'reviewer' | 'approval' | 'manager';
@@ -157,7 +158,7 @@ export const TEMPLATES: Record<Template, { label: string; steps: StepType[] }> =
   docs: { label: 'docs · plan → write → review', steps: ['planner', 'coder', 'reviewer'] },
   review: { label: 'code review · reviewer only', steps: ['reviewer'] },
   research: { label: 'research · planner only', steps: ['planner'] },
-  team: { label: 'team · a manager hands out the work → tests → review → approve', steps: ['manager', 'tester', 'reviewer', 'approval'] },
+  team: { label: 'team · a manager hands out the work → tests → review → approve (for questions and a plan first, use `aorch team`)', steps: ['manager', 'tester', 'reviewer', 'approval'] },
 };
 
 export function fromTemplate(t: Template, name: string, agent?: string, testCommand?: string): Pipeline {
@@ -171,6 +172,29 @@ export function fromTemplate(t: Template, name: string, agent?: string, testComm
     p.settings.allowWrites = true;
     p.settings.handoff = 1; // workers may pass a sub-task to a teammate with @HAND
   }
+  return relink(p);
+}
+
+
+/**
+ * The pipeline an approved team plan runs as: one manager (Boss) who hands out the work. Writes are on only when the
+ * plan says so (the person said yes in the dialogue); the plan's limits become the run's limits. Approving the plan is
+ * the plan approval, so the manager's first batch needs no second one (`planPreapproved`).
+ */
+export function teamPipeline(plan: TeamPlan, roster: string[]): Pipeline {
+  const p = blankPipeline('team');
+  const bots = roster.length ? roster : [...new Set(plan.assignments.map((a) => a.bot))];
+  p.settings = {
+    ...p.settings,
+    maxCostUsd: plan.limits.maxCostUsd ?? TEAM_DEFAULT_BUDGET_USD,
+    ...(plan.limits.wallClockMs !== undefined ? { wallClockMs: plan.limits.wallClockMs } : {}),
+    planApproval: true,
+    planPreapproved: true,
+    allowWrites: plan.limits.allowWrites,
+    handoff: 2,
+    allowWorkerWrites: plan.limits.allowWrites,
+  };
+  p.nodes.push({ ...makeStep('manager', p), roster: bots });
   return relink(p);
 }
 

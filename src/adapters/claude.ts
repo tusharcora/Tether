@@ -41,6 +41,8 @@ export function parseClaudeLine(
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly reportsCost = true;
+  /** `--max-budget-usd` stops a call at the request's budget (checked between turns, so it can run slightly over). */
+  readonly enforcesBudget = true;
   readonly supportsResume = true;
 
   detect() {

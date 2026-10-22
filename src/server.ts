@@ -16,7 +16,13 @@ import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
+import { planWaiting, type Answer, type RunState } from './types.js';
+import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
+import { adopt, decline, EvolveOpError, evolveSummary, findBot, harnessView, lessonView, proposalsFor, proposalView, revert, scrubPaths } from './evolveops.js';
+import { listProposals } from './evolve.js';
+import { peekHarness } from './harness.js';
+import { loadLessons, type Lesson } from './lessons.js';
 
 export interface ServerOptions {
   engine: Engine;
@@ -100,6 +106,75 @@ const idParam = (raw: string): string => {
   }
 };
 
+/** Map an Evolve refusal to an HTTP status by its code. The message never carries this machine's paths (home becomes <home>; other fs errors get a fixed text and are logged here). */
+function evolveError(e: unknown, home: string): HttpError {
+  if (e instanceof HttpError) return e;
+  const raw = (e as Error)?.message ?? String(e);
+  const fsErr = typeof (e as NodeJS.ErrnoException)?.code === 'string' && /^E[A-Z]+$/.test((e as NodeJS.ErrnoException).code!);
+  if (e instanceof EvolveOpError) return new HttpError(e.code === 'invalid' ? 400 : e.code === 'not_found' ? 404 : 409, scrubPaths(raw, home));
+  console.error(`[aorch] evolve: ${raw}`);
+  return new HttpError(500, fsErr ? `could not read or write the harness files (${(e as NodeJS.ErrnoException).code})` : scrubPaths(raw, home));
+}
+
+const MAX_ANSWERS = 20;
+/** Map an engine refusal on a team route to an HTTP status by its code. Anything the engine did not mean to refuse is a 500. */
+function teamError(e: unknown): HttpError {
+  if (e instanceof HttpError) return e;
+  const msg = (e as Error).message;
+  if (!(e instanceof TeamError)) return new HttpError(500, msg);
+  switch (e.code) {
+    case 'unknown_run':
+      return new HttpError(404, msg);
+    case 'not_team':
+    case 'unknown_question':
+    case 'invalid':
+      return new HttpError(400, msg);
+    case 'already_answered':
+    case 'conflict':
+      return new HttpError(409, msg);
+    case 'resume_failed':
+      return new HttpError(500, msg);
+  }
+}
+/**
+ * Check the whole batch against the run's pending cards before anything is applied: shapes, known cards, valid options,
+ * free text only where the card allows it. Already answered cards are 409.
+ */
+function checkAnswers(body: unknown, s: RunState): Answer[] {
+  const b = reqObject(body);
+  if (s.status !== 'running' && s.status !== 'paused') throw new HttpError(409, `this run is not active (${s.status})`);
+  if (!Array.isArray(b.answers) || !b.answers.length) throw new HttpError(400, '"answers" must be a non-empty array');
+  if (b.answers.length > MAX_ANSWERS) throw new HttpError(400, `too many answers (max ${MAX_ANSWERS})`);
+  const out: Answer[] = [];
+  const seen = new Set<string>();
+  for (const a of b.answers) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) throw new HttpError(400, 'each answer must be an object');
+    const r = a as Record<string, unknown>;
+    if (typeof r.question !== 'string' || !r.question) throw new HttpError(400, 'each answer needs a "question" id');
+    if (r.option !== undefined && typeof r.option !== 'string') throw new HttpError(400, '"option" must be a string');
+    if (r.text !== undefined && typeof r.text !== 'string') throw new HttpError(400, '"text" must be a string');
+    if (typeof r.text === 'string' && r.text.length > MAX_ANSWER_TEXT) throw new HttpError(400, `"text" is too long (max ${MAX_ANSWER_TEXT})`);
+    if (seen.has(r.question)) throw new HttpError(400, `question "${r.question}" is answered twice in one request`);
+    seen.add(r.question);
+    const q = s.pending.find((x) => x.id === r.question);
+    if (!q) {
+      const answered = s.answers.some((x) => x.question === r.question) || (s.userAsks ?? []).some((x) => x.question.id === r.question && x.answer);
+      throw new HttpError(answered ? 409 : 400, answered ? `already answered: ${r.question}` : `unknown question: ${r.question}`);
+    }
+    const text = cleanAnswerText(r.text);
+    if (r.option !== undefined && !q.options.some((o) => o.id === r.option)) throw new HttpError(400, `"${r.option}" is not an option of ${q.id}`);
+    if (r.option === undefined && !text) throw new HttpError(400, `${q.id} needs an "option" or "text"`);
+    if (r.option === undefined && !q.allowOther) throw new HttpError(400, `${q.id} does not take free text; pick one of its options`);
+    out.push({ question: q.id, ...(r.option !== undefined ? { option: r.option as string } : {}), ...(text ? { text } : {}), by: 'user' });
+  }
+  // planning cards come before any worker's question, so a batch never holds both; a worker's question needs a live or paused run
+  const asks = new Set((s.userAsks ?? []).map((a) => a.question.id));
+  const nAsks = out.filter((a) => asks.has(a.question)).length;
+  if (nAsks && nAsks !== out.length) throw new HttpError(400, 'answer planning cards and worker questions in separate requests');
+  if (nAsks && s.status !== 'running' && s.status !== 'paused') throw new HttpError(409, `this run is not active (${s.status})`);
+  return out;
+}
+
 const isLoopback = (h: string) => h === '127.0.0.1' || h === '::1' || h === 'localhost' || h === '[::1]';
 
 /** Host header must name a loopback host: blocks DNS-rebinding against a loopback-bound server. */
@@ -167,10 +242,16 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   let doctorCache: { at: number; data: unknown } | undefined;
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
 
+  /**
+   * A team run before execution that waits for the person (a card or a ready plan) needs no process, so it is never
+   * "interrupted": it is live as far as the dashboard goes (Stop, no Resume). So is one whose planning call is in flight.
+   */
+  const teamWaits = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }) =>
+    r.kind === 'team' && r.status === 'running' && (engine.isPlanning(r.id) || r.pending > 0 || r.planReady);
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = engine.isLive(id) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
+    const live = engine.isLive(id) || teamWaits({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
     return { ...s, live };
   };
 
@@ -285,7 +366,9 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/crew' && m === 'GET') {
       const px = (b: BotDef) => ({ ...b, pixels: lookPixels(b.look), mark: { shape: shapeOf(b.id), symbol: symbolOf(b.name), initials: initialsOf(b.name) } });
       const style = loadPrefs(cfg.home).crew ?? 'pebble';
-      return send(res, 200, { style, styles: Object.entries(CREW_STYLES).filter(([k]) => k !== 'classic').map(([id, blurb]) => ({ id, blurb })), shapes: SHAPES, glyphs: GLYPHS, bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
+      const crewNow = loadCrew(cfg.home);
+      const evo = evolveSummary(cfg.home, crewNow.map((b) => b.id));
+      return send(res, 200, { evolve: evo, style, styles: Object.entries(CREW_STYLES).filter(([k]) => k !== 'classic').map(([id, blurb]) => ({ id, blurb })), shapes: SHAPES, glyphs: GLYPHS, bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
     }
     if (p === '/api/crew/style' && m === 'PUT') {
       const style = String((await readJson(req)).style ?? '');
@@ -327,6 +410,87 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (r === 'none' && BUILTIN_IDS.has(id)) throw new HttpError(400, 'built-in bots cannot be removed');
         refreshCrew(cfg.home);
         return send(res, 200, { ok: true, result: r }), true;
+      }
+    }
+
+    // ---- evolve: harness versions, lessons and proposals (proposals are made by the CLI's aorch evolve; here they are only reviewed) ----
+    if ((g = p.match(/^\/api\/harness\/([^/]+)$/)) && m === 'GET') {
+      try {
+        return send(res, 200, harnessView(cfg.home, idParam(g[1]!))), true;
+      } catch (e) {
+        throw evolveError(e, cfg.home);
+      }
+    }
+    if ((g = p.match(/^\/api\/harness\/([^/]+)\/rollback$/)) && m === 'POST') {
+      const bot = idParam(g[1]!);
+      const b = reqObject(await readJson(req));
+      try {
+        findBot(cfg.home, bot);
+        if (b.version === undefined) throw new HttpError(400, '"version" is required');
+        return send(res, 200, { harness: revert(cfg.home, bot, b.version) }), true;
+      } catch (e) {
+        throw evolveError(e, cfg.home);
+      }
+    }
+    if (p === '/api/lessons' && m === 'GET') {
+      try {
+        const want = url.searchParams.get('bot');
+        const bots = want !== null ? [findBot(cfg.home, want)] : loadCrew(cfg.home);
+        const out: Lesson[] = [];
+        for (const bt of bots) {
+          try {
+            out.push(...loadLessons(cfg.home, bt.id));
+          } catch {
+            /* an unreadable lessons file reads as none here; the CLI reports it */
+          }
+        }
+        return send(res, 200, { lessons: out.slice(0, 400).map(lessonView) }), true;
+      } catch (e) {
+        throw evolveError(e, cfg.home);
+      }
+    }
+    if (p === '/api/proposals' && m === 'GET') {
+      try {
+        const want = url.searchParams.get('bot');
+        if (want !== null) {
+          const bt = findBot(cfg.home, want);
+          const cur = peekHarness(cfg.home, bt).version;
+          let lessons: Lesson[] = [];
+          try {
+            lessons = loadLessons(cfg.home, bt.id);
+          } catch {
+            /* shown without lesson text */
+          }
+          return send(res, 200, { bot: bt.id, version: cur, proposals: proposalsFor(cfg.home, bt.id, 20).map((x) => proposalView(cfg.home, x, lessons, cur)) }), true;
+        }
+        // no bot: the open proposals of every bot (at most 10 each)
+        const all = loadCrew(cfg.home).flatMap((bt) => {
+          const open = listProposals(cfg.home, bt.id, 'open');
+          const cur = open.length ? peekHarness(cfg.home, bt).version : 0;
+          return open.map((x) => proposalView(cfg.home, x, [], cur));
+        });
+        return send(res, 200, { proposals: all.slice(0, 200) }), true;
+      } catch (e) {
+        throw evolveError(e, cfg.home);
+      }
+    }
+    if ((g = p.match(/^\/api\/proposals\/([^/]+)\/(accept|reject)$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      const b = reqObject(await readJson(req));
+      try {
+        if (g[2] === 'reject') return send(res, 200, { proposal: proposalView(cfg.home, decline(cfg.home, id), []) }), true;
+        // picks are 1-based numbers ([1, 3]) or "kept"; the CLI's text form ("1,3") is not taken here
+        if (typeof b.pick === 'string' && b.pick !== 'kept') throw new HttpError(400, '"pick" must be a list of edit numbers starting at 1 (like [1, 3]), or "kept"');
+        const r = await adopt(cfg.home, id, b.pick ?? undefined, vault);
+        let lessons: Lesson[] = [];
+        try {
+          lessons = loadLessons(cfg.home, r.proposal.bot);
+        } catch {
+          /* shown without lesson text */
+        }
+        return send(res, 200, { harness: r.harness, proposal: proposalView(cfg.home, r.proposal, lessons, r.harness.version), ...(r.vaultNote ? { vaultNote: r.vaultNote } : {}) }), true;
+      } catch (e) {
+        throw evolveError(e, cfg.home);
       }
     }
 
@@ -473,13 +637,32 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
 
     // ---- runs ----
     if (p === '/api/runs' && m === 'GET') {
-      return send(res, 200, store.list().map((r) => ({ ...r, live: engine.isLive(r.id) }))), true;
+      // Evolve probe replays are experiments, hidden unless ?all=1
+      const all = url.searchParams.get('all') === '1';
+      return send(res, 200, store.list().filter((r) => all || !r.probe).map((r) => ({ ...r, live: engine.isLive(r.id) || teamWaits(r) }))), true;
     }
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
+      if (b.kind !== undefined && b.kind !== 'workflow' && b.kind !== 'team') throw new HttpError(400, '"kind" must be "workflow" or "team"');
       if (typeof b.task !== 'string' || !b.task.trim()) throw new HttpError(400, '"task" is required');
       if (typeof b.repo !== 'string' || !b.repo) throw new HttpError(400, '"repo" is required');
       if (!existsSync(b.repo) || !statSync(b.repo).isDirectory()) throw new HttpError(400, `repo path does not exist: ${b.repo}`);
+      if (b.kind === 'team') {
+        if (b.mode !== undefined && b.mode !== 'live' && b.mode !== 'autonomous') throw new HttpError(400, '"mode" must be "live" or "autonomous"');
+        const roster = [...new Set(reqList(b, 'roster')?.split(',') ?? [])];
+        const yes = reqBool(b, 'yes');
+        if (b.budget !== undefined && !(typeof b.budget === 'number' && b.budget > 0 && b.budget <= TEAM_MAX_BUDGET_USD)) throw new HttpError(400, `"budget" must be a dollar amount above 0 and up to ${TEAM_MAX_BUDGET_USD}`);
+        if (b.maxRounds !== undefined && !(Number.isInteger(b.maxRounds) && b.maxRounds >= 1 && b.maxRounds <= 6)) throw new HttpError(400, '"maxRounds" must be a whole number from 1 to 6');
+        // the run is created and returned at once; planning (model calls) runs in the background, so poll the run
+        try {
+          const id = await engine.startTeam({ task: b.task, repo: resolve(b.repo), mode: b.mode, roster: roster.length ? roster : undefined, yes, budgetUsd: b.budget, maxRounds: b.maxRounds, background: true });
+          return send(res, 201, { id }), true;
+        } catch (e) {
+          // a refusal of the input (an unknown roster bot) is 400; a run that could not be made (not a git repo) is 422, as for workflows
+          if (e instanceof TeamError) throw teamError(e);
+          throw new HttpError(422, (e as Error).message);
+        }
+      }
       let pl;
       try {
         pl = typeof b.pipeline === 'string' ? readPipeline(cfg.home, b.pipeline) : normalizePipeline(b.pipeline);
@@ -493,24 +676,24 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         throw new HttpError(422, (e as Error).message);
       }
     }
-    if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'GET') return send(res, 200, runView(g[1]!)), true;
+    if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'GET') return send(res, 200, runView(idParam(g[1]!))), true;
     if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'DELETE') {
-      if (!store.state(g[1]!)) throw new HttpError(404, 'unknown run');
+      if (!store.state(idParam(g[1]!))) throw new HttpError(404, 'unknown run');
       try {
-        await engine.deleteRun(g[1]!, { keepWork: url.searchParams.get('keepWork') === '1' });
+        await engine.deleteRun(idParam(g[1]!), { keepWork: url.searchParams.get('keepWork') === '1' });
       } catch (e) {
         throw new HttpError(409, (e as Error).message);
       }
-      return send(res, 200, { deleted: g[1] }), true;
+      return send(res, 200, { deleted: idParam(g[1]!) }), true;
     }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/events$/)) && m === 'GET') {
-      const id = g[1]!;
+      const id = idParam(g[1]!);
       runView(id);
       const evs = url.searchParams.get('chunks') === '1' ? store.events(id, Number(url.searchParams.get('after') ?? 0)) : store.eventsNoChunks(id);
       return send(res, 200, evs), true;
     }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/stream$/)) && m === 'GET') {
-      const id = g[1]!;
+      const id = idParam(g[1]!);
       runView(id);
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       let last = Number(req.headers['last-event-id'] ?? url.searchParams.get('after') ?? store.events(id).at(-1)?.seq ?? 0);
@@ -532,17 +715,52 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       req.on('close', () => (clearInterval(tick), clearInterval(beat)));
       return true;
     }
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode)$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      const what = g[2]!;
+      const s = store.state(id);
+      if (!s) throw new HttpError(404, `unknown run ${id}`);
+      const b = await readJson(req);
+      if (s.kind !== 'team') throw new HttpError(400, 'not a team run');
+      try {
+        if (what === 'answers') {
+          const answers = checkAnswers(b, s);
+          // planning cards go in one batch; a worker's question is answered one at a time
+          const asks = new Set((s.userAsks ?? []).map((a) => a.question.id));
+          const plan = answers.filter((a) => !asks.has(a.question));
+          // the answer is recorded now; the next planning round (a model call) runs in the background and clients poll the run
+          if (plan.length) {
+            if (engine.recordPlanAnswers(id, plan)) engine.continuePlanningInBackground(id);
+          }
+          // all of a batch's worker answers are recorded together or not at all
+          const user = answers.filter((x) => asks.has(x.question));
+          if (user.length) await engine.answerUsers(id, user.map((a) => ({ question: a.question, option: a.option, text: a.text })));
+        } else if (what === 'plan') {
+          const approved = reqBool(reqObject(b), 'approved');
+          if (approved === undefined) throw new HttpError(400, '"approved" (true or false) is required');
+          await engine.approveTeamPlan(id, approved);
+        } else {
+          const mode = reqObject(b).mode;
+          if (mode !== 'live' && mode !== 'autonomous') throw new HttpError(400, '"mode" must be "live" or "autonomous"');
+          engine.setMode(id, mode);
+        }
+      } catch (e) {
+        throw teamError(e);
+      }
+      return send(res, 200, runView(id)), true;
+    }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/(stop|resume|approve)$/)) && m === 'POST') {
-      const id = g[1]!;
+      const id = idParam(g[1]!);
       const action = g[2]!;
       const s = store.state(id);
       if (!s) throw new HttpError(404, `unknown run ${id}`);
       const b = await readJson(req);
       try {
         if (action === 'stop') {
-          if (!engine.stop(id)) throw new HttpError(409, 'run is not live in this server (stop it where it was started)');
+          if (!engine.stop(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
         } else if (action === 'resume') {
-          await engine.resume(id, { retryFailed: b.retryFailed });
+          // a team run still planning resumes with its next round in the background
+          await engine.resume(id, { retryFailed: b.retryFailed, background: true });
         } else {
           if (typeof b.node !== 'string') throw new HttpError(400, '"node" is required');
           engine.approve(id, b.node, b.approved !== false, 'dashboard');
@@ -554,8 +772,23 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       }
       return send(res, 200, runView(id)), true;
     }
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/feedback$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      const b = await readJson(req);
+      if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'expected a JSON object');
+      if (typeof b.node !== 'string' || !b.node) throw new HttpError(400, '"node" is required');
+      if (b.rating !== 'up' && b.rating !== 'down') throw new HttpError(400, '"rating" must be "up" or "down"');
+      if (b.note !== undefined && typeof b.note !== 'string') throw new HttpError(400, '"note" must be text');
+      try {
+        engine.feedback(id, b.node, b.rating, b.note);
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      return send(res, 200, runView(id)), true;
+    }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/diff$/)) && m === 'GET') {
-      const s = store.state(g[1]!);
+      const s = store.state(idParam(g[1]!));
       if (!s) throw new HttpError(404, 'unknown run');
       const node = url.searchParams.get('node');
       let diff = '';

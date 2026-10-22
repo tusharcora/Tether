@@ -1,3 +1,4 @@
+import { fence } from './fence.js';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -85,6 +86,11 @@ const STUB_TEXT = {
 } as const;
 
 /** An untouched auto-created stub carries no information, so it is never worth prompt space. */
+/** Notes Evolve writes (lessons, retired lessons, adopted harness records): never retrieved as context. */
+export function isEvolveNote(n: Pick<VaultNote, 'path' | 'type'>): boolean {
+  return /^lessons\//i.test(n.path) || n.type === 'lesson' || n.type === 'lesson-retired' || n.type === 'harness-adopted';
+}
+
 export function isStub(n: VaultNote): boolean {
   const text = STUB_TEXT[n.type as keyof typeof STUB_TEXT];
   return !!text && n.body.trim() === `# ${n.title}\n\n${text}`;
@@ -249,16 +255,25 @@ export class Vault {
       .map(([p, score]) => ({ note: byPath.get(p)!, score }));
   }
 
-  /** Prompt-ready context block. Empty string if nothing relevant. */
+  /**
+   * Prompt-ready context block: each note is a fenced <vault-note> data section (bounded), so nothing in a note reads as instructions.
+   * Evolve notes (anything under lessons/, and lesson or harness notes by type) are never retrieved: lessons reach a bot only through
+   * guidance the person accepted, and one bot's lessons must not leak into another bot's or another repository's prompts.
+   * Empty string if nothing relevant.
+   */
   async contextFor(query: string, opts: { maxChars?: number; limit?: number; exclude?: Set<string> } = {}): Promise<string> {
-    const hits = await this.search(query, opts.limit ?? 5, opts.exclude);
+    const notes = await this.scan();
+    const exclude = new Set(opts.exclude ?? []);
+    for (const n of notes) if (isEvolveNote(n)) exclude.add(n.path);
+    const hits = await this.search(query, opts.limit ?? 5, exclude);
     const max = opts.maxChars ?? 6000;
     let out = '';
     for (const { note } of hits) {
       const snippet = note.body.replace(/^#+\s.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 700);
-      const block = `### [[${noExt(note.path)}]]${note.type ? ` (${note.type})` : ''}\n${snippet}${
+      const body = `[[${noExt(note.path)}]]${note.type ? ` (${note.type})` : ''}\n${snippet}${
         note.links.length ? `\nLinks: ${[...new Set(note.links)].slice(0, 8).map((l) => `[[${l}]]`).join(', ')}` : ''
-      }\n\n`;
+      }`;
+      const block = `${fence('vault-note', body)}\n\n`;
       if (out.length + block.length > max) break;
       out += block;
     }

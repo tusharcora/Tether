@@ -1,6 +1,6 @@
-import type { NodeState, Pipeline, RunState, StoredEvent } from '../../src/types.js';
+import type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
 
-export type { NodeState, Pipeline, RunState, StoredEvent };
+export type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
 export type RunView = RunState & { live: boolean };
 export interface RunRow {
   id: string;
@@ -13,6 +13,14 @@ export interface RunRow {
   costUsd: number;
   live: boolean;
   nodes: Record<string, string>;
+  kind: RunState['kind'];
+  mode: TeamMode;
+  /** Questions waiting for the person. */
+  pending: number;
+  /** A team run's plan is ready and waits for approval. */
+  planReady: boolean;
+  /** An Evolve probe replay (listed only with ?all=1). */
+  probe?: true;
 }
 export interface Issue {
   level: 'error' | 'warn';
@@ -68,6 +76,20 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       return { text: 'run resumed', tone: 'info' };
     case 'setup.result':
       return { text: `setup ${e.ok ? 'finished' : 'failed'}`, tone: e.ok ? 'done' : 'error' };
+    case 'plan.question':
+      return { text: `the team asks ${e.questions.length} question${e.questions.length === 1 ? '' : 's'}`, tone: 'wait' };
+    case 'plan.answer':
+      return { text: `${e.answers.length} answer${e.answers.length === 1 ? '' : 's'} recorded`, tone: 'info' };
+    case 'plan.ready':
+      return { text: 'the plan is ready for approval', tone: 'wait' };
+    case 'team.mode':
+      return { text: `mode: ${e.mode}`, tone: 'info' };
+    case 'team.error':
+      return { text: e.message, tone: 'error' };
+    case 'user.ask':
+      return { text: `${nameOf(e.node)} asks: ${e.question.ask}`, tone: 'wait' };
+    case 'user.answer':
+      return { text: `answered ${e.question} (${e.answer.by})`, tone: 'info' };
     case 'node.started':
       return { text: `${nameOf(e.node)} started${e.attempt > 1 ? ` (attempt ${e.attempt})` : ''}`, tone: 'running' };
     case 'node.finished':

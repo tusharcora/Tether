@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { foldRun, type RunEvent, type RunState, type StoredEvent } from './types.js';
+import { foldRun, planWaiting, type RunEvent, type RunState, type StoredEvent } from './types.js';
 
 // node:sqlite is still flagged experimental on Node 22; silence only that warning.
 const origEmit = process.emitWarning.bind(process);
@@ -22,6 +22,14 @@ export interface RunSummary {
   finishedAt?: number;
   costUsd: number;
   nodes: Record<string, string>;
+  kind: RunState['kind'];
+  mode: RunState['mode'];
+  /** Questions waiting for the person. */
+  pending: number;
+  /** A team run's plan is ready and waits for approval. */
+  planReady: boolean;
+  /** An Evolve probe replay (lists may hide it; it can be deleted like any run). */
+  probe?: true;
 }
 
 type Listener = (e: StoredEvent) => void;
@@ -119,8 +127,10 @@ export class Store {
     return state;
   }
 
-  runIds(): string[] {
-    const rows = this.db.prepare("SELECT run_id FROM events WHERE type = 'run.started' ORDER BY ts DESC").all() as {
+  /** Run ids, newest first. `probes: false` leaves Evolve probe replays out (in the query, so limits apply to real runs); `true` lists only them. */
+  runIds(o: { probes?: boolean } = {}): string[] {
+    const where = o.probes === false ? " AND json_extract(data, '$.probe') IS NULL" : o.probes === true ? " AND json_extract(data, '$.probe') IS NOT NULL" : '';
+    const rows = this.db.prepare(`SELECT run_id FROM events WHERE type = 'run.started'${where} ORDER BY ts DESC`).all() as {
       run_id: string;
     }[];
     return rows.map((r) => r.run_id);
@@ -141,6 +151,11 @@ export class Store {
         finishedAt: s.finishedAt,
         costUsd: s.costUsd,
         nodes: Object.fromEntries(Object.entries(s.nodes).map(([k, v]) => [k, v.status])),
+        kind: s.kind,
+        mode: s.mode,
+        pending: s.pending.length,
+        planReady: planWaiting(s),
+        ...(s.probe ? { probe: true as const } : {}),
       });
     }
     return out;

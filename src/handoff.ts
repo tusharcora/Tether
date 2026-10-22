@@ -5,7 +5,7 @@
 import { CREW } from './bots.js';
 import { STEP_BLURB, STEP_TYPES, blurbFor, extractJson, makeStep, type StepType } from './composer.js';
 import { ancestorsOf, parentsOf } from './pipeline.js';
-import { DEFAULT_ROLE_PROMPTS } from './prompt.js';
+import { DEFAULT_ROLE_PROMPTS, planText } from './prompt.js';
 import type { Contract, Pipeline, PipelineNode, RunState } from './types.js';
 
 export interface PlanTask extends Contract {
@@ -180,6 +180,7 @@ function managerContext(state: RunState, manager: PipelineNode): string[] {
   if (role) out.push(`Your instructions:\n${role}`);
   if (manager.guidance) out.push(`Guidance from the person in charge (follow it):\n${manager.guidance}`);
   if (state.workspace?.context) out.push(`Project context:\n${state.workspace.context}`);
+  if (state.kind === 'team' && state.plan) out.push(`The plan the person approved (hand out work to carry it out):\n${planText(state.plan, state.cards ?? [])}`);
   const byId = new Map(p.nodes.map((n) => [n.id, n]));
   const upstream = p.settings.pipeMode === 'direct' ? parentsOf(p, manager.id) : ancestorsOf(p, manager.id);
   const blocks: string[] = [];

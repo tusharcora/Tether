@@ -6,6 +6,8 @@ A durable orchestrator for CLI coding agents. It runs workflows of agents (Claud
 - **Web dashboard** (`aorch serve`): visual workflow builder, run timeline, knowledge graph of your Obsidian-style vault, and a Crew tab for linking bots to models.
 - **Crew**: Maestro (orchestrator), Scout, Brick, Bolt, Probe, Lens and Gate. Link any bot to any agent and model, local ones included.
 - **Maestro supervisor**: on failure, retries, then escalates the failing step to a stronger model, then stops and explains.
+- **Team runs** (`aorch team "<goal>"`): a manager (Maestro) plans with you first, asking short questions with a recommended option, then a team of agents hands work around and can ask you things as they go. Live or autonomous. See [Team runs](#team-runs).
+- **Evolve** (`aorch evolve <bot>`): bots get better with use. Your thumbs-up/down and run outcomes become lessons; Evolve proposes small, versioned edits to a bot's harness that you review, optionally probe within a budget, and accept or reject. Nothing is applied automatically. See [Evolve](#evolve-bots-that-improve-with-use).
 
 ## Terminal UI tips
 
@@ -31,7 +33,7 @@ node dist/cli.js tui        # interactive terminal UI
 node dist/cli.js serve      # web dashboard on a loopback port
 ```
 
-`aorch orchestrate "<task>" --repo <dir>` asks Maestro to design a workflow for a task. `aorch run <pipeline.json> --repo <dir> --task "<task>"` runs a saved one. `aorch --help` lists everything.
+`aorch team "<goal>" --repo <dir>` starts a team run: Maestro asks planning questions, you approve the plan, then the team works. `aorch orchestrate "<task>" --repo <dir>` asks Maestro to design a workflow for a task. `aorch run <pipeline.json> --repo <dir> --task "<task>"` runs a saved one. `aorch --help` lists everything.
 
 ## Safety notes
 
@@ -128,7 +130,7 @@ A step can ask a step that already finished: why it did something, or about a bu
 
 ## Teams: a manager hands out work
 
-A `manager` step plans the work and hands pieces to other bots at run time, then reviews what comes back. It is read-only: it coordinates and never edits files. The `team` workflow (`manager → tests → review → approve`, tests only when the repo has a test command) is the quickest way to try it; you can also add a manager step to any workflow by hand. Maestro does not propose manager steps.
+A `manager` step plans the work and hands pieces to other bots at run time, then reviews what comes back. It is read-only: it coordinates and never edits files. The `team` workflow (`manager → tests → review → approve`, tests only when the repo has a test command) is the quickest way to try it; you can also add a manager step to any workflow by hand. Maestro does not propose manager steps in a workflow (open-ended work goes to a team run, below).
 
 The manager replies with a plan, `{"tasks":[…]}`. Each task is a hand-off contract:
 
@@ -165,6 +167,101 @@ A worker (any agent step, including one a manager spawned) can pass a sub-task t
 - The child's answer comes back to the worker, which then finishes its own step with it. A failed handoff does not fail the run: the worker is told it failed and decides what to do.
 - `@ASK` is still the cheap way to ask a question: it consults a step that already finished and spawns nothing. Use `@HAND` when someone needs to do new work.
 
+
+## Team runs
+
+A run is either a **workflow** (a fixed pipeline of steps, everything above) or a **team** run: you give a goal, Maestro asks you a few questions, writes a plan, and once you approve it a manager (Boss) hands the work to bots from the crew. Use a workflow when you know the steps; use a team when the work is open-ended. Maestro proposes a team run when you describe open-ended work or ask for "a team".
+
+**Planning cards.** Before any plan, Maestro asks in rounds. Each round has up to 4 questions (cards) with at most 6 options each; every card has a recommended option (marked with a star), and most carry a one-line reason for asking. Some cards also accept your own words (free text, up to 2000 characters). The "writes" card is always worded by aorch itself ("May agents change files in the worktree?"), whatever the model wrote, so its yes means yes. Press enter or run with `--yes` to take the recommended answers. After at most 3 rounds (`--rounds n`, 1 to 6) Maestro has to write the plan, which lists the goal, success criteria, who does what (read or write) and the limits. Nothing starts until you approve it. Boss's first batch of work needs no second approval only when it stays inside the plan (the bots it names, writes only where the plan says write); anything beyond it, and every later batch, asks you again.
+
+**Modes.** `live` (default) keeps you in the loop: progress reports in the run's chat and questions from workers wait for you. `autonomous` goes quiet: Maestro answers workers' questions with the recommended option (logged as answered by Maestro) and reports only once, at the end. Planning questions always come to you in both modes (unless `--yes`). Switch any time: `/mode live|autonomous` in the run's chat, `aorch mode <runId> live|autonomous`, or the toggle in the dashboard. A card that is already waiting stays waiting.
+
+**Workers can ask you: `@ASK user:`.** A worker that needs a decision ends its answer with a line in column 0:
+
+```
+@ASK user: Which database? | options: postgres; sqlite | recommended: sqlite | why: the repo has no server
+```
+
+`options:` (at most 6, separated by `;`), `recommended:` (a label or number; the first option if missing) and `why:` are optional; without options you get a "proceed with your best judgement" card. The step pauses, the run waits, and when you answer the step runs again with your answer in its prompt. Files it had changed before pausing are reverted while it waits, and it is told to redo them. At most 4 questions per reply; at most 2 cards wait at once, and beyond that, or when the step cannot wait (a `@HAND` child), Maestro answers with the recommended option and says so. `@ASK <step-id>:` still consults a finished step as described above.
+
+**Limits.**
+
+- Budget: a plan without a cost cap gets `$5`. `--budget <dollars>` (or `budget` in the API) overrides the model's cap; nothing can go above `$50` (`TEAM_MAX_BUDGET_USD`). The cap is for the whole run, planning included: planning calls get only what is left, and planning stops (the run ends with an error that says so) once it has spent `--budget`, or `$5` when no budget was given. The plan shows what planning spent and what is left; a plan whose cap planning already used up cannot be approved (reject it and start again with a larger `--budget`). The cap and the plan's wall-clock limit (clamped to 1 minute to 4 hours) cover everything the team spawns, and a run that hits them stops and says so.
+- Writes: agents are read-only unless you answer yes to the "writes" card yourself. That needs an explicit approval from you: `--yes`, autonomous mode and the model's own plan cannot turn writes on. With writes on, workers may also use `@HAND!`.
+- Workers can pass sub-tasks with `@HAND` and consult finished steps with `@ASK <step-id>:`, as in the sections above.
+
+**Commands.**
+
+```
+aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster coder,reviewer] [--budget 2.50] [--rounds 3] [--yes]
+aorch answer <runId> <question> <option | "your own words">   # answer a waiting card from another terminal
+aorch plan <runId> [--reject]                                 # approve (or reject) a finished plan
+aorch mode <runId> live|autonomous
+aorch show <runId>                                            # includes the questions, answers (and who gave them) and the plan
+```
+
+`aorch team` asks the cards in the terminal and shows the plan before it starts. Without a terminal and without `--yes` it prints the cards and exits with code 2; continue with `aorch answer` and `aorch plan`. `--json` prints JSON only. `--roster` limits the plan to those bots.
+
+**Terminal UI.** `T` on the Runs or Workflows tab (or `/team <task>`, or the command palette) starts a team run. Cards appear in the run's chat. Press enter to give the card the keys; then `1`-`9` pick an option, enter takes the recommended one, `o` types your own words when the card allows it, and esc goes back to chatting. Until you press enter, what you type is an ordinary chat message. When the plan is ready the chat says so: `/approve` starts the team, `/reject` cancels. A waiting question or plan turns the face amber and puts a `?` on the run in the Runs tab.
+
+**Dashboard.** The New run dialog has a Workflow / Team toggle and a mode toggle. A team run in the Runs tab shows a Team badge, a badge while it waits for you, the question cards (option buttons, recommended badge, free text, "Use recommendations"), the plan with Approve / Reject, and the dialogue so far. A run waiting on you is never shown as interrupted, and Stop ends it at any point (planning, plan ready, or paused on a question).
+
+**Stop and resume.** Stopping a team run while it plans, or while its plan waits, drops the open cards. `aorch resume <runId>` (or Resume in the dashboard) plans again from the answers given so far: the round that was cut off is asked again, and a stopped plan comes back for approval.
+
+**API.**
+
+- `POST /api/runs` with `{"kind":"team","task","repo","mode","roster","budget","maxRounds","yes"}` starts one (`kind` defaults to `workflow`). It returns `201 {"id"}` as soon as the run exists; planning runs in the background, so poll `GET /api/runs/:id` for the cards.
+- `POST /api/runs/:id/answers` with `{"answers":[{"question","option","text"}]}` answers planning cards (one batch) or workers' questions (several at once are recorded together, or none if one is bad). It returns once the answers are recorded; the next planning round runs in the background, so poll the run.
+- `POST /api/runs/:id/plan` with `{"approved":true|false}` approves or rejects the plan.
+- `POST /api/runs/:id/mode` with `{"mode":"live"|"autonomous"}`.
+- `GET /api/runs` lists runs with `kind`, `mode`, the number of waiting cards (`pending`) and `planReady`; `GET /api/runs/:id` has the `pending` cards themselves, the `answers` and the `plan`.
+- `POST /api/runs/:id/stop` ends a team run while it plans, while its plan waits, or while it is paused on a question; `POST /api/runs/:id/resume` picks it up again.
+- Errors: 400 for bad input (including an unknown roster bot or an unknown question), 404 unknown run, 409 already answered or not allowed now (for example the run is stopped), 422 when the run cannot be created (for example the repo is not a git repository), 500 when an answer was recorded but the run could not carry on.
+
+## Evolve: bots that improve with use
+
+Evolve lets each bot get better from its own runs and from your feedback, after the method of Harness² (propose, probe, compose). The models stay as they are; what changes is the bot's **harness**, and only when you accept a change.
+
+**The harness.** Each bot has numbered, immutable versions under `<home>/harness/<bot>/v<N>.json`; the highest one is current. A harness is three things and nothing else:
+
+- `persona`: v1 holds the bot's definition text. An accepted persona edit never replaces a step's role prompt (its own prompt, or the role's default): when the current persona differs from v1's, it is **added** after the role prompt as a fenced "role note" (at most 600 characters);
+- `guidance`: short notes added to the bot's prompt under "Learned guidance for your role", fenced as data (at most 12 notes of at most 400 characters);
+- `skills`: the bot's skill list (at most 20 names of at most 80 characters). Runs do not read it yet, so Evolve does not propose skills edits in this version (they are dropped with "skills edits are not applied yet").
+
+Permissions, limits, write access, bindings, agents, models and tools are not part of a harness, so Evolve cannot change them; a proposed edit that tries is dropped with a reason. v1 is a snapshot of the bot's definition, made the first time the bot runs; looking at a harness (CLI, terminal, dashboard, API) never writes one. Every agent or reviewer step whose role is a crew bot (agent or verdict kind) records which harness it ran with (`node.started` carries `harness: {bot, version}`); gates, approvals and steps without a bot role have no harness. At most 200 versions are kept per bot (v1 and the newest). The manager (Boss) is not evolvable: its prompts are built from each step and never use a harness, so no proposal is made for it (you can still look at its harness and roll it back).
+
+Editing a bot's description in the Crew tab (or resetting a built-in one) does not change its harness or any run prompt. For built-in bots, v1's persona is the bot's one-line blurb; the blurb is not part of the prompt, so a persona edit for a built-in bot removes nothing: its role note is shown as added text ("nothing is removed"), and a later persona edit shows the earlier role note it replaces.
+
+**Feedback.** Tell aorch how a step went: `aorch feedback <runId> <node> up|down [note…]`, `+` / `-` on a step in the terminal's run view, the Good / Bad buttons under a finished step in the dashboard, or `POST /api/runs/:id/feedback` with `{"node","rating":"up"|"down","note"}`. A thumbs-down only teaches something when it has a note saying why.
+
+**Lessons.** When a run finishes (done or failed), aorch reflects on it without any model call and keeps per-bot lessons in `<home>/harness/<bot>/lessons.json`: work sent back for rework twice or more, two or more refused handoffs, a thumbs-down note, or a thumbs-up on a step that needed no rework and was quick and cheap. Each lesson carries its evidence (run, step and signal ids) and its provenance: `metrics` (wording made by aorch), `feedback` (your note) or `check` (a reviewer's or gate's words: lowest trust, never cited unless a person's feedback backs it). A lesson stays **tentative** until at least 3 distinct runs support it with no conflicting lesson (for example the same step both sent back and liked); then it is **confident**. Only confident lessons are ever proposed. Confident lessons are also written to the vault under `lessons/<bot>/`, as a record; vault retrieval never puts `lessons/` notes (or lesson and harness notes by type) into any prompt, so a lesson reaches a bot only through guidance you accepted. See them with `aorch lessons [bot]`, in the terminal's evolve view, or in the dashboard. Lesson and feedback text is data: it is fenced whenever it goes into a prompt (the editor's prompt and the guidance block), and every vault note retrieved as context is a fenced `<vault-note>` data section.
+
+**Proposals.** `aorch evolve <bot>` makes one model call (the editor: Maestro's binding unless you pass `--agent`/`--model`, with a $0.50 cost cap where the adapter enforces one, and a 3-minute timeout) that suggests a small diff to the harness from the confident lessons. With no confident lessons it says "not enough evidence" and makes no call. A proposal has at most 5 edits, each citing at least one lesson; edits outside the editable fields, over the size limits, citing anything but a confident lesson of this bot, or matching an edit you rejected before are dropped with a reason. Nothing is applied: a proposal is a file under `<home>/harness/<bot>/proposals/` until you decide. At most 10 proposals can be open per bot. An open proposal written for an older version is closed as **superseded** the next time `aorch evolve` runs for that bot with confident lessons (shown apart from proposals you rejected); it cannot be accepted anyway, because accepting checks that the harness is still at the version the proposal was written for.
+
+**Probes (optional, they cost money).** `aorch evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--allow-commands]` replays up to `n` (default 3, at most 8) recent read-only runs of that bot once with the current harness and once per proposed edit, and keeps an edit only when it did better in most of the tasks it was compared on. There is no probe without `--budget`, and the spend stops at it. Replays run read-only agent steps in a throwaway clone (pushing from it is blocked), never teach lessons, and only use adapters that can cap a call's cost. Runs whose workflow has a gate or setup command are skipped unless you pass `--allow-commands`: those commands then re-run in the clone with your shell's full rights, so they can reach anything a command can (only pass it for commands you trust). The result is saved on the proposal: the dashboard, the evolve view and `aorch evolve --show <id>` show each edit as kept, dropped or not probed. Probe replays are hidden from run lists (`aorch runs --all`, `P` on the terminal's Runs tab, or "show probe replays" in the dashboard shows them; `GET /api/runs?all=1`), `aorch probes --clean` deletes the finished ones, and each probe first deletes finished replays older than 7 days or beyond the newest 100 (their scores are already saved on the proposal). The probe's search for runs to replay never counts probe replays.
+
+**Accept, reject, roll back.** Nothing is ever applied by itself.
+
+- `aorch evolve --accept <id>` applies all edits; `--pick 1,3` applies only those (numbered from 1, as printed); `--pick kept` applies what the saved probe kept. When a probe dropped an edit, accepting without an explicit pick is refused everywhere (CLI, terminal, dashboard, API), so you choose. Accepting writes the next version (noted `evolve <id>`), a line in `<home>/harness/<bot>/changelog.jsonl`, and a vault note `lessons/<bot>/harness-v<N>.md` with the changes and the cited lessons (best effort); the next run uses it.
+- `aorch evolve --reject <id>` rejects every edit of it; rejected edits are remembered (by fingerprint) and never proposed again. Showing and rejecting also work for proposals of a bot you have since deleted.
+- Accept, reject and rollback take a per-bot lock (`<home>/harness/<bot>/.lock`, stale after 60 seconds), so two processes cannot interleave them; the second one is told the harness is busy.
+- `aorch harness <bot>` shows the current version; `aorch harness <bot> log` lists the versions and the changelog (adoptions and rollbacks); `aorch harness <bot> diff <a> <b>` shows what changed; `aorch harness <bot> rollback <v>` makes a new version that copies `v` (rolling back to the current version, or to one that does not exist, is an error and changes nothing).
+- `aorch evolve <bot> --list` lists a bot's proposals; `aorch evolve --show <id>` shows one with its diff, evidence and probe results.
+
+**Terminal UI.** The Crew tab shows each bot's harness version and `● proposal` when one is open. `v` opens the bot's evolve view: the proposals with their diff, the lessons they cite and any probe results. Digits tick edits to accept, `K` ticks the edits the probe kept, `a` accepts (the ticked edits, or all when nothing is ticked and the probe dropped nothing), `r` rejects after you press `y`, and esc goes back. The view follows the proposal you are looking at by its id, so a new proposal arriving while you read never moves your selection, ticks or a pending reject onto another one. The view never asks the editor for a proposal (that costs money): run `aorch evolve <bot>` for that.
+
+**Dashboard.** On the Crew tab each agent or reviewer bot shows its harness version and a `● proposal` badge; Evolve opens its harness (with versions and roll back), proposals (tick edits, Accept, Pick the kept edits, Reject with an inline confirm) and lessons. Like the terminal, it reviews proposals and never makes them.
+
+**Maestro.** When recent runs show a bot sent back again and again, Maestro may offer to run `aorch evolve <bot>`; it never runs it on its own. Any `aorch evolve …` or `aorch harness … rollback` command Maestro proposes asks you every time, even when Maestro commands are set to "always", and "always allow" is not remembered for them.
+
+**API** (loopback only, like the rest):
+
+- `GET /api/harness/:bot`: `{bot, evolvable, current, versions (newest last, at most 50), total}`.
+- `POST /api/harness/:bot/rollback` with `{"version": 2}`.
+- `GET /api/lessons?bot=<bot>` (all bots without `bot`): lessons with text, status, runs, provenance and evidence ids.
+- `GET /api/proposals?bot=<bot>`: the bot's open proposals, then the recent decided ones, each with `label` (`open`, `accepted`, `rejected`, `superseded`), `stale`, edits numbered from 1 with the lessons they cite, and the saved probe (`probe`, `composed` with edit numbers kept, dropped and not probed). Without `bot`: the open proposals of every bot.
+- `POST /api/proposals/:id/accept` with `{}` (all edits; refused with 400 after a probe dropped edits), `{"pick":[1,3]}` (numbered from 1) or `{"pick":"kept"}`; `POST /api/proposals/:id/reject` with `{}`.
+- Errors: 400 for a malformed id, a bad pick or version, or rolling back to the current or a missing version; 404 for an unknown bot or proposal; 409 when the harness moved on since the proposal was written, or the proposal was already accepted, rejected or superseded; 403 when the `Host` header is not a loopback name, or a state-changing request comes from another origin. Error messages never contain the home path (it is shown as `<home>`).
 
 ## Crew styles (web dashboard)
 

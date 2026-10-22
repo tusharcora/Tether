@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -44,6 +44,21 @@ export async function createWorktree(repo: string, home: string, runId: string, 
   mkdirSync(join(home, 'worktrees'), { recursive: true });
   await must(top, ['worktree', 'add', '-b', branch, workdir, baseSha]);
   return { workdir, baseSha, branch };
+}
+
+/**
+ * A throwaway clone of `repo` at `dest` that borrows the source's objects (`--shared`) and checks nothing out. Git only reads the
+ * source to make it: no ref, branch, worktree or file of the source changes. Evolve probes run inside such a clone.
+ */
+export async function cloneShared(repo: string, dest: string): Promise<void> {
+  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
+  await must(top, ['clone', '--quiet', '--shared', '--no-checkout', '--', top, dest]);
+  // nothing that runs in the clone may push back into the user's repo (or anywhere): no origin, no push target, a pre-push hook that refuses
+  await must(dest, ['remote', 'remove', 'origin']);
+  await must(dest, ['config', 'push.default', 'nothing']);
+  const hooks = join(dest, '.git', 'hooks');
+  mkdirSync(hooks, { recursive: true });
+  writeFileSync(join(hooks, 'pre-push'), '#!/bin/sh\necho "aorch: pushing from a probe clone is disabled" >&2\nexit 1\n', { mode: 0o755 });
 }
 
 export async function removeWorktree(repo: string, workdir: string): Promise<void> {

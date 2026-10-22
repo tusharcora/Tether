@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { api } from './api';
+import { EvolvePanel } from './Evolve';
 import { MARK_STYLES, Mark, Pebble, Sprite, applyCrew, crewStyle, type BotDef, type Pixels } from './bots';
 
 interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
@@ -23,6 +24,8 @@ export function Crew() {
   const [edit, setEdit] = createSignal<BotDef | null>(null);
   const [isNew, setIsNew] = createSignal(false);
   const [preview, setPreview] = createSignal<Pixels | null>(null);
+  const [evo, setEvo] = createSignal<Record<string, { version: number; open: number }>>({});
+  const [evolving, setEvolving] = createSignal<Row | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const refreshPreview = (b: BotDef) => {
@@ -50,7 +53,8 @@ export function Crew() {
   };
 
   async function loadDefs() {
-    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]> }>('GET', '/api/crew');
+    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]>; evolve?: Record<string, { version: number; open: number }> }>('GET', '/api/crew');
+    setEvo(r.evolve ?? {});
     applyCrew(r.bots, r);
     setDefs(r.bots);
     setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs, styles: r.styles });
@@ -166,7 +170,13 @@ export function Crew() {
                   <Pebble role={r.role} size={48} />
                 </button>
                 <div class="crew-main">
-                  <h4>{r.name} <span class="muted">{r.title}</span></h4>
+                  <h4>
+                    {r.name} <span class="muted">{r.title}</span>
+                    <Show when={r.kind !== 'approval' && evo()[r.role]}>
+                      <span class="chip" title="Harness version: persona, guidance and skills">v{evo()[r.role]!.version}</span>
+                      <Show when={evo()[r.role]!.open}><span class="chip proposal-mark" title="A harness proposal waits for review">● proposal</span></Show>
+                    </Show>
+                  </h4>
                   <Show when={defs().find((x) => x.id === r.role)?.persona}>
                     <p class="muted small persona">{defs().find((x) => x.id === r.role)!.persona}</p>
                   </Show>
@@ -201,6 +211,9 @@ export function Crew() {
                       <Show when={r.binding}>
                         <button onClick={() => { set(r.role, { agent: '', model: '' }); void save({ ...r }); }}>Unlink</button>
                       </Show>
+                      <Show when={r.kind === 'agent' || r.kind === 'verdict'}>
+                      <button title="Proposals, lessons and harness versions" onClick={() => { setEvolving(r); setTimeout(() => document.querySelector('.evolve-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }}>Evolve</button>
+                      </Show>
                     </div>
                   </Show>
                 </div>
@@ -208,6 +221,9 @@ export function Crew() {
             )}
           </For>
         </div>
+        <Show when={evolving()} keyed>
+          {(r) => <EvolvePanel bot={r.role} name={r.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />}
+        </Show>
         <Show when={edit()}>
           {(_) => (
             <div class="bot-editor" role="dialog" aria-label="Edit bot">

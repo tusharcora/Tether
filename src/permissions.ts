@@ -50,6 +50,18 @@ const BLOCKED: [RegExp, string][] = [
   [/\bgit\s+push\b[^;&|]*--force(?!-with-lease)\b[^;&|]*\b(main|master)\b/, 'force-pushes the main branch'],
 ];
 
+/**
+ * Commands that change or spend on a bot's harness (aorch evolve: propose, probe, accept, reject; aorch harness … rollback). Maestro may
+ * offer them, but each one needs the person's approval every time: never run because Settings says "always", never remembered as
+ * "always allow". A reason, or undefined.
+ */
+export function needsApproval(command: string): string | undefined {
+  const c = normalizeCommand(command);
+  if (/\baorch\s+evolve\b/.test(c)) return 'it changes or spends on a bot\'s harness (aorch evolve), so it always asks';
+  if (/\baorch\s+harness\b.*\brollback\b/.test(c)) return 'it changes a bot\'s harness (rollback), so it always asks';
+  return undefined;
+}
+
 /** A reason this command is refused even when everything is allowed, or undefined. */
 export function blockedReason(command: string): string | undefined {
   const c = normalizeCommand(command);

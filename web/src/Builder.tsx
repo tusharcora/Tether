@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, on, onMount } from 'solid-js';
 import type { Edge, Pipeline, PipelineNode } from '../../src/types';
 import { api, type Issue } from './api';
 import { Canvas } from './Canvas';
+import { ModeToggle } from './Team';
 import { CREW, crewFor } from './bots';
 
 const PALETTE: { label: string; hint: string; make: () => Partial<PipelineNode> }[] = [
@@ -53,6 +54,8 @@ export function Builder(props: { onStarted: (runId: string) => void }) {
   const [task, setTask] = createSignal('');
   const [auto, setAuto] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
+  const [teamRun, setTeamRun] = createSignal(false);
+  const [teamMode, setTeamMode] = createSignal<'live' | 'autonomous'>('live');
 
   const dirty = () => JSON.stringify(pl()) !== savedJson();
   const errors = () => issues().filter((i) => i.level === 'error');
@@ -184,7 +187,7 @@ export function Builder(props: { onStarted: (runId: string) => void }) {
       } catch {
         /* ignore */
       }
-      const r = await api<{ id: string }>('POST', '/api/runs', { pipeline: pl(), task: task(), repo: repo(), autoApprove: auto() });
+      const r = await api<{ id: string }>('POST', '/api/runs', teamRun() ? { kind: 'team', mode: teamMode(), task: task(), repo: repo() } : { pipeline: pl(), task: task(), repo: repo(), autoApprove: auto() });
       setRunOpen(false);
       props.onStarted(r.id);
     } catch (e) {
@@ -405,7 +408,15 @@ export function Builder(props: { onStarted: (runId: string) => void }) {
               void start();
             }}
           >
-            <h3>Run “{pl().name}”</h3>
+            <h3>{teamRun() ? 'Start a team run' : `Run “${pl().name}”`}</h3>
+            <div class="seg" role="group" aria-label="Run type">
+              <button type="button" classList={{ active: !teamRun() }} aria-pressed={!teamRun()} onClick={() => setTeamRun(false)}>Workflow</button>
+              <button type="button" classList={{ active: teamRun() }} aria-pressed={teamRun()} onClick={() => setTeamRun(true)}>Team</button>
+            </div>
+            <Show when={teamRun()}>
+              <p class="muted small">A team of bots asks you what it needs to know, proposes a plan for your approval, then works. No pipeline needed.</p>
+              <ModeToggle mode={teamMode()} onPick={setTeamMode} />
+            </Show>
             <label>
               Git repository (absolute path on this machine)
               <input required value={repo()} onInput={(e) => setRepo(e.currentTarget.value)} placeholder="/home/you/code/my-app" spellcheck={false} />
@@ -414,10 +425,12 @@ export function Builder(props: { onStarted: (runId: string) => void }) {
               Task
               <textarea required rows="5" value={task()} onInput={(e) => setTask(e.currentTarget.value)} placeholder="Add rate limiting to POST /orders" />
             </label>
+            <Show when={!teamRun()}>
             <label class="check">
               <input type="checkbox" checked={auto()} onChange={(e) => setAuto(e.currentTarget.checked)} />
               Auto-approve approval steps (skips the human sign-off)
             </label>
+            </Show>
             <p class="muted small">
               Runs in an isolated git worktree on its own branch; your checkout is never touched. Agents run with this machine's permissions.
             </p>
