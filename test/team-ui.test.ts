@@ -308,7 +308,12 @@ describe('Tui chat wiring', () => {
       expect(() => ui.runKey(ui.screen, k), k).not.toThrow();
     }
     expect(ui.screen.sel).toBe(0);
-    expect(() => ui.render?.()).not.toThrow();
+    // the screen draws too: this was the real crash (runBody indexed an empty step list)
+    let lines: string[] = [];
+    expect(() => (lines = ui.runBody(ui.screen, 30))).not.toThrow();
+    expect(lines.join('\n')).toContain('no steps yet');
+    expect(lines.join('\n')).toContain('/');
+    expect(() => ui.draw()).not.toThrow();
   });
 
   it('a pending permit prompt wins over a team card; the card keeps its question', async () => {

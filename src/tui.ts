@@ -2936,10 +2936,25 @@ export class Tui {
     return out;
   }
 
+  /** A run with no steps yet: a team run while Maestro plans with you, or after a plan that was never approved. */
+  private emptyRunBody(st: RunState): string[] {
+    const cap = st.pipeline.settings.maxCostUsd;
+    const head = `${glyph(st.status, this.tick)} ${bold(st.pipeline.name)} ${dim('·')} ${st.status}  ${dim('·')} ${cap ? meter(st.costUsd / cap, 10) + ' ' : ''}${usd(st.costUsd)}${cap ? dim(` / ${usd(cap)}`) : ''}`;
+    const lines = [' ' + head, ''];
+    if (st.kind === 'team') {
+      const n = st.pending.length;
+      const what = st.planning && !n ? 'Maestro is planning' : n ? `${n} question${n === 1 ? '' : 's'} waiting for you` : st.plan && st.status === 'running' ? 'a plan is ready for your approval' : 'no plan was approved';
+      lines.push(amber(`  ${what}`), dim('  no steps yet. Press / to open the run chat, where the questions and the plan are.'));
+    } else lines.push(dim('  no steps yet.'));
+    if (st.error) lines.push('', red('  ' + st.error.split('\n')[0]!));
+    return lines;
+  }
+
   private runBody(s: Extract<Screen, { kind: 'run' }>, h: number): string[] {
     const st = this.state(s.runId);
     if (!st) return [dim('  run not found')];
     const order = underManagers(st.pipeline.nodes); // s.sel, the strip and its click targets all use this display order
+    if (!order.length) return this.emptyRunBody(st);
     s.sel = Math.min(s.sel, order.length - 1);
     this.stripHits(2, order.length, s.sel, (i) => (s.sel === i ? this.key('enter') : (s.sel = i)));
     const strip_ = crewStrip(
