@@ -1950,18 +1950,22 @@ export class Tui {
     if (k === 'esc' || k === 'q') return this.pop();
     if (!st) return;
     const nodes = underManagers(st.pipeline.nodes); // s.sel indexes this display order
+    // a team run has no steps until its plan is approved: keys that act on the selected step say so instead of failing
+    const cur = nodes[s.sel];
+    const needStep = () => (this.say(st.kind === 'team' && !st.pipeline.nodes.length ? 'no steps yet: answer the questions or approve the plan in the run chat' : 'no step selected'), undefined);
     if (k === 'left' || k === 'h') s.sel = Math.max(0, s.sel - 1);
-    else if (k === 'right' || k === 'l') s.sel = Math.min(nodes.length - 1, s.sel + 1);
-    else if (k === 'enter' || k === 'i') this.push({ kind: 'session', runId: s.runId, nodeId: nodes[s.sel]!.id, pane: 'output', scroll: 0, follow: true });
+    else if (k === 'right' || k === 'l') s.sel = Math.max(0, Math.min(nodes.length - 1, s.sel + 1));
+    else if (k === 'enter' || k === 'i') cur ? this.push({ kind: 'session', runId: s.runId, nodeId: cur.id, pane: 'output', scroll: 0, follow: true }) : needStep();
     else if (k === 'a' || k === 'x') {
-      const n = nodes[s.sel]!;
-      const awaiting = st.nodes[n.id]?.status === 'awaiting' ? n.id : Object.entries(st.nodes).find(([, v]) => v.status === 'awaiting')?.[0];
+      const n = cur;
+      const awaiting = n && st.nodes[n.id]?.status === 'awaiting' ? n.id : Object.entries(st.nodes).find(([, v]) => v.status === 'awaiting')?.[0];
       if (!awaiting) return this.say('nothing is waiting for approval');
       this.d.engine.approve(s.runId, awaiting, k === 'a');
       if (!this.d.engine.isLive(s.runId)) this.d.engine.resume(s.runId).catch(() => {});
       this.say(k === 'a' ? `approved ${awaiting}` : `rejected ${awaiting}`);
     } else if (k === '+' || k === '-') {
-      const n = nodes[s.sel]!;
+      const n = cur;
+      if (!n) return needStep();
       try {
         this.d.engine.feedback(s.runId, n.id, k === '+' ? 'up' : 'down');
         this.say(`thumbs ${k === '+' ? 'up' : 'down'} for ${n.id}`);
@@ -1988,7 +1992,8 @@ export class Tui {
       this.superviseRun(s.runId);
     }
     else if (k === 'd') {
-      const sess: Extract<Screen, { kind: 'session' }> = { kind: 'session', runId: s.runId, nodeId: nodes[s.sel]!.id, pane: 'diff', scroll: 0, follow: false };
+      if (!cur) return needStep();
+      const sess: Extract<Screen, { kind: 'session' }> = { kind: 'session', runId: s.runId, nodeId: cur.id, pane: 'diff', scroll: 0, follow: false };
       this.push(sess);
       this.loadDiff(sess);
     } else if (k === 'v') {

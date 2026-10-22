@@ -301,6 +301,16 @@ describe('Tui chat wiring', () => {
     return { ui, engine, store, id };
   }
 
+  it('the run view of a team run that is still planning has no steps; no key throws', async () => {
+    const { ui, id } = await boot({ questions: [[card]], plan });
+    ui.push({ kind: 'run', runId: id, sel: 0 });
+    for (const k of ['enter', 'i', 'd', '+', '-', 'a', 'x', 'right', 'left', 'enter']) {
+      expect(() => ui.runKey(ui.screen, k), k).not.toThrow();
+    }
+    expect(ui.screen.sel).toBe(0);
+    expect(() => ui.render?.()).not.toThrow();
+  });
+
   it('a pending permit prompt wins over a team card; the card keeps its question', async () => {
     const { ui, store, id } = await boot({ questions: [[card]], plan });
     ui.openRunSession(id);
