@@ -1,6 +1,10 @@
-# aorch
+# Aorch
 
 A durable orchestrator for CLI coding agents. It runs workflows of agents (Claude Code, Codex, OpenCode, local models) in isolated git worktrees, checks their work with gates, and keeps every run as an append-only event log you can resume.
+
+<img width="571" height="172" alt="Screenshot 2026-10-20 at 5 18 16 PM" src="https://github.com/user-attachments/assets/9e37b47d-e747-436e-9db3-85c2d23e6266" />
+
+<img width="574" height="350" alt="Screenshot 2026-10-20 at 5 22 11 PM" src="https://github.com/user-attachments/assets/79723750-2bdf-4976-b9f4-783ecc2e6cdd" />
 
 - **Terminal UI** (`aorch tui`): dashboard of runs and workflows, a run view with live activity lines and metrics, step sessions you can attach to, a diff viewer, a workflow editor, settings and a theme editor.
 - **Web dashboard** (`aorch serve`): visual workflow builder, run timeline, knowledge graph of your Obsidian-style vault, and a Crew tab for linking bots to models.
