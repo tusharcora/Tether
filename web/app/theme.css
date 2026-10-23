@@ -1,0 +1,27 @@
+/* aorch's own tokens, now driven by Arc's foundation (components/arc/foundation.css), so the hand-built
+   pieces (canvas, graph, diff) follow the same light/dark theme as the Arc components.
+   --border and --accent are Arc's own names and need no mapping. */
+:root {
+  --bg: var(--background);
+  --panel: var(--surface);
+  --panel-2: var(--surface-muted);
+  --text: var(--foreground);
+  --muted: var(--text-secondary);
+  --accent-fg: var(--accent-foreground);
+  --done: var(--success);
+  --run: var(--accent);
+  --wait: var(--warning);
+  --err: var(--danger);
+  --queued: var(--text-muted);
+  --skip: var(--border-strong);
+  --grid: var(--border-subtle);
+  --shadow: var(--shadow-raised);
+  --sans: var(--font-body);
+  --mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}
