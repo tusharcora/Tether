@@ -9,7 +9,7 @@ import { Input } from './components/arc/input/input';
 import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
-import { MARK_STYLES, applyCrew, useCrew, type BotDef, type Pixels } from './crew';
+import { MARK_STYLES, applyCrew, useCrew, type BotDef, type Pixels } from './crewStore';
 import { EvolvePanel } from './Evolve';
 import { Face, Mark, Sprite } from './Face';
 import { NONE, cn, fromNone } from './ui/cn';
@@ -33,6 +33,7 @@ export function Crew() {
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
   const [draft, setDraft] = useState<Record<string, { agent: string; model: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState('');
   const [meta, setMeta] = useState<Meta>({ parts: {}, kinds: [], packs: [], styles: [] });
   const [defs, setDefs] = useState<BotDef[]>([]);
   const [edit, setEdit] = useState<BotDef | null>(null);
@@ -85,12 +86,14 @@ export function Crew() {
       setRows(r.crew);
       setAgents(r.agents);
       setDraft(Object.fromEntries(r.crew.map((c) => [c.role, { agent: c.binding?.agent ?? '', model: c.binding?.model ?? '' }])));
+      setLoadErr('');
     } catch (e) {
-      notify.fail(e);
+      // a load failure shows inline with a retry; action failures are toasts
+      setLoadErr((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [loadDefs, notify]);
+  }, [loadDefs]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -173,6 +176,12 @@ export function Crew() {
           </p>
         ) : null}
       </div>
+      {loadErr ? (
+        <div className="alert error" role="alert">
+          {loadErr}{' '}
+          <Button variant="secondary" size="sm" onClick={() => void load()}>Retry</Button>
+        </div>
+      ) : null}
       {loading ? (
         <p className="muted">Checking which agents are installed…</p>
       ) : (

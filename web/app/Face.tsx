@@ -1,4 +1,4 @@
-import { MARK_STYLES, useCrew, type MarkInfo, type Pixels } from './crew';
+import { MARK_STYLES, useCrew, type MarkInfo, type Pixels } from './crewStore';
 
 /** A bot drawn from its pixel grid: one rect per run of same-coloured pixels, crisp at any size. */
 export function Sprite(props: { pixels: Pixels; size?: number; label?: string }) {

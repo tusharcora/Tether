@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
-// './Crew' (or './Crew.js') resolves to crew.ts on a case-insensitive disk: Vite tries .ts before .tsx, so name the file exactly
-import { Crew } from './Crew.tsx';
+import { Crew } from './Crew';
 import { calls, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
@@ -55,5 +54,25 @@ describe('Crew', () => {
     await waitFor(() => expect(calls('POST', '/api/crew/preview')).toHaveLength(1));
     await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
     expect(calls('PUT', '/api/crew/quill')[0]![2]).toMatchObject({ id: 'quill', name: 'Quill' });
+  });
+
+  it('shows a load failure inline and retries', async () => {
+    const bots = { crew: [{ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null }], agents: { claude: { ok: true, models: [] } } };
+    let down = true;
+    const prev = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path === '/api/bots') {
+        if (down) throw new Error('down');
+        return structuredClone(bots) as never;
+      }
+      return prev(method, path, body);
+    });
+    renderApp(<Crew />);
+    expect((await screen.findByRole('alert')).textContent).toContain('down');
+    down = false;
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));
+    await waitFor(() => expect(calls('GET', '/api/bots')).toHaveLength(2));
+    expect(screen.queryByText('down')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeTruthy();
   });
 });

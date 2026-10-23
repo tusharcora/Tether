@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
-import { applyCrew, crewFor, getCrew, loadCrewDefs, subscribeCrew, type BotDef } from './crew';
+import { applyCrew, crewFor, getCrew, loadCrewDefs, subscribeCrew, type BotDef } from './crewStore';
 
 const bot = (id: string, name: string): BotDef => ({ id, name, title: id, kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#123456', accent: 'auto' } });
 

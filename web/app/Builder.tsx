@@ -10,7 +10,7 @@ import { Input } from './components/arc/input/input';
 import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
-import { crewFor, useCrew } from './crew';
+import { crewFor, useCrew } from './crewStore';
 import { ModeToggle } from './Team';
 import { NONE, fromNone } from './ui/cn';
 import { useNotify } from './ui/notify';

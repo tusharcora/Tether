@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
-import { crewFor, useCrew } from './crew';
+import { crewFor, useCrew } from './crewStore';
 import { cn } from './ui/cn';
 
 export const NODE_W = 212;

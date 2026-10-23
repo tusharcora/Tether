@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import { applyCrew, type BotDef } from './crew';
+import { applyCrew, type BotDef } from './crewStore';
 import { Face } from './Face';
 
 const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#3fb97c', accent: 'auto' };
