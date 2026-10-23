@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type RunView, type StoredEvent } from './api';
 
 /** Union by seq, oldest first. */
@@ -11,12 +11,18 @@ export function mergeEvents(a: StoredEvent[], b: StoredEvent[]): StoredEvent[] {
 
 /** Follow one run: the event snapshot plus the live SSE stream (state snapshots and events, chunks skipped). */
 export function useRunStream(id: string | undefined) {
-  const [run, setRun] = useState<RunView>();
+  const [run, setRunState] = useState<RunView>();
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [error, setError] = useState<string>();
+  const followed = useRef(id);
+  followed.current = id;
+  /** Adopt a view (e.g. an action's reply) only while its run is still the one followed. */
+  const setRun = useCallback((r: RunView) => {
+    if (r.id === followed.current) setRunState(r);
+  }, []);
 
   useEffect(() => {
-    setRun(undefined);
+    setRunState(undefined);
     setEvents([]);
     setError(undefined);
     if (!id) return;
@@ -26,7 +32,7 @@ export function useRunStream(id: string | undefined) {
       .catch((e) => !closed && setError((e as Error).message));
     const es = new EventSource(`/api/runs/${id}/stream`);
     es.addEventListener('state', (m) => {
-      if (!closed) setRun(JSON.parse((m as MessageEvent).data));
+      if (!closed) setRunState(JSON.parse((m as MessageEvent).data));
     });
     es.addEventListener('event', (m) => {
       if (closed) return;

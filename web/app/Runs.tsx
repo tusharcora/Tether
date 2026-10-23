@@ -50,6 +50,8 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
   // diff for the selected node's commit, or the whole branch; refetched only when what picks it changes
   const commit = selNode ? run?.nodes[selNode]?.commit : undefined;
   const hasRun = !!run;
+  // the branch diff follows every step's commit, so it stays live as later steps commit
+  const branchKey = pane === 'branch' && run ? Object.values(run.nodes).map((n) => n.commit ?? '').join(',') : '';
   useEffect(() => {
     const id = props.selected;
     if (!hasRun || !id) return;
@@ -64,7 +66,7 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
     return () => {
       cancelled = true;
     };
-  }, [props.selected, selNode, pane, commit, hasRun]);
+  }, [props.selected, selNode, pane, commit, hasRun, branchKey]);
 
   const nameOf = (id: string) => {
     const n = run?.pipeline.nodes.find((x) => x.id === id);

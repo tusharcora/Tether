@@ -27,6 +27,16 @@ it('keeps history when a live event beats the snapshot', async () => {
   await waitFor(() => expect(result.current.events.map((e) => e.seq)).toEqual([1, 2, 5]));
 });
 
+it('ignores setRun with a view for another run', () => {
+  routeApi({ 'GET /api/runs/r2/events': [] });
+  const { result } = renderHook(() => useRunStream('r2'));
+  act(() => FakeEventSource.all[0]!.emit('state', makeRun({ id: 'r2', costUsd: 0.2 })));
+  act(() => result.current.setRun(makeRun({ id: 'r1' })));
+  expect(result.current.run?.id).toBe('r2');
+  act(() => result.current.setRun(makeRun({ id: 'r2', costUsd: 0.9 })));
+  expect(result.current.run?.costUsd).toBe(0.9);
+});
+
 it('follows state, ignores chunks, closes on switch and ignores the old stream', async () => {
   routeApi({ 'GET /api/runs/r1/events': [], 'GET /api/runs/r2/events': [] });
   const { result, rerender } = renderHook(({ id }) => useRunStream(id), { initialProps: { id: 'r1' as string | undefined } });

@@ -73,4 +73,21 @@ describe('Runs', () => {
     act(() => FakeEventSource.all[0]!.emit('state', { ...withCommit, costUsd: 0.6 }));
     expect(calls('GET', '/api/runs/r1/diff?node=plan')).toHaveLength(1);
   });
+
+  it('keeps the branch diff live: refetches when a step commits, not on other updates', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    const base = makeRun();
+    act(() => FakeEventSource.all[0]!.emit('state', base));
+    const tab = await screen.findByRole('tab', { name: 'Branch diff' });
+    fireEvent.mouseDown(tab);
+    fireEvent.click(tab);
+    await waitFor(() => expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(1));
+    act(() => FakeEventSource.all[0]!.emit('state', { ...base, costUsd: 0.5 }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(1);
+    act(() => FakeEventSource.all[0]!.emit('state', { ...base, costUsd: 0.5, nodes: { ...base.nodes, code: { ...base.nodes.code!, commit: 'def5678' } } }));
+    await waitFor(() => expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(2);
+  });
 });
