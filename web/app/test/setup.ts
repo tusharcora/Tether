@@ -2,8 +2,12 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 // jsdom lacks these; Radix, motion and the canvas code call them.
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  vi.clearAllMocks();
+  // Imported lazily: a static import would load the real ./api before a test file's vi.mock('./api') applies.
+  const { FakeEventSource } = await import('./fixtures');
+  FakeEventSource.all = [];
   vi.useRealTimers();
   vi.unstubAllGlobals();
   location.hash = '';
