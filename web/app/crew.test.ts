@@ -10,7 +10,7 @@ describe('crewFor', () => {
   it('maps nodes to bots like the terminal does', () => {
     const crew = getCrew().crew;
     expect(crewFor({ kind: 'agent', role: 'reviewer' }, crew)).toBe('reviewer');
-    expect(crewFor({ kind: 'agent', role: 'orchestrator' }, crew)).toBe('coder');
+    expect(crewFor({ kind: 'agent', role: 'orchestrator' }, crew)).toBe('orchestrator');
     expect(crewFor({ kind: 'gate' }, crew)).toBe('tester');
     expect(crewFor({ kind: 'approval' }, crew)).toBe('approval');
     expect(crewFor({ kind: 'agent', role: 'qa-bot' }, crew)).toBe('tester');

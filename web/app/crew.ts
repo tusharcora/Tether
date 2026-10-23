@@ -61,6 +61,7 @@ export function crewFor(node: { kind: string; role?: string }, crew: Record<stri
   if (named in crew && named !== 'orchestrator') return named;
   if (node.kind === 'gate') return 'tester';
   if (node.kind === 'approval') return 'approval';
+  if (named in crew) return named;
   if (/test|qa/.test(named)) return 'tester';
   if (/review|audit/.test(named)) return 'reviewer';
   if (/arch|design/.test(named)) return 'architect';
