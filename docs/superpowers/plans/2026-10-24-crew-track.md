@@ -28,7 +28,7 @@
 - **Plan with an unknown bot**: `parsePlan` already drops it with an error and accepts the rest; kept. A missing `why` is noted as an error but the assignment is kept.
 - **TUI swap**: a `/swap <n> <bot>` slash command (matches `/approve`), not an `s` key with selection state.
 - **orchestrate**: keeps one `rationale` string; the roster (with `whenToUse`) replaces the custom-bot list in the compose prompt. No per-step `why` there.
-- **Faces in the web** are rendered as `<img>` from `blobatar()` SVG data URIs (the React adapter is not needed); Arc `Avatar` and `Slider` are vendored with `scripts/arc-add.mjs`. No animation in v1.
+- **Faces in the web** come from the core `blobatar()` function (the React adapter is not needed). Static faces are `<img>` data URIs (cheap in lists); animated faces are inline SVG from `blobatar(id, { animate })` with the library's `blobatar/motion.css` loaded once (it already stops all motion under `prefers-reduced-motion`). The canvas animates working/waiting bots always; Crew cards, plan rows and the editor preview animate on hover. Arc `Avatar` is not used (it only takes an image URL, which cannot animate); Arc `Slider` is vendored with `scripts/arc-add.mjs`.
 - **Roster for team runs**: an explicit `--roster` still wins; otherwise the new language-aware roster replaces "the whole crew".
 
 ## Review Focus
@@ -1872,9 +1872,10 @@ git commit -m "tui: show why per assignment and /swap a planned bot"
 
 **Files:**
 - Modify: `package.json` (devDependency `blobatar`)
-- Create: `web/src/components/arc/avatar/**`, `web/src/components/arc/slider/**` (vendored by `scripts/arc-add.mjs`)
+- Create: `web/src/components/arc/slider/**` (vendored by `scripts/arc-add.mjs`)
 - Modify: `web/src/crewStore.ts` (`BotDef`, `CrewEntry`)
 - Rewrite: `web/src/Face.tsx`
+- Modify: `web/src/main.tsx` (load `blobatar/motion.css`)
 - Modify: `web/src/Canvas.tsx` (face in the node head)
 - Test: `web/src/Face.test.tsx` (rewrite), `web/src/Canvas.test.tsx` (append)
 
@@ -1883,20 +1884,21 @@ git commit -m "tui: show why per assignment and /swap a planned bot"
   - `type Mood = 'idle' | 'working' | 'done' | 'failed' | 'waiting' | 'asleep' | 'stopped'`
   - `MOOD_EXPRESSION: Record<Mood, string>` (expression names, for tests and docs)
   - `moodFor(status?: string): Mood` (`running`→working, `done`→done, `error`→failed, `awaiting`|`paused`→waiting, `stopped`→stopped, else idle)
-  - `faceSvg(id: string, o?: { mood?: Mood; face?: FaceLook; size?: number }): string`
-  - `faceUri(id: string, o?: …): string` (`data:image/svg+xml;utf8,…`)
-  - `Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook })` → `<img>`
+  - `type Animate = 'hover' | 'always'`
+  - `faceSvg(id: string, o?: { mood?: Mood; face?: FaceLook; size?: number; animate?: Animate }): string`
+  - `faceUri(id: string, o?: { mood?; face?; size? }): string` (`data:image/svg+xml;utf8,…`, static only)
+  - `Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook; animate?: Animate })` → static `<img>`, or with `animate` an inline-SVG `<span role="img">`
 - `crewStore.ts`: `FaceLook`, `Look.face?`, `BotDef.source?/whenToUse?/modelHint?`, `CrewEntry.face?`, `CrewEntry.source?`, `CrewEntry.whenToUse?`.
 
 - [ ] **Step 1: Install and vendor**
 
 ```bash
 npm install --save-dev blobatar@2.7.0
-node scripts/arc-add.mjs avatar slider
+node scripts/arc-add.mjs slider
 ```
 
-Install any npm dependency the script prints that is not already in `package.json` (expected: none beyond `motion`). Run the network grep from the React plan over the two new folders:
-`grep -rnE "fetch\(|XMLHttpRequest|sendBeacon|https?://" web/src/components/arc/avatar web/src/components/arc/slider | grep -v w3.org` → no output.
+Install any npm dependency the script prints that is not already in `package.json` (expected: none beyond `motion`). Run the network grep over the new folder:
+`grep -rnE "fetch\(|XMLHttpRequest|sendBeacon|https?://" web/src/components/arc/slider | grep -v w3.org` → no output.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -1932,17 +1934,35 @@ describe('faces', () => {
     expect(img.src.startsWith('data:image/svg+xml')).toBe(true);
     expect(faceUri('coder')).toContain(encodeURIComponent('<svg'));
   });
+
+  it('animates as inline SVG: always, or on hover', () => {
+    const { container } = render(
+      <>
+        <Face id="coder" mood="working" animate="always" />
+        <Face id="planner" animate="hover" />
+      </>,
+    );
+    const [always, hover] = [...container.querySelectorAll('span.face[role="img"]')];
+    expect(always!.querySelector('svg.mo-root.mo-always, svg .mo-root.mo-always, .mo-root.mo-always')).toBeTruthy();
+    expect(hover!.querySelector('.mo-root')).toBeTruthy();
+    expect(hover!.querySelector('.mo-always')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
 });
 ```
+
+(Blobatar puts the `mo-root` class on the root `<svg>` or its first group depending on version — the selector list above covers both; keep whichever matches and drop the others.)
 
 Append to `web/src/Canvas.test.tsx`:
 
 ```tsx
-it('shows each step’s bot face with its mood', () => {
+it('shows each step’s bot face with its mood, animated while it works', () => {
   const { container } = render(<Canvas nodes={nodes} edges={edges} statuses={run.nodes} />);
-  const faces = container.querySelectorAll('[data-node] img[data-mood]');
-  expect(faces).toHaveLength(3);
-  expect(container.querySelector('[data-id="code"] img')!.getAttribute('data-mood')).toBe('working');
+  expect(container.querySelectorAll('[data-node] [data-mood]')).toHaveLength(3);
+  const code = container.querySelector('[data-id="code"] [data-mood]')!;
+  expect(code.getAttribute('data-mood')).toBe('working');
+  expect(code.tagName).toBe('SPAN');
+  expect(container.querySelector('[data-id="gate"] [data-mood]')!.tagName).toBe('IMG');
 });
 ```
 
@@ -1978,42 +1998,54 @@ export function moodFor(status?: string): Mood {
   }
 }
 
+export type Animate = 'hover' | 'always';
+
 /** A bot's face, generated on this machine from its id (blobatar is bundled; blobatar.dev is never called). */
-export function faceSvg(id: string, o: { mood?: Mood; face?: FaceLook; size?: number } = {}): string {
+export function faceSvg(id: string, o: { mood?: Mood; face?: FaceLook; size?: number; animate?: Animate } = {}): string {
   return blobatar(id, {
     size: o.size ?? 48,
     normalize: false,
     background: 'squircle',
     expression: EXPR[o.mood ?? 'idle'],
+    ...(o.animate ? { animate: o.animate } : {}),
     ...(o.face?.hue !== undefined ? { hue: o.face.hue } : {}),
     ...(o.face?.tone !== undefined ? { tone: o.face.tone } : {}),
     ...(o.face?.traits ? { traits: o.face.traits } : {}),
   });
 }
+/** Static faces only: an <img> cannot animate (CSS cannot reach inside it). */
 export const faceUri = (id: string, o?: { mood?: Mood; face?: FaceLook; size?: number }) => `data:image/svg+xml;utf8,${encodeURIComponent(faceSvg(id, o))}`;
 
-export function Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook }) {
+export function Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook; animate?: Animate }) {
   const { crew } = useCrew();
   const c = crew[props.id];
   const size = props.size ?? 40;
-  return (
-    <img
-      src={faceUri(props.id, { mood: props.mood, face: props.face ?? c?.face, size })}
-      width={size}
-      height={size}
-      alt={props.label ?? c?.name ?? props.id}
-      data-mood={props.mood ?? 'idle'}
-      className="face"
-    />
-  );
+  const face = props.face ?? c?.face;
+  const label = props.label ?? c?.name ?? props.id;
+  const mood = props.mood ?? 'idle';
+  if (props.animate)
+    return (
+      <span
+        className="face"
+        role="img"
+        aria-label={label}
+        data-mood={mood}
+        style={{ width: size, height: size }}
+        // generated locally from a bot id by blobatar; no user markup reaches this string
+        dangerouslySetInnerHTML={{ __html: faceSvg(props.id, { mood, face, size, animate: props.animate }) }}
+      />
+    );
+  return <img src={faceUri(props.id, { mood, face, size })} width={size} height={size} alt={label} data-mood={mood} className="face" />;
 }
 ```
 
-If TypeScript rejects `traits` (the library's `TraitOverrides` type), cast: `traits: o.face.traits as never`.
+If TypeScript rejects `traits` or `animate` (the library's `TraitOverrides` / `Animate` types), cast: `traits: o.face.traits as never`, `animate: o.animate as never`.
+
+`web/src/main.tsx`: add `import 'blobatar/motion.css';` after the Arc foundation import (the package exports `./motion.css`). Add to `web/src/styles.css`: `.face { display: inline-block; line-height: 0; } span.face > svg { width: 100%; height: 100%; }`.
 
 `web/src/crewStore.ts`: add `export interface FaceLook { hue?: number; tone?: number; traits?: Record<string, number> }`, `face?: FaceLook` to `Look`, `source?: string; whenToUse?: string; modelHint?: string` to `BotDef`, and `face?: FaceLook; source?: string; whenToUse?: string` to `CrewEntry`; in `applyCrew` copy `face: b.look.face, source: b.source, whenToUse: b.whenToUse`. Remove `MARK_STYLES`, `shapes`, `glyphs` and `style` from the store only if nothing else in `web/src` uses them after Task 13; otherwise leave them.
 
-`web/src/Canvas.tsx`: in the node head, replace the glyph `<span className="glyph">…</span>` with `<Face id={crewFor(n, crew)} mood={moodFor(st?.status)} size={22} />` (import `Face`, `moodFor`). Add to `web/src/styles.css`: `.node-head .face { border-radius: 6px; flex: none; }`.
+`web/src/Canvas.tsx`: in the node head, replace the glyph `<span className="glyph">…</span>` with `<Face id={crewFor(n, crew)} mood={mood} size={22} animate={mood === 'working' || mood === 'waiting' ? 'always' : undefined} />` where `const mood = moodFor(st?.status)` (import `Face`, `moodFor`). Add to `web/src/styles.css`: `.node-head .face { border-radius: 6px; flex: none; }`.
 
 Delete the old `Sprite`, `Mark` and pebble code from `Face.tsx`; fix any import of them (Crew.tsx is rewritten in Task 13 — until then replace its `Sprite`/`Mark` uses with `<Face id={…} />` so it compiles).
 
@@ -2025,8 +2057,8 @@ Expected: tests PASS (the snapshot file `web/src/__snapshots__/Face.test.tsx.sna
 - [ ] **Step 5: Commit**
 
 ```bash
-git add package.json web/src/Face.tsx web/src/Face.test.tsx web/src/__snapshots__ web/src/crewStore.ts web/src/Canvas.tsx web/src/Canvas.test.tsx web/src/styles.css web/src/components/arc/avatar web/src/components/arc/slider web/src/Crew.tsx
-git commit -m "web: generated Blobatar faces with moods, in the crew and on the canvas"
+git add package.json web/src/Face.tsx web/src/Face.test.tsx web/src/__snapshots__ web/src/crewStore.ts web/src/main.tsx web/src/Canvas.tsx web/src/Canvas.test.tsx web/src/styles.css web/src/components/arc/slider web/src/Crew.tsx
+git commit -m "web: generated, animated Blobatar faces with moods, in the crew and on the canvas"
 ```
 
 ---
@@ -2038,7 +2070,7 @@ git commit -m "web: generated Blobatar faces with moods, in the crew and on the 
 - Test: `web/src/Crew.test.tsx` (update + append)
 
 **Interfaces:**
-- Consumes: `Face`, `faceUri` (Task 12); Arc `Avatar`, `Slider`, `Tabs`, `Dialog`, `Badge`, `Button`; `ConfirmButton`, `useNotify`; server routes from Task 10.
+- Consumes: `Face` (Task 12); Arc `Slider`, `Tabs`, `Dialog`, `Badge`, `Button`; `ConfirmButton`, `useNotify`; server routes from Task 10.
 - Produces: no new exports.
 
 - [ ] **Step 1: Write the failing tests** (append to `web/src/Crew.test.tsx`; extend its `GET /api/crew` fixture with `ecc: null, eccDefault: 'v2.2.3'`, and add `'POST /api/crew/import': { ref: 'v2.2.3', added: ['go-reviewer'], updated: [], removed: [], skipped: [], notes: [], skills: 1, commands: 1 }` and `'DELETE /api/crew': { removed: ['go-reviewer'] }` to its routes)
@@ -2068,10 +2100,9 @@ describe('crew sources and faces', () => {
   it('edits a face with sliders and saves it on the bot', async () => {
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
-    const preview = (await screen.findByAltText('Bolt preview')) as HTMLImageElement;
-    const before = preview.src;
+    const before = (await screen.findByRole('img', { name: 'Bolt preview' })).innerHTML;
     fireEvent.keyDown(screen.getByRole('slider', { name: /Hue/ }), { key: 'ArrowRight' });
-    expect((screen.getByAltText('Bolt preview') as HTMLImageElement).src).not.toBe(before);
+    expect(screen.getByRole('img', { name: 'Bolt preview' }).innerHTML).not.toBe(before);
     await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
     expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ look: { face: { hue: expect.any(Number) } } });
   });
@@ -2096,8 +2127,8 @@ Expected: FAIL.
 - Header: `Button` "Import ECC…" when `meta.ecc` is null, otherwise "Update ECC…" plus `<ConfirmButton label="Remove ECC" prompt="Remove every ECC bot and the vendored checkout?" confirmLabel="Remove" onConfirm={removeEcc} />` where `removeEcc` calls `DELETE /api/crew?source=ecc`, toasts `Removed ${n} ECC bots`, and reloads.
 - Import dialog: Arc `Dialog` titled "Import ECC" with description "Adds ECC's agents as crew bots and its skills and commands to the skills list. Hooks and rules are not imported. Source: github.com/affaan-m/ECC (MIT)." and a line `Version ${meta.ecc?.ref ? `${meta.ecc.ref} → ` : ''}${meta.eccDefault}`; buttons Cancel / `Import` (`Button loading`) → `POST /api/crew/import { source: 'ecc' }` → toast `ECC ${d.ref}: ${d.added.length} added, ${d.updated.length} updated, ${d.removed.length} removed` → close → reload (`loadCrewDefs(true)` too).
 - Filter: Arc `Tabs` above the grid with `All n`, `Built-in n`, `Custom n`, and `ECC n` only when any bot has a `source` starting with `ecc@`. Filtering uses `defs` (`builtin`, `source`).
-- Cards: `<Avatar name={r.name} src={faceUri(r.role, { face: def?.look.face })} size="lg" />` inside the edit button (`aria-label={`Edit ${r.name}`}`); under the title show `def.whenToUse` (or `def.persona` for others, as today); a `Badge size="sm"` with `ECC` for imported bots.
-- Editor drawer: Name, Title, Kind, Persona, Read-only as today; the persona `Textarea` of an imported bot shows a note "From ECC; an update replaces your edits". Face section: preview `<img alt={`${name} preview`} src={faceUri(id || 'new-bot', { face, size: 120 })} />`, `<Slider label="Hue" min={0} max={359} step={1} value={face.hue ?? defaultHue} onValueChange={(v) => patchFace({ hue: v })} />` (`defaultHue` = 200 when unset, displayed but not saved until moved), `<Slider label="Tone" min={0} max={1} step={0.05} value={face.tone ?? 0.5} format={(v) => v.toFixed(2)} onValueChange={(v) => patchFace({ tone: v })} />`, and `Button variant="ghost"` "Reset to generated" that removes `look.face`. `patchFace` updates `edit.look.face`. Save sends the whole bot as today (`PUT /api/crew/:id`), so `look.face` reaches the server.
+- Cards: `<Face id={r.role} size={48} animate="hover" />` inside the edit button (`aria-label={`Edit ${r.name}`}`; `Face` reads the saved face overrides from the crew store); under the title show `def.whenToUse` (or `def.persona` for others, as today); a `Badge size="sm"` with `ECC` for imported bots.
+- Editor drawer: Name, Title, Kind, Persona, Read-only as today; the persona `Textarea` of an imported bot shows a note "From ECC; an update replaces your edits". Face section: preview `<Face id={id || 'new-bot'} face={face} size={120} animate="hover" label={`${name || 'New bot'} preview`} />`, `<Slider label="Hue" min={0} max={359} step={1} value={face.hue ?? defaultHue} onValueChange={(v) => patchFace({ hue: v })} />` (`defaultHue` = 200 when unset, displayed but not saved until moved), `<Slider label="Tone" min={0} max={1} step={0.05} value={face.tone ?? 0.5} format={(v) => v.toFixed(2)} onValueChange={(v) => patchFace({ tone: v })} />`, and `Button variant="ghost"` "Reset to generated" that removes `look.face`. `patchFace` updates `edit.look.face`. Save sends the whole bot as today (`PUT /api/crew/:id`), so `look.face` reaches the server.
 - Packs: each bot in a pack renders `<Face id={b.id} size={34} />`.
 
 - [ ] **Step 3: Run tests**
@@ -2123,7 +2154,7 @@ git commit -m "web: crew tab with sources, Blobatar faces, face editor and ECC i
 - Test: `web/src/Team.test.tsx` (append), `web/src/Builder.test.tsx` (append)
 
 **Interfaces:**
-- Consumes: `POST /api/runs/:id/swap`, `GET /api/skills`, `GET /api/skills/ecc/:name` (Tasks 8, 10); `Face`/`faceUri`, Arc `Avatar`, `Select`, `SearchField`, `Badge`.
+- Consumes: `POST /api/runs/:id/swap`, `GET /api/skills`, `GET /api/skills/ecc/:name` (Tasks 8, 10); `Face`, Arc `Select`, `SearchField`, `Badge`.
 - Produces: `TeamPanel` `send` path type becomes `'answers' | 'plan' | 'mode' | 'swap'`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2171,7 +2202,7 @@ Expected: FAIL.
 
 ```tsx
 <li key={`${a.bot}-${i}`} className="assign-row">
-  <Avatar name={a.bot} src={faceUri(a.bot)} size="md" />
+  <Face id={a.bot} size={36} animate="hover" />
   <div className="assign-main">
     <div>
       <b>{a.bot}</b> <Badge size="sm" tone={a.mode === 'write' ? 'warning' : 'neutral'}>{a.mode === 'write' ? 'can edit files' : 'read only'}</Badge>
