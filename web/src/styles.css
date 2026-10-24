@@ -246,6 +246,8 @@ main { flex: 1; min-height: 0; }
 .dialogue { margin: 0 16px 10px; }
 .dialogue p { margin: 6px 0; }
 .assign { list-style: none; padding-left: 0 !important; display: flex; flex-direction: column; gap: 6px; }
+.assign-row { display: flex; gap: 12px; align-items: flex-start; }
+.assign-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 @media (max-width: 640px) { .team-bar, .qpanel, .dialogue { margin-left: 8px; margin-right: 8px; } }
 
 /* Evolve (Crew tab) */

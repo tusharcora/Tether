@@ -19,6 +19,8 @@ beforeEach(() => {
     'GET /api/pipelines/other': { pipeline: other },
     'POST /api/preflight': { issues: [] },
     'POST /api/runs': { id: 'r42' },
+    'GET /api/skills': [{ name: 'tdd-workflow', description: 'TDD', source: 'ecc', kind: 'skill' }],
+    'GET /api/skills/ecc/tdd-workflow': { name: 'tdd-workflow', prompt: 'PROMPT' },
   });
 });
 
@@ -103,5 +105,18 @@ describe('Builder', () => {
     fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
     // Radix renders the chosen label twice in the trigger (screen-reader copy and the animated copy)
     expect((await screen.findAllByText(/follow .* \(set in Crew\)/)).length).toBeGreaterThan(0);
+  });
+
+  it('adds an ECC skill as a step', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
+    vi.mocked(api).mockClear();
+    fireEvent.change(screen.getByLabelText('Find a skill'), { target: { value: 'tdd' } });
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: /tdd-workflow/ })));
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { title?: string; prompt?: string }[] } | undefined;
+      expect(body?.nodes.at(-1)).toMatchObject({ title: 'tdd-workflow', prompt: 'PROMPT' });
+    });
   });
 });
