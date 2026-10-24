@@ -108,7 +108,8 @@ export function Crew() {
     }
   }
   async function saveEdit() {
-    const b = edit!;
+    if (!edit) return;
+    const b = edit;
     const id = isNew ? slug(b.name) : b.id;
     const taken = new Set(defs.map((d) => d.id));
     let use = id;
@@ -123,6 +124,7 @@ export function Crew() {
     }
   }
   async function removeDef(b: BotDef) {
+    if (!edit) return;
     try {
       await api('DELETE', `/api/crew/${b.id}`);
       setEdit(null);
@@ -264,7 +266,7 @@ export function Crew() {
           <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
             <DrawerContent side="right" title={`Evolve ${evolveShown?.name ?? ''}`}>
               {evolveShown ? (
-                <EvolvePanel key={evolveShown.role} bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />
+                <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />
               ) : null}
             </DrawerContent>
           </Drawer>
@@ -272,7 +274,7 @@ export function Crew() {
           <Drawer open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
             <DrawerContent side="right" title={isNew ? 'New bot' : `Edit ${shown?.name ?? ''}`}>
               {shown ? (
-                <div className="bot-editor" aria-label="Edit bot">
+                <div className="bot-editor in-drawer" aria-label="Edit bot">
                   <div className="bot-preview">
                     {preview ? <Sprite pixels={preview} size={120} label={shown.name} /> : <div className="muted small">…</div>}
                     <div className="muted small">{shown.name || 'New bot'}</div>

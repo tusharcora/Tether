@@ -68,6 +68,7 @@ describe('hash routes', () => {
     expect(parseHash('#/crew')).toEqual({ tab: 'crew' });
     expect(parseHash('')).toEqual({ tab: 'builder' });
     expect(parseHash('#/nope')).toEqual({ tab: 'builder' });
+    expect(parseHash('#/runs/%E0')).toEqual({ tab: 'runs', id: '%E0' });
     expect(hashFor({ tab: 'builder', id: 'my flow' })).toBe('#/builder/my%20flow');
     expect(parseHash(hashFor({ tab: 'builder', id: 'my flow' }))).toEqual({ tab: 'builder', id: 'my flow' });
   });

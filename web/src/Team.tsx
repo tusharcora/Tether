@@ -87,6 +87,8 @@ function QuestionCard(props: { q: Question; index: number; total: number; pick: 
 export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan' | 'mode', body: unknown) => Promise<boolean> }) {
   const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [busy, setBusy] = useState(false);
+  // the reject question is open: Approve hides until it is answered (as in the Solid panel)
+  const [rejecting, setRejecting] = useState(false);
   const r = props.run;
   const pending = r.status === 'running' || r.status === 'paused' ? r.pending : [];
   const askerOf = (q: Question) => {
@@ -95,7 +97,10 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
     return id ? (n?.title ?? n?.role ?? id) : undefined;
   };
   // picks belong to one run: another run may reuse the same question ids
-  useEffect(() => setPicks({}), [r.id]);
+  useEffect(() => {
+    setPicks({});
+    setRejecting(false);
+  }, [r.id]);
   const ready = pending.length > 0 && pending.every((q) => !!(picks[q.id]?.option || picks[q.id]?.text?.trim()));
   const planReady = r.status === 'running' && !r.planning && !!r.plan && r.pipeline.nodes.length === 0 && pending.length === 0;
   const active = r.status === 'running' || r.status === 'paused';
@@ -233,10 +238,21 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
           </p>
           <div className="row end">
             {/* keyed by run so a half-asked reject does not carry over to another run */}
-            <ConfirmButton key={r.id} label="Reject" prompt="Cancel this run?" confirmLabel="Yes, reject" disabled={busy} onConfirm={() => decide(false)} />
-            <Button variant="primary" disabled={busy} onClick={() => void decide(true)}>
-              Approve and start
-            </Button>
+            <ConfirmButton
+              key={r.id}
+              label="Reject"
+              prompt="Cancel this run?"
+              confirmLabel="Yes, reject"
+              cancelLabel="Keep plan"
+              disabled={busy}
+              onAskingChange={setRejecting}
+              onConfirm={() => decide(false)}
+            />
+            {rejecting ? null : (
+              <Button variant="primary" disabled={busy} onClick={() => void decide(true)}>
+                Approve and start
+              </Button>
+            )}
           </div>
         </section>
       ) : null}

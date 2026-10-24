@@ -53,4 +53,20 @@ describe('App', () => {
     fireEvent.click(await screen.findByText('Go to Triggers'));
     await waitFor(() => expect(screen.getByText('triggers screen')).toBeTruthy());
   });
+
+  it('leaves Ctrl-K to text fields but always opens on Meta-K', async () => {
+    render(<App />);
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    try {
+      ta.focus();
+      fireEvent.keyDown(ta, { key: 'k', ctrlKey: true });
+      await act(async () => {});
+      expect(screen.queryByText('Go to Triggers')).toBeNull();
+      fireEvent.keyDown(ta, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Go to Triggers')).toBeTruthy();
+    } finally {
+      ta.remove();
+    }
+  });
 });

@@ -45,6 +45,17 @@ describe('TeamPanel', () => {
     expect(send).toHaveBeenLastCalledWith('plan', { approved: false });
   });
 
+  it('hides Approve while the reject question is open and offers Keep plan', () => {
+    const send = vi.fn().mockResolvedValue(true);
+    const plan = { goal: 'Ship rate limiting', success: [], assignments: [], limits: { allowWrites: false }, answers: [] };
+    renderApp(<TeamPanel run={teamRun({ planning: false, plan })} send={send} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(screen.queryByRole('button', { name: 'Approve and start' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep plan' }));
+    expect(screen.getByRole('button', { name: 'Approve and start' })).toBeTruthy();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('switches mode', () => {
     const send = vi.fn().mockResolvedValue(true);
     renderApp(<TeamPanel run={teamRun({ planning: false })} send={send} />);

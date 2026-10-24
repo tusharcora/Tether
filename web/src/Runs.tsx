@@ -282,7 +282,16 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
         <div className="check small pad" title="Evolve probe replays are experiments and are hidden by default; aorch probes --clean deletes finished ones">
           <Switch label="show probe replays" checked={probes} onCheckedChange={(c) => setProbes(c === true)} />
         </div>
-        {runs.length === 0 ? <p className="muted small pad">No runs yet. Build a pipeline and press Run.</p> : null}
+        {list.error && !list.data ? (
+          <div className="alert error pad" role="alert">
+            {list.error}{' '}
+            <Button variant="secondary" size="sm" onClick={() => void list.refresh()}>
+              Retry
+            </Button>
+          </div>
+        ) : runs.length === 0 ? (
+          <p className="muted small pad">No runs yet. Build a pipeline and press Run.</p>
+        ) : null}
         {runs.map((r) => (
           <button key={r.id} className={cn('run-item', { active: props.selected === r.id })} onClick={() => props.onSelect(r.id)}>
             <span className={cn(`dot s-${r.status}`, { pulse: r.live && r.status === 'running' })} />
@@ -316,7 +325,15 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
       </aside>
 
       <section className="run-detail">
-        {run ? detail(run) : props.selected ? <Skeleton lines={4} label="Loading run" /> : <EmptyState title="No run selected" description="Select a run to follow it live." />}
+        {run ? (
+          detail(run)
+        ) : props.selected && error ? (
+          <div className="alert error" role="alert">{error}</div>
+        ) : props.selected ? (
+          <Skeleton lines={4} label="Loading run" />
+        ) : (
+          <EmptyState title="No run selected" description="Select a run to follow it live." />
+        )}
       </section>
     </div>
   );

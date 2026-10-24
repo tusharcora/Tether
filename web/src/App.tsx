@@ -15,6 +15,9 @@ import { Runs } from './Runs';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
 
+const isTextField = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
 export function App() {
   const [route, go] = useHashRoute();
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
@@ -28,10 +31,11 @@ export function App() {
   }, [route]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPalette(true);
-      }
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return;
+      // Ctrl-K edits text in fields (macOS: delete to end of line); only Meta-K is taken there
+      if (!e.metaKey && isTextField(e.target)) return;
+      e.preventDefault();
+      setPalette(true);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -63,13 +67,13 @@ export function App() {
           <div className="status">
             {vault ? (
               <Tooltip content={vault}>
-                <span tabIndex={0}>
+                <span className="info-badge" tabIndex={0}>
                   <Badge size="sm">vault · {vault.split('/').filter(Boolean).slice(-2).join('/')}</Badge>
                 </span>
               </Tooltip>
             ) : null}
             <Tooltip content="The API starts agents and writes files, so it only listens on this machine.">
-              <span tabIndex={0}>
+              <span className="info-badge" tabIndex={0}>
                 <Badge size="sm">loopback only</Badge>
               </span>
             </Tooltip>

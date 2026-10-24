@@ -31,6 +31,23 @@ describe('Runs', () => {
     expect(screen.getByText('? 1')).toBeTruthy();
   });
 
+  it('shows a failed run list inline with a retry', async () => {
+    routeApi({ 'GET /api/runs': new Error('down') });
+    renderApp(<Runs onSelect={() => {}} />);
+    expect(await screen.findByText('down')).toBeTruthy();
+    expect(screen.queryByText(/No runs yet/)).toBeNull();
+    const before = calls('GET', '/api/runs').length;
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));
+    expect(calls('GET', '/api/runs').length).toBe(before + 1);
+  });
+
+  it('shows a failed run load instead of the skeleton', async () => {
+    routeApi({ 'GET /api/runs': [makeRow()], 'GET /api/runs/r1/events': new Error('gone') });
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    expect(await screen.findByText('gone')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading run')).toBeNull();
+  });
+
   it('follows the selected run live', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun()));

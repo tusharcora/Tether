@@ -4,6 +4,7 @@ import { Accordion } from './components/arc/accordion/accordion';
 import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
 import { Checkbox } from './components/arc/checkbox/checkbox';
+import { cn } from './ui/cn';
 import { ConfirmButton } from './ui/ConfirmButton';
 
 /** Shapes from src/evolveops.ts (views are plain data; every string here is rendered as text, never as HTML). */
@@ -31,7 +32,8 @@ interface HarnessView { bot: string; evolvable: boolean; current: { version: num
 const LABEL_TONE: Record<string, 'info' | 'success' | 'danger' | 'neutral'> = { open: 'info', accepted: 'success', rejected: 'danger', superseded: 'neutral' };
 
 /** Harness, proposals and lessons of one bot. Review only: proposals are made with `aorch evolve <bot>` (a model call), never from here. */
-export function EvolvePanel(props: { bot: string; name: string; onClose: () => void; onChange?: () => void }) {
+/** `inDrawer`: the Drawer already frames and titles it, so the panel drops its own frame and heading. */
+export function EvolvePanel(props: { bot: string; name: string; onClose: () => void; onChange?: () => void; inDrawer?: boolean }) {
   const [harness, setHarness] = useState<HarnessView | undefined>();
   const [proposals, setProposals] = useState<ProposalView[]>([]);
   const [lessons, setLessons] = useState<LessonView[]>([]);
@@ -103,9 +105,9 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
 
   const h = harness;
   return (
-    <div className="evolve-panel" role="region" aria-label={`Evolve ${props.name}`}>
+    <div className={cn('evolve-panel', { 'in-drawer': !!props.inDrawer })} role="region" aria-label={`Evolve ${props.name}`}>
       <div className="row">
-        <h3>Evolve · {props.name}</h3>
+        {props.inDrawer ? null : <h3>Evolve · {props.name}</h3>}
         <Button variant="ghost" size="sm" onClick={() => props.onClose()}>Close</Button>
         {msg ? <span className="chip" role="status">{msg}</span> : null}
       </div>

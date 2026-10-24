@@ -31,6 +31,23 @@ describe('Builder', () => {
     await waitFor(() => expect((screen.getByLabelText('Pipeline name') as HTMLInputElement).value).toBe('other'));
   });
 
+  it('toggles the issue list from the status button', async () => {
+    routeApi({
+      'GET /api/doctor': { claude: { ok: true } },
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [{ level: 'warn', node: 'plan', message: 'no gate after plan' }] },
+    });
+    renderApp(<Builder onStarted={() => {}} />);
+    const toggle = await screen.findByRole('button', { name: '1 warning' });
+    expect(screen.queryByText('no gate after plan')).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByText('no gate after plan')).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(toggle);
+    expect(screen.queryByText('no gate after plan')).toBeNull();
+  });
+
   it('chains a new step onto the last one and validates once after edits settle', async () => {
     renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));

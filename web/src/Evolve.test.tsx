@@ -54,3 +54,15 @@ it('asks before rejecting and before rolling back', async () => {
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Roll back' })));
   await waitFor(() => expect(calls('POST', '/api/harness/coder/rollback')[0]![2]).toEqual({ version: 2 }));
 });
+
+it('drops its own heading inside a drawer but keeps Close', async () => {
+  routes(proposal());
+  const { unmount } = renderApp(<EvolvePanel bot="coder" name="Bolt" onClose={() => {}} />);
+  expect(await screen.findByRole('heading', { name: 'Evolve · Bolt' })).toBeTruthy();
+  unmount();
+  renderApp(<EvolvePanel bot="coder" name="Bolt" inDrawer onClose={() => {}} />);
+  expect(await screen.findByRole('button', { name: 'Accept all' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Evolve · Bolt' })).toBeNull();
+  expect(screen.getByRole('region', { name: 'Evolve Bolt' }).classList.contains('in-drawer')).toBe(true);
+  expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+});

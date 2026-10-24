@@ -65,7 +65,16 @@ export interface Route {
 export function parseHash(h: string): Route {
   const [t, id] = h.replace(/^#\/?/, '').split('/');
   const tab = (TABS as string[]).includes(t ?? '') ? (t as Tab) : 'builder';
-  return id ? { tab, id: decodeURIComponent(id) } : { tab };
+  return id ? { tab, id: safeDecode(id) } : { tab };
+}
+
+/** A hand-typed or truncated link may hold a malformed escape (`%E0`): keep the raw id instead of throwing. */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 export const hashFor = (r: Route): string => (r.id ? `#/${r.tab}/${encodeURIComponent(r.id)}` : `#/${r.tab}`);

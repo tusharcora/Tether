@@ -336,11 +336,11 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         </Button>
         <Input className="name" label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />
         <span className="spacer" />
-        <button className="pill" onClick={() => setShowIssues(!showIssues)}>
+        <Button variant="ghost" size="sm" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
           <Badge tone={errors.length ? 'danger' : issues.length ? 'warning' : 'success'}>
             {errors.length ? `${errors.length} error${errors.length > 1 ? 's' : ''}` : issues.length ? `${issues.length} warning${issues.length > 1 ? 's' : ''}` : 'valid'}
           </Badge>
-        </button>
+        </Button>
         <Button variant="secondary" onClick={save} disabled={!dirty || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(pl.name)}>
           {dirty ? 'Save' : 'Saved'}
         </Button>
@@ -409,6 +409,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       <Dialog open={runOpen} onOpenChange={setRunOpen}>
         <DialogContent title={teamRun ? 'Start a team run' : `Run “${pl.name}”`}>
           <form
+            className="form"
             onSubmit={(e) => {
               e.preventDefault();
               void start();

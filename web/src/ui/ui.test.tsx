@@ -1,4 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../test/render';
 import { ConfirmButton } from './ConfirmButton';
@@ -22,6 +23,53 @@ describe('ConfirmButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(go).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' })));
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+  });
+});
+
+describe('ConfirmButton guards', () => {
+  it('keeps the confirm step disabled while its own action runs', async () => {
+    let finish!: () => void;
+    function Host() {
+      const [busy, setBusy] = useState(false);
+      return (
+        <ConfirmButton
+          label="Delete"
+          prompt="Delete t1?"
+          confirmLabel="Yes, delete"
+          disabled={busy}
+          onConfirm={async () => {
+            setBusy(true);
+            await new Promise<void>((r) => (finish = r));
+            setBusy(false);
+          }}
+        />
+      );
+    }
+    renderApp(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' })));
+    expect((screen.getByRole('button', { name: /Yes, delete/ }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish());
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+  });
+
+  it('backs out of the question when disabled from outside while asking', () => {
+    const go = vi.fn();
+    const { rerender } = renderApp(<ConfirmButton label="Delete" prompt="Delete t1?" confirmLabel="Yes, delete" onConfirm={go} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    rerender(<ConfirmButton label="Delete" prompt="Delete t1?" confirmLabel="Yes, delete" disabled onConfirm={go} />);
+    expect(screen.queryByRole('button', { name: 'Yes, delete' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('swallows a rejected onConfirm and resets', async () => {
+    const go = vi.fn().mockRejectedValue(new Error('nope'));
+    renderApp(<ConfirmButton label="Delete" prompt="Delete t1?" confirmLabel="Yes, delete" cancelLabel="Keep it" onConfirm={go} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('button', { name: 'Keep it' })).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' })));
     expect(go).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
