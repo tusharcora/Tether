@@ -67,6 +67,14 @@ describe('Triggers', () => {
     expect(await screen.findByText('new-secret-value')).toBeTruthy();
   });
 
+  it('renders the status dot with the trigger status class', async () => {
+    triggers = [trig(), trig({ id: 'acme-paused', status: 'paused', enabled: false })];
+    renderApp(<Triggers />);
+    await screen.findByRole('switch', { name: /Enable acme-paused/ });
+    expect(document.querySelector('.trig-scroll .dot.idle')).toBeTruthy();
+    expect(document.querySelector('.trig-scroll .dot.paused')).toBeTruthy();
+  });
+
   it('keeps focus on a row control across polls', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderApp(<Triggers />);
