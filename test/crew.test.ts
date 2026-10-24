@@ -243,4 +243,16 @@ describe('roster in the compose prompt', () => {
       registerCrew(BUILTIN_BOTS);
     }
   });
+
+  it('lists your own gate bots for workflow design', () => {
+    const look = BUILTIN_BOTS[0]!.look;
+    registerCrew([...BUILTIN_BOTS, { id: 'lint', name: 'Lint', title: 'lint', kind: 'gate', persona: 'npm run lint', look }, { id: 'ecc-gate', name: 'G', title: 'g', kind: 'gate', persona: '', look, source: 'ecc@v2.2.3' }]);
+    try {
+      const custom = rosterCustomText(repoWith({}), 'task');
+      expect(custom).toContain('- lint (gate)');
+      expect(custom).not.toContain('ecc-gate');
+    } finally {
+      registerCrew(BUILTIN_BOTS);
+    }
+  });
 });

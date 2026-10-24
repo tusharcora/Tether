@@ -10,7 +10,7 @@ import { BUILTIN_IDS, KIND_BLURB, type BotDef } from './crew.js';
 import { fence } from './fence.js';
 import { TEAM_DEFAULT_BUDGET_USD } from './team.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
-import { buildRoster, loadRouting, rosterText } from './roster.js';
+import { buildRoster, entryFor, loadRouting, rosterLine } from './roster.js';
 import { failureBrief } from './supervisor.js';
 import type { Pipeline, PipelineNode, RunState, TeamPlan } from './types.js';
 
@@ -249,7 +249,10 @@ export interface Composition {
 export function rosterCustomText(repo: string | undefined, task: string, home?: string): string {
   const crew = Object.values(CREW).flatMap((c) => (c.def ? [c.def] : []));
   const routing = home ? loadRouting(home) : undefined;
-  return rosterText(buildRoster({ dir: repo, task, crew, routing }).filter((e) => !e.builtin));
+  const lines = buildRoster({ dir: repo, task, crew, routing }).filter((e) => !e.builtin).map(rosterLine);
+  // team rosters stay gate-free, but your own gate bots are valid workflow steps
+  const gates = crew.filter((b) => b.kind === 'gate' && !b.source && !b.builtin && !BUILTIN_IDS.has(b.id)).map((b) => rosterLine(entryFor(b)));
+  return [...lines, ...gates].join('\n');
 }
 
 export const composePrompt = (task: string, tests: string | undefined, custom: string, who?: BotDef): string => `You are ${who ? who.name : 'Maestro'}, the orchestrator bot.${who?.persona ? ' ' + who.persona.replace(/\s+/g, ' ').slice(0, 300) : ''} Design a workflow (a linear pipeline of steps) for an automated team of coding agents to complete the task below. Do NOT do the task yourself and do not modify any files.
