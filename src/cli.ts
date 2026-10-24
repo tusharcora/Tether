@@ -29,6 +29,7 @@ import { refreshCrew } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
 import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, type BotDef } from './crew.js';
 import { PACKS, findPack, parseBots, reid } from './packs.js';
+import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Prepared } from './eccImport.js';
 import { createInterface } from 'node:readline/promises';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
@@ -69,6 +70,9 @@ Usage
   aorch plan <runId> [--reject]       approve (or reject) a team run's finished plan
   aorch mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
   aorch bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
+  aorch crew list [--source ecc]                                      bots with where they came from
+  aorch crew import ecc [--ref v2.2.3] [--from <dir>] [--update]      add ECC's agents, skills and commands (github.com/affaan-m/ECC)
+  aorch crew remove --source ecc                                      remove everything imported from ECC
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
   aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
@@ -512,8 +516,9 @@ async function main() {
   // crew styles moved to the web dashboard: accept the old flag, env var and command, say so once, and carry on
   const ci = argv.findIndex((a) => a === '--crew' || a.startsWith('--crew='));
   if (ci >= 0) argv.splice(ci, argv[ci] === '--crew' ? 2 : 1);
-  if (ci >= 0 || process.env.AORCH_CREW || argv[0] === 'crew') console.error(dim('crew styles moved to the web dashboard (aorch serve, Crew tab)'));
-  if (argv[0] === 'crew') return;
+  const bareCrew = argv[0] === 'crew' && (!argv[1] || argv[1].startsWith('-'));
+  if (ci >= 0 || process.env.AORCH_CREW || bareCrew) console.error(dim('crew styles moved to the web dashboard (aorch serve, Crew tab)'));
+  if (bareCrew) return;
   const cmd = argv[0];
   if (!cmd && process.stdout.isTTY && process.stdin.isTTY) {
     applyTheme();
@@ -609,6 +614,9 @@ async function main() {
       list: { type: 'boolean' },
       all: { type: 'boolean' },
       clean: { type: 'boolean' },
+      source: { type: 'string' },
+      from: { type: 'string' },
+      update: { type: 'boolean' },
     },
   });
   applyTheme(v.theme);
@@ -767,6 +775,62 @@ async function main() {
         fail((e as Error).message);
       }
       return drive(ctx, id, false);
+    }
+    case 'crew': {
+      const sub = pos[0];
+      const cfg = loadConfig(v);
+      const srcOf = (b: BotDef) => b.source ?? (b.builtin ? 'built-in' : 'yours');
+      if (sub === 'list') {
+        const bots = loadCrew(cfg.home).filter((b) => !v.source || b.source?.startsWith(`${v.source}@`));
+        if (v.json) return console.log(JSON.stringify(bots.map((b) => ({ id: b.id, name: b.name, kind: b.kind, source: srcOf(b), whenToUse: b.whenToUse }))));
+        for (const b of bots) console.log(`${bold(b.id.padEnd(24))} ${b.kind.padEnd(8)} ${dim(srcOf(b))}`);
+        return;
+      }
+      if (sub === 'import') {
+        if (pos[1] !== 'ecc') fail('usage: aorch crew import ecc [--ref <tag>] [--from <dir>] [--update] [--yes]', 2);
+        let p: Prepared;
+        try {
+          p = await prepareEcc(cfg.home, { ref: v.ref, from: v.from ? resolve(v.from) : undefined, fetch: gitFetch });
+        } catch (e) {
+          fail(safeText((e as Error).message));
+        }
+        const d = p.diff;
+        console.log(`ECC ${d.ref}: ${d.added.length} added, ${d.updated.length} updated, ${d.removed.length} removed, ${d.skills} skills, ${d.commands} commands`);
+        for (const id of d.added) console.log(green(`  + ${id}`));
+        for (const id of d.removed) console.log(`  - ${id}`);
+        for (const s of [...d.skipped, ...d.notes]) console.log(dim(`  ${s}`));
+        const was = eccInfo(cfg.home);
+        if ((v.update || was) && !v.yes) {
+          if (!process.stdin.isTTY) {
+            discardEcc(p);
+            fail('re-run with --yes to apply this update', 2);
+          }
+          if (!(await confirm(`Apply ECC ${d.ref}${was ? ` (now ${was.ref})` : ''}?`))) {
+            discardEcc(p);
+            return console.log(dim('nothing changed'));
+          }
+        }
+        let done;
+        try {
+          done = applyEcc(cfg.home, p);
+        } catch (e) {
+          discardEcc(p);
+          fail(safeText((e as Error).message));
+        }
+        for (const s of done.skipped.filter((x) => !d.skipped.includes(x))) console.log(dim(`  ${s}`));
+        console.log(green(`✔ ECC ${done.ref} imported into the crew: ${done.added.length} added, ${done.updated.length} updated, ${done.removed.length} removed`));
+        return;
+      }
+      if (sub === 'remove') {
+        if (v.source !== 'ecc') fail('usage: aorch crew remove --source ecc [--yes]', 2);
+        if (!v.yes) {
+          if (!process.stdin.isTTY) fail('re-run with --yes to remove every ECC bot', 2);
+          if (!(await confirm('Remove every ECC bot and the vendored checkout?'))) return console.log(dim('nothing removed'));
+        }
+        console.log(green(`✔ removed ${removeEcc(cfg.home).length} ECC bots`));
+        return;
+      }
+      fail('usage: aorch crew list [--source ecc] | crew import ecc [--ref] [--from] [--update] [--yes] | crew remove --source ecc', 2);
     }
     case 'bots': {
       const sub = pos[0];
