@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Tui } from '../src/tui.js';
 import { Engine } from '../src/engine.js';
 import { interpret } from '../src/maestro.js';
-import { CardInput, cardKey, cardLines, finalSummary, modeCommand, planDecision, progressLines, runNeedsYou, MODE_HELP, parseModeArg } from '../src/teamchat.js';
+import { CardInput, cardKey, cardLines, finalSummary, modeCommand, planDecision, progressLines, runNeedsYou, MODE_HELP, parseModeArg, parseSwap } from '../src/teamchat.js';
 import type { Question, RunState } from '../src/types.js';
 import { strip, vlen } from '../src/ui.js';
 import { makeRepo, setup, tmp } from './helpers.js';
@@ -402,6 +402,32 @@ describe('Tui chat wiring', () => {
     expect(spy.mock.calls).toEqual([[id, true], [id, false]]);
   });
 
+  it('/swap reaches the engine and shows its refusal as a note', async () => {
+    const { ui, engine, id } = await boot({ questions: [], plan }, { yes: true });
+    ui.openRunSession(id);
+    const spy = vi.spyOn(engine, 'swapAssignment').mockImplementationOnce(() => ({}) as RunState).mockImplementationOnce(() => {
+      throw new Error('"nobody" is not on this plan\'s roster');
+    });
+    ui.slash(ui.screen, '/swap 1 helper');
+    ui.slash(ui.screen, '/swap 1 nobody');
+    ui.slash(ui.screen, '/swap one helper');
+    expect(spy.mock.calls).toEqual([[id, 0, 'helper'], [id, 0, 'nobody']]);
+    const notes = ui.sess.log.filter((e: any) => e.k === 'note').map((e: any) => e.text);
+    expect(notes.slice(-3)).toEqual(['assignment 1 → helper', '"nobody" is not on this plan\'s roster', expect.stringMatching(/^usage: \/swap/)]);
+  });
+
+  it('the ready plan numbers assignments, shows why, the swap mark and the roster', async () => {
+    const withWhy = { ...plan, assignments: [{ bot: 'coder', goal: 'c', why: 'knows the parser' }] };
+    const { ui, engine, id } = await boot({ questions: [], plan: withWhy }, { yes: true, roster: ['coder', 'reviewer'] });
+    ui.openRunSession(id);
+    engine.swapAssignment(id, 0, 'reviewer');
+    const text = ui.transcript(100).map((l: { text: string }) => strip(l.text)).join('\n');
+    expect(text).toMatch(/1\. · reviewer \(your pick\): c/);
+    expect(text).toContain('why: knows the parser');
+    expect(text).toContain('/swap <n> <bot>');
+    expect(text).toMatch(/roster: .*reviewer/);
+  });
+
   it('autonomous mode tells the person when a limit ended the run', async () => {
     const { ui, store, id } = await boot({ questions: [], plan }, { yes: true, mode: 'autonomous' });
     ui.openRunSession(id);
@@ -409,5 +435,14 @@ describe('Tui chat wiring', () => {
     const st = { ...store.state(id)!, status: 'error', error: 'budget exhausted ($5.2000 of $5)' };
     ui.report(sess, st);
     expect(sess.log.filter((e: any) => e.k === 'maestro').map((e: any) => e.text).join('\n')).toMatch(/budget exhausted/);
+  });
+});
+
+describe('/swap', () => {
+  it('parses a 1-based assignment and a bot id', () => {
+    expect(parseSwap('/swap 2 go-reviewer')).toEqual({ assignment: 1, bot: 'go-reviewer' });
+    expect(parseSwap('/swap 0 x')).toBeUndefined();
+    expect(parseSwap('/swap two x')).toBeUndefined();
+    expect(parseSwap('/approve')).toBeUndefined();
   });
 });

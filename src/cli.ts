@@ -307,7 +307,7 @@ function showPlan(s: RunState) {
   if (!p) return;
   const lines = [bold(safeText(p.goal)), ''];
   if (p.success.length) lines.push(dim('done when'), ...p.success.map((x) => `  ${green('✔')} ${safeText(x)}`), '');
-  lines.push(dim('team'), ...p.assignments.map((a) => `  ${cyan(a.bot)} ${a.mode === 'write' ? amber('writes') : dim('reads')}  ${safeText(a.goal)}`), '');
+  lines.push(dim('team'), ...p.assignments.map((a) => `  ${cyan(a.bot)} ${a.mode === 'write' ? amber('writes') : dim('reads')}  ${safeText(a.goal)}${a.why ? dim(` — why: ${safeText(a.why)}`) : ''}`), '');
   // the cap covers the whole run, planning included: show what planning spent and what is left for the team
   const cap = p.limits.maxCostUsd;
   const spend = cap !== undefined ? `up to ${usd(cap)} in all${s.costUsd > 0 ? ` (planning spent ${usd(s.costUsd)}, ${usd(Math.max(0, cap - s.costUsd))} left)` : ''}` : 'no spend cap';

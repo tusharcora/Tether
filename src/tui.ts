@@ -30,7 +30,7 @@ import { allowAlways, blockedReason, needsApproval, isAllowed, loadAllowed, clea
 import { chatAboutRun, diagnose, failureKey, perform } from './runchat.js';
 import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberLast, saveSession, sessionIdForRun, type Choice, type Entry, type Session } from './sessions.js';
 import { rank } from './palette.js';
-import { CardInput, cardLines, finalSummary, modeCommand, planDecision, planWaiting, progressLines, runNeedsYou } from './teamchat.js';
+import { CardInput, cardLines, finalSummary, modeCommand, parseSwap, planDecision, planWaiting, progressLines, runNeedsYou } from './teamchat.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { adopt, decline, evolveData, evolveSummary, type EvolveData } from './evolveops.js';
 import { evolveKey, evolveLines, type EvolveState } from './evolveview.js';
@@ -725,6 +725,19 @@ export class Tui {
         const st = this.state(r.id);
         if (st) this.sess.log.push({ k: 'maestro', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
       }
+    } else if (cmd === 'swap') {
+      const sw = parseSwap(line);
+      const id = this.curRunId();
+      if (!sw) note('usage: /swap <n> <bot>  (n is the assignment number in the plan)');
+      else if (!id) note('no plan to change');
+      else {
+        try {
+          this.d.engine.swapAssignment(id, sw.assignment, sw.bot);
+          note(`assignment ${sw.assignment + 1} → ${sw.bot}`);
+        } catch (e) {
+          note((e as Error).message.split('\n')[0]!);
+        }
+      }
     } else if ((cmd === 'approve' || cmd === 'reject') && this.planReady(this.curRunId())) {
       planDecision(this.d.engine, this.curRunId()!, cmd === 'approve').then(
         (m) => this.say(m),
@@ -1224,11 +1237,16 @@ export class Tui {
       add('');
       add(`${bot} ${bold('Plan ready')}`);
       para('  goal: ', safeText(plan.plan.goal), '        ');
-      for (const a of plan.plan.assignments) para(`  ${a.mode === 'write' ? amber('✎') : dim('·')} ${a.bot}: `, safeText(a.goal), '      ');
+      plan.plan.assignments.forEach((a, i) => {
+        para(`  ${i + 1}. ${a.mode === 'write' ? amber('✎') : dim('·')} ${a.bot}${a.swapped ? dim(' (your pick)') : ''}: `, safeText(a.goal), '      ');
+        if (a.why) words(safeText(a.why), Math.max(20, w - 14)).forEach((l, j) => add(dim((j === 0 ? '     why: ' : '          ') + l)));
+      });
       const lim = plan.plan.limits;
       // the cap covers the whole run: what planning spent is already gone from it
       const left = lim.maxCostUsd !== undefined ? ` · budget ${usd(lim.maxCostUsd)}${plan.costUsd > 0 ? ` (${usd(Math.max(0, lim.maxCostUsd - plan.costUsd))} left)` : ''}` : '';
       add('  ' + `${cyan('/approve')} ${dim('start the team')}   ${cyan('/reject')} ${dim('cancel')}` + dim(`   writes ${lim.allowWrites ? 'allowed' : 'off'}${left}${lim.wallClockMs ? ` · ${dur(lim.wallClockMs)}` : ''}`));
+      add('  ' + `${cyan('/swap <n> <bot>')} ${dim('to give one to another bot')}`);
+      if (plan.plan.roster?.length) add('  ' + dim(clipStr(`roster: ${plan.plan.roster.join(', ')}`, Math.max(20, w - 4))));
     }
     if (this.isBusy() || (sess.runId && this.diagBusy.has(sess.runId))) {
       add('');
