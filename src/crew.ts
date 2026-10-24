@@ -40,6 +40,17 @@ export interface Look {
   accent: string;
   /** Pull the body colour into the crew's soft mid-light range. Default on. */
   guard?: boolean;
+  /** Blobatar face overrides; unset fields come from the bot id. */
+  face?: FaceLook;
+}
+
+export interface FaceLook {
+  /** Degrees, 0–359. */
+  hue?: number;
+  /** 0–1. */
+  tone?: number;
+  /** Blobatar trait pins, 0–1 each. */
+  traits?: Record<string, number>;
 }
 
 export interface BotDef {
@@ -52,6 +63,12 @@ export interface BotDef {
   /** Agent steps only: may not edit files. */
   readOnly?: boolean;
   look: Look;
+  /** Set on bots imported from a library, e.g. "ecc@v2.2.3". Re-imports only touch bots with this prefix. */
+  source?: string;
+  /** One line on when Maestro should pick this bot. */
+  whenToUse?: string;
+  /** Model to use when the bot runs on the claude agent and nothing else sets one. */
+  modelHint?: 'opus' | 'sonnet';
   /** Set on load: one of the seven built-ins. */
   builtin?: boolean;
   /** Set on load: a built-in the user has edited. */
@@ -74,6 +91,29 @@ export const BUILTIN_IDS = new Set(BUILTIN_BOTS.map((b) => b.id));
 export const BOT_ID_RE = /^[a-z][a-z0-9_-]{0,23}$/;
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
+export const MAX_CUSTOM_BOTS = 60;
+export const MAX_IMPORTED_BOTS = 150;
+export const PERSONA_MAX = 600;
+export const IMPORTED_PERSONA_MAX = 24_000;
+export const SOURCE_RE = /^[a-z][a-z0-9-]{0,15}@[A-Za-z0-9._-]{1,40}$/;
+export const isImported = (b: BotDef): boolean => !!b.source;
+
+const TRAIT_KEY = /^[a-z][a-zA-Z0-9.]{0,31}$/;
+function cleanFace(v: unknown): FaceLook | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const f = v as Record<string, unknown>;
+  const out: FaceLook = {};
+  if (typeof f.hue === 'number' && Number.isFinite(f.hue)) out.hue = ((Math.round(f.hue) % 360) + 360) % 360;
+  if (typeof f.tone === 'number' && Number.isFinite(f.tone)) out.tone = Math.min(1, Math.max(0, f.tone));
+  if (f.traits && typeof f.traits === 'object' && !Array.isArray(f.traits)) {
+    const t: Record<string, number> = {};
+    for (const [k, n] of Object.entries(f.traits as Record<string, unknown>).slice(0, 12))
+      if (TRAIT_KEY.test(k) && typeof n === 'number' && Number.isFinite(n)) t[k] = Math.min(1, Math.max(0, n));
+    if (Object.keys(t).length) out.traits = t;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const text = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, ' ').trim().slice(0, max) : '';
 
@@ -95,7 +135,14 @@ export function sanitizeBot(raw: unknown): { bot?: BotDef; error?: string } {
   out.color = typeof lk.color === 'string' && HEX_RE.test(lk.color) ? lk.color.toLowerCase() : '#9aa6b8';
   out.accent = lk.accent === 'auto' || (typeof lk.accent === 'string' && HEX_RE.test(lk.accent)) ? String(lk.accent).toLowerCase() : 'auto';
   out.guard = lk.guard !== false;
-  const bot: BotDef = { id: r.id, name, title: text(r.title, 28), kind, persona: text(r.persona, 600), look: out };
+  const face = cleanFace(lk.face);
+  if (face) out.face = face;
+  const source = typeof r.source === 'string' && SOURCE_RE.test(r.source) ? r.source : undefined;
+  const bot: BotDef = { id: r.id, name, title: text(r.title, 28), kind, persona: text(r.persona, source ? IMPORTED_PERSONA_MAX : PERSONA_MAX), look: out };
+  if (source) bot.source = source;
+  const when = text(r.whenToUse, 300);
+  if (when) bot.whenToUse = when;
+  if (r.modelHint === 'opus' || r.modelHint === 'sonnet') bot.modelHint = r.modelHint;
   if (kind === 'agent' && r.readOnly === true) bot.readOnly = true;
   if (kind === 'verdict') bot.readOnly = true;
   return { bot };
@@ -116,7 +163,7 @@ const file = (home: string, id: string) => join(dir(home), `${id}.json`);
 export const crewWarnings: string[] = [];
 
 /**
- * Built-ins (with any saved overrides applied), then your own bots in name order.
+ * Built-ins (with any saved overrides applied), then your own bots in name order, then imported bots in id order.
  * A saved bot whose id is now a built-in (e.g. a custom `manager` made before managers existed) keeps its name,
  * persona and look but takes the built-in's role; that is reported through `crewWarnings` / `onWarn`.
  */
@@ -146,7 +193,10 @@ export function loadCrew(home: string, onWarn?: (msg: string) => void): BotDef[]
     // a built-in keeps its role: only identity and look can be changed, not what kind of step it is
     return o ? { ...o, kind: b.kind, readOnly: b.readOnly, builtin: true, edited: true } : { ...b, builtin: true };
   });
-  return [...out, ...[...saved.values()].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 60)];
+  const rest = [...saved.values()];
+  const mine = rest.filter((b) => !b.source).sort((a, b) => a.name.localeCompare(b.name)).slice(0, MAX_CUSTOM_BOTS);
+  const imported = rest.filter((b) => b.source).sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_IMPORTED_BOTS);
+  return [...out, ...mine, ...imported];
 }
 
 export function saveBot(home: string, bot: BotDef): void {

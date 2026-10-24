@@ -383,7 +383,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
     if ((g = p.match(/^\/api\/crew\/packs\/([a-z0-9-]{1,24})$/)) && m === 'POST') {
       const pack = findPack(g[1]!) ?? (() => { throw new HttpError(404, 'unknown pack'); })();
-      const have = loadCrew(cfg.home);
+      const have = loadCrew(cfg.home).filter((b) => !b.source);
       if (have.length + pack.bots.length > 67) throw new HttpError(400, 'too many bots; remove some first');
       const fresh = reid(pack.bots, new Set(have.map((b) => b.id)));
       for (const b of fresh) saveBot(cfg.home, b);
@@ -394,7 +394,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const id = g[1]!;
       if (!BOT_ID_RE.test(id)) throw new HttpError(400, 'bad id');
       if (m === 'PUT') {
-        const existing = loadCrew(cfg.home);
+        const existing = loadCrew(cfg.home).filter((b) => !b.source);
         const was = existing.find((b) => b.id === id);
         if (!was && existing.length >= 67) throw new HttpError(400, 'too many bots; remove some first');
         const body = await readJson(req);
