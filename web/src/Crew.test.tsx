@@ -10,17 +10,23 @@ import { renderApp } from './test/render';
 const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#3fb97c', accent: 'auto' };
 const bots = [{ id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: 'Writes the change', look, builtin: true }];
 
+const crewReply = { bots, packs: [], parts: { body: ['pebble'], eyes: ['dots'], mouth: ['none'], top: ['none'], side: ['none'], pattern: ['none'] }, kinds: [{ kind: 'agent', blurb: 'does a job' }, { kind: 'verdict', blurb: 'passes or fails' }], style: 'pebble', styles: [{ id: 'pebble', blurb: 'pixel bots' }, { id: 'sigil', blurb: 'glyphs' }], shapes: {}, glyphs: {}, evolve: {}, ecc: null as { ref: string; at: string } | null, eccDefault: 'v2.2.3' };
+const botsReply = { crew: [{ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null as { agent: string; model?: string } | null }], agents: { claude: { ok: true, models: ['opus'] }, codex: { ok: true, models: [] } } };
+const routes = {
+  'GET /api/crew': crewReply,
+  'GET /api/bots': botsReply,
+  'PUT /api/bots/coder': {},
+  'DELETE /api/bots/coder': {},
+  'PUT /api/crew/quill': {},
+  'PUT /api/crew/coder': {},
+  'PUT /api/crew/go-reviewer': {},
+  'POST /api/crew/import': { ref: 'v2.2.3', added: ['go-reviewer'], updated: [], removed: [], skipped: [], notes: [], skills: 1, commands: 1 },
+  'DELETE /api/crew': { removed: ['go-reviewer'] },
+};
+
 beforeEach(() => {
   vi.mocked(api).mockReset();
-  routeApi({
-    'GET /api/crew': { bots, packs: [], parts: { body: ['pebble'], eyes: ['dots'], mouth: ['none'], top: ['none'], side: ['none'], pattern: ['none'] }, kinds: [{ kind: 'agent', blurb: 'does a job' }], style: 'pebble', styles: [{ id: 'pebble', blurb: 'pixel bots' }, { id: 'sigil', blurb: 'glyphs' }], shapes: {}, glyphs: {}, evolve: {} },
-    'GET /api/bots': { crew: [{ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null }], agents: { claude: { ok: true, models: ['opus'] }, codex: { ok: true, models: [] } } },
-    'PUT /api/bots/coder': {},
-    'DELETE /api/bots/coder': {},
-    'PUT /api/crew/style': {},
-    'POST /api/crew/preview': { grid: ['#'], colors: { '#': '#fff' } },
-    'PUT /api/crew/quill': {},
-  });
+  routeApi(routes);
 });
 
 describe('Crew', () => {
@@ -37,21 +43,15 @@ describe('Crew', () => {
     expect(calls('PUT', '/api/bots/coder')).toHaveLength(0);
   });
 
-  it('switches the crew style', async () => {
-    renderApp(<Crew />);
-    fireEvent.click(await screen.findByRole('button', { name: 'sigil' }));
-    await waitFor(() => expect(calls('PUT', '/api/crew/style')[0]![2]).toEqual({ style: 'sigil' }));
-  });
-
-  it('creates a bot from the editor and debounces the preview', async () => {
+  it('creates a bot from the editor with a live face preview and no server preview', async () => {
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: '+ New bot' }));
     const name = await screen.findByLabelText('Name');
+    expect(screen.getByRole('img', { name: 'New bot preview' })).toBeTruthy();
     vi.mocked(api).mockClear();
-    fireEvent.change(name, { target: { value: 'Q' } });
-    fireEvent.change(name, { target: { value: 'Qu' } });
     fireEvent.change(name, { target: { value: 'Quill' } });
-    await waitFor(() => expect(calls('POST', '/api/crew/preview')).toHaveLength(1));
+    expect(screen.getByRole('img', { name: 'Quill preview' })).toBeTruthy();
+    expect(calls('POST', '/api/crew/preview')).toHaveLength(0);
     await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
     expect(calls('PUT', '/api/crew/quill')[0]![2]).toMatchObject({ id: 'quill', name: 'Quill' });
   });
@@ -74,5 +74,99 @@ describe('Crew', () => {
     await waitFor(() => expect(calls('GET', '/api/bots')).toHaveLength(2));
     expect(screen.queryByText('down')).toBeNull();
     expect(await screen.findByRole('button', { name: 'Save' })).toBeTruthy();
+  });
+});
+
+describe('crew sources and faces', () => {
+  it('filters by source and shows when-to-use', async () => {
+    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', persona: '', look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go' }], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } }, 'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] } });
+    renderApp(<Crew />);
+    expect(await screen.findByText('Use for Go')).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Built-in/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Built-in/ }));
+    expect(screen.queryByText('Go Reviewer')).toBeNull();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /ECC/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /ECC/ }));
+    expect(screen.getByText('Go Reviewer')).toBeTruthy();
+  });
+
+  it('imports ECC after confirming in a dialog', async () => {
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Import ECC…' }));
+    expect(await screen.findByText(/v2\.2\.3/)).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Import' })));
+    expect(calls('POST', '/api/crew/import')[0]![2]).toEqual({ source: 'ecc' });
+  });
+
+  it('edits a face with sliders and saves it on the bot', async () => {
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    const before = (await screen.findByRole('img', { name: 'Bolt preview' })).innerHTML;
+    fireEvent.keyDown(screen.getByRole('slider', { name: /Hue/ }), { key: 'ArrowRight' });
+    expect(screen.getByRole('img', { name: 'Bolt preview' }).innerHTML).not.toBe(before);
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ look: { face: { hue: expect.any(Number) } } });
+  });
+
+  it('shows no ECC wording when nothing is imported except the import button', async () => {
+    renderApp(<Crew />);
+    await screen.findByText('Bolt');
+    expect(screen.queryByRole('tab', { name: /ECC/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove ECC' })).toBeNull();
+  });
+
+  it('does not save the default hue until the slider moves, and resets to the generated face', async () => {
+    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [{ ...bots[0]!, look: { ...look, face: { hue: 10, tone: 0.3 } } }] } });
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset to generated' }));
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+    const sent = calls('PUT', '/api/crew/coder')[0]![2] as { look: Record<string, unknown> };
+    expect('face' in sent.look).toBe(false);
+  });
+
+  describe('imported bots', () => {
+    const imported = { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', persona: 'You review Go…', personaTruncated: true, look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go' };
+    beforeEach(() => {
+      routeApi({
+        ...routes,
+        'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, imported], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } },
+        'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] },
+      });
+    });
+
+    it('sends personaTruncated as received when the persona is not edited', async () => {
+      renderApp(<Crew />);
+      fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+      expect(await screen.findByText('From ECC; an update replaces your edits')).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'gopher' } });
+      await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+      expect(calls('PUT', '/api/crew/go-reviewer')[0]![2]).toMatchObject({ title: 'gopher', personaTruncated: true, persona: 'You review Go…' });
+    });
+
+    it('drops personaTruncated once the persona is edited', async () => {
+      renderApp(<Crew />);
+      fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+      fireEvent.change(await screen.findByLabelText(/Persona/), { target: { value: 'Short and sharp' } });
+      await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+      const sent = calls('PUT', '/api/crew/go-reviewer')[0]![2] as Record<string, unknown>;
+      expect(sent.persona).toBe('Short and sharp');
+      expect('personaTruncated' in sent).toBe(false);
+    });
+
+    it('shows an ECC badge, offers update and removes ECC after confirming', async () => {
+      renderApp(<Crew />);
+      expect(await screen.findByRole('button', { name: 'Update ECC…' })).toBeTruthy();
+      expect(screen.getAllByText('ECC').length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Remove ECC' }));
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Remove' })));
+      expect(calls('DELETE', '/api/crew?source=ecc')).toHaveLength(1);
+    });
+
+    it('shows the version change in the update dialog', async () => {
+      renderApp(<Crew />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Update ECC…' }));
+      expect(await screen.findByText('Version v2.2.3 → v2.2.3')).toBeTruthy();
+    });
   });
 });

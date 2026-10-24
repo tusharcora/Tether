@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { blobatar, type BlobatarOptions } from 'blobatar';
 import * as X from 'blobatar/expression';
 import { Blobatar } from '@blobatar/react';
@@ -55,6 +56,9 @@ export function Face(props: { id: string; mood?: Mood; size?: number; label?: st
   const face = props.face ?? c?.face;
   const label = props.label ?? c?.name ?? props.id;
   const mood = props.mood ?? 'idle';
+  const faceKey = JSON.stringify(face ?? null);
+  // building the SVG is the costly part; skip it for animated faces and when nothing changed
+  const uri = useMemo(() => (props.animate ? '' : faceUri(props.id, { mood, face, size })), [props.animate, props.id, mood, size, faceKey]);
   if (props.animate)
     return (
       <span
@@ -67,5 +71,5 @@ export function Face(props: { id: string; mood?: Mood; size?: number; label?: st
         <Blobatar name={props.id} {...faceOptions({ mood, face, size })} animate={props.animate} />
       </span>
     );
-  return <img src={faceUri(props.id, { mood, face, size })} width={size} height={size} alt={label} data-mood={mood} className="face" />;
+  return <img src={uri} width={size} height={size} alt={label} data-mood={mood} className="face" />;
 }
