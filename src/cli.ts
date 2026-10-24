@@ -23,7 +23,7 @@ import { baselinePersona, currentHarness, diffHarness, getVersion, listVersions,
 import { adopt, decline, EvolveOpError, findBot, harnessView, keptOf, loadProposal, proposalsFor, proposalView, revert, scrubPaths, versionArg, type ProposalView } from './evolveops.js';
 import { loadLessons, type Lesson } from './lessons.js';
 import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.js';
-import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
+import { aorchSkills, claudeSkillPipeline, claudeSkills, eccSkillPipeline, eccSkills, findSkill, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
 import { refreshCrew } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
@@ -75,7 +75,7 @@ Usage
   aorch crew remove --source ecc                                      remove everything imported from ECC
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
-  aorch skills [run <name> --task "…"]                                list or run skills (Claude Code skills + aorch workflows)
+  aorch skills [--source ecc|claude|aorch] [run <name> --task "…"]    list or run skills (Claude Code skills, aorch workflows, ECC skills and commands; ecc:<name> picks the ECC one)
   aorch models [agent]                list what each agent can run (local servers included)
   aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
@@ -292,11 +292,11 @@ async function askCards(cards: Question[]): Promise<Answer[]> {
   }
 }
 
-async function confirm(text: string): Promise<boolean> {
+async function confirm(text: string, o: { defaultNo?: boolean } = {}): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const a = (await Promise.race([rl.question(`${text} ${dim('[Y/n]')} `), new Promise<string>((r) => rl.once('close', () => r('n')))])).trim().toLowerCase();
-    return a === '' || a === 'y' || a === 'yes';
+    const a = (await Promise.race([rl.question(`${text} ${dim(o.defaultNo ? '[y/N]' : '[Y/n]')} `), new Promise<string>((r) => rl.once('close', () => r('n')))])).trim().toLowerCase();
+    return (a === '' && !o.defaultNo) || a === 'y' || a === 'yes';
   } finally {
     rl.close();
   }
@@ -511,14 +511,14 @@ async function evolveDecide(v: { accept?: string; reject?: boolean; show?: strin
   }
 }
 
+const CREW_MOVED = 'crew styles moved to the web dashboard (aorch serve, Crew tab)';
+
 async function main() {
   const argv = process.argv.slice(2);
   // crew styles moved to the web dashboard: accept the old flag, env var and command, say so once, and carry on
   const ci = argv.findIndex((a) => a === '--crew' || a.startsWith('--crew='));
   if (ci >= 0) argv.splice(ci, argv[ci] === '--crew' ? 2 : 1);
-  const bareCrew = argv[0] === 'crew' && (!argv[1] || argv[1].startsWith('-'));
-  if (ci >= 0 || process.env.AORCH_CREW || bareCrew) console.error(dim('crew styles moved to the web dashboard (aorch serve, Crew tab)'));
-  if (bareCrew) return;
+  if (ci >= 0 || process.env.AORCH_CREW) console.error(dim(CREW_MOVED));
   const cmd = argv[0];
   if (!cmd && process.stdout.isTTY && process.stdin.isTTY) {
     applyTheme();
@@ -777,6 +777,11 @@ async function main() {
       return drive(ctx, id, false);
     }
     case 'crew': {
+      // bare `aorch crew` used to open the terminal crew-style picker
+      if (pos.length === 0) {
+        if (ci < 0 && !process.env.AORCH_CREW) console.error(dim(CREW_MOVED));
+        return;
+      }
       const sub = pos[0];
       const cfg = loadConfig(v);
       const srcOf = (b: BotDef) => b.source ?? (b.builtin ? 'built-in' : 'yours');
@@ -825,7 +830,7 @@ async function main() {
         if (v.source !== 'ecc') fail('usage: aorch crew remove --source ecc [--yes]', 2);
         if (!v.yes) {
           if (!process.stdin.isTTY) fail('re-run with --yes to remove every ECC bot', 2);
-          if (!(await confirm('Remove every ECC bot and the vendored checkout?'))) return console.log(dim('nothing removed'));
+          if (!(await confirm('Remove every ECC bot and the vendored checkout?', { defaultNo: true }))) return console.log(dim('nothing removed'));
         }
         console.log(green(`✔ removed ${removeEcc(cfg.home).length} ECC bots`));
         return;
@@ -1420,13 +1425,13 @@ async function main() {
     case 'skills': {
       const cfg = loadConfig(v);
       const sub = pos[0];
-      const all = [...aorchSkills(cfg.home), ...claudeSkills(resolve(v.repo ?? '.'))];
+      const all = [...aorchSkills(cfg.home), ...claudeSkills(resolve(v.repo ?? '.')), ...eccSkills(cfg.home)].filter((s) => !v.source || s.source === v.source || (v.source === 'claude' && s.source === 'project'));
       if (sub === 'run') {
         const name = pos[1] ?? fail('usage: aorch skills run <name> --task "<text>" [--repo <dir>]');
         const task = v.task ?? fail('--task is required');
         const repo = resolve(v.repo ?? '.');
-        const skill = all.find((k) => k.name === name) ?? fail(`unknown skill "${name}" — see: aorch skills`);
-        const pipeline = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(repo)) : claudeSkillPipeline(skill);
+        const skill = findSkill(all, name) ?? fail(`unknown skill "${safeText(name).slice(0, 80)}" — see: aorch skills`);
+        const pipeline = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(repo)) : skill.source === 'ecc' ? eccSkillPipeline(skill) : claudeSkillPipeline(skill);
         const ctx = open(v);
         let id: string;
         try {
@@ -1436,10 +1441,11 @@ async function main() {
         }
         return drive(ctx, id, !!v.json);
       }
-      if (sub) fail('usage: aorch skills [run <name> --task "<text>"] [--json]');
-      if (v.json) return console.log(JSON.stringify(all.map((k) => ({ name: k.name, source: k.source, description: k.description, steps: k.steps?.map((x) => x.role) }))));
+      if (sub) fail('usage: aorch skills [--source ecc|claude|aorch] [run <name> --task "<text>"] [--json]');
+      if (v.json) return console.log(JSON.stringify(all.map((k) => ({ name: k.name, source: k.source, kind: k.kind, description: k.description, steps: k.steps?.map((x) => x.role) }))));
       await banner('skills');
-      for (const k of all) console.log(`  ${padEndV(bold(k.name), 22)} ${dim(padEndV(k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude·project' : 'claude', 15))} ${dim(k.description)}${k.steps ? '  ' + faint(k.steps.map((x) => x.role).join(' → ')) : ''}`);
+      const label = (k: (typeof all)[number]) => (k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude·project' : k.source === 'ecc' ? `ECC ${k.kind ?? 'skill'}` : 'claude');
+      for (const k of all) console.log(`  ${padEndV(bold(k.name), 22)} ${dim(padEndV(label(k), 15))} ${dim(k.description)}${k.steps ? '  ' + faint(k.steps.map((x) => x.role).join(' → ')) : ''}`);
       console.log(dim(`\n  run one: aorch skills run <name> --task "…" --repo .   ·   add your own: ${join(cfg.home, 'skills')}/<name>.json`));
       return;
     }

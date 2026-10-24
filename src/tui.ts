@@ -35,9 +35,9 @@ import { costChart, timelineChart, toLines } from './raster.js';
 import { adopt, decline, evolveData, evolveSummary, type EvolveData } from './evolveops.js';
 import { evolveKey, evolveLines, type EvolveState } from './evolveview.js';
 import { Vault } from './vault.js';
-import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
+import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, eccSkillPipeline, eccSkillPrompt, eccSkills, skillPipeline, type Skill } from './skills.js';
 import { SPIN, bgCode, mix } from './ui.js';
-import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
+import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, makeStep, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
 import { commitDiff, diffCommitted } from './git.js';
@@ -1362,7 +1362,12 @@ export class Tui {
 
   // ---------- command palette + skills ----------
   private skills(): Skill[] {
-    return [...aorchSkills(this.d.cfg.home), ...claudeSkills(process.cwd())];
+    return [...aorchSkills(this.d.cfg.home), ...claudeSkills(process.cwd()), ...eccSkills(this.d.cfg.home)];
+  }
+
+  private skillHint(k: Skill): string {
+    const where = k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : k.source === 'ecc' ? `ECC ${k.kind ?? 'skill'}` : 'claude';
+    return `${where}${k.description ? ' · ' + k.description : ''}`;
   }
 
   private runSkill(skill: Skill) {
@@ -1370,19 +1375,41 @@ export class Tui {
       if (!task) return;
       this.ask('Repository (a git repo):', (repo) => {
         const r = resolve((repo || process.cwd()).replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
-        const p = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(r)) : claudeSkillPipeline(skill);
+        let p;
+        try {
+          p = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(r)) : skill.source === 'ecc' ? eccSkillPipeline(skill) : claudeSkillPipeline(skill);
+        } catch (e) {
+          return this.say(`cannot read ${skill.name}: ${(e as Error).message}`, 'err');
+        }
         this.startRun(p, r, task);
       }, process.cwd());
     });
   }
 
-  /** Editor: add an aorch skill's steps after the selection, or point the selected step at a Claude Code skill. */
+  /** Editor: add an aorch skill's steps (or one ECC step) after the selection, or point the selected step at a Claude Code skill. */
   private skillIntoEditor(s: Extract<Screen, { kind: 'editor' }>, touch: () => void) {
     const all = this.skills();
     if (!all.length) return this.say('no skills found', 'err');
-    this.choose('Add a skill', all.map((k, i) => ({ value: String(i), label: k.name, hint: `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}` })), (v) => {
+    this.choose('Add a skill', all.map((k, i) => ({ value: String(i), label: k.name, hint: this.skillHint(k) })), (v) => {
       const k = all[Number(v)]!;
       const p = s.pipeline;
+      if (k.source === 'ecc') {
+        let prompt: string;
+        try {
+          prompt = eccSkillPrompt(k);
+        } catch (e) {
+          return this.say(`cannot read ${k.name}: ${(e as Error).message}`, 'err');
+        }
+        const at = p.nodes.length ? s.sel + 1 : 0;
+        const n = makeStep('coder', p);
+        n.prompt = prompt;
+        n.title = k.name.slice(0, 24);
+        p.nodes.splice(at, 0, n);
+        relink(p);
+        s.sel = at;
+        touch();
+        return this.say(`added the ECC ${k.kind ?? 'skill'} ${k.name} as a step`);
+      }
       if (k.source === 'aorch') {
         let at = p.nodes.length ? s.sel + 1 : 0;
         const tests = detectTestCommand(process.cwd());
@@ -1463,7 +1490,7 @@ export class Tui {
         }
       });
     }
-    for (const k of this.skills()) add('skill', k.name, `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}`, () => this.runSkill(k));
+    for (const k of this.skills()) add('skill', k.name, this.skillHint(k), () => this.runSkill(k));
     add('do', 'Quit', 'q', () => this.quit());
     return c;
   }

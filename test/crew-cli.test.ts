@@ -32,6 +32,22 @@ describe('aorch crew', () => {
     expect(bare.err).toMatch(/moved to the web dashboard/);
   });
 
+  it('a flag before the sub-command still reaches it', () => {
+    const h = tmp('cli-home-');
+    const r = aorch(h, 'crew', '--json', 'list', '--source', 'ecc');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toEqual([]);
+    expect(r.err).not.toMatch(/moved to the web dashboard/);
+  });
+
+  it('aorch skills lists imported ECC skills and commands with their kind', () => {
+    const h = tmp('cli-home-');
+    aorch(h, 'crew', 'import', 'ecc', '--from', FIXTURE, '--yes');
+    const r = aorch(h, 'skills', '--source', 'ecc', '--json');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).map((s: { name: string; kind: string }) => [s.name, s.kind])).toEqual([['tdd-workflow', 'skill'], ['plan', 'command']]);
+  });
+
   it('--update without --yes and without a terminal prints the diff and changes nothing', () => {
     const h = tmp('cli-home-');
     aorch(h, 'crew', 'import', 'ecc', '--from', FIXTURE, '--yes');
