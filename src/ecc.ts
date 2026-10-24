@@ -2,7 +2,7 @@
  * ECC ("Everything Claude Code", github.com/affaan-m/ECC, MIT): turn its agent, skill and command files into aorch data.
  * Pure: no fs or network here (see eccImport.ts). Hooks and rules are never read.
  */
-import { BOT_ID_RE, BUILTIN_IDS, IMPORTED_PERSONA_MAX, sanitizeBot, type BotDef } from './crew.js';
+import { BOT_ID_RE, BUILTIN_IDS, IMPORTED_PERSONA_MAX, SOURCE_RE, sanitizeBot, type BotDef } from './crew.js';
 
 export const ECC_REPO = 'https://github.com/affaan-m/ECC';
 export const ECC_REF = 'v2.2.3';
@@ -18,11 +18,11 @@ export interface EccFront {
 const unquote = (v: string) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
 
 export function parseFront(text: string): { front: EccFront; body: string } {
-  const t = text.replace(/\r\n?/g, '\n');
-  const m = /^---\n([\s\S]*?)\n---\n?/.exec(t);
+  const t = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const m = /^---\n(?:([\s\S]*?)\n)?---\n?/.exec(t);
   const front: EccFront = { tools: [] };
   if (!m) return { front, body: t.trim() };
-  for (const line of m[1]!.split('\n')) {
+  for (const line of (m[1] ?? '').split('\n')) {
     const kv = /^([a-z-]+)\s*:\s*(.*)$/.exec(line);
     if (!kv) continue;
     const [, k, raw] = kv;
@@ -45,6 +45,7 @@ const words = (s: string) => s.split('-').map((w) => w.charAt(0).toUpperCase() +
 
 /** One ECC agent file as a bot. `taken` = ids of bots that are not from ECC (built-ins are always taken). */
 export function agentToBot(fileName: string, text: string, ref: string, taken: ReadonlySet<string>): { bot?: BotDef; note?: string; error?: string } {
+  if (!SOURCE_RE.test(`ecc@${ref}`)) return { error: `ref "${ref}" is not a valid version tag` };
   const { front, body } = parseFront(text);
   const name = (front.name ?? fileName.replace(/\.md$/, '')).trim();
   if (!NAME_RE.test(name)) return { error: `${fileName}: name "${name}" is not lowercase-with-dashes` };

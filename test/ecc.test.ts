@@ -11,6 +11,8 @@ describe('ECC parsing', () => {
     expect(front).toEqual({ name: 'x', description: 'a: b', tools: ['Read', 'Write'], argumentHint: '<p>' });
     expect(body).toBe('body');
     expect(parseFront('no front').front.tools).toEqual([]);
+    expect(parseFront('\uFEFF---\nname: x\n---\nbody').front.name).toBe('x');
+    expect(parseFront('---\n---\nbody')).toEqual({ front: { tools: [] }, body: 'body' });
   });
 
   it('maps an agent to a bot', () => {
@@ -33,6 +35,7 @@ describe('ECC parsing', () => {
     const long = agentToBot('x.md', '---\nname: harmonyos-app-resolver-extra-long\n---\nbody', 'v2.2.3', new Set());
     expect(long.bot!.id).toBe('harmonyos-app-resolver-e');
     expect(long.note).toMatch(/shortened/);
+    expect(agentToBot('go-reviewer.md', fx('agents/go-reviewer.md'), 'feature/x', new Set()).error).toMatch(/ref/);
     expect(agentToBot('Bad.md', '---\nname: Bad Name!\n---\nx', 'v2.2.3', new Set()).error).toMatch(/name/);
   });
 
