@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
+import { Face, moodFor } from './Face';
 import { cn } from './ui/cn';
 
 export const NODE_W = 212;
@@ -26,8 +27,6 @@ type Drag =
   | { kind: 'node'; id: string; ox: number; oy: number }
   | { kind: 'link'; from: string };
 
-const GLYPH: Record<string, string> = { agent: '◆', gate: '⛨', approval: '⏸' };
-const ROLE_GLYPH: Record<string, string> = { planner: '✎', architect: '▦', coder: '⌘', reviewer: '⚖', tester: '✓' };
 
 const edgePath = (x1: number, y1: number, x2: number, y2: number) => {
   const dx = Math.max(48, Math.abs(x2 - x1) / 2);
@@ -227,6 +226,7 @@ export function Canvas(props: CanvasProps) {
 
         {props.nodes.map((n) => {
           const st = props.statuses?.[n.id];
+          const mood = moodFor(st?.status);
           return (
             <div
               key={n.id}
@@ -237,7 +237,7 @@ export function Canvas(props: CanvasProps) {
             >
               <div className="port in" data-port-in data-id={n.id} />
               <div className="node-head" data-node-head>
-                <span className="glyph">{n.kind === 'agent' ? (ROLE_GLYPH[n.role ?? ''] ?? GLYPH.agent) : GLYPH[n.kind]}</span>
+                <Face id={crewFor(n, crew)} mood={mood} size={22} animate={mood === 'working' || mood === 'waiting' ? 'always' : undefined} />
                 <span className="node-title">{n.title ?? n.role ?? n.kind}</span>
                 <span className="chip id">{n.id}</span>
               </div>

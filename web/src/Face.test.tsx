@@ -1,26 +1,44 @@
 import { render, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
-import { applyCrew, type BotDef } from './crewStore';
-import { Face } from './Face';
+import { describe, expect, it } from 'vitest';
+import { applyCrew } from './crewStore';
+import { Face, faceSvg, faceUri, MOOD_EXPRESSION, moodFor } from './Face';
 
-const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#3fb97c', accent: 'auto' };
-const coder: BotDef = { id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: '', look, pixels: { grid: ['#.', '.#'], colors: { '#': '#3fb97c' } }, mark: { shape: 'bolt', symbol: 'BLT', initials: 'BO' } };
+describe('faces', () => {
+  it('maps moods to expressions and statuses to moods', () => {
+    expect(MOOD_EXPRESSION).toEqual({ idle: 'idle', working: 'thinking', done: 'happy', failed: 'sad', waiting: 'unsure', asleep: 'sleepy', stopped: 'mad' });
+    expect(moodFor('running')).toBe('working');
+    expect(moodFor('awaiting')).toBe('waiting');
+    expect(moodFor('error')).toBe('failed');
+    expect(moodFor(undefined)).toBe('idle');
+  });
 
-it('draws the pixel look in the pebble style', () => {
-  applyCrew([coder], { style: 'pebble' });
-  const { container } = render(<Face role="coder" size={40} />);
-  expect(screen.getByRole('img', { name: 'Bolt' })).toBeTruthy();
-  expect(container.querySelectorAll('rect')).toHaveLength(2);
-});
+  it('is deterministic per id and stable across releases', () => {
+    expect(faceSvg('coder')).toBe(faceSvg('coder'));
+    expect(faceSvg('coder')).not.toBe(faceSvg('planner'));
+    expect(faceSvg('coder', { mood: 'working' })).not.toBe(faceSvg('coder'));
+    expect({ orchestrator: faceSvg('orchestrator'), planner: faceSvg('planner'), coder: faceSvg('coder') }).toMatchSnapshot();
+  });
 
-it('draws initials in the orbit style', () => {
-  applyCrew([coder], { style: 'orbit' });
-  render(<Face role="coder" />);
-  expect(screen.getByRole('img', { name: 'Bolt' }).textContent).toContain('BO');
-});
+  it('applies face overrides and renders an image with the bot name', () => {
+    expect(faceSvg('coder', { face: { hue: 10 } })).not.toBe(faceSvg('coder'));
+    applyCrew([{ id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: '', look: { body: '', eyes: '', mouth: '', top: '', side: '', pattern: '', color: '#3fb97c', accent: 'auto' } }]);
+    render(<Face id="coder" size={40} />);
+    const img = screen.getByRole('img', { name: 'Bolt' }) as HTMLImageElement;
+    expect(img.src.startsWith('data:image/svg+xml')).toBe(true);
+    expect(faceUri('coder')).toContain(encodeURIComponent('<svg'));
+  });
 
-it('falls back to the coder for an unknown role', () => {
-  applyCrew([coder], { style: 'pebble' });
-  render(<Face role="nobody" />);
-  expect(screen.getByRole('img', { name: 'Bolt' })).toBeTruthy();
+  it('animates as inline SVG: always, or on hover', () => {
+    const { container } = render(
+      <>
+        <Face id="coder" mood="working" animate="always" />
+        <Face id="planner" animate="hover" />
+      </>,
+    );
+    const [always, hover] = [...container.querySelectorAll('span.face[role="img"]')];
+    expect(always!.querySelector('svg > g.mo-root.mo-always')).toBeTruthy();
+    expect(hover!.querySelector('.mo-root')).toBeTruthy();
+    expect(hover!.querySelector('.mo-always')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
 });

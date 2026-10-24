@@ -11,7 +11,7 @@ import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
 import { MARK_STYLES, applyCrew, useCrew, type BotDef, type Pixels } from './crewStore';
 import { EvolvePanel } from './Evolve';
-import { Face, Mark, Sprite } from './Face';
+import { Face } from './Face';
 import { NONE, cn, fromNone } from './ui/cn';
 import { useNotify } from './ui/notify';
 
@@ -196,7 +196,7 @@ export function Crew() {
               return (
                 <div className="crew-card" key={r.role}>
                   <button className="sprite-btn" title="Edit this bot" onClick={() => def && open(def)}>
-                    <Face role={r.role} size={48} />
+                    <Face id={r.role} size={48} />
                   </button>
                   <div className="crew-main">
                     <h4>
@@ -276,7 +276,7 @@ export function Crew() {
               {shown ? (
                 <div className="bot-editor in-drawer" aria-label="Edit bot">
                   <div className="bot-preview">
-                    {preview ? <Sprite pixels={preview} size={120} label={shown.name} /> : <div className="muted small">…</div>}
+                    {preview ? <Face id={shown.id || 'new'} size={120} label={shown.name} face={shown.look.face} /> : <div className="muted small">…</div>}
                     <div className="muted small">{shown.name || 'New bot'}</div>
                   </div>
                   <div className="bot-fields">
@@ -337,7 +337,7 @@ export function Crew() {
                 <div className="row pack-sprites">
                   {k.bots.map((b) => (
                     <span key={b.id} title={`${b.name}: ${b.persona}`}>
-                      {MARK_STYLES.includes(style) && b.mark ? <Mark style={style} mark={b.mark} hue={b.look.color} size={34} label={b.name} /> : b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}
+                      <Face id={b.id} size={34} label={b.name} face={b.look.face} />
                     </span>
                   ))}
                 </div>

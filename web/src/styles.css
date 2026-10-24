@@ -91,7 +91,7 @@ main { flex: 1; min-height: 0; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--run) 30%, transparent), var(--shadow); } }
 .node-head { display: flex; align-items: center; gap: 6px; padding: 7px 8px 3px; cursor: move; }
 .node-title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.glyph { color: var(--accent); width: 16px; text-align: center; }
+.node-head .face { border-radius: 6px; flex: none; }
 .node-body { padding: 0 10px 6px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
 .meta { display: flex; gap: 4px; flex-wrap: wrap; }
 .flags { display: flex; gap: 6px; color: var(--muted); font-size: 10px; font-family: var(--mono); }
@@ -266,3 +266,5 @@ main { flex: 1; min-height: 0; }
 .chip.probe-unprobed { color: var(--wait); }
 .chip.probe-kept { color: var(--done); }
 .chip.proposal-mark { color: var(--wait); margin-left: 4px; }
+.face { display: inline-block; line-height: 0; }
+span.face > svg { width: 100%; height: 100%; }

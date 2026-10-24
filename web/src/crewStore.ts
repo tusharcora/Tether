@@ -2,15 +2,18 @@ import { useSyncExternalStore } from 'react';
 import { api } from './api';
 
 export interface Pixels { grid: string[]; colors: Record<string, string> }
-export interface Look { body: string; eyes: string; mouth: string; top: string; side: string; pattern: string; color: string; accent: string; guard?: boolean }
+/** Pins for a bot's generated face (blobatar units: hue in degrees, tone and traits 0–1). */
+export interface FaceLook { hue?: number; tone?: number; traits?: Record<string, number> }
+export interface Look { body: string; eyes: string; mouth: string; top: string; side: string; pattern: string; color: string; accent: string; guard?: boolean; face?: FaceLook }
 /** What the non-character styles draw: a glyph shape, a 3-letter symbol and two initials, all chosen by the server so the web and the terminal agree. */
 export interface MarkInfo { shape: string; symbol: string; initials: string }
 export interface BotDef {
   id: string; name: string; title: string; kind: string; persona: string; readOnly?: boolean; look: Look;
   builtin?: boolean; edited?: boolean; pixels?: Pixels; mark?: MarkInfo;
+  source?: string; whenToUse?: string; modelHint?: string;
 }
 
-export interface CrewEntry { name: string; title: string; hue: string; pixels?: Pixels; mark?: MarkInfo }
+export interface CrewEntry { name: string; title: string; hue: string; pixels?: Pixels; mark?: MarkInfo; face?: FaceLook; source?: string; whenToUse?: string }
 export interface CrewState { crew: Record<string, CrewEntry>; style: string; shapes: Record<string, string[]>; glyphs: Record<string, string[]> }
 
 export const MARK_STYLES = ['sigil', 'tile', 'ticker', 'orbit'];
@@ -37,7 +40,7 @@ export function subscribeCrew(f: () => void): () => void {
 /** Replace the live crew (the server's list, so your own bots appear everywhere a bot does). */
 export function applyCrew(bots: BotDef[], extra?: { style?: string; shapes?: Record<string, string[]>; glyphs?: Record<string, string[]> }): void {
   const crew: Record<string, CrewEntry> = {};
-  for (const b of bots) crew[b.id] = { name: b.name, title: b.title, hue: b.look.color, pixels: b.pixels, mark: b.mark };
+  for (const b of bots) crew[b.id] = { name: b.name, title: b.title, hue: b.look.color, pixels: b.pixels, mark: b.mark, face: b.look.face, source: b.source, whenToUse: b.whenToUse };
   state = { crew, style: extra?.style ?? state.style, shapes: extra?.shapes ?? state.shapes, glyphs: extra?.glyphs ?? state.glyphs };
   for (const f of subscribers) f();
 }
