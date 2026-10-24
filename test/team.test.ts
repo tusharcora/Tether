@@ -91,7 +91,8 @@ describe('plans and prompts', () => {
     const r = parsePlan(JSON.stringify({ plan: goodPlan }), ['coder'], []);
     expect(r.plan!.assignments).toEqual([{ bot: 'coder', goal: 'write', mode: 'read' }]);
     expect(r.plan!.limits).toEqual({ maxCostUsd: 3, allowWrites: false });
-    expect(r.errors.length).toBe(2);
+    // ghost dropped, coder made read-only, and coder's assignment has no why
+    expect(r.errors.length).toBe(3);
     const yes = parsePlan(JSON.stringify({ plan: goodPlan }), ['coder'], [{ question: 'writes', option: 'yes', by: 'user' }]);
     expect(yes.plan!.assignments[0]!.mode).toBe('write');
     expect(yes.plan!.limits.allowWrites).toBe(true);
@@ -1008,5 +1009,31 @@ describe('team runs docs', () => {
     expect(section).toContain(`${TEAM_MAX_BUDGET_USD}`);
     expect(section).toContain(`${MAX_ANSWER_TEXT}`);
     expect(section).toContain(`${MAX_QUESTIONS} questions`);
+  });
+});
+
+describe('roster, reasons and swaps', () => {
+  it('lists the roster with when-to-use, adds hints and asks for a why', () => {
+    const p = planningPrompt('task', [{ id: 'go-reviewer', title: 'go reviewer', kind: 'verdict', readOnly: true, when: 'Use for Go' }, { id: 'coder', title: 'coder' }], [], 1, 3, [], ['- Go changes → go-reviewer']);
+    expect(p).toContain('- go-reviewer (verdict, read-only) — Use for Go');
+    expect(p).toContain('- coder: coder');
+    expect(p).toContain('Routing hints');
+    expect(p).toContain('- Go changes → go-reviewer');
+    expect(p).toContain('"why"');
+    expect(planningPrompt('task', [], [], 1, 3)).not.toContain('Routing hints');
+  });
+
+  it('keeps a why per assignment, capped, and notes a missing one', () => {
+    const raw = JSON.stringify({ plan: { goal: 'g', assignments: [{ bot: 'coder', goal: 'x', why: 'w'.repeat(300) }, { bot: 'reviewer', goal: 'y' }] } });
+    const r = parsePlan(raw, ['coder', 'reviewer']);
+    expect(r.plan!.assignments[0]!.why!.length).toBe(160);
+    expect(r.plan!.assignments[1]!.why).toBeUndefined();
+    expect(r.errors).toContain('assignment to "reviewer" has no why');
+  });
+
+  it('folds a swap into the plan', () => {
+    const plan = { goal: 'g', success: [], assignments: [{ bot: 'coder', goal: 'x', mode: 'read' as const, why: 'fits' }], limits: { allowWrites: false }, answers: [], roster: ['coder', 'go-reviewer'] };
+    const s = foldRun(log({ ...started, kind: 'team' }, { type: 'plan.ready', plan }, { type: 'plan.edit', assignment: 0, from: 'coder', to: 'go-reviewer' }));
+    expect(s!.plan!.assignments[0]).toMatchObject({ bot: 'go-reviewer', swapped: true, why: 'fits' });
   });
 });

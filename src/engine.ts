@@ -12,6 +12,7 @@ import { cleanNote, RATINGS } from './signals.js';
 import { BUILTIN_BOTS } from './crew.js';
 import { buildPrompt, describeAnswer, userAnswersBlock } from './prompt.js';
 import { teamPipeline } from './composer.js';
+import { buildRoster, loadRouting, routingHints } from './roster.js';
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
@@ -554,6 +555,18 @@ export class Engine {
     this.launch(runId);
   }
 
+  /** Before approval, the person may give an assignment to another bot from the planning roster. */
+  swapAssignment(runId: string, assignment: number, bot: string): RunState {
+    const s = this.teamState(runId);
+    if (!planWaiting(s) || !s.plan) throw new TeamError('conflict', 'the plan can only be changed while it waits for approval');
+    const a = Number.isInteger(assignment) ? s.plan.assignments[assignment] : undefined;
+    if (!a) throw new TeamError('invalid', `no assignment ${assignment + 1}`);
+    const roster = s.plan.roster ?? rosterOf({ roster: s.team?.roster } as PipelineNode);
+    if (!roster.includes(bot)) throw new TeamError('invalid', `"${bot}" is not on this plan's roster`);
+    if (a.bot !== bot) this.store.append(runId, { type: 'plan.edit', assignment, from: a.bot, to: bot });
+    return this.state(runId);
+  }
+
   /** Switch a team run between live and autonomous. A card that is already pending stays pending. */
   setMode(runId: string, mode: TeamMode): void {
     const s = this.store.state(runId);
@@ -657,11 +670,20 @@ export class Engine {
   private async planRoundOnce(runId: string, round: number, signal: AbortSignal): Promise<void> {
     const s = this.teamState(runId);
     const maxRounds = s.team?.maxRounds ?? clampRounds(undefined);
-    const roster = rosterOf({ roster: s.team?.roster } as PipelineNode);
-    const bots: BotSummary[] = roster.map((id) => ({ id, title: CREW[id]?.title ?? id }));
+    // an explicit --roster wins; otherwise the repo- and task-aware roster (built-ins, your bots, fitting imported specialists)
+    const explicit = s.team?.roster?.length ? s.team.roster : undefined;
+    const registered = Object.values(CREW).flatMap((c) => (c.def ? [c.def] : []));
+    // a crew registry that was never loaded (no defs) still offers the built-in bots, as rosterOf did
+    const crew = registered.length ? registered : BUILTIN_BOTS;
+    const routing = loadRouting(this.opts.home);
+    let entries = buildRoster({ dir: s.workdir, task: s.task, crew, routing });
+    if (explicit) entries = explicit.map((id) => entries.find((e) => e.id === id) ?? { id, kind: 'agent', readOnly: false, when: '', builtin: false });
+    const roster = entries.map((e) => e.id);
+    const bots: BotSummary[] = entries.map((e) => ({ id: e.id, title: CREW[e.id]?.title ?? e.id, kind: e.kind, readOnly: e.readOnly, ...(e.when ? { when: e.when } : {}) }));
+    const hints = routingHints(routing, entries);
     const final = round > maxRounds;
     const asked = this.store.events(runId).flatMap((e) => (e.event.type === 'plan.question' ? e.event.questions : []));
-    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked);
+    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints);
     let raw = '';
     let questions: Question[] = [];
     let plan: ReturnType<typeof parseTeamPlan>['plan'];
@@ -708,7 +730,7 @@ export class Engine {
     const now = this.store.state(runId);
     if (!now || now.status !== 'running' || !now.planning || signal.aborted || now.round >= round || now.pending.length) return;
     if (plan || final) {
-      const ready = plan ?? defaultPlan(now.task, roster, now.answers);
+      const ready = { ...(plan ?? defaultPlan(now.task, roster, now.answers)), roster };
       const cap = now.team?.budgetUsd;
       this.store.append(runId, { type: 'plan.ready', plan: cap !== undefined ? { ...ready, limits: { ...ready.limits, maxCostUsd: cap } } : ready });
       return;

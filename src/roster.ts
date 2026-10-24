@@ -68,7 +68,7 @@ function langsIn(dir: string, out: Set<string>): void {
   if (has('package.json')) {
     let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } = {};
     try {
-      pkg = JSON.parse(readText(join(dir, 'package.json')) || '{}');
+      pkg = JSON.parse(readText(join(dir, 'package.json')) || '{}') ?? {};
     } catch {
       /* broken package.json: still a JS project */
     }
@@ -112,7 +112,7 @@ export function detectLanguages(dir: string | undefined): Set<string> {
 }
 
 export function botLanguage(id: string): string | undefined {
-  const m = /^([a-z]+)-(?:reviewer|build-resolver)$/.exec(id.replace(/^ecc-/, ''));
+  const m = /^([a-z]+)-(?:reviewer|build-resolver|build-resolve)$/.exec(id.replace(/^ecc-/, ''));
   return m && LANGS.has(m[1]!) ? m[1] : undefined;
 }
 

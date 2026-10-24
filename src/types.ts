@@ -180,9 +180,20 @@ export interface Answer {
 export interface TeamPlan {
   goal: string;
   success: string[];
-  assignments: { bot: string; goal: string; expected?: string; mode: 'read' | 'write' }[];
+  assignments: {
+    bot: string;
+    goal: string;
+    expected?: string;
+    mode: 'read' | 'write';
+    /** Maestro's reason for this bot. */
+    why?: string;
+    /** The person picked another bot before approving. */
+    swapped?: true;
+  }[];
   limits: { maxCostUsd?: number; wallClockMs?: number; allowWrites: boolean };
   answers: Answer[];
+  /** The bots Maestro could choose from; a swap may only pick one of these. */
+  roster?: string[];
 }
 
 /** A probe replay's tag: the proposal it tests, the side, and (candidate) which edit of the proposal was applied alone. */
@@ -225,6 +236,8 @@ export type RunEvent =
   | { type: 'plan.question'; round: number; questions: Question[] }
   | { type: 'plan.answer'; answers: Answer[] }
   | { type: 'plan.ready'; plan: TeamPlan }
+  /** Before approval the person gave assignment `assignment` (0-based) to another roster bot. */
+  | { type: 'plan.edit'; assignment: number; from: string; to: string }
   /** A background planning step failed; the run stays as it was and the person can try again. */
   | { type: 'team.error'; message: string }
   | { type: 'team.mode'; mode: TeamMode }
@@ -441,6 +454,12 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
     if (e.type === 'plan.ready') {
       s.planning = false;
       s.plan = e.plan;
+      continue;
+    }
+    if (e.type === 'plan.edit') {
+      // copy, never mutate: the plan object is the stored plan.ready event's
+      const a = s.plan?.assignments[e.assignment];
+      if (s.plan && a) s.plan = { ...s.plan, assignments: s.plan.assignments.map((x, i) => (i === e.assignment ? { ...a, bot: e.to, swapped: true as const } : x)) };
       continue;
     }
     if (e.type === 'team.mode') {

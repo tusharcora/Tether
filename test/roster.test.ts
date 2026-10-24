@@ -25,12 +25,16 @@ describe('roster', () => {
     expect([...detectLanguages(repo({ 'pyproject.toml': '[project]\ndependencies=["fastapi"]' }))].sort()).toEqual(['fastapi', 'python']);
     expect(detectLanguages(undefined).size).toBe(0);
     expect(detectLanguages(tmp('empty-')).size).toBe(0);
+    // a package.json holding `null` is still a JS project and must not throw
+    expect([...detectLanguages(repo({ 'package.json': 'null' }))]).toEqual(['javascript']);
   });
 
   it('maps language bots', () => {
     expect(botLanguage('go-reviewer')).toBe('go');
     expect(botLanguage('ecc-rust-build-resolver')).toBe('rust');
     expect(botLanguage('code-reviewer')).toBeUndefined();
+    // ids are capped at 24 characters, so an imported typescript-build-resolver arrives truncated
+    expect(botLanguage('typescript-build-resolve')).toBe('typescript');
   });
 
   it('keeps built-ins and general bots, filters language and domain bots', () => {

@@ -715,7 +715,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       req.on('close', () => (clearInterval(tick), clearInterval(beat)));
       return true;
     }
-    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode)$/)) && m === 'POST') {
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode|swap)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       const what = g[2]!;
       const s = store.state(id);
@@ -739,6 +739,10 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
           const approved = reqBool(reqObject(b), 'approved');
           if (approved === undefined) throw new HttpError(400, '"approved" (true or false) is required');
           await engine.approveTeamPlan(id, approved);
+        } else if (what === 'swap') {
+          const o = reqObject(b);
+          if (typeof o.assignment !== 'number' || typeof o.bot !== 'string') throw new HttpError(400, 'body must be { assignment: number, bot: string }');
+          engine.swapAssignment(id, o.assignment, o.bot);
         } else {
           const mode = reqObject(b).mode;
           if (mode !== 'live' && mode !== 'autonomous') throw new HttpError(400, '"mode" must be "live" or "autonomous"');
