@@ -53,6 +53,8 @@ npm test            # vitest
 npm run typecheck   # root and web
 ```
 
+The web dashboard (web/src) is React + Arc components (uiarc.dev, MIT), vendored under web/src/components/arc. Add another with `node scripts/arc-add.mjs <name>`.
+
 State lives under `~/.aorch` (override with `AORCH_HOME`): the run database, worktrees, saved workflows, `bots.json` (bot to model links) and `ui.json` (display preferences, custom themes).
 
 ## Pull requests as triggers

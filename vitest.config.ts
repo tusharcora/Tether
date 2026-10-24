@@ -8,7 +8,7 @@ export default defineConfig({
       { test: { name: 'node', include: ['test/**/*.test.ts'], environment: 'node' } },
       {
         plugins: [react()],
-        test: { name: 'web', include: ['web/app/**/*.test.{ts,tsx}'], environment: 'jsdom', setupFiles: ['web/app/test/setup.ts'] },
+        test: { name: 'web', include: ['web/src/**/*.test.{ts,tsx}'], environment: 'jsdom', setupFiles: ['web/src/test/setup.ts'] },
       },
     ],
   },

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Dev-time only: copies Arc (uiarc.dev, MIT) registry items into web/app/components/arc/.
+// Dev-time only: copies Arc (uiarc.dev, MIT) registry items into web/src/components/arc/.
 // The dashboard never fetches anything from uiarc.dev at build or run time; the copied files are committed.
 // Usage: node scripts/arc-add.mjs tabs button ...
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const REGISTRY = 'https://uiarc.dev/r/';
 const PREFIX = '@components/arc/';
-export const OUT_DIR = ['web', 'app', 'components', 'arc'];
+export const OUT_DIR = ['web', 'src', 'components', 'arc'];
 
 export function targetPath(root, target) {
   if (!target.startsWith(PREFIX)) throw new Error(`unexpected target ${target}`);
