@@ -1,7 +1,7 @@
 /** Vendor a pinned ECC checkout under <home>/vendor/ecc and keep the crew's ECC bots in sync with it. */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { loadCrew, MAX_IMPORTED_BOTS, removeBot, saveBot, SOURCE_RE, type BotDef } from './crew.js';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { BUILTIN_IDS, loadCrew, MAX_IMPORTED_BOTS, removeBot, saveBot, SOURCE_RE, type BotDef } from './crew.js';
 import { agentToBot, ECC_REF, ECC_REPO } from './ecc.js';
 import { git } from './git.js';
 
@@ -38,13 +38,49 @@ export interface Prepared {
 }
 
 const list = (d: string) => (existsSync(d) ? readdirSync(d).sort() : []);
+const crewFile = (home: string, id: string) => join(home, 'crew', `${id}.json`);
+const real = (p: string) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+};
+
+/** Who owns the bot file for `id` on disk. Anything unreadable or not from ECC counts as the user's. */
+function owner(home: string, id: string): 'ecc' | 'user' | 'none' {
+  const f = crewFile(home, id);
+  if (!existsSync(f)) return 'none';
+  try {
+    const j = JSON.parse(readFileSync(f, 'utf8')) as { source?: unknown };
+    return typeof j.source === 'string' && j.source.startsWith('ecc@') ? 'ecc' : 'user';
+  } catch {
+    return 'user';
+  }
+}
+
+/**
+ * Ids an ECC agent may not take: built-ins plus every bot file on disk that is not from ECC, including bots
+ * `loadCrew` hides (over the cap, or failing validation).
+ */
+function takenIds(home: string): Set<string> {
+  const taken = new Set(BUILTIN_IDS);
+  for (const f of list(join(home, 'crew')).filter((x) => x.endsWith('.json'))) {
+    const id = f.slice(0, -'.json'.length);
+    if (owner(home, id) === 'user') taken.add(id);
+  }
+  return taken;
+}
 
 export async function prepareEcc(home: string, o: { ref?: string; from?: string; fetch?: Fetch }): Promise<Prepared> {
   const ref = o.ref ?? ECC_REF;
   if (!SOURCE_RE.test(`ecc@${ref}`)) throw new Error(`"${ref}" is not a valid ECC version tag`);
   let dir = o.from ?? '';
   let staged = false;
-  if (!o.from) {
+  if (o.from) {
+    const rel = relative(real(join(home, 'vendor')), real(o.from));
+    if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('--from cannot point inside the vendor folder');
+  } else {
     dir = join(home, 'vendor', `.ecc-${Date.now()}`);
     try {
       await (o.fetch ?? gitFetch)(dir, ref);
@@ -54,8 +90,17 @@ export async function prepareEcc(home: string, o: { ref?: string; from?: string;
     }
     staged = true;
   }
+  try {
+    return scan(home, dir, ref, staged);
+  } catch (e) {
+    if (staged) rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
+}
+
+function scan(home: string, dir: string, ref: string, staged: boolean): Prepared {
   const crew = loadCrew(home);
-  const taken = new Set(crew.filter((b) => !isEcc(b)).map((b) => b.id));
+  const taken = takenIds(home);
   const prev = new Set(crew.filter(isEcc).map((b) => b.id));
   const bots: BotDef[] = [];
   const skipped: string[] = [];
@@ -97,9 +142,23 @@ export function applyEcc(home: string, p: Prepared): EccDiff {
   rmSync(vd, { recursive: true, force: true });
   renameSync(next, vd);
   if (p.staged) rmSync(p.dir, { recursive: true, force: true });
-  for (const b of p.bots) saveBot(home, b);
-  for (const id of p.diff.removed) removeBot(home, id);
-  return p.diff;
+  // a bot of yours may have been made with one of these ids since prepare: it always wins
+  const diff: EccDiff = { ...p.diff, added: [], updated: [], removed: [], skipped: [...p.diff.skipped] };
+  for (const b of p.bots) {
+    if (owner(home, b.id) === 'user') {
+      diff.skipped.push(`${b.id}: a bot of yours now has this id; skipped`);
+      continue;
+    }
+    saveBot(home, b);
+    (p.diff.updated.includes(b.id) ? diff.updated : diff.added).push(b.id);
+  }
+  for (const id of p.diff.removed) if (owner(home, id) === 'ecc' && removeBot(home, id) === 'deleted') diff.removed.push(id);
+  return diff;
+}
+
+/** Throw away a prepared import that will not be applied (removes its staging folder). */
+export function discardEcc(p: Prepared): void {
+  if (p.staged) rmSync(p.dir, { recursive: true, force: true });
 }
 
 export async function importEcc(home: string, o: { ref?: string; from?: string; fetch?: Fetch }): Promise<EccDiff> {

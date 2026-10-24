@@ -1,8 +1,8 @@
-import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadCrew, saveBot } from '../src/crew.js';
-import { eccInfo, importEcc, prepareEcc, applyEcc, removeEcc, vendorDir, type Fetch } from '../src/eccImport.js';
+import { discardEcc, eccInfo, importEcc, prepareEcc, applyEcc, removeEcc, vendorDir, type Fetch } from '../src/eccImport.js';
 import { tmp } from './helpers.js';
 
 const FIXTURE = new URL('./fixtures/ecc/', import.meta.url).pathname;
@@ -90,5 +90,61 @@ describe('ECC import', () => {
     expect(p.diff.added).toHaveLength(6);
     expect(p.diff.skipped).toEqual(['aaaa-very-long-agent-name-two.md: duplicate id "aaaa-very-long-agent-nam"']);
     expect(p.diff.notes).toContain('aaaa-very-long-agent-name-one: id shortened to "aaaa-very-long-agent-nam"');
+  });
+
+  it('never overwrites a user bot that loadCrew hides (over the user cap)', async () => {
+    const home = tmp('home-');
+    for (let i = 0; i < 69; i++) saveBot(home, { id: `u${String(i).padStart(2, '0')}`, name: `a${i}`, title: '', kind: 'agent', persona: '', look: {} as never });
+    saveBot(home, { id: 'go-reviewer', name: 'zz', title: 'mine', kind: 'agent', persona: 'mine', look: {} as never });
+    expect(loadCrew(home).some((b) => b.id === 'go-reviewer')).toBe(false);
+    const file = join(home, 'crew', 'go-reviewer.json');
+    const before = readFileSync(file, 'utf8');
+    const d = await importEcc(home, { fetch: copyFetch });
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(d.added).toContain('ecc-go-reviewer');
+    expect(existsSync(join(home, 'crew', 'ecc-go-reviewer.json'))).toBe(true);
+  });
+
+  it('skips on apply a user bot made with an ECC id after prepare', async () => {
+    const home = tmp('home-');
+    const p = await prepareEcc(home, { fetch: copyFetch });
+    expect(p.diff.added).toContain('tdd-guide');
+    saveBot(home, { id: 'tdd-guide', name: 'My TDD', title: 'mine', kind: 'agent', persona: 'mine', look: {} as never });
+    const file = join(home, 'crew', 'tdd-guide.json');
+    const before = readFileSync(file, 'utf8');
+    const d = applyEcc(home, p);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(d.skipped).toContain('tdd-guide: a bot of yours now has this id; skipped');
+    expect(d.added).not.toContain('tdd-guide');
+  });
+
+  it('removes the staging folder when prepare fails after the fetch', async () => {
+    const home = tmp('home-');
+    const fetch: Fetch = async (dest) => {
+      cpSync(FIXTURE, dest, { recursive: true });
+      mkdirSync(join(dest, 'agents', 'x.md'));
+    };
+    await expect(prepareEcc(home, { fetch })).rejects.toThrow();
+    expect(readdirSync(join(home, 'vendor')).filter((e) => e.startsWith('.ecc-'))).toEqual([]);
+  });
+
+  it('discardEcc removes a staged checkout and leaves a --from folder alone', async () => {
+    const home = tmp('home-');
+    const p = await prepareEcc(home, { fetch: copyFetch });
+    expect(existsSync(p.dir)).toBe(true);
+    discardEcc(p);
+    expect(existsSync(p.dir)).toBe(false);
+    expect(ecc(home)).toEqual([]);
+    const q = await prepareEcc(home, { from: FIXTURE });
+    discardEcc(q);
+    expect(existsSync(join(FIXTURE, 'AGENTS.md'))).toBe(true);
+  });
+
+  it('refuses --from inside the vendor folder', async () => {
+    const home = tmp('home-');
+    await importEcc(home, { fetch: copyFetch });
+    await expect(prepareEcc(home, { from: vendorDir(home) })).rejects.toThrow(/inside the vendor folder/);
+    await expect(prepareEcc(home, { from: join(home, 'vendor') })).rejects.toThrow(/inside the vendor folder/);
+    expect(existsSync(join(vendorDir(home), 'AGENTS.md'))).toBe(true);
   });
 });
