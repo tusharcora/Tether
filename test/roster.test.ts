@@ -61,6 +61,13 @@ describe('roster', () => {
     expect(r.map((e) => e.id).slice(0, 6)).toEqual(['planner', 'architect', 'coder', 'reviewer', 'mine', 'agent59']);
   });
 
+  it('keeps a task-matched domain bot inside the cap, right after built-ins', () => {
+    const many = Array.from({ length: 60 }, (_, i) => ecc(`agent${String(i).padStart(2, '0')}`));
+    const r = buildRoster({ task: 'patient export', crew: [...BUILTIN_BOTS, ...many, ecc('healthcare-reviewer')] });
+    expect(r).toHaveLength(ROSTER_CAP);
+    expect(r.map((e) => e.id).slice(0, 5)).toEqual(['planner', 'architect', 'coder', 'reviewer', 'healthcare-reviewer']);
+  });
+
   it('formats lines and routing hints with roster ids only', async () => {
     const line = rosterLine({ id: 'go-reviewer', kind: 'verdict', readOnly: true, when: 'Expert Go code reviewer '.repeat(10), builtin: false });
     expect(line.startsWith('- go-reviewer (verdict, read-only) — Expert Go')).toBe(true);

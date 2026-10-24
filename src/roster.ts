@@ -141,7 +141,7 @@ export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; rou
     .sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
   const seen = new Set<string>();
   const out: RosterEntry[] = [];
-  for (const b of [...fixed, ...lang, ...general, ...domain]) {
+  for (const b of [...fixed, ...lang, ...domain, ...general]) {
     if (seen.has(b.id) || out.length >= ROSTER_CAP) continue;
     seen.add(b.id);
     out.push(entry(b));
