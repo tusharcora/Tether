@@ -6,21 +6,22 @@ import { computeCoach } from './coach.js';
 import { cloneShared, commitAll, commitFiles, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
 import { childrenOf, normalizePipeline, parentsOf, preflight } from './pipeline.js';
-import { handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
+import { baseStep, handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
 import { getVersion, harnessForRun, NON_EVOLVABLE, type Harness } from './harness.js';
 import { cleanNote, RATINGS } from './signals.js';
 import { BUILTIN_BOTS } from './crew.js';
 import { buildPrompt, describeAnswer, userAnswersBlock } from './prompt.js';
 import { teamPipeline } from './composer.js';
+import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } from './roster.js';
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
 import { planWaiting, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunState, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
-import { CREW } from './bots.js';
+import { CREW, crewFor } from './bots.js';
 import { TeamError, cleanAnswerText, TEAM_DEFAULT_BUDGET_USD, TEAM_MAX_BUDGET_USD, askToQuestion, clampRounds, defaultPlan, extractAny, freshId, parsePlan as parseTeamPlan, parseQuestions, planningPrompt, recommendedAnswers, stripControl, WRITES_QUESTION, type BotSummary } from './team.js';
-import { applyBindings, type Bindings } from './bindings.js';
+import { applyBindings, hintFor, type Bindings } from './bindings.js';
 import { reflect } from './lessons.js';
 import { Vault } from './vault.js';
 import { resolveWorkspace, snapshot } from './workspace.js';
@@ -275,6 +276,17 @@ export class Engine {
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
     return s;
+  }
+
+  /**
+   * Agent and model for a spawned step (`bound`: the draft after bindings). With no agent of its own or from its bot it
+   * follows the delegator. Its model: the step's or its binding's; else the bot's model hint, only when the final agent
+   * is claude; else the delegator's model when it runs on the delegator's agent.
+   */
+  private spawnedRunner(draft: PipelineNode, bound: PipelineNode, delegator: PipelineNode): { agent?: string; model?: string } {
+    const agent = bound.agent ?? delegator.agent;
+    const model = bound.model ?? hintFor(crewFor(draft), agent) ?? (agent === delegator.agent ? delegator.model : undefined);
+    return { agent, model };
   }
 
   /** The pipeline as it will actually run: steps without their own agent follow their bot's binding. */
@@ -554,6 +566,20 @@ export class Engine {
     this.launch(runId);
   }
 
+  /** Before approval, the person may give an assignment to another bot from the planning roster. */
+  swapAssignment(runId: string, assignment: number, bot: string): RunState {
+    const s = this.teamState(runId);
+    if (!planWaiting(s) || !s.plan) throw new TeamError('conflict', 'the plan can only be changed while it waits for approval');
+    const a = Number.isInteger(assignment) ? s.plan.assignments[assignment] : undefined;
+    if (!a) throw new TeamError('invalid', `no assignment ${assignment + 1}`);
+    const roster = s.plan.roster ?? rosterOf({ roster: s.team?.roster } as PipelineNode);
+    if (!roster.includes(bot)) throw new TeamError('invalid', `"${bot}" is not on this plan's roster`);
+    // a read-only bot cannot take a write: the plan says read, as the step it spawns will be
+    const readOnly = a.mode === 'write' && !!baseStep(bot).readOnly;
+    if (a.bot !== bot) this.store.append(runId, { type: 'plan.edit', assignment, from: a.bot, to: bot, ...(readOnly ? { mode: 'read' as const } : {}) });
+    return this.state(runId);
+  }
+
   /** Switch a team run between live and autonomous. A card that is already pending stays pending. */
   setMode(runId: string, mode: TeamMode): void {
     const s = this.store.state(runId);
@@ -657,11 +683,26 @@ export class Engine {
   private async planRoundOnce(runId: string, round: number, signal: AbortSignal): Promise<void> {
     const s = this.teamState(runId);
     const maxRounds = s.team?.maxRounds ?? clampRounds(undefined);
-    const roster = rosterOf({ roster: s.team?.roster } as PipelineNode);
-    const bots: BotSummary[] = roster.map((id) => ({ id, title: CREW[id]?.title ?? id }));
+    // an explicit --roster wins; otherwise the repo- and task-aware roster (built-ins, your bots, fitting imported specialists)
+    const explicit = s.team?.roster?.length ? s.team.roster : undefined;
+    const registered = Object.values(CREW).flatMap((c) => (c.def ? [c.def] : []));
+    // a crew registry that was never loaded (no defs) still offers the built-in bots, as rosterOf did
+    const crew = registered.length ? registered : BUILTIN_BOTS;
+    const routing = loadRouting(this.opts.home);
+    const defs = new Map(crew.map((b) => [b.id, b]));
+    // an explicit roster is taken as given (no repo scan); each bot keeps its own when-to-use
+    const entries: RosterEntry[] = explicit
+      ? explicit.map((id): RosterEntry => {
+          const d = defs.get(id);
+          return d ? entryFor(d) : { id, kind: 'agent', readOnly: false, when: '', builtin: false };
+        })
+      : buildRoster({ dir: s.workdir, task: s.task, crew, routing });
+    const roster = entries.map((e) => e.id);
+    const bots: BotSummary[] = entries.map((e) => ({ id: e.id, title: CREW[e.id]?.title ?? e.id, kind: e.kind, readOnly: e.readOnly, ...(e.when ? { when: e.when } : {}) }));
+    const hints = routingHints(routing, entries);
     const final = round > maxRounds;
     const asked = this.store.events(runId).flatMap((e) => (e.event.type === 'plan.question' ? e.event.questions : []));
-    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked);
+    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints);
     let raw = '';
     let questions: Question[] = [];
     let plan: ReturnType<typeof parseTeamPlan>['plan'];
@@ -708,7 +749,7 @@ export class Engine {
     const now = this.store.state(runId);
     if (!now || now.status !== 'running' || !now.planning || signal.aborted || now.round >= round || now.pending.length) return;
     if (plan || final) {
-      const ready = plan ?? defaultPlan(now.task, roster, now.answers);
+      const ready = { ...(plan ?? defaultPlan(now.task, roster, now.answers)), roster };
       const cap = now.team?.budgetUsd;
       this.store.append(runId, { type: 'plan.ready', plan: cap !== undefined ? { ...ready, limits: { ...ready.limits, maxCostUsd: cap } } : ready });
       return;
@@ -1083,12 +1124,13 @@ export class Engine {
       while (taken.has(`${delegator.id}-h${n}`)) n++;
       const draft = handNode(req, delegator, n);
       const bound = this.resolve({ ...st.pipeline, nodes: [draft] }).nodes[0]!;
-      const agent = bound.agent ?? delegator.agent;
-      const model = bound.model ?? (agent === delegator.agent ? delegator.model : undefined);
+      const { agent, model } = this.spawnedRunner(draft, bound, delegator);
       const script = delegator.mock?.spawned?.[req.to];
+      // a team run's workers hand off only inside the plan's roster, not to the whole crew
+      const roster = st.kind === 'team' && delegator.roster?.length ? { roster: delegator.roster } : {};
       // below the delegator, three to a row, after anything it spawned before
       const k = this.spawnedBy(st, delegator.id).length;
-      child = { ...bound, agent, ...(model ? { model } : {}), ...(script ? { mock: script } : {}), x: delegator.x + SPAWN_DX * (k % 3), y: delegator.y + SPAWN_DY * (1 + Math.floor(k / 3)) };
+      child = { ...bound, agent, ...(model ? { model } : {}), ...roster, ...(script ? { mock: script } : {}), x: delegator.x + SPAWN_DX * (k % 3), y: delegator.y + SPAWN_DY * (1 + Math.floor(k / 3)) };
       this.store.append(runId, { type: 'node.spawned', node: child, parent: delegator.id, depth: child.spawn!.depth, after: [] });
     }
     const id = child.id;
@@ -1275,10 +1317,11 @@ export class Engine {
       for (const t of tasks) {
         const draft = toNode(t, node, depth, undefined, siblings);
         const bound = this.resolve({ ...s.pipeline, nodes: [draft] }).nodes[0]!;
-        const agent = bound.agent ?? node.agent;
-        const model = bound.model ?? (agent === node.agent ? node.model : undefined);
+        const { agent, model } = this.spawnedRunner(draft, bound, node);
         const script = node.mock?.spawned?.[t.id];
-        const child: PipelineNode = { ...bound, agent, ...(model ? { model } : {}), ...(script ? { mock: script } : {}) };
+        // a team run's workers inherit the manager's roster: their hand-offs stay inside the approved plan's bots
+        const roster = s.kind === 'team' ? rosterOf(node) : undefined;
+        const child: PipelineNode = { ...bound, agent, ...(model ? { model } : {}), ...(roster ? { roster } : {}), ...(script ? { mock: script } : {}) };
         const after = [...child.spawn!.contract.after, ...(approvalId ? [approvalId] : [])];
         batch.push({ node: child, after });
       }

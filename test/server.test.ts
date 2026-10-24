@@ -1,17 +1,20 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startServer } from '../src/server.js';
+import { BUILTIN_BOTS, loadCrew, saveBot } from '../src/crew.js';
 import { Vault } from '../src/vault.js';
 import { makeRepo, setup, tmp } from './helpers.js';
 
 const demo = JSON.parse(readFileSync(new URL('../examples/pipelines/demo-mock.json', import.meta.url), 'utf8'));
+const ECC_FIXTURE = new URL('./fixtures/ecc/', import.meta.url).pathname;
 
 let base = '';
 let close: () => Promise<void>;
 let repo = '';
 let webDir = '';
+let home = '';
 
 /** Raw request so tests can set Host/Origin and an unnormalised path. */
 function raw(method: string, path: string, opts: { headers?: Record<string, string>; body?: string } = {}) {
@@ -42,12 +45,14 @@ async function until<T>(fn: () => Promise<T | undefined>, ms = 10_000): Promise<
 
 beforeAll(async () => {
   const vault = new Vault(tmp('vault-'));
-  const { engine, store, registry, home } = setup(vault);
+  const s0 = setup(vault);
+  const { engine, store, registry } = s0;
+  home = s0.home;
   repo = makeRepo();
   webDir = tmp('web-');
   mkdirSync(join(webDir, 'assets'));
   writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>dash</title>');
-  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, webDir });
+  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, webDir, eccFetch: async (dest) => void cpSync(ECC_FIXTURE, dest, { recursive: true }) });
   base = s.url;
   close = s.close;
 });
@@ -187,5 +192,99 @@ describe('http security', () => {
     const big = 'x'.repeat(1_100_000);
     const r = await raw('POST', '/api/preflight', { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pad: big }) }).catch(() => ({ status: 413, body: '' }));
     expect(r.status).toBe(413);
+  });
+});
+
+describe('crew import and skills', () => {
+  it('imports ECC, exposes it on /api/crew and /api/skills, and removes it', async () => {
+    const d = (await api('POST', '/api/crew/import', { source: 'ecc' })).json;
+    expect(d.added).toHaveLength(5);
+    const crew = (await api('GET', '/api/crew')).json;
+    expect(crew.ecc.ref).toBe('v2.2.3');
+    expect(crew.eccDefault).toBe('v2.2.3');
+    expect(crew.bots.find((b: { id: string }) => b.id === 'go-reviewer')).toMatchObject({ source: 'ecc@v2.2.3', whenToUse: expect.stringMatching(/Go/) });
+    const skills = (await api('GET', '/api/skills?source=ecc')).json;
+    expect(skills.map((s: { name: string }) => s.name)).toEqual(['tdd-workflow', 'plan']);
+    expect((await api('GET', '/api/skills/ecc/tdd-workflow')).json.prompt).toMatch(/<skill>/);
+    expect((await api('DELETE', '/api/crew?source=ecc')).json.removed).toHaveLength(5);
+    expect((await api('GET', '/api/crew')).json.ecc).toBeNull();
+  });
+
+  it('refuses unknown sources and cross-origin imports', async () => {
+    const json = { 'content-type': 'application/json' };
+    expect((await raw('POST', '/api/crew/import', { headers: json, body: JSON.stringify({ source: 'x' }) })).status).toBe(400);
+    expect((await raw('POST', '/api/crew/import', { headers: { ...json, origin: 'https://evil.example' }, body: JSON.stringify({ source: 'ecc' }) })).status).toBe(403);
+    expect((await raw('GET', '/api/skills/ecc/nope')).status).toBe(404);
+    expect((await api('DELETE', '/api/crew?source=x')).status).toBe(400);
+  });
+
+  it('keeps an imported bot imported when edited, truncates long personas in the list, and saves them back whole', async () => {
+    await api('POST', '/api/crew/import', { source: 'ecc' });
+    try {
+      const go = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+      const long = 'p'.repeat(5000);
+      saveBot(home, { ...go, persona: long, modelHint: 'opus' });
+      const listed = (await api('GET', '/api/crew')).json.bots.find((b: { id: string }) => b.id === 'go-reviewer');
+      expect(listed.persona).toHaveLength(2000);
+      expect(listed.personaTruncated).toBe(true);
+      // the editor PUTs the listed bot back with only the name changed: the full persona survives
+      expect((await api('PUT', '/api/crew/go-reviewer', { ...listed, name: 'Gopher' })).status).toBe(200);
+      let saved = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+      expect(saved).toMatchObject({ name: 'Gopher', source: 'ecc@v2.2.3', modelHint: 'opus' });
+      expect(saved.persona).toBe(long);
+      // a bare edit that sends no source, whenToUse or persona keeps them
+      expect((await api('PUT', '/api/crew/go-reviewer', { name: 'Go2', kind: 'verdict' })).status).toBe(200);
+      saved = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+      expect(saved).toMatchObject({ name: 'Go2', source: 'ecc@v2.2.3', whenToUse: go.whenToUse, modelHint: 'opus' });
+      expect(saved.persona.length).toBeGreaterThan(600);
+      // a new persona sent without the truncation flag is taken as sent
+      await api('PUT', '/api/crew/go-reviewer', { name: 'Go3', kind: 'verdict', persona: 'short' });
+      expect(loadCrew(home).find((b) => b.id === 'go-reviewer')!.persona).toBe('short');
+    } finally {
+      await api('DELETE', '/api/crew?source=ecc');
+    }
+  });
+
+  it('returns one full bot by id for the editor', async () => {
+    await api('POST', '/api/crew/import', { source: 'ecc' });
+    try {
+      const go = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+      saveBot(home, { ...go, persona: 'p'.repeat(5000) });
+      const r = await api('GET', '/api/crew/go-reviewer');
+      expect(r.status).toBe(200);
+      expect(r.json.persona).toHaveLength(5000);
+      expect(r.json.personaTruncated).toBeUndefined();
+      expect(r.json.source).toBe('ecc@v2.2.3');
+      expect((await api('GET', '/api/crew/nobody')).status).toBe(404);
+    } finally {
+      await api('DELETE', '/api/crew?source=ecc');
+    }
+  });
+
+  it('cannot create an imported bot through PUT', async () => {
+    try {
+      expect((await api('PUT', '/api/crew/sneaky', { name: 'Sneaky', kind: 'agent', persona: 'x'.repeat(5000), source: 'ecc@x', modelHint: 'opus' })).status).toBe(200);
+      const saved = loadCrew(home).find((b) => b.id === 'sneaky')!;
+      expect(saved.source).toBeUndefined();
+      expect(saved.modelHint).toBeUndefined();
+      expect(saved.persona).toHaveLength(600);
+    } finally {
+      await api('DELETE', '/api/crew/sneaky');
+    }
+  });
+
+  it('lets you edit an existing bot at the 67-bot limit but not add one', async () => {
+    const look = BUILTIN_BOTS[0]!.look;
+    const ids = Array.from({ length: 67 - BUILTIN_BOTS.length }, (_, i) => `mine${i}`);
+    for (const id of ids) saveBot(home, { id, name: id, title: '', kind: 'agent', persona: '', look });
+    try {
+      expect(loadCrew(home).filter((b) => !b.source)).toHaveLength(67);
+      expect((await api('PUT', '/api/crew/mine0', { name: 'Renamed', kind: 'agent' })).status).toBe(200);
+      expect((await api('PUT', '/api/crew/coder', { name: 'Bolt', kind: 'agent' })).status).toBe(200);
+      expect((await api('PUT', '/api/crew/brandnew', { name: 'New', kind: 'agent' })).status).toBe(400);
+    } finally {
+      for (const id of ids) rmSync(join(home, 'crew', `${id}.json`), { force: true });
+      await api('DELETE', '/api/crew/coder');
+    }
   });
 });

@@ -91,7 +91,7 @@ main { flex: 1; min-height: 0; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--run) 30%, transparent), var(--shadow); } }
 .node-head { display: flex; align-items: center; gap: 6px; padding: 7px 8px 3px; cursor: move; }
 .node-title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.glyph { color: var(--accent); width: 16px; text-align: center; }
+.node-head .face { border-radius: 6px; flex: none; }
 .node-body { padding: 0 10px 6px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
 .meta { display: flex; gap: 4px; flex-wrap: wrap; }
 .flags { display: flex; gap: 6px; color: var(--muted); font-size: 10px; font-family: var(--mono); }
@@ -192,15 +192,12 @@ main { flex: 1; min-height: 0; }
 .persona { margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .packs-h { margin: 22px 0 8px; }
 .bot-editor { display: flex; flex-wrap: wrap; gap: 20px; margin: 16px 0; padding: 16px; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; }
-.bot-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; background: var(--panel-2); border-radius: 8px; align-self: flex-start; }
+.bot-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; background: var(--panel-2); border-radius: 8px; align-self: flex-start; width: min(100%, 220px); }
+.bot-preview > :not(.face) { align-self: stretch; }
 .bot-fields { flex: 1; min-width: min(100%, 300px); display: flex; flex-direction: column; gap: 10px; }
 .bot-fields h3 { margin: 0; }
 .bot-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); flex: 1; min-width: 0; }
 .bot-fields textarea { resize: vertical; font: inherit; }
-.look-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
-.swatches { align-items: center; flex-wrap: wrap; gap: 6px; }
-.swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; }
-.swatch.on { border-color: var(--fg, #fff); }
 .pack-sprites { flex-wrap: wrap; gap: 4px; }
 
 /* triggers */
@@ -249,6 +246,8 @@ main { flex: 1; min-height: 0; }
 .dialogue { margin: 0 16px 10px; }
 .dialogue p { margin: 6px 0; }
 .assign { list-style: none; padding-left: 0 !important; display: flex; flex-direction: column; gap: 6px; }
+.assign-row { display: flex; gap: 12px; align-items: flex-start; }
+.assign-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 @media (max-width: 640px) { .team-bar, .qpanel, .dialogue { margin-left: 8px; margin-right: 8px; } }
 
 /* Evolve (Crew tab) */
@@ -266,3 +265,11 @@ main { flex: 1; min-height: 0; }
 .chip.probe-unprobed { color: var(--wait); }
 .chip.probe-kept { color: var(--done); }
 .chip.proposal-mark { color: var(--wait); margin-left: 4px; }
+.face { display: inline-block; line-height: 0; }
+span.face > svg { width: 100%; height: 100%; }
+/* animate="hover" wakes the face anywhere over its tile, not only over the drawn blob (mirrors blobatar/motion.css .mo-root:hover) */
+span.face:hover .mo-root { --mo-amp: 1; transition-duration: calc(.4s * var(--mo-rate, 1)), calc(.22s * var(--mo-rate, 1)), var(--mo-md); transform: translateY(-1.5px) scale(1.04); }
+.sprite-btn:hover span.face .mo-root, .sprite-btn:focus-visible span.face .mo-root { --mo-amp: 1; transition-duration: calc(.4s * var(--mo-rate, 1)), calc(.22s * var(--mo-rate, 1)), var(--mo-md); transform: translateY(-1.5px) scale(1.04); }
+@media not ((hover: hover) and (pointer: fine)) {
+  span.face:hover .mo-root:not(.mo-always), .sprite-btn:hover span.face .mo-root:not(.mo-always) { --mo-amp: 0; transform: none; }
+}

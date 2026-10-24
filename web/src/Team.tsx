@@ -5,8 +5,10 @@ import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
 import { ChatThread } from './components/arc/chat-thread/chat-thread';
 import { RadioCards } from './components/arc/radio-cards/radio-cards';
+import { Select } from './components/arc/select/select';
 import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Textarea } from './components/arc/textarea/textarea';
+import { Face } from './Face';
 import { ConfirmButton } from './ui/ConfirmButton';
 
 /** One pick per card: an option id, or the person's own words. */
@@ -82,9 +84,9 @@ function QuestionCard(props: { q: Question; index: number; total: number; pick: 
 
 /**
  * Everything a team run needs from the person: the pending banner, the question cards, the finished plan and the
- * live/autonomous switch. `send` posts to the run (answers, plan, mode) and shows any error on the run page.
+ * live/autonomous switch. `send` posts to the run (answers, plan, mode, swap) and shows any error on the run page.
  */
-export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan' | 'mode', body: unknown) => Promise<boolean> }) {
+export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan' | 'mode' | 'swap', body: unknown) => Promise<boolean> }) {
   const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [busy, setBusy] = useState(false);
   // the reject question is open: Approve hides until it is answered (as in the Solid panel)
@@ -220,13 +222,36 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
           <h5>Who does what</h5>
           <ul className="assign">
             {plan.assignments.map((a, i) => (
-              <li key={`${a.bot}-${i}`}>
-                <b>{a.bot}</b>{' '}
-                <Badge size="sm" tone={a.mode === 'write' ? 'warning' : 'neutral'}>
-                  {a.mode === 'write' ? 'can edit files' : 'read only'}
-                </Badge>{' '}
-                {a.goal}
-                {a.expected ? <small className="muted"> — expects: {a.expected}</small> : null}
+              <li key={`${a.bot}-${i}`} className="assign-row">
+                <Face id={a.bot} size={36} animate="hover" />
+                <div className="assign-main">
+                  <div>
+                    <b>{a.bot}</b>{' '}
+                    <Badge size="sm" tone={a.mode === 'write' ? 'warning' : 'neutral'}>
+                      {a.mode === 'write' ? 'can edit files' : 'read only'}
+                    </Badge>{' '}
+                    {a.swapped ? (
+                      <Badge size="sm" tone="info">
+                        swapped by you
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div>
+                    {a.goal}
+                    {a.expected ? <small className="muted"> — expects: {a.expected}</small> : null}
+                  </div>
+                  {a.why ? <small className="muted">Why: {a.why}</small> : null}
+                </div>
+                {plan.roster?.length ? (
+                  // the current bot is always first so the shown value exists among the options
+                  <Select
+                    label="Bot"
+                    options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ value: b, label: b }))}
+                    value={a.bot}
+                    onValueChange={(b) => b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
+                    disabled={busy}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

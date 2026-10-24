@@ -335,4 +335,19 @@ describe('team runs over HTTP', () => {
     }
     expect(store.state(id)!.pending).toHaveLength(1);
   });
+  it('swaps a planned bot only while the plan waits, only to a roster bot', async () => {
+    const id = await mkTeam({ plan: { ...planScript, assignments: [{ bot: 'coder', goal: 'c', why: 'writes code' }] } }, { roster: ['coder', 'reviewer'] });
+    await until(async () => ((await api('GET', `/api/runs/${id}`)).json.plan ? true : undefined));
+    const bad = await raw('POST', `/api/runs/${id}/swap`, { headers: { 'content-type': 'application/json' }, body: J({ assignment: 0, bot: 'nobody' }) });
+    expect(bad.status).toBe(400);
+    expect((await api('POST', `/api/runs/${id}/swap`, { assignment: 7, bot: 'reviewer' })).status).toBe(400);
+    expect((await api('POST', `/api/runs/${id}/swap`, { assignment: '0', bot: 'reviewer' })).status).toBe(400);
+    const ok = await api('POST', `/api/runs/${id}/swap`, { assignment: 0, bot: 'reviewer' });
+    expect(ok.status).toBe(200);
+    expect(ok.json.plan.assignments[0]).toMatchObject({ bot: 'reviewer', swapped: true, why: 'writes code' });
+    expect((await api('POST', `/api/runs/${id}/plan`, { approved: true })).status).toBe(200);
+    const late = await raw('POST', `/api/runs/${id}/swap`, { headers: { 'content-type': 'application/json' }, body: J({ assignment: 0, bot: 'coder' }) });
+    expect(late.status).toBe(409);
+    await engine.wait(id).catch(() => undefined);
+  });
 });

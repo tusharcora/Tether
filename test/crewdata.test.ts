@@ -93,3 +93,43 @@ describe('crew data', () => {
     }
   });
 });
+
+describe('imported bots and faces', () => {
+  const base = { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', look: {} };
+
+  it('keeps source, whenToUse, modelHint and a long persona for imported bots', () => {
+    const persona = 'x\n'.repeat(7500) + 'y';
+    const { bot } = sanitizeBot({ ...base, source: 'ecc@v2.2.3', whenToUse: 'Use for Go. '.repeat(40), modelHint: 'sonnet', persona });
+    expect(bot!.source).toBe('ecc@v2.2.3');
+    expect(bot!.whenToUse!.length).toBe(300);
+    expect(bot!.modelHint).toBe('sonnet');
+    expect(bot!.persona.length).toBe(15001);
+    expect(bot!.persona).toContain('\n');
+  });
+
+  it('caps a user persona at 600 and drops bad source / modelHint', () => {
+    const { bot } = sanitizeBot({ ...base, source: 'bad source', modelHint: 'gpt', persona: 'x'.repeat(900) });
+    expect(bot!.source).toBeUndefined();
+    expect(bot!.modelHint).toBeUndefined();
+    expect(bot!.persona.length).toBe(600);
+  });
+
+  it('cleans face overrides', () => {
+    const { bot } = sanitizeBot({ ...base, look: { face: { hue: 400, tone: 3, traits: { 'body.n': 0.4, Bad: 1, 'eyes.size': 'x' } } } });
+    expect(bot!.look.face).toEqual({ hue: 40, tone: 1, traits: { 'body.n': 0.4 } });
+    const plain = sanitizeBot(base).bot!;
+    expect(plain.look.face).toBeUndefined();
+  });
+
+  it('loads up to 60 user bots and up to 150 imported bots, imported after user bots', () => {
+    const home = mkdtempSync(join(tmpdir(), 'crew-'));
+    for (let i = 0; i < 70; i++) saveBot(home, { id: `mine${i}`, name: `Mine ${i}`, title: '', kind: 'agent', persona: '', look: {} as never });
+    for (let i = 0; i < 160; i++) saveBot(home, { id: `ecc${String(i).padStart(3, '0')}`, name: `E ${i}`, title: '', kind: 'agent', persona: '', look: {} as never, source: 'ecc@v2.2.3' });
+    const crew = loadCrew(home);
+    const mine = crew.filter((b) => !b.builtin && !b.source);
+    const ecc = crew.filter((b) => b.source);
+    expect(mine).toHaveLength(60);
+    expect(ecc).toHaveLength(150);
+    expect(crew.findIndex((b) => b.source)).toBeGreaterThan(crew.findIndex((b) => b.id === mine.at(-1)!.id));
+  });
+});

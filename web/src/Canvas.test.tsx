@@ -52,4 +52,13 @@ describe('Canvas', () => {
     const { container } = render(<Canvas nodes={[]} edges={[]} />);
     expect(container.textContent).toContain('Add a step from the palette');
   });
+
+  it('shows each step’s bot face with its mood, animated while it works', () => {
+    const { container } = render(<Canvas nodes={nodes} edges={edges} statuses={run.nodes} />);
+    expect(container.querySelectorAll('[data-node] [data-mood]')).toHaveLength(3);
+    const code = container.querySelector('[data-id="code"] [data-mood]')!;
+    expect(code.getAttribute('data-mood')).toBe('working');
+    expect(code.tagName).toBe('SPAN');
+    expect(container.querySelector('[data-id="gate"] [data-mood]')!.tagName).toBe('IMG');
+  });
 });

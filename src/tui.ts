@@ -30,14 +30,14 @@ import { allowAlways, blockedReason, needsApproval, isAllowed, loadAllowed, clea
 import { chatAboutRun, diagnose, failureKey, perform } from './runchat.js';
 import { MAIN, blankSession, lastSessionId, loadSession, listSessions, rememberLast, saveSession, sessionIdForRun, type Choice, type Entry, type Session } from './sessions.js';
 import { rank } from './palette.js';
-import { CardInput, cardLines, finalSummary, modeCommand, planDecision, planWaiting, progressLines, runNeedsYou } from './teamchat.js';
+import { CardInput, cardLines, finalSummary, modeCommand, parseSwap, planDecision, planWaiting, progressLines, runNeedsYou } from './teamchat.js';
 import { costChart, timelineChart, toLines } from './raster.js';
 import { adopt, decline, evolveData, evolveSummary, type EvolveData } from './evolveops.js';
 import { evolveKey, evolveLines, type EvolveState } from './evolveview.js';
 import { Vault } from './vault.js';
-import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, skillPipeline, type Skill } from './skills.js';
+import { aorchSkills, claudeSkillLine, claudeSkillPipeline, claudeSkills, eccSkillPipeline, eccSkillPrompt, eccSkills, skillPipeline, type Skill } from './skills.js';
 import { SPIN, bgCode, mix } from './ui.js';
-import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
+import { TEMPLATES, STEP_BLURB, STEP_TYPES, addStep, blankPipeline, composePipeline, diagnoseFailure, fromTemplate, makeStep, moveStep, removeStep, stepType, stepChoices, blurbFor, detectTestCommand, relink, type Composition, type StepType, type Template } from './composer.js';
 import { listPipelines, makeRegistry, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
 import { commitDiff, diffCommitted } from './git.js';
@@ -725,6 +725,19 @@ export class Tui {
         const st = this.state(r.id);
         if (st) this.sess.log.push({ k: 'maestro', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
       }
+    } else if (cmd === 'swap') {
+      const sw = parseSwap(line);
+      const id = this.curRunId();
+      if (!sw) note('usage: /swap <n> <bot>  (n is the assignment number in the plan)');
+      else if (!id) note('no plan to change');
+      else {
+        try {
+          this.d.engine.swapAssignment(id, sw.assignment, sw.bot);
+          note(`assignment ${sw.assignment + 1} → ${sw.bot}`);
+        } catch (e) {
+          note((e as Error).message.split('\n')[0]!);
+        }
+      }
     } else if ((cmd === 'approve' || cmd === 'reject') && this.planReady(this.curRunId())) {
       planDecision(this.d.engine, this.curRunId()!, cmd === 'approve').then(
         (m) => this.say(m),
@@ -789,6 +802,7 @@ export class Tui {
       note('/run <workflow> <task>                 start a saved workflow');
       note('/team <task>                           start a team run (it asks you questions first)');
       note('/mode live|autonomous                  how much a team run talks to you');
+      note('/swap <n> <bot>                        give a plan assignment to another bot');
       note('/allowed [clear]                       commands you always allow for Maestro');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');
@@ -1224,11 +1238,16 @@ export class Tui {
       add('');
       add(`${bot} ${bold('Plan ready')}`);
       para('  goal: ', safeText(plan.plan.goal), '        ');
-      for (const a of plan.plan.assignments) para(`  ${a.mode === 'write' ? amber('✎') : dim('·')} ${a.bot}: `, safeText(a.goal), '      ');
+      plan.plan.assignments.forEach((a, i) => {
+        para(`  ${i + 1}. ${a.mode === 'write' ? amber('✎') : dim('·')} ${a.bot}${a.swapped ? dim(' (your pick)') : ''}: `, safeText(a.goal), '      ');
+        if (a.why) words(safeText(a.why), Math.max(20, w - 14)).forEach((l, j) => add(dim((j === 0 ? '     why: ' : '          ') + l)));
+      });
       const lim = plan.plan.limits;
       // the cap covers the whole run: what planning spent is already gone from it
       const left = lim.maxCostUsd !== undefined ? ` · budget ${usd(lim.maxCostUsd)}${plan.costUsd > 0 ? ` (${usd(Math.max(0, lim.maxCostUsd - plan.costUsd))} left)` : ''}` : '';
       add('  ' + `${cyan('/approve')} ${dim('start the team')}   ${cyan('/reject')} ${dim('cancel')}` + dim(`   writes ${lim.allowWrites ? 'allowed' : 'off'}${left}${lim.wallClockMs ? ` · ${dur(lim.wallClockMs)}` : ''}`));
+      add('  ' + `${cyan('/swap <n> <bot>')} ${dim('to give one to another bot')}`);
+      if (plan.plan.roster?.length) add('  ' + dim(clipStr(`roster: ${plan.plan.roster.join(', ')}`, Math.max(20, w - 4))));
     }
     if (this.isBusy() || (sess.runId && this.diagBusy.has(sess.runId))) {
       add('');
@@ -1362,7 +1381,12 @@ export class Tui {
 
   // ---------- command palette + skills ----------
   private skills(): Skill[] {
-    return [...aorchSkills(this.d.cfg.home), ...claudeSkills(process.cwd())];
+    return [...aorchSkills(this.d.cfg.home), ...claudeSkills(process.cwd()), ...eccSkills(this.d.cfg.home)];
+  }
+
+  private skillHint(k: Skill): string {
+    const where = k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : k.source === 'ecc' ? `ECC ${k.kind ?? 'skill'}` : 'claude';
+    return `${where}${k.description ? ' · ' + k.description : ''}`;
   }
 
   private runSkill(skill: Skill) {
@@ -1370,19 +1394,41 @@ export class Tui {
       if (!task) return;
       this.ask('Repository (a git repo):', (repo) => {
         const r = resolve((repo || process.cwd()).replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
-        const p = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(r)) : claudeSkillPipeline(skill);
+        let p;
+        try {
+          p = skill.source === 'aorch' ? skillPipeline(skill, detectTestCommand(r)) : skill.source === 'ecc' ? eccSkillPipeline(skill) : claudeSkillPipeline(skill);
+        } catch (e) {
+          return this.say(`cannot read ${skill.name}: ${(e as Error).message}`, 'err');
+        }
         this.startRun(p, r, task);
       }, process.cwd());
     });
   }
 
-  /** Editor: add an aorch skill's steps after the selection, or point the selected step at a Claude Code skill. */
+  /** Editor: add an aorch skill's steps (or one ECC step) after the selection, or point the selected step at a Claude Code skill. */
   private skillIntoEditor(s: Extract<Screen, { kind: 'editor' }>, touch: () => void) {
     const all = this.skills();
     if (!all.length) return this.say('no skills found', 'err');
-    this.choose('Add a skill', all.map((k, i) => ({ value: String(i), label: k.name, hint: `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}` })), (v) => {
+    this.choose('Add a skill', all.map((k, i) => ({ value: String(i), label: k.name, hint: this.skillHint(k) })), (v) => {
       const k = all[Number(v)]!;
       const p = s.pipeline;
+      if (k.source === 'ecc') {
+        let prompt: string;
+        try {
+          prompt = eccSkillPrompt(k);
+        } catch (e) {
+          return this.say(`cannot read ${k.name}: ${(e as Error).message}`, 'err');
+        }
+        const at = p.nodes.length ? s.sel + 1 : 0;
+        const n = makeStep('coder', p);
+        n.prompt = prompt;
+        n.title = k.name.slice(0, 24);
+        p.nodes.splice(at, 0, n);
+        relink(p);
+        s.sel = at;
+        touch();
+        return this.say(`added the ECC ${k.kind ?? 'skill'} ${k.name} as a step`);
+      }
       if (k.source === 'aorch') {
         let at = p.nodes.length ? s.sel + 1 : 0;
         const tests = detectTestCommand(process.cwd());
@@ -1463,7 +1509,7 @@ export class Tui {
         }
       });
     }
-    for (const k of this.skills()) add('skill', k.name, `${k.source === 'aorch' ? 'workflow' : k.source === 'project' ? 'claude · project' : 'claude'}${k.description ? ' · ' + k.description : ''}`, () => this.runSkill(k));
+    for (const k of this.skills()) add('skill', k.name, this.skillHint(k), () => this.runSkill(k));
     add('do', 'Quit', 'q', () => this.quit());
     return c;
   }
@@ -1909,7 +1955,7 @@ export class Tui {
         const plan: Extract<Screen, { kind: 'plan' }> = { kind: 'plan', task, repo: r };
         this.push(plan);
         const ac = new AbortController();
-        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, orchestrator: custom, agent: this.bindings()[lead?.id ?? 'orchestrator']?.agent, model: this.bindings()[lead?.id ?? 'orchestrator']?.model })
+        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, orchestrator: custom, agent: this.bindings()[lead?.id ?? 'orchestrator']?.agent, model: this.bindings()[lead?.id ?? 'orchestrator']?.model, home: this.d.cfg.home })
           .then((c) => (plan.comp = c))
           .catch((e: Error) => (plan.error = e.message));
       }, process.cwd());

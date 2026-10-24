@@ -7,6 +7,7 @@ import { Button } from './components/arc/button/button';
 import { Checkbox } from './components/arc/checkbox/checkbox';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { Input } from './components/arc/input/input';
+import { SearchField } from './components/arc/search-field/search-field';
 import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
@@ -47,6 +48,8 @@ function wouldCycle(edges: Edge[], from: string, to: string): boolean {
   }
   return false;
 }
+
+type EccSkill = { name: string; description: string; source: string; kind?: string };
 
 const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kind === 'approval' ? 'approve' : (n.role ?? 'step').slice(0, 6));
 
@@ -159,6 +162,24 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
     }, 300);
     return () => clearTimeout(h);
   }, [pl]);
+
+  // ECC skills and commands, offered as ready-made steps (an empty list hides the section)
+  const [skills, setSkills] = useState<EccSkill[]>([]);
+  const [skillQ, setSkillQ] = useState('');
+  useEffect(() => {
+    api<EccSkill[]>('GET', '/api/skills?source=ecc')
+      .then(setSkills)
+      .catch(() => setSkills([]));
+  }, []);
+  const shownSkills = skills.filter((s) => !skillQ || `${s.name} ${s.description}`.toLowerCase().includes(skillQ.toLowerCase())).slice(0, 30);
+  async function addSkill(s: { name: string }) {
+    try {
+      const r = await api<{ name: string; prompt: string }>('GET', `/api/skills/ecc/${encodeURIComponent(s.name)}`);
+      addNode(() => ({ kind: 'agent', role: 'coder', title: r.name.slice(0, 24), prompt: r.prompt }));
+    } catch (e) {
+      notify.fail(e);
+    }
+  }
 
   function addNode(make: () => Partial<PipelineNode>) {
     const base = make();
@@ -368,6 +389,20 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
               <small>{p.hint}</small>
             </button>
           ))}
+          {skills.length ? (
+            <>
+              <h4>Skills</h4>
+              <SearchField label="Find a skill" value={skillQ} onValueChange={setSkillQ} placeholder="ECC skills and commands" />
+              {shownSkills.map((s) => (
+                <button key={s.name} className="palette-item" title={s.description} onClick={() => void addSkill(s)}>
+                  <span>{s.name}</span>
+                  <small>
+                    {s.kind === 'command' ? 'ECC command' : 'ECC skill'} · {s.description}
+                  </small>
+                </button>
+              ))}
+            </>
+          ) : null}
         </aside>
 
         <Canvas

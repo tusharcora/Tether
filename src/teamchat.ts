@@ -211,3 +211,10 @@ export function modeCommand(engine: Pick<Engine, 'setMode'>, id: string, st: Run
 export function planDecision(engine: Pick<Engine, 'approveTeamPlan'>, id: string, approved: boolean): Promise<string> {
   return engine.approveTeamPlan(id, approved).then(() => (approved ? 'plan approved: the team is starting' : 'plan rejected'));
 }
+
+/** `/swap <n> <bot>`: give plan assignment n (1-based) to another bot. */
+export function parseSwap(line: string): { assignment: number; bot: string } | undefined {
+  const m = /^\/swap\s+(\d+)\s+([a-z][a-z0-9_-]{0,23})\s*$/.exec(line.trim());
+  const n = m ? Number(m[1]) : 0;
+  return m && n >= 1 ? { assignment: n - 1, bot: m[2]! } : undefined;
+}

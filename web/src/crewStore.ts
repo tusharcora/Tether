@@ -2,18 +2,21 @@ import { useSyncExternalStore } from 'react';
 import { api } from './api';
 
 export interface Pixels { grid: string[]; colors: Record<string, string> }
-export interface Look { body: string; eyes: string; mouth: string; top: string; side: string; pattern: string; color: string; accent: string; guard?: boolean }
-/** What the non-character styles draw: a glyph shape, a 3-letter symbol and two initials, all chosen by the server so the web and the terminal agree. */
+/** Pins for a bot's generated face (blobatar units: hue in degrees, tone and traits 0–1). */
+export interface FaceLook { hue?: number; tone?: number; traits?: Record<string, number> }
+export interface Look { body: string; eyes: string; mouth: string; top: string; side: string; pattern: string; color: string; accent: string; guard?: boolean; face?: FaceLook }
+/** What the terminal's non-character styles draw (the web no longer uses it). */
 export interface MarkInfo { shape: string; symbol: string; initials: string }
 export interface BotDef {
   id: string; name: string; title: string; kind: string; persona: string; readOnly?: boolean; look: Look;
   builtin?: boolean; edited?: boolean; pixels?: Pixels; mark?: MarkInfo;
+  source?: string; whenToUse?: string; modelHint?: string;
+  /** Set by the server when an imported persona was cut for the list; send it back unless the persona was edited. */
+  personaTruncated?: boolean;
 }
 
-export interface CrewEntry { name: string; title: string; hue: string; pixels?: Pixels; mark?: MarkInfo }
-export interface CrewState { crew: Record<string, CrewEntry>; style: string; shapes: Record<string, string[]>; glyphs: Record<string, string[]> }
-
-export const MARK_STYLES = ['sigil', 'tile', 'ticker', 'orbit'];
+export interface CrewEntry { name: string; title: string; hue: string; face?: FaceLook; source?: string; whenToUse?: string }
+export interface CrewState { crew: Record<string, CrewEntry> }
 
 const BUILTIN: Record<string, CrewEntry> = {
   orchestrator: { name: 'Maestro', title: 'orchestrator', hue: '#9b7bff' },
@@ -25,7 +28,7 @@ const BUILTIN: Record<string, CrewEntry> = {
   approval: { name: 'Gate', title: 'approver', hue: '#9aa6b8' },
 };
 
-let state: CrewState = { crew: BUILTIN, style: 'pebble', shapes: {}, glyphs: {} };
+let state: CrewState = { crew: BUILTIN };
 const subscribers = new Set<() => void>();
 
 export const getCrew = (): CrewState => state;
@@ -35,10 +38,10 @@ export function subscribeCrew(f: () => void): () => void {
 }
 
 /** Replace the live crew (the server's list, so your own bots appear everywhere a bot does). */
-export function applyCrew(bots: BotDef[], extra?: { style?: string; shapes?: Record<string, string[]>; glyphs?: Record<string, string[]> }): void {
+export function applyCrew(bots: BotDef[]): void {
   const crew: Record<string, CrewEntry> = {};
-  for (const b of bots) crew[b.id] = { name: b.name, title: b.title, hue: b.look.color, pixels: b.pixels, mark: b.mark };
-  state = { crew, style: extra?.style ?? state.style, shapes: extra?.shapes ?? state.shapes, glyphs: extra?.glyphs ?? state.glyphs };
+  for (const b of bots) crew[b.id] = { name: b.name, title: b.title, hue: b.look.color, face: b.look.face, source: b.source, whenToUse: b.whenToUse };
+  state = { crew };
   for (const f of subscribers) f();
 }
 
@@ -46,8 +49,8 @@ let loaded: Promise<void> | undefined;
 /** Fetch the crew once (and again when `force`). Failures leave the current crew in place. */
 export function loadCrewDefs(force = false): Promise<void> {
   if (!loaded || force) {
-    loaded = api<{ bots: BotDef[]; style?: string; shapes?: Record<string, string[]>; glyphs?: Record<string, string[]> }>('GET', '/api/crew')
-      .then((r) => applyCrew(r.bots, r))
+    loaded = api<{ bots: BotDef[] }>('GET', '/api/crew')
+      .then((r) => applyCrew(r.bots))
       .catch(() => undefined);
   }
   return loaded;

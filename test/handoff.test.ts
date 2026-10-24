@@ -7,8 +7,8 @@ import { briefing, buildPrompt } from '../src/prompt.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, PLAN_CAPS, type HandRequest, type PlanTask } from '../src/handoff.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
-import { refreshCrew } from '../src/bots.js';
-import { crewWarnings, loadCrew, sanitizeBot, saveBot } from '../src/crew.js';
+import { refreshCrew, registerCrew } from '../src/bots.js';
+import { BUILTIN_BOTS, crewWarnings, loadCrew, sanitizeBot, saveBot } from '../src/crew.js';
 import { fromTemplate } from '../src/composer.js';
 import { spawnedLabel, underManagers } from '../src/ui.js';
 import { culprit } from '../src/supervisor.js';
@@ -168,6 +168,16 @@ describe('prompts', () => {
     expect(planPrompt(s, mgr, ['coder'])).toContain('at most 10 more');
     expect(planPrompt(s, mgr, ['coder'], undefined, 5)).toContain('at most 7 more'); // 2 spawned + 3 redos
 
+  });
+  it('plan prompt describes a bot by its when-to-use when it has one', () => {
+    registerCrew([...BUILTIN_BOTS, { id: 'go-reviewer', name: 'Go', title: 'go', kind: 'verdict', readOnly: true, persona: '', look: BUILTIN_BOTS[0]!.look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go\n  changes' }]);
+    try {
+      const p = planPrompt(stateOf(2), mgr, ['coder', 'go-reviewer']);
+      expect(p).toContain('- go-reviewer (go): Use for Go changes');
+      expect(p).toMatch(/- coder \([^)]*\): \S/); // a built-in keeps its step blurb
+    } finally {
+      registerCrew(BUILTIN_BOTS);
+    }
   });
   it('review prompt shows children and clips output', () => {
     const s = stateOf();

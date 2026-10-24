@@ -6,10 +6,8 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
-import { blankPipeline, customBot, detectTestCommand, extractJson, makeStep, relink, proposableSteps, type StepType } from './composer.js';
+import { blankPipeline, customBot, detectTestCommand, extractJson, makeStep, relink, proposableSteps, rosterCustomText, type StepType } from './composer.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline } from './config.js';
-import { CREW } from './bots.js';
-import { BUILTIN_IDS } from './crew.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Proposal, Turn } from './sessions.js';
 import type { Pipeline } from './types.js';
@@ -44,13 +42,6 @@ const STEP_LINE = (p: Pipeline) => p.nodes.map((n) => (n.kind === 'gate' ? 'test
 
 export const stepsOf = STEP_LINE;
 
-function crewLines(): string {
-  return Object.values(CREW)
-    .flatMap((c) => (c.def && !BUILTIN_IDS.has(c.def.id) && c.def.kind !== 'orchestrator' ? [c.def] : []))
-    .map((d) => `- ${d.id} (${d.kind}) ${d.title}`)
-    .join('\n');
-}
-
 function prompt(message: string, o: ChatOpts, tests: string | undefined): string {
   const flows = listPipelines(o.home);
   const ws = resolveWorkspace(o.home, { repo: o.repo });
@@ -61,6 +52,7 @@ function prompt(message: string, o: ChatOpts, tests: string | undefined): string
       return `- ${f.name}`;
     }
   });
+  const custom = rosterCustomText(o.repo, message, o.home);
   const hist = (o.history ?? []).slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Maestro'}: ${t.text.slice(0, 400)}`).join('\n');
   return `You are Maestro, the orchestrator of a team of coding agents. Talk with the user in one to three plain sentences. You can also design, improve and save workflows (linear pipelines of steps), or start one. Do NOT do any coding task yourself and do not modify any files.
 
@@ -69,7 +61,7 @@ ${lines.join('\n') || '(none yet)'}
 ${o.current ? `The user is looking at: ${o.current}\n` : ''}${o.runs ? `Recent runs (newest first):\n${o.runs}\n` : ''}Test command detected in the repo: ${tests ?? 'none'}
 
 Allowed step types (1 to 8 steps, in order): planner, architect, coder, tester (a gate that runs the test command; only if one exists), reviewer, approval (human sign-off).
-${crewLines() ? 'Custom crew you may also use:\n' + crewLines() + '\n' : ''}
+${custom ? 'Custom crew you may also use:\n' + custom + '\n' : ''}
 ${hist ? 'Conversation so far:\n' + hist + '\n' : ''}
 User: ${message}
 

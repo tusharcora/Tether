@@ -23,6 +23,9 @@ import { adopt, decline, EvolveOpError, evolveSummary, findBot, harnessView, les
 import { listProposals } from './evolve.js';
 import { peekHarness } from './harness.js';
 import { loadLessons, type Lesson } from './lessons.js';
+import { eccInfo, gitFetch, importEcc, removeEcc, type Fetch } from './eccImport.js';
+import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
+import { ECC_REF } from './ecc.js';
 
 export interface ServerOptions {
   engine: Engine;
@@ -36,7 +39,12 @@ export interface ServerOptions {
   webDir?: string;
   /** Runs `gh`/`git` for PR triggers; tests replace it. */
   exec?: Exec;
+  /** Fetches the ECC checkout for `POST /api/crew/import`; defaults to cloning it. Tests copy a fixture instead. */
+  eccFetch?: Fetch;
 }
+
+/** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
+const LIST_PERSONA_MAX = 2000;
 
 const MAX_BODY = 1_000_000;
 const MIME: Record<string, string> = {
@@ -364,11 +372,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
 
     // ---- crew roster: the bots themselves (looks, personas), built-in and your own ----
     if (p === '/api/crew' && m === 'GET') {
-      const px = (b: BotDef) => ({ ...b, pixels: lookPixels(b.look), mark: { shape: shapeOf(b.id), symbol: symbolOf(b.name), initials: initialsOf(b.name) } });
+      const px = (b: BotDef) => ({ ...b, ...(b.source && b.persona.length > LIST_PERSONA_MAX ? { persona: b.persona.slice(0, LIST_PERSONA_MAX), personaTruncated: true } : {}), pixels: lookPixels(b.look), mark: { shape: shapeOf(b.id), symbol: symbolOf(b.name), initials: initialsOf(b.name) } });
       const style = loadPrefs(cfg.home).crew ?? 'pebble';
       const crewNow = loadCrew(cfg.home);
       const evo = evolveSummary(cfg.home, crewNow.map((b) => b.id));
-      return send(res, 200, { evolve: evo, style, styles: Object.entries(CREW_STYLES).filter(([k]) => k !== 'classic').map(([id, blurb]) => ({ id, blurb })), shapes: SHAPES, glyphs: GLYPHS, bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })) }), true;
+      return send(res, 200, { evolve: evo, style, styles: Object.entries(CREW_STYLES).filter(([k]) => k !== 'classic').map(([id, blurb]) => ({ id, blurb })), shapes: SHAPES, glyphs: GLYPHS, bots: loadCrew(cfg.home).map(px), packs: PACKS.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb, bots: k.bots.map(px) })), parts: LOOK_PARTS, kinds: BOT_KINDS.map((k) => ({ kind: k, blurb: KIND_BLURB[k] })), ecc: eccInfo(cfg.home) ?? null, eccDefault: ECC_REF }), true;
     }
     if (p === '/api/crew/style' && m === 'PUT') {
       const style = String((await readJson(req)).style ?? '');
@@ -383,22 +391,67 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
     if ((g = p.match(/^\/api\/crew\/packs\/([a-z0-9-]{1,24})$/)) && m === 'POST') {
       const pack = findPack(g[1]!) ?? (() => { throw new HttpError(404, 'unknown pack'); })();
-      const have = loadCrew(cfg.home);
+      const have = loadCrew(cfg.home).filter((b) => !b.source);
       if (have.length + pack.bots.length > 67) throw new HttpError(400, 'too many bots; remove some first');
       const fresh = reid(pack.bots, new Set(have.map((b) => b.id)));
       for (const b of fresh) saveBot(cfg.home, b);
       refreshCrew(cfg.home);
       return send(res, 200, { added: fresh.map((b) => b.id) }), true;
     }
+    if (p === '/api/crew/import' && m === 'POST') {
+      const b = (await readJson(req)) as { source?: unknown; ref?: unknown };
+      if (b.source !== 'ecc') throw new HttpError(400, 'source must be "ecc"');
+      const ref = typeof b.ref === 'string' && /^[A-Za-z0-9._-]{1,40}$/.test(b.ref) ? b.ref : undefined;
+      const diff = await importEcc(cfg.home, { ref, fetch: o.eccFetch ?? gitFetch });
+      refreshCrew(cfg.home);
+      return send(res, 200, diff), true;
+    }
+    if (p === '/api/crew' && m === 'DELETE') {
+      if (url.searchParams.get('source') !== 'ecc') throw new HttpError(400, 'source must be "ecc"');
+      const removed = removeEcc(cfg.home);
+      refreshCrew(cfg.home);
+      return send(res, 200, { removed }), true;
+    }
+    if (p === '/api/skills' && m === 'GET') {
+      const src = url.searchParams.get('source');
+      const all = [...aorchSkills(cfg.home), ...eccSkills(cfg.home)].filter((s) => !src || s.source === src);
+      return send(res, 200, all.map((s) => ({ name: s.name, description: s.description, source: s.source, ...(s.kind ? { kind: s.kind } : {}) }))), true;
+    }
+    if ((g = /^\/api\/skills\/ecc\/([A-Za-z0-9][A-Za-z0-9:_.-]{0,63})$/.exec(p)) && m === 'GET') {
+      const skill = findSkill(eccSkills(cfg.home), `ecc:${g[1]}`);
+      if (!skill) throw new HttpError(404, 'no such ECC skill');
+      return send(res, 200, { name: skill.name, prompt: eccSkillPrompt(skill) }), true;
+    }
     if ((g = p.match(/^\/api\/crew\/([a-z][a-z0-9_-]{0,23})$/))) {
       const id = g[1]!;
       if (!BOT_ID_RE.test(id)) throw new HttpError(400, 'bad id');
+      if (m === 'GET') {
+        // the full saved bot, for the editor: the list truncates long imported personas
+        const bot = loadCrew(cfg.home).find((b) => b.id === id);
+        if (!bot) throw new HttpError(404, 'no such bot');
+        return send(res, 200, bot), true;
+      }
       if (m === 'PUT') {
-        const existing = loadCrew(cfg.home);
-        const was = existing.find((b) => b.id === id);
-        if (!was && existing.length >= 67) throw new HttpError(400, 'too many bots; remove some first');
-        const body = await readJson(req);
-        const { bot, error } = sanitizeBot({ ...body, id });
+        const crewNow = loadCrew(cfg.home);
+        const was = crewNow.find((b) => b.id === id);
+        // only a brand-new id counts against the limit; editing any existing bot (yours, a built-in, an import) never does
+        if (!was && crewNow.filter((b) => !b.source).length >= 67) throw new HttpError(400, 'too many bots; remove some first');
+        const { personaTruncated, source: _source, modelHint, ...body } = (await readJson(req)) ?? {};
+        void _source;
+        // An imported bot stays imported: its source is kept, its when-to-use and model hint carry over unless the body
+        // sets them, and the list's truncated persona (or a missing one) never replaces the full saved one. A PUT cannot
+        // make a bot imported (that would dodge the user-bot caps), so source and modelHint are dropped for any other id.
+        const merged = was?.source
+          ? {
+              whenToUse: was.whenToUse,
+              modelHint: modelHint ?? was.modelHint,
+              ...body,
+              ...(personaTruncated === true || typeof body.persona !== 'string' ? { persona: was.persona } : {}),
+              source: was.source,
+              id,
+            }
+          : { ...body, id };
+        const { bot, error } = sanitizeBot(merged);
         if (!bot) throw new HttpError(400, error ?? 'invalid bot');
         saveBot(cfg.home, bot);
         refreshCrew(cfg.home);
@@ -715,7 +768,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       req.on('close', () => (clearInterval(tick), clearInterval(beat)));
       return true;
     }
-    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode)$/)) && m === 'POST') {
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode|swap)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       const what = g[2]!;
       const s = store.state(id);
@@ -739,6 +792,10 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
           const approved = reqBool(reqObject(b), 'approved');
           if (approved === undefined) throw new HttpError(400, '"approved" (true or false) is required');
           await engine.approveTeamPlan(id, approved);
+        } else if (what === 'swap') {
+          const o = reqObject(b);
+          if (typeof o.assignment !== 'number' || typeof o.bot !== 'string') throw new HttpError(400, 'body must be { assignment: number, bot: string }');
+          engine.swapAssignment(id, o.assignment, o.bot);
         } else {
           const mode = reqObject(b).mode;
           if (mode !== 'live' && mode !== 'autonomous') throw new HttpError(400, '"mode" must be "live" or "autonomous"');

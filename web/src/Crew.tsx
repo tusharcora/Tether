@@ -4,79 +4,100 @@ import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
 import { Card } from './components/arc/card/card';
 import { Checkbox } from './components/arc/checkbox/checkbox';
+import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { Drawer, DrawerContent, useDrawerItem } from './components/arc/drawer/drawer';
 import { Input } from './components/arc/input/input';
-import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Select } from './components/arc/select/select';
+import { Slider } from './components/arc/slider/slider';
+import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
 import { Textarea } from './components/arc/textarea/textarea';
-import { MARK_STYLES, applyCrew, useCrew, type BotDef, type Pixels } from './crewStore';
+import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
 import { EvolvePanel } from './Evolve';
-import { Face, Mark, Sprite } from './Face';
-import { NONE, cn, fromNone } from './ui/cn';
+import { Face } from './Face';
+import { NONE, fromNone } from './ui/cn';
+import { ConfirmButton } from './ui/ConfirmButton';
 import { useNotify } from './ui/notify';
 
 interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
-interface Meta { parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; packs: Pack[]; styles: { id: string; blurb: string }[] }
-const PARTS = ['body', 'eyes', 'mouth', 'top', 'side', 'pattern'];
+interface Ecc { ref: string; at: string }
+interface Meta { kinds: { kind: string; blurb: string }[]; packs: Pack[]; ecc: Ecc | null; eccDefault: string }
+interface ImportReply { ref: string; added: string[]; updated: string[]; removed: string[]; skipped: string[]; notes: string[]; skills: number; commands: number }
+type Filter = 'all' | 'builtin' | 'custom' | 'ecc';
+const isEcc = (b?: BotDef) => !!b?.source?.startsWith('ecc@');
+const sourceOf = (b?: BotDef): Exclude<Filter, 'all'> => (isEcc(b) ? 'ecc' : b?.builtin ? 'builtin' : 'custom');
+/** The hue the slider shows before it is moved; not saved until then. */
+const DEFAULT_HUE = 200;
 const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
 const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
 
 interface AgentInfo { ok: boolean; version?: string; detail?: string; models: string[] }
 interface Row { role: string; name: string; title: string; kind: string; binding: { agent: string; model?: string } | null }
-type CrewReply = { bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]>; evolve?: Record<string, { version: number; open: number }> };
+type CrewReply = { bots: BotDef[]; packs: Pack[]; kinds: { kind: string; blurb: string }[]; evolve?: Record<string, { version: number; open: number }>; ecc?: Ecc | null; eccDefault?: string };
 
 export function Crew() {
   const notify = useNotify();
-  const { style } = useCrew();
   const [rows, setRows] = useState<Row[]>([]);
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
   const [draft, setDraft] = useState<Record<string, { agent: string; model: string }>>({});
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState('');
-  const [meta, setMeta] = useState<Meta>({ parts: {}, kinds: [], packs: [], styles: [] });
+  const [meta, setMeta] = useState<Meta>({ kinds: [], packs: [], ecc: null, eccDefault: '' });
   const [defs, setDefs] = useState<BotDef[]>([]);
   const [edit, setEdit] = useState<BotDef | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [preview, setPreview] = useState<Pixels | null>(null);
+  // an imported bot's persona arrives truncated; once edited, the server must take the new one
+  const [personaEdited, setPersonaEdited] = useState(false);
+  // a truncated persona is replaced by the full one from GET /api/crew/:id; until then it cannot be edited
+  const [personaLoad, setPersonaLoad] = useState<'ok' | 'loading' | 'failed'>('ok');
+  const opening = useRef(0);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [importing, setImporting] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
   const [evo, setEvo] = useState<Record<string, { version: number; open: number }>>({});
   const [evolving, setEvolving] = useState<Row | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
   // the drawers keep showing their last item while they slide out
   const shown = useDrawerItem(edit);
   const evolveShown = useDrawerItem(evolving);
 
-  const refreshPreview = (b: BotDef) => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      try {
-        setPreview(await api<Pixels>('POST', '/api/crew/preview', { look: b.look }));
-      } catch {
-        /* keep the last preview */
-      }
-    }, 120);
-  };
   const patch = (p: Partial<BotDef>) => {
     if (!edit) return; // the drawer is sliding out
-    const b = { ...edit, ...p };
-    setEdit(b);
-    refreshPreview(b);
+    setEdit({ ...edit, ...p });
   };
-  const patchLook = (p: Partial<BotDef['look']>) => edit && patch({ look: { ...edit.look, ...p } });
+  const patchFace = (p: Partial<FaceLook>) => edit && patch({ look: { ...edit.look, face: { ...edit.look.face, ...p } } });
+  const resetFace = () => {
+    if (!edit) return;
+    const { face: _drop, ...rest } = edit.look;
+    patch({ look: rest });
+  };
   const open = (b: BotDef, fresh = false) => {
+    const token = ++opening.current;
     setEdit(JSON.parse(JSON.stringify(b)) as BotDef);
     setIsNew(fresh);
-    setPreview(b.pixels ?? null);
-    if (fresh) refreshPreview(b);
+    setPersonaEdited(false);
+    setPersonaLoad(b.personaTruncated && b.id ? 'loading' : 'ok');
+    if (!b.personaTruncated || !b.id) return;
+    api<BotDef>('GET', `/api/crew/${b.id}`).then(
+      (full) => {
+        if (opening.current !== token) return; // another bot was opened meanwhile
+        // only the persona comes from the full bot, so edits made while it loaded are kept
+        setEdit((cur) => {
+          if (!cur || cur.id !== b.id) return cur;
+          const { personaTruncated: _cut, ...rest } = cur;
+          return { ...rest, persona: full.persona };
+        });
+        setPersonaLoad('ok');
+      },
+      () => opening.current === token && setPersonaLoad('failed'),
+    );
   };
 
   const loadDefs = useCallback(async () => {
     const r = await api<CrewReply>('GET', '/api/crew');
     setEvo(r.evolve ?? {});
-    applyCrew(r.bots, r);
+    applyCrew(r.bots);
     setDefs(r.bots);
-    setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs, styles: r.styles });
+    setMeta({ kinds: r.kinds, packs: r.packs, ecc: r.ecc ?? null, eccDefault: r.eccDefault ?? '' });
   }, []);
 
   const load = useCallback(async () => {
@@ -98,18 +119,34 @@ export function Crew() {
     void load();
   }, [load]);
 
-  async function pickStyle(id: string) {
+  async function importEcc() {
+    if (importBusy) return;
+    setImportBusy(true);
     try {
-      await api('PUT', '/api/crew/style', { style: id });
-      await loadDefs();
-      notify.ok(`style: ${id}`);
+      const d = await api<ImportReply>('POST', '/api/crew/import', { source: 'ecc' });
+      notify.ok(`ECC ${d.ref}: ${d.added.length} added, ${d.updated.length} updated, ${d.removed.length} removed`);
+      setImporting(false);
+      await Promise.all([load(), loadCrewDefs(true)]);
+    } catch (e) {
+      notify.fail(e);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+  async function removeEcc() {
+    try {
+      const d = await api<{ removed: string[] }>('DELETE', '/api/crew?source=ecc');
+      notify.ok(`Removed ${d.removed.length} ECC bots`);
+      await Promise.all([load(), loadCrewDefs(true)]);
     } catch (e) {
       notify.fail(e);
     }
   }
   async function saveEdit() {
     if (!edit) return;
-    const b = edit;
+    // an edited persona replaces the saved one; an untouched truncated one tells the server to keep its copy
+    const { personaTruncated, ...rest } = edit;
+    const b: BotDef = personaEdited || personaTruncated === undefined ? rest : { ...rest, personaTruncated };
     const id = isNew ? slug(b.name) : b.id;
     const taken = new Set(defs.map((d) => d.id));
     let use = id;
@@ -161,7 +198,11 @@ export function Crew() {
     }
   }
 
-  const look = (b: BotDef) => b.look as unknown as Record<string, string>;
+  const counts: Record<Filter, number> = { all: rows.length, builtin: 0, custom: 0, ecc: 0 };
+  for (const r of rows) counts[sourceOf(defs.find((d) => d.id === r.role))]++;
+  const hasEcc = defs.some(isEcc);
+  const view: Filter = filter === 'ecc' && !hasEcc ? 'all' : filter;
+  const shownRows = view === 'all' ? rows : rows.filter((r) => sourceOf(defs.find((d) => d.id === r.role)) === view);
   return (
     <div className="crew-page">
       <div className="crew-head">
@@ -170,14 +211,24 @@ export function Crew() {
           Link each bot to an agent and model. A step with no agent of its own follows its bot; a step that names one keeps it.
           Changes apply to the next run you start. Click a bot's look to edit it, or add your own.
         </p>
-        <Button variant="primary" onClick={() => open(blank(), true)}>+ New bot</Button>
-        <SegmentedControl label="Crew style" options={meta.styles.map((s) => ({ value: s.id, label: s.id }))} value={style} onValueChange={(v) => void pickStyle(v)} />
-        {MARK_STYLES.includes(style) ? (
-          <p className="muted small">
-            {meta.styles.find((s) => s.id === style)?.blurb}. The bot editor below still edits the pixel look, which the pebble style and the terminal's pebble style use.
-          </p>
-        ) : null}
+        <div className="row">
+          <Button variant="primary" onClick={() => open(blank(), true)}>+ New bot</Button>
+          <Button variant="secondary" onClick={() => setImporting(true)}>{meta.ecc ? 'Update ECC…' : 'Import ECC…'}</Button>
+          {meta.ecc ? <ConfirmButton label="Remove ECC" prompt="Remove every ECC bot and the vendored checkout?" confirmLabel="Remove" onConfirm={removeEcc} /> : null}
+        </div>
       </div>
+      <Dialog open={importing} onOpenChange={(o) => !importBusy && setImporting(o)}>
+        <DialogContent
+          title="Import ECC"
+          description="Adds ECC's agents as crew bots and its skills and commands to the skills list. Hooks and rules are not imported. Source: github.com/affaan-m/ECC (MIT)."
+        >
+          <p className="small">{`Version ${meta.ecc?.ref ? `${meta.ecc.ref} → ` : ''}${meta.eccDefault}`}</p>
+          <div className="row end">
+            <Button variant="secondary" disabled={importBusy} onClick={() => setImporting(false)}>Cancel</Button>
+            <Button variant="primary" loading={importBusy} onClick={() => void importEcc()}>Import</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {loadErr ? (
         <div className="alert error" role="alert">
           {loadErr}{' '}
@@ -188,19 +239,33 @@ export function Crew() {
         <p className="muted">Checking which agents are installed…</p>
       ) : (
         <>
+          <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
+            <TabsList aria-label="Bot source">
+              <TabsTrigger value="all">{`All ${counts.all}`}</TabsTrigger>
+              <TabsTrigger value="builtin">{`Built-in ${counts.builtin}`}</TabsTrigger>
+              <TabsTrigger value="custom">{`Custom ${counts.custom}`}</TabsTrigger>
+              {hasEcc ? <TabsTrigger value="ecc">{`ECC ${counts.ecc}`}</TabsTrigger> : null}
+            </TabsList>
+          </Tabs>
           <div className="crew-grid">
-            {rows.map((r) => {
+            {shownRows.map((r) => {
               const def = defs.find((x) => x.id === r.role);
               const ev = evo[r.role];
               const agent = draft[r.role]?.agent ?? '';
               return (
                 <div className="crew-card" key={r.role}>
-                  <button className="sprite-btn" title="Edit this bot" onClick={() => def && open(def)}>
-                    <Face role={r.role} size={48} />
+                  <button className="sprite-btn" title="Edit this bot" aria-label={`Edit ${r.name}`} onClick={() => def && open(def)}>
+                    <Face id={r.role} size={48} animate="hover" />
                   </button>
                   <div className="crew-main">
                     <h4>
                       {r.name} <span className="muted">{r.title}</span>
+                      {isEcc(def) ? (
+                        <>
+                          {' '}
+                          <Badge size="sm" title={def?.source}>ECC</Badge>
+                        </>
+                      ) : null}
                       {r.kind !== 'approval' && ev ? (
                         <>
                           {' '}
@@ -214,7 +279,7 @@ export function Crew() {
                         </>
                       ) : null}
                     </h4>
-                    {def?.persona ? <p className="muted small persona">{def.persona}</p> : null}
+                    {def?.whenToUse || def?.persona ? <p className="muted small persona">{def.whenToUse || def.persona}</p> : null}
                     {r.kind !== 'approval' ? (
                       <>
                         <Select
@@ -276,8 +341,11 @@ export function Crew() {
               {shown ? (
                 <div className="bot-editor in-drawer" aria-label="Edit bot">
                   <div className="bot-preview">
-                    {preview ? <Sprite pixels={preview} size={120} label={shown.name} /> : <div className="muted small">…</div>}
+                    <Face id={shown.id || 'new-bot'} face={shown.look.face ?? {}} size={120} animate="hover" label={`${shown.name || 'New bot'} preview`} />
                     <div className="muted small">{shown.name || 'New bot'}</div>
+                    <Slider label="Hue" min={0} max={359} step={1} value={shown.look.face?.hue ?? DEFAULT_HUE} onValueChange={(v) => patchFace({ hue: v })} />
+                    <Slider label="Tone" min={0} max={1} step={0.05} value={shown.look.face?.tone ?? 0.5} format={(v) => v.toFixed(2)} onValueChange={(v) => patchFace({ tone: v })} />
+                    <Button variant="ghost" size="sm" disabled={!shown.look.face} onClick={resetFace}>Reset to generated</Button>
                   </div>
                   <div className="bot-fields">
                     <div className="row">
@@ -291,25 +359,31 @@ export function Crew() {
                       disabled={!isNew && !!shown.builtin}
                       onValueChange={(v) => patch({ kind: v })}
                     />
-                    <Textarea label="Persona (becomes this bot's instructions)" rows={4} maxLength={600} value={shown.persona} onChange={(e) => patch({ persona: e.target.value })} />
+                    <Textarea
+                      label="Persona (becomes this bot's instructions)"
+                      rows={4}
+                      maxLength={isEcc(shown) ? 24000 : 600}
+                      value={shown.persona}
+                      readOnly={personaLoad !== 'ok'}
+                      aria-busy={personaLoad === 'loading' || undefined}
+                      description={
+                        personaLoad === 'loading'
+                          ? 'Loading the full persona…'
+                          : personaLoad === 'failed'
+                            ? 'Showing the first 2000 characters; edits are disabled until the full text loads'
+                            : isEcc(shown)
+                              ? 'From ECC; an update replaces your edits'
+                              : undefined
+                      }
+                      onChange={(e) => {
+                        if (personaLoad !== 'ok') return;
+                        setPersonaEdited(true);
+                        patch({ persona: e.target.value });
+                      }}
+                    />
                     {shown.kind === 'agent' && !shown.builtin ? (
                       <Checkbox label="read-only (may not edit files)" checked={!!shown.readOnly} onCheckedChange={(c) => patch({ readOnly: c === true })} />
                     ) : null}
-                    <div className="look-grid">
-                      {PARTS.map((k) => (
-                        <Select key={k} label={k} options={(meta.parts[k] ?? []).map((o) => ({ value: o, label: o }))} value={look(shown)[k]} onValueChange={(v) => patchLook({ [k]: v })} />
-                      ))}
-                    </div>
-                    <div className="row swatches">
-                      {SWATCH.map((c) => (
-                        <button key={c} className={cn('swatch', { on: shown.look.color === c })} style={{ background: c }} aria-label={`colour ${c}`} onClick={() => patchLook({ color: c })} />
-                      ))}
-                      <input type="color" value={shown.look.color} onChange={(e) => patchLook({ color: e.target.value })} aria-label="custom colour" />
-                      <Checkbox label="auto accent" checked={shown.look.accent === 'auto'} onCheckedChange={(c) => patchLook({ accent: c === true ? 'auto' : '#ffffff' })} />
-                      {shown.look.accent !== 'auto' ? (
-                        <input type="color" value={shown.look.accent} onChange={(e) => patchLook({ accent: e.target.value })} aria-label="accent colour" />
-                      ) : null}
-                    </div>
                     <div className="row">
                       <Button variant="primary" disabled={!shown.name.trim()} onClick={() => void saveEdit()}>Save</Button>
                       <Button variant="secondary" onClick={() => setEdit(null)}>Cancel</Button>
@@ -337,7 +411,7 @@ export function Crew() {
                 <div className="row pack-sprites">
                   {k.bots.map((b) => (
                     <span key={b.id} title={`${b.name}: ${b.persona}`}>
-                      {MARK_STYLES.includes(style) && b.mark ? <Mark style={style} mark={b.mark} hue={b.look.color} size={34} label={b.name} /> : b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}
+                      <Face id={b.id} size={34} label={b.name} />
                     </span>
                   ))}
                 </div>

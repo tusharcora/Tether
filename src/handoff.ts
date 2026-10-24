@@ -201,7 +201,8 @@ function rosterLines(roster: string[]): string {
   return roster
     .map((id) => {
       const c = CREW[id];
-      const blurb = id in STEP_BLURB ? STEP_BLURB[id as StepType] : blurbFor({ id: '', kind: 'agent', role: id, x: 0, y: 0 });
+      const def = c?.def;
+      const blurb = def?.whenToUse ? def.whenToUse.replace(/\s+/g, ' ').trim().slice(0, 100) : id in STEP_BLURB ? STEP_BLURB[id as StepType] : blurbFor({ id: '', kind: 'agent', role: id, x: 0, y: 0 });
       return `- ${id}${c ? ` (${c.title || c.name})` : ''}: ${blurb}`;
     })
     .join('\n');

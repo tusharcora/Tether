@@ -31,10 +31,9 @@ describe('crew store', () => {
   it('notifies subscribers on apply', () => {
     const f = vi.fn();
     const off = subscribeCrew(f);
-    applyCrew([bot('coder', 'Bolt'), bot('scribe', 'Quill')], { style: 'sigil' });
+    applyCrew([bot('coder', 'Bolt'), { ...bot('scribe', 'Quill'), source: 'ecc@v2.2.3', whenToUse: 'Use for docs', look: { ...bot('x', 'x').look, face: { hue: 10 } } }]);
     expect(f).toHaveBeenCalledTimes(1);
-    expect(getCrew().crew.scribe?.name).toBe('Quill');
-    expect(getCrew().style).toBe('sigil');
+    expect(getCrew().crew.scribe).toMatchObject({ name: 'Quill', source: 'ecc@v2.2.3', whenToUse: 'Use for docs', face: { hue: 10 } });
     off();
   });
   it('keeps the current crew when loading fails', async () => {

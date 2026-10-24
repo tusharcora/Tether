@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Question } from './api';
 import { TeamPanel } from './Team';
@@ -70,5 +70,16 @@ describe('TeamPanel', () => {
     expect((screen.getByRole('button', { name: 'Send answers' }) as HTMLButtonElement).disabled).toBe(false);
     rerender(<TeamPanel run={teamRun({ id: 'r2', pending: [q('q1')] })} send={send} />);
     expect((screen.getByRole('button', { name: 'Send answers' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows each assignment’s why and swaps a bot from the roster', async () => {
+    const send = vi.fn().mockResolvedValue(true);
+    const plan = { goal: 'Ship', success: [], assignments: [{ bot: 'coder', goal: 'write it', mode: 'write' as const, why: 'repo is Go' }, { bot: 'reviewer', goal: 'review', mode: 'read' as const, swapped: true as const }], limits: { allowWrites: true }, answers: [], roster: ['coder', 'reviewer', 'go-reviewer'] };
+    renderApp(<TeamPanel run={teamRun({ planning: false, plan })} send={send} />);
+    expect(screen.getByText(/repo is Go/)).toBeTruthy();
+    expect(screen.getByText('swapped by you')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('combobox', { name: /Bot/ })[0]!);
+    fireEvent.click(await screen.findByRole('option', { name: 'go-reviewer' }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith('swap', { assignment: 0, bot: 'go-reviewer' }));
   });
 });
