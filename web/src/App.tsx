@@ -1,91 +1,98 @@
-import { Show, createSignal, onCleanup, onMount } from 'solid-js';
-import { api } from './api';
+import { useEffect, useState } from 'react';
 import { Builder } from './Builder';
-import { loadCrewDefs } from './bots';
+import { CommandMenu } from './CommandMenu';
+import { Badge } from './components/arc/badge/badge';
+import { Button } from './components/arc/button/button';
+import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
+import { ThemeSwitch } from './components/arc/theme-switch/theme-switch';
+import { ToastStack, ToastStackProvider } from './components/arc/toast-stack/toast-stack';
+import { Tooltip } from './components/arc/tooltip/tooltip';
 import { Crew } from './Crew';
+import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
+import { TAB_LABEL, TABS, useHashRoute, usePoll, type Tab } from './hooks';
 import { Runs } from './Runs';
+import { useTheme } from './theme';
 import { Triggers } from './Triggers';
 
-type Tab = 'builder' | 'runs' | 'graph' | 'crew' | 'triggers';
-
-const fromHash = (): { tab: Tab; run?: string } => {
-  const [t, r] = location.hash.replace(/^#\/?/, '').split('/');
-  return { tab: t === 'runs' || t === 'graph' || t === 'crew' || t === 'triggers' ? t : 'builder', run: r };
-};
+const isTextField = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 
 export function App() {
-  const init = fromHash();
-  const [tab, setTab] = createSignal<Tab>(init.tab);
-  const [run, setRun] = createSignal<string | undefined>(init.run);
-  const [health, setHealth] = createSignal<{ ok: boolean; vault?: string } | undefined>();
+  const [route, go] = useHashRoute();
+  const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
+  const [theme, setTheme] = useTheme();
+  const [palette, setPalette] = useState(false);
+  const health = usePoll<{ ok: boolean; vault?: string }>('/api/health', 5000);
 
-  const go = (t: Tab, r?: string) => {
-    setTab(t);
-    if (r !== undefined) setRun(r);
-    location.hash = t === 'runs' && (r ?? run()) ? `#/runs/${r ?? run()}` : `#/${t}`;
-  };
+  useEffect(() => void loadCrewDefs(), []);
+  useEffect(() => {
+    if (route.tab === 'runs' && route.id) setLastRun(route.id);
+  }, [route]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return;
+      // Ctrl-K edits text in fields (macOS: delete to end of line); only Meta-K is taken there
+      if (!e.metaKey && isTextField(e.target)) return;
+      e.preventDefault();
+      setPalette(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
-  onMount(() => {
-    void loadCrewDefs();
-    const beat = async () => {
-      try {
-        setHealth(await api('GET', '/api/health'));
-      } catch {
-        setHealth({ ok: false });
-      }
-    };
-    void beat();
-    const t = setInterval(beat, 5000);
-    const onHash = () => {
-      const h = fromHash();
-      setTab(h.tab);
-      if (h.run) setRun(h.run);
-    };
-    window.addEventListener('hashchange', onHash);
-    onCleanup(() => (clearInterval(t), window.removeEventListener('hashchange', onHash)));
-  });
+  const online = !!health.data?.ok && !health.error;
+  const vault = health.data?.vault;
+  const openTab = (t: Tab) => go(t === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : { tab: t });
 
   return (
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="logo">◈</span> aorch
-        </div>
-        <nav class="tabs">
-          <button classList={{ active: tab() === 'builder' }} onClick={() => go('builder')}>Builder</button>
-          <button classList={{ active: tab() === 'runs' }} onClick={() => go('runs')}>Runs</button>
-          <button classList={{ active: tab() === 'graph' }} onClick={() => go('graph')}>Graph</button>
-          <button classList={{ active: tab() === 'crew' }} onClick={() => go('crew')}>Crew</button>
-          <button classList={{ active: tab() === 'triggers' }} onClick={() => go('triggers')}>Triggers</button>
-        </nav>
-        <div class="status">
-          <Show when={health()?.vault}>
-            <span class="chip" title={health()!.vault}>vault · {health()!.vault!.split('/').filter(Boolean).slice(-2).join('/')}</span>
-          </Show>
-          <span class="chip" title="The API starts agents and writes files, so it only listens on this machine.">loopback only</span>
-          <span class="conn" classList={{ ok: !!health()?.ok }}>
-            <i /> {health()?.ok ? 'connected' : 'offline'}
-          </span>
-        </div>
-      </header>
-      <main>
-        <Show when={tab() === 'builder'}>
-          <Builder onStarted={(id) => go('runs', id)} />
-        </Show>
-        <Show when={tab() === 'runs'}>
-          <Runs selected={run()} onSelect={(id) => go('runs', id)} />
-        </Show>
-        <Show when={tab() === 'crew'}>
-          <Crew />
-        </Show>
-        <Show when={tab() === 'triggers'}>
-          <Triggers />
-        </Show>
-        <Show when={tab() === 'graph'}>
-          <GraphView />
-        </Show>
-      </main>
-    </div>
+    <ToastStackProvider>
+      <div className="app">
+        <header className="topbar">
+          <div className="brand">
+            <span className="logo">◈</span> aorch
+          </div>
+          <Tabs value={route.tab} onValueChange={(v) => openTab(v as Tab)}>
+            <TabsList aria-label="Main">
+              {TABS.map((t) => (
+                <TabsTrigger key={t} value={t}>
+                  {TAB_LABEL[t]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <Button variant="secondary" size="sm" onClick={() => setPalette(true)}>
+            Search or jump to… <kbd>Ctrl K</kbd>
+          </Button>
+          <div className="status">
+            {vault ? (
+              <Tooltip content={vault}>
+                <span className="info-badge" tabIndex={0}>
+                  <Badge size="sm">vault · {vault.split('/').filter(Boolean).slice(-2).join('/')}</Badge>
+                </span>
+              </Tooltip>
+            ) : null}
+            <Tooltip content="The API starts agents and writes files, so it only listens on this machine.">
+              <span className="info-badge" tabIndex={0}>
+                <Badge size="sm">loopback only</Badge>
+              </span>
+            </Tooltip>
+            <Badge size="sm" tone={online ? 'success' : 'danger'}>
+              {online ? 'connected' : 'offline'}
+            </Badge>
+            <ThemeSwitch theme={theme} onThemeChange={(t) => setTheme(t)} iconOnly />
+          </div>
+        </header>
+        <main>
+          {route.tab === 'builder' ? <Builder pipeline={route.id} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
+          {route.tab === 'runs' ? <Runs selected={route.id} onSelect={(id) => go({ tab: 'runs', id })} /> : null}
+          {route.tab === 'graph' ? <GraphView /> : null}
+          {route.tab === 'crew' ? <Crew /> : null}
+          {route.tab === 'triggers' ? <Triggers /> : null}
+        </main>
+        <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} />
+      </div>
+      <ToastStack />
+    </ToastStackProvider>
   );
 }

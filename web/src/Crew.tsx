@@ -1,7 +1,19 @@
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { Badge } from './components/arc/badge/badge';
+import { Button } from './components/arc/button/button';
+import { Card } from './components/arc/card/card';
+import { Checkbox } from './components/arc/checkbox/checkbox';
+import { Drawer, DrawerContent, useDrawerItem } from './components/arc/drawer/drawer';
+import { Input } from './components/arc/input/input';
+import SegmentedControl from './components/arc/segmented-control/segmented-control';
+import { Select } from './components/arc/select/select';
+import { Textarea } from './components/arc/textarea/textarea';
+import { MARK_STYLES, applyCrew, useCrew, type BotDef, type Pixels } from './crewStore';
 import { EvolvePanel } from './Evolve';
-import { MARK_STYLES, Mark, Pebble, Sprite, applyCrew, crewStyle, type BotDef, type Pixels } from './bots';
+import { Face, Mark, Sprite } from './Face';
+import { NONE, cn, fromNone } from './ui/cn';
+import { useNotify } from './ui/notify';
 
 interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
 interface Meta { parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; packs: Pack[]; styles: { id: string; blurb: string }[] }
@@ -12,25 +24,32 @@ const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace
 
 interface AgentInfo { ok: boolean; version?: string; detail?: string; models: string[] }
 interface Row { role: string; name: string; title: string; kind: string; binding: { agent: string; model?: string } | null }
+type CrewReply = { bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]>; evolve?: Record<string, { version: number; open: number }> };
 
 export function Crew() {
-  const [rows, setRows] = createSignal<Row[]>([]);
-  const [agents, setAgents] = createSignal<Record<string, AgentInfo>>({});
-  const [draft, setDraft] = createSignal<Record<string, { agent: string; model: string }>>({});
-  const [msg, setMsg] = createSignal('');
-  const [loading, setLoading] = createSignal(true);
-  const [meta, setMeta] = createSignal<Meta>({ parts: {}, kinds: [], packs: [], styles: [] });
-  const [defs, setDefs] = createSignal<BotDef[]>([]);
-  const [edit, setEdit] = createSignal<BotDef | null>(null);
-  const [isNew, setIsNew] = createSignal(false);
-  const [preview, setPreview] = createSignal<Pixels | null>(null);
-  const [evo, setEvo] = createSignal<Record<string, { version: number; open: number }>>({});
-  const [evolving, setEvolving] = createSignal<Row | null>(null);
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const notify = useNotify();
+  const { style } = useCrew();
+  const [rows, setRows] = useState<Row[]>([]);
+  const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
+  const [draft, setDraft] = useState<Record<string, { agent: string; model: string }>>({});
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState('');
+  const [meta, setMeta] = useState<Meta>({ parts: {}, kinds: [], packs: [], styles: [] });
+  const [defs, setDefs] = useState<BotDef[]>([]);
+  const [edit, setEdit] = useState<BotDef | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [preview, setPreview] = useState<Pixels | null>(null);
+  const [evo, setEvo] = useState<Record<string, { version: number; open: number }>>({});
+  const [evolving, setEvolving] = useState<Row | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // the drawers keep showing their last item while they slide out
+  const shown = useDrawerItem(edit);
+  const evolveShown = useDrawerItem(evolving);
 
   const refreshPreview = (b: BotDef) => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
       try {
         setPreview(await api<Pixels>('POST', '/api/crew/preview', { look: b.look }));
       } catch {
@@ -39,267 +58,296 @@ export function Crew() {
     }, 120);
   };
   const patch = (p: Partial<BotDef>) => {
-    const b = { ...edit()!, ...p };
+    if (!edit) return; // the drawer is sliding out
+    const b = { ...edit, ...p };
     setEdit(b);
     refreshPreview(b);
   };
-  const patchLook = (p: Partial<BotDef['look']>) => patch({ look: { ...edit()!.look, ...p } });
+  const patchLook = (p: Partial<BotDef['look']>) => edit && patch({ look: { ...edit.look, ...p } });
   const open = (b: BotDef, fresh = false) => {
     setEdit(JSON.parse(JSON.stringify(b)) as BotDef);
     setIsNew(fresh);
     setPreview(b.pixels ?? null);
     if (fresh) refreshPreview(b);
-    setTimeout(() => document.querySelector('.bot-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
 
-  async function loadDefs() {
-    const r = await api<{ bots: BotDef[]; packs: Pack[]; parts: Record<string, string[]>; kinds: { kind: string; blurb: string }[]; style: string; styles: { id: string; blurb: string }[]; shapes: Record<string, string[]>; glyphs: Record<string, string[]>; evolve?: Record<string, { version: number; open: number }> }>('GET', '/api/crew');
+  const loadDefs = useCallback(async () => {
+    const r = await api<CrewReply>('GET', '/api/crew');
     setEvo(r.evolve ?? {});
     applyCrew(r.bots, r);
     setDefs(r.bots);
     setMeta({ parts: r.parts, kinds: r.kinds, packs: r.packs, styles: r.styles });
-  }
-  async function pickStyle(id: string) {
-    try {
-      await api('PUT', '/api/crew/style', { style: id });
-      await loadDefs();
-      setMsg(`style: ${id}`);
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
-  async function saveEdit() {
-    const b = edit()!;
-    const id = isNew() ? slug(b.name) : b.id;
-    const taken = new Set(defs().map((d) => d.id));
-    let use = id;
-    if (isNew()) for (let i = 2; taken.has(use); i++) use = `${id.slice(0, 20)}${i}`;
-    try {
-      await api('PUT', `/api/crew/${use}`, { ...b, id: use });
-      setEdit(null);
-      setMsg(`${b.name} saved`);
-      await load();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
-  async function removeDef(b: BotDef) {
-    try {
-      await api('DELETE', `/api/crew/${b.id}`);
-      setEdit(null);
-      setMsg(b.builtin ? `${b.name} reset to its original look` : `${b.name} removed`);
-      await load();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
-  async function addPack(k: Pack) {
-    try {
-      const r = await api<{ added: string[] }>('POST', `/api/crew/packs/${k.id}`);
-      setMsg(`${k.name}: added ${r.added.length} bots`);
-      await load();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       await loadDefs();
       const r = await api<{ crew: Row[]; agents: Record<string, AgentInfo> }>('GET', '/api/bots');
       setRows(r.crew);
       setAgents(r.agents);
       setDraft(Object.fromEntries(r.crew.map((c) => [c.role, { agent: c.binding?.agent ?? '', model: c.binding?.model ?? '' }])));
+      setLoadErr('');
     } catch (e) {
-      setMsg((e as Error).message);
+      // a load failure shows inline with a retry; action failures are toasts
+      setLoadErr((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }
-  onMount(load);
+  }, [loadDefs]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const set = (role: string, patch: Partial<{ agent: string; model: string }>) => setDraft({ ...draft(), [role]: { ...draft()[role]!, ...patch } });
-  const dirty = (r: Row) => {
-    const d = draft()[r.role];
-    return !!d && (d.agent !== (r.binding?.agent ?? '') || d.model !== (r.binding?.model ?? ''));
-  };
-
-  async function save(r: Row) {
-    const d = draft()[r.role]!;
+  async function pickStyle(id: string) {
     try {
-      if (!d.agent) await api('DELETE', `/api/bots/${r.role}`);
-      else await api('PUT', `/api/bots/${r.role}`, { agent: d.agent, model: d.model });
-      setMsg(d.agent ? `${r.name} → ${d.agent}${d.model ? ' · ' + d.model : ''}` : `${r.name} unlinked`);
+      await api('PUT', '/api/crew/style', { style: id });
+      await loadDefs();
+      notify.ok(`style: ${id}`);
+    } catch (e) {
+      notify.fail(e);
+    }
+  }
+  async function saveEdit() {
+    if (!edit) return;
+    const b = edit;
+    const id = isNew ? slug(b.name) : b.id;
+    const taken = new Set(defs.map((d) => d.id));
+    let use = id;
+    if (isNew) for (let i = 2; taken.has(use); i++) use = `${id.slice(0, 20)}${i}`;
+    try {
+      await api('PUT', `/api/crew/${use}`, { ...b, id: use });
+      setEdit(null);
+      notify.ok(`${b.name} saved`);
       await load();
     } catch (e) {
-      setMsg((e as Error).message);
+      notify.fail(e);
+    }
+  }
+  async function removeDef(b: BotDef) {
+    if (!edit) return;
+    try {
+      await api('DELETE', `/api/crew/${b.id}`);
+      setEdit(null);
+      notify.ok(b.builtin ? `${b.name} reset to its original look` : `${b.name} removed`);
+      await load();
+    } catch (e) {
+      notify.fail(e);
+    }
+  }
+  async function addPack(k: Pack) {
+    try {
+      const r = await api<{ added: string[] }>('POST', `/api/crew/packs/${k.id}`);
+      notify.ok(`${k.name}: added ${r.added.length} bots`);
+      await load();
+    } catch (e) {
+      notify.fail(e);
     }
   }
 
+  const set = (role: string, p: Partial<{ agent: string; model: string }>) => setDraft((all) => ({ ...all, [role]: { ...all[role]!, ...p } }));
+  const dirty = (r: Row) => {
+    const d = draft[r.role];
+    return !!d && (d.agent !== (r.binding?.agent ?? '') || d.model !== (r.binding?.model ?? ''));
+  };
+
+  async function save(r: Row, d = draft[r.role]!) {
+    try {
+      if (!d.agent) await api('DELETE', `/api/bots/${r.role}`);
+      else await api('PUT', `/api/bots/${r.role}`, { agent: d.agent, model: d.model });
+      notify.ok(d.agent ? `${r.name} → ${d.agent}${d.model ? ' · ' + d.model : ''}` : `${r.name} unlinked`);
+      await load();
+    } catch (e) {
+      notify.fail(e);
+    }
+  }
+
+  const look = (b: BotDef) => b.look as unknown as Record<string, string>;
   return (
-    <div class="crew-page">
-      <div class="crew-head">
+    <div className="crew-page">
+      <div className="crew-head">
         <h2>Crew</h2>
-        <p class="muted">
+        <p className="muted">
           Link each bot to an agent and model. A step with no agent of its own follows its bot; a step that names one keeps it.
           Changes apply to the next run you start. Click a bot's look to edit it, or add your own.
         </p>
-        <button class="primary" onClick={() => open(blank(), true)}>+ New bot</button>
-        <Show when={msg()}><span class="chip">{msg()}</span></Show>
-        <div class="style-pick" role="radiogroup" aria-label="Crew style">
-          <For each={meta().styles}>
-            {(s) => (
-              <button role="radio" aria-checked={crewStyle() === s.id} classList={{ on: crewStyle() === s.id }} title={s.blurb} onClick={() => void pickStyle(s.id)}>
-                {s.id}
-              </button>
-            )}
-          </For>
-        </div>
-        <Show when={MARK_STYLES.includes(crewStyle())}>
-          <p class="muted small">
-            {meta().styles.find((s) => s.id === crewStyle())?.blurb}. The bot editor below still edits the pixel look, which the pebble style and the terminal's pebble style use.
+        <Button variant="primary" onClick={() => open(blank(), true)}>+ New bot</Button>
+        <SegmentedControl label="Crew style" options={meta.styles.map((s) => ({ value: s.id, label: s.id }))} value={style} onValueChange={(v) => void pickStyle(v)} />
+        {MARK_STYLES.includes(style) ? (
+          <p className="muted small">
+            {meta.styles.find((s) => s.id === style)?.blurb}. The bot editor below still edits the pixel look, which the pebble style and the terminal's pebble style use.
           </p>
-        </Show>
+        ) : null}
       </div>
-      <Show when={!loading()} fallback={<p class="muted">Checking which agents are installed…</p>}>
-        <div class="crew-grid">
-          <For each={rows()}>
-            {(r) => (
-              <div class="crew-card">
-                <button class="sprite-btn" title="Edit this bot" onClick={() => { const d = defs().find((x) => x.id === r.role); if (d) open(d); }}>
-                  <Pebble role={r.role} size={48} />
-                </button>
-                <div class="crew-main">
-                  <h4>
-                    {r.name} <span class="muted">{r.title}</span>
-                    <Show when={r.kind !== 'approval' && evo()[r.role]}>
-                      <span class="chip" title="Harness version: persona, guidance and skills">v{evo()[r.role]!.version}</span>
-                      <Show when={evo()[r.role]!.open}><span class="chip proposal-mark" title="A harness proposal waits for review">● proposal</span></Show>
-                    </Show>
-                  </h4>
-                  <Show when={defs().find((x) => x.id === r.role)?.persona}>
-                    <p class="muted small persona">{defs().find((x) => x.id === r.role)!.persona}</p>
-                  </Show>
-                  <Show
-                    when={r.kind !== 'approval'}
-                    fallback={<p class="muted">A person signs off here. Nothing to link.</p>}
-                  >
-                    <label>
-                      Agent
-                      <select value={draft()[r.role]?.agent ?? ''} onChange={(e) => set(r.role, { agent: e.currentTarget.value, model: '' })}>
-                        <option value="">default (claude)</option>
-                        <For each={Object.keys(agents())}>
-                          {(a) => <option value={a}>{a}{agents()[a]!.ok ? '' : ' (not available)'}</option>}
-                        </For>
-                      </select>
-                    </label>
-                    <label>
-                      Model
-                      <input
-                        list={`models-${r.role}`}
-                        value={draft()[r.role]?.model ?? ''}
-                        placeholder="adapter default"
-                        spellcheck={false}
-                        onInput={(e) => set(r.role, { model: e.currentTarget.value })}
-                      />
-                      <datalist id={`models-${r.role}`}>
-                        <For each={agents()[draft()[r.role]?.agent ?? '']?.models ?? []}>{(m) => <option value={m} />}</For>
-                      </datalist>
-                    </label>
-                    <div class="row">
-                      <button class="primary" disabled={!dirty(r)} onClick={() => void save(r)}>Save</button>
-                      <Show when={r.binding}>
-                        <button onClick={() => { set(r.role, { agent: '', model: '' }); void save({ ...r }); }}>Unlink</button>
-                      </Show>
-                      <Show when={r.kind === 'agent' || r.kind === 'verdict'}>
-                      <button title="Proposals, lessons and harness versions" onClick={() => { setEvolving(r); setTimeout(() => document.querySelector('.evolve-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }}>Evolve</button>
-                      </Show>
-                    </div>
-                  </Show>
-                </div>
-              </div>
-            )}
-          </For>
+      {loadErr ? (
+        <div className="alert error" role="alert">
+          {loadErr}{' '}
+          <Button variant="secondary" size="sm" onClick={() => void load()}>Retry</Button>
         </div>
-        <Show when={evolving()} keyed>
-          {(r) => <EvolvePanel bot={r.role} name={r.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />}
-        </Show>
-        <Show when={edit()}>
-          {(_) => (
-            <div class="bot-editor" role="dialog" aria-label="Edit bot">
-              <div class="bot-preview">
-                <Show when={preview()} fallback={<div class="muted small">…</div>}>
-                  <Sprite pixels={preview()!} size={120} label={edit()!.name} />
-                </Show>
-                <div class="muted small">{edit()!.name || 'New bot'}</div>
-              </div>
-              <div class="bot-fields">
-                <h3>{isNew() ? 'New bot' : `Edit ${edit()!.name}`}</h3>
-                <div class="row">
-                  <label>Name<input value={edit()!.name} maxLength={24} onInput={(e) => patch({ name: e.currentTarget.value })} /></label>
-                  <label>Title<input value={edit()!.title} maxLength={28} placeholder="what it is" onInput={(e) => patch({ title: e.currentTarget.value })} /></label>
-                </div>
-                <label>Kind
-                  <select value={edit()!.kind} disabled={!isNew() && !!edit()!.builtin} onChange={(e) => patch({ kind: e.currentTarget.value })}>
-                    <For each={meta().kinds}>{(k) => <option value={k.kind}>{k.kind}: {k.blurb}</option>}</For>
-                  </select>
-                </label>
-                <label>Persona (becomes this bot's instructions)
-                  <textarea rows={4} maxLength={600} value={edit()!.persona} onInput={(e) => patch({ persona: e.currentTarget.value })} />
-                </label>
-                <Show when={edit()!.kind === 'agent' && !edit()!.builtin}>
-                  <label class="check"><input type="checkbox" checked={!!edit()!.readOnly} onChange={(e) => patch({ readOnly: e.currentTarget.checked })} /> read-only (may not edit files)</label>
-                </Show>
-                <div class="look-grid">
-                  <For each={PARTS}>
-                    {(k) => (
-                      <label>{k}
-                        <select value={(edit()!.look as unknown as Record<string, string>)[k]} onChange={(e) => patchLook({ [k]: e.currentTarget.value })}>
-                          <For each={meta().parts[k] ?? []}>{(o) => <option value={o}>{o}</option>}</For>
-                        </select>
-                      </label>
+      ) : null}
+      {loading ? (
+        <p className="muted">Checking which agents are installed…</p>
+      ) : (
+        <>
+          <div className="crew-grid">
+            {rows.map((r) => {
+              const def = defs.find((x) => x.id === r.role);
+              const ev = evo[r.role];
+              const agent = draft[r.role]?.agent ?? '';
+              return (
+                <div className="crew-card" key={r.role}>
+                  <button className="sprite-btn" title="Edit this bot" onClick={() => def && open(def)}>
+                    <Face role={r.role} size={48} />
+                  </button>
+                  <div className="crew-main">
+                    <h4>
+                      {r.name} <span className="muted">{r.title}</span>
+                      {r.kind !== 'approval' && ev ? (
+                        <>
+                          {' '}
+                          <Badge size="sm" title="Harness version: persona, guidance and skills">v{ev.version}</Badge>
+                          {ev.open ? (
+                            <>
+                              {' '}
+                              <Badge size="sm" tone="info" className="proposal-mark" title="A harness proposal waits for review">● proposal</Badge>
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </h4>
+                    {def?.persona ? <p className="muted small persona">{def.persona}</p> : null}
+                    {r.kind !== 'approval' ? (
+                      <>
+                        <Select
+                          label="Agent"
+                          options={[{ value: NONE, label: 'default (claude)' }, ...Object.keys(agents).map((a) => ({ value: a, label: a + (agents[a]!.ok ? '' : ' (not available)') }))]}
+                          value={agent || NONE}
+                          onValueChange={(v) => set(r.role, { agent: fromNone(v), model: '' })}
+                        />
+                        <Input
+                          label="Model"
+                          list={`models-${r.role}`}
+                          value={draft[r.role]?.model ?? ''}
+                          placeholder="adapter default"
+                          spellCheck={false}
+                          onChange={(e) => set(r.role, { model: e.target.value })}
+                        />
+                        <datalist id={`models-${r.role}`}>
+                          {(agents[agent]?.models ?? []).map((m) => <option key={m} value={m} />)}
+                        </datalist>
+                        <div className="row">
+                          <Button variant="primary" size="sm" disabled={!dirty(r)} onClick={() => void save(r)}>Save</Button>
+                          {r.binding ? (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                const cleared = { agent: '', model: '' };
+                                set(r.role, cleared);
+                                void save(r, cleared);
+                              }}
+                            >
+                              Unlink
+                            </Button>
+                          ) : null}
+                          {r.kind === 'agent' || r.kind === 'verdict' ? (
+                            <Button variant="secondary" size="sm" title="Proposals, lessons and harness versions" onClick={() => setEvolving(r)}>Evolve</Button>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="muted">A person signs off here. Nothing to link.</p>
                     )}
-                  </For>
-                </div>
-                <div class="row swatches">
-                  <For each={SWATCH}>{(c) => <button class="swatch" style={{ background: c }} aria-label={`colour ${c}`} classList={{ on: edit()!.look.color === c }} onClick={() => patchLook({ color: c })} />}</For>
-                  <input type="color" value={edit()!.look.color} onInput={(e) => patchLook({ color: e.currentTarget.value })} aria-label="custom colour" />
-                  <label class="check"><input type="checkbox" checked={edit()!.look.accent === 'auto'} onChange={(e) => patchLook({ accent: e.currentTarget.checked ? 'auto' : '#ffffff' })} /> auto accent</label>
-                  <Show when={edit()!.look.accent !== 'auto'}>
-                    <input type="color" value={edit()!.look.accent} onInput={(e) => patchLook({ accent: e.currentTarget.value })} aria-label="accent colour" />
-                  </Show>
-                </div>
-                <div class="row">
-                  <button class="primary" disabled={!edit()!.name.trim()} onClick={() => void saveEdit()}>Save</button>
-                  <button onClick={() => setEdit(null)}>Cancel</button>
-                  <Show when={!isNew() && (!edit()!.builtin || edit()!.edited)}>
-                    <button onClick={() => void removeDef(edit()!)}>{edit()!.builtin ? 'Reset to original' : 'Remove'}</button>
-                  </Show>
-                </div>
-              </div>
-            </div>
-          )}
-        </Show>
-        <h3 class="packs-h">Crew packs</h3>
-        <div class="crew-grid">
-          <For each={meta().packs}>
-            {(k) => (
-              <div class="crew-card pack">
-                <div class="crew-main">
-                  <h4>{k.name} <span class="muted">{k.bots.length} bots</span></h4>
-                  <p class="muted small">{k.blurb}</p>
-                  <div class="row pack-sprites">
-                    <For each={k.bots}>{(b) => <span title={`${b.name}: ${b.persona}`}>{MARK_STYLES.includes(crewStyle()) && b.mark ? <Mark style={crewStyle()} mark={b.mark} hue={b.look.color} size={34} label={b.name} /> : b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}</span>}</For>
                   </div>
-                  <p class="muted small">{k.bots.map((b) => b.name).join(' · ')}</p>
-                  <div class="row"><button onClick={() => void addPack(k)}>Add to my crew</button></div>
                 </div>
-              </div>
-            )}
-          </For>
-        </div>
-        <p class="muted small">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
-      </Show>
+              );
+            })}
+          </div>
+
+          <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
+            <DrawerContent side="right" title={`Evolve ${evolveShown?.name ?? ''}`}>
+              {evolveShown ? (
+                <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />
+              ) : null}
+            </DrawerContent>
+          </Drawer>
+
+          <Drawer open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
+            <DrawerContent side="right" title={isNew ? 'New bot' : `Edit ${shown?.name ?? ''}`}>
+              {shown ? (
+                <div className="bot-editor in-drawer" aria-label="Edit bot">
+                  <div className="bot-preview">
+                    {preview ? <Sprite pixels={preview} size={120} label={shown.name} /> : <div className="muted small">…</div>}
+                    <div className="muted small">{shown.name || 'New bot'}</div>
+                  </div>
+                  <div className="bot-fields">
+                    <div className="row">
+                      <Input label="Name" value={shown.name} maxLength={24} onChange={(e) => patch({ name: e.target.value })} />
+                      <Input label="Title" value={shown.title} maxLength={28} placeholder="what it is" onChange={(e) => patch({ title: e.target.value })} />
+                    </div>
+                    <Select
+                      label="Kind"
+                      options={meta.kinds.map((k) => ({ value: k.kind, label: `${k.kind}: ${k.blurb}` }))}
+                      value={shown.kind}
+                      disabled={!isNew && !!shown.builtin}
+                      onValueChange={(v) => patch({ kind: v })}
+                    />
+                    <Textarea label="Persona (becomes this bot's instructions)" rows={4} maxLength={600} value={shown.persona} onChange={(e) => patch({ persona: e.target.value })} />
+                    {shown.kind === 'agent' && !shown.builtin ? (
+                      <Checkbox label="read-only (may not edit files)" checked={!!shown.readOnly} onCheckedChange={(c) => patch({ readOnly: c === true })} />
+                    ) : null}
+                    <div className="look-grid">
+                      {PARTS.map((k) => (
+                        <Select key={k} label={k} options={(meta.parts[k] ?? []).map((o) => ({ value: o, label: o }))} value={look(shown)[k]} onValueChange={(v) => patchLook({ [k]: v })} />
+                      ))}
+                    </div>
+                    <div className="row swatches">
+                      {SWATCH.map((c) => (
+                        <button key={c} className={cn('swatch', { on: shown.look.color === c })} style={{ background: c }} aria-label={`colour ${c}`} onClick={() => patchLook({ color: c })} />
+                      ))}
+                      <input type="color" value={shown.look.color} onChange={(e) => patchLook({ color: e.target.value })} aria-label="custom colour" />
+                      <Checkbox label="auto accent" checked={shown.look.accent === 'auto'} onCheckedChange={(c) => patchLook({ accent: c === true ? 'auto' : '#ffffff' })} />
+                      {shown.look.accent !== 'auto' ? (
+                        <input type="color" value={shown.look.accent} onChange={(e) => patchLook({ accent: e.target.value })} aria-label="accent colour" />
+                      ) : null}
+                    </div>
+                    <div className="row">
+                      <Button variant="primary" disabled={!shown.name.trim()} onClick={() => void saveEdit()}>Save</Button>
+                      <Button variant="secondary" onClick={() => setEdit(null)}>Cancel</Button>
+                      {!isNew && (!shown.builtin || shown.edited) ? (
+                        <Button variant="secondary" onClick={() => void removeDef(shown)}>{shown.builtin ? 'Reset to original' : 'Remove'}</Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </DrawerContent>
+          </Drawer>
+
+          <h3 className="packs-h">Crew packs</h3>
+          <div className="crew-grid">
+            {meta.packs.map((k) => (
+              <Card
+                key={k.id}
+                className="pack"
+                title={k.name}
+                description={k.blurb}
+                meta={`${k.bots.length} bots`}
+                action={<Button variant="secondary" size="sm" onClick={() => void addPack(k)}>Add to my crew</Button>}
+              >
+                <div className="row pack-sprites">
+                  {k.bots.map((b) => (
+                    <span key={b.id} title={`${b.name}: ${b.persona}`}>
+                      {MARK_STYLES.includes(style) && b.mark ? <Mark style={style} mark={b.mark} hue={b.look.color} size={34} label={b.name} /> : b.pixels ? <Sprite pixels={b.pixels} size={34} label={b.name} /> : null}
+                    </span>
+                  ))}
+                </div>
+                <p className="muted small">{k.bots.map((b) => b.name).join(' · ')}</p>
+              </Card>
+            ))}
+          </div>
+          <p className="muted small">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
+        </>
+      )}
     </div>
   );
 }
