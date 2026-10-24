@@ -1,6 +1,6 @@
 import { blobatar, type BlobatarOptions } from 'blobatar';
 import * as X from 'blobatar/expression';
-import { _parts } from 'blobatar/internal';
+import { Blobatar } from '@blobatar/react';
 import { useCrew, type FaceLook } from './crewStore';
 
 export type Mood = 'idle' | 'working' | 'done' | 'failed' | 'waiting' | 'asleep' | 'stopped';
@@ -27,31 +27,23 @@ export function moodFor(status?: string): Mood {
 
 export type Animate = 'hover' | 'always';
 
+/** The blobatar options for a bot: seed = its id, never normalised, mood as the expression, face pins on top. */
+const faceOptions = (o: { mood?: Mood; face?: FaceLook; size?: number }): BlobatarOptions => ({
+  size: o.size ?? 48,
+  normalize: false,
+  background: 'squircle',
+  expression: EXPR[o.mood ?? 'idle'],
+  ...(o.face?.hue !== undefined ? { hue: o.face.hue } : {}),
+  ...(o.face?.tone !== undefined ? { tone: o.face.tone } : {}),
+  ...(o.face?.traits ? { traits: o.face.traits } : {}),
+});
+
 /**
- * A bot's face, generated on this machine from its id (blobatar is bundled; blobatar.dev is never called).
- *
- * Static faces come from `blobatar()`. That string API ignores `animate` by design, so an animated face is
- * assembled from `_parts` exactly as the library's own React adapter does: the backdrop, then a root `<g>`
- * carrying the `mo-root` classes that `blobatar/motion.css` targets, with the seeded timings on the `<svg>`.
+ * A bot's static face, generated on this machine from its id (blobatar is bundled; blobatar.dev is never called).
+ * Animated faces are rendered by the official `@blobatar/react` adapter in `Face` (the string API is static by design).
  */
-export function faceSvg(id: string, o: { mood?: Mood; face?: FaceLook; size?: number; animate?: Animate } = {}): string {
-  const size = o.size ?? 48;
-  const opts: BlobatarOptions = {
-    size,
-    normalize: false,
-    background: 'squircle',
-    expression: EXPR[o.mood ?? 'idle'],
-    ...(o.face?.hue !== undefined ? { hue: o.face.hue } : {}),
-    ...(o.face?.tone !== undefined ? { tone: o.face.tone } : {}),
-    ...(o.face?.traits ? { traits: o.face.traits } : {}),
-  };
-  if (!o.animate) return blobatar(id, opts);
-  const p = _parts(id, { ...opts, animate: o.animate });
-  const style = Object.entries(p.vars ?? {})
-    .map(([k, v]) => `${k}:${v}`)
-    .join(';');
-  const bg = p.bg ? `<path d="${p.bg.d}" fill="${p.bg.fill}"/>` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true" style="${style}">${bg}<g class="${p.cls ?? ''}">${p.inner}</g></svg>`;
+export function faceSvg(id: string, o: { mood?: Mood; face?: FaceLook; size?: number } = {}): string {
+  return blobatar(id, faceOptions(o));
 }
 /** Static faces only: an <img> cannot animate (CSS cannot reach inside it). */
 export const faceUri = (id: string, o?: { mood?: Mood; face?: FaceLook; size?: number }) => `data:image/svg+xml;utf8,${encodeURIComponent(faceSvg(id, o))}`;
@@ -71,9 +63,9 @@ export function Face(props: { id: string; mood?: Mood; size?: number; label?: st
         aria-label={label}
         data-mood={mood}
         style={{ width: size, height: size }}
-        // generated locally from a bot id by blobatar; no user markup reaches this string
-        dangerouslySetInnerHTML={{ __html: faceSvg(props.id, { mood, face, size, animate: props.animate }) }}
-      />
+      >
+        <Blobatar name={props.id} {...faceOptions({ mood, face, size })} animate={props.animate} />
+      </span>
     );
   return <img src={faceUri(props.id, { mood, face, size })} width={size} height={size} alt={label} data-mood={mood} className="face" />;
 }
