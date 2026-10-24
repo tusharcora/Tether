@@ -245,6 +245,22 @@ describe('crew import and skills', () => {
     }
   });
 
+  it('returns one full bot by id for the editor', async () => {
+    await api('POST', '/api/crew/import', { source: 'ecc' });
+    try {
+      const go = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+      saveBot(home, { ...go, persona: 'p'.repeat(5000) });
+      const r = await api('GET', '/api/crew/go-reviewer');
+      expect(r.status).toBe(200);
+      expect(r.json.persona).toHaveLength(5000);
+      expect(r.json.personaTruncated).toBeUndefined();
+      expect(r.json.source).toBe('ecc@v2.2.3');
+      expect((await api('GET', '/api/crew/nobody')).status).toBe(404);
+    } finally {
+      await api('DELETE', '/api/crew?source=ecc');
+    }
+  });
+
   it('cannot create an imported bot through PUT', async () => {
     try {
       expect((await api('PUT', '/api/crew/sneaky', { name: 'Sneaky', kind: 'agent', persona: 'x'.repeat(5000), source: 'ecc@x', modelHint: 'opus' })).status).toBe(200);

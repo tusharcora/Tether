@@ -113,6 +113,9 @@ describe('crew sources and faces', () => {
     await screen.findByText('Bolt');
     expect(screen.queryByRole('tab', { name: /ECC/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove ECC' })).toBeNull();
+    const ecc = screen.queryAllByText(/ECC/);
+    expect(ecc).toHaveLength(1);
+    expect(ecc[0]!.closest('button')?.textContent).toBe('Import ECC…');
   });
 
   it('does not save the default hue until the slider moves, and resets to the generated face', async () => {
@@ -135,23 +138,38 @@ describe('crew sources and faces', () => {
       });
     });
 
-    it('sends personaTruncated as received when the persona is not edited', async () => {
+    it('loads the full persona for the editor and saves the edited full text', async () => {
+      const full = 'You review Go. '.repeat(300);
+      routeApi({
+        ...routes,
+        'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, imported], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } },
+        'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] },
+        'GET /api/crew/go-reviewer': { ...imported, persona: full, personaTruncated: undefined },
+      });
       renderApp(<Crew />);
       fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
-      expect(await screen.findByText('From ECC; an update replaces your edits')).toBeTruthy();
+      expect(calls('GET', '/api/crew/go-reviewer')).toHaveLength(1);
+      const persona = (await screen.findByLabelText(/Persona/)) as HTMLTextAreaElement;
+      await waitFor(() => expect(persona.value).toBe(full));
+      expect(persona.readOnly).toBe(false);
+      expect(screen.getByText('From ECC; an update replaces your edits')).toBeTruthy();
+      fireEvent.change(persona, { target: { value: full + 'Be brief.' } });
+      await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+      const sent = calls('PUT', '/api/crew/go-reviewer')[0]![2] as Record<string, unknown>;
+      expect(sent.persona).toBe(full + 'Be brief.');
+      expect('personaTruncated' in sent).toBe(false);
+    });
+
+    it('keeps the truncated persona read-only and sends personaTruncated when the full bot cannot load', async () => {
+      renderApp(<Crew />);
+      fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+      expect(await screen.findByText('Showing the first 2000 characters; edits are disabled until the full text loads')).toBeTruthy();
+      const persona = screen.getByLabelText(/Persona/) as HTMLTextAreaElement;
+      expect(persona.readOnly).toBe(true);
+      fireEvent.change(persona, { target: { value: 'lost edit' } });
       fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'gopher' } });
       await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
       expect(calls('PUT', '/api/crew/go-reviewer')[0]![2]).toMatchObject({ title: 'gopher', personaTruncated: true, persona: 'You review Go…' });
-    });
-
-    it('drops personaTruncated once the persona is edited', async () => {
-      renderApp(<Crew />);
-      fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
-      fireEvent.change(await screen.findByLabelText(/Persona/), { target: { value: 'Short and sharp' } });
-      await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
-      const sent = calls('PUT', '/api/crew/go-reviewer')[0]![2] as Record<string, unknown>;
-      expect(sent.persona).toBe('Short and sharp');
-      expect('personaTruncated' in sent).toBe(false);
     });
 
     it('shows an ECC badge, offers update and removes ECC after confirming', async () => {

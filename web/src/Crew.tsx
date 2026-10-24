@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
@@ -48,6 +48,9 @@ export function Crew() {
   const [isNew, setIsNew] = useState(false);
   // an imported bot's persona arrives truncated; once edited, the server must take the new one
   const [personaEdited, setPersonaEdited] = useState(false);
+  // a truncated persona is replaced by the full one from GET /api/crew/:id; until then it cannot be edited
+  const [personaLoad, setPersonaLoad] = useState<'ok' | 'loading' | 'failed'>('ok');
+  const opening = useRef(0);
   const [filter, setFilter] = useState<Filter>('all');
   const [importing, setImporting] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
@@ -68,9 +71,25 @@ export function Crew() {
     patch({ look: rest });
   };
   const open = (b: BotDef, fresh = false) => {
+    const token = ++opening.current;
     setEdit(JSON.parse(JSON.stringify(b)) as BotDef);
     setIsNew(fresh);
     setPersonaEdited(false);
+    setPersonaLoad(b.personaTruncated && b.id ? 'loading' : 'ok');
+    if (!b.personaTruncated || !b.id) return;
+    api<BotDef>('GET', `/api/crew/${b.id}`).then(
+      (full) => {
+        if (opening.current !== token) return; // another bot was opened meanwhile
+        // only the persona comes from the full bot, so edits made while it loaded are kept
+        setEdit((cur) => {
+          if (!cur || cur.id !== b.id) return cur;
+          const { personaTruncated: _cut, ...rest } = cur;
+          return { ...rest, persona: full.persona };
+        });
+        setPersonaLoad('ok');
+      },
+      () => opening.current === token && setPersonaLoad('failed'),
+    );
   };
 
   const loadDefs = useCallback(async () => {
@@ -345,8 +364,19 @@ export function Crew() {
                       rows={4}
                       maxLength={isEcc(shown) ? 24000 : 600}
                       value={shown.persona}
-                      description={isEcc(shown) ? 'From ECC; an update replaces your edits' : undefined}
+                      readOnly={personaLoad !== 'ok'}
+                      aria-busy={personaLoad === 'loading' || undefined}
+                      description={
+                        personaLoad === 'loading'
+                          ? 'Loading the full persona…'
+                          : personaLoad === 'failed'
+                            ? 'Showing the first 2000 characters; edits are disabled until the full text loads'
+                            : isEcc(shown)
+                              ? 'From ECC; an update replaces your edits'
+                              : undefined
+                      }
                       onChange={(e) => {
+                        if (personaLoad !== 'ok') return;
                         setPersonaEdited(true);
                         patch({ persona: e.target.value });
                       }}

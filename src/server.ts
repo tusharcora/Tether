@@ -425,6 +425,12 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if ((g = p.match(/^\/api\/crew\/([a-z][a-z0-9_-]{0,23})$/))) {
       const id = g[1]!;
       if (!BOT_ID_RE.test(id)) throw new HttpError(400, 'bad id');
+      if (m === 'GET') {
+        // the full saved bot, for the editor: the list truncates long imported personas
+        const bot = loadCrew(cfg.home).find((b) => b.id === id);
+        if (!bot) throw new HttpError(404, 'no such bot');
+        return send(res, 200, bot), true;
+      }
       if (m === 'PUT') {
         const crewNow = loadCrew(cfg.home);
         const was = crewNow.find((b) => b.id === id);
