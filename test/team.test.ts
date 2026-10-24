@@ -1053,3 +1053,88 @@ describe('roster, reasons and swaps', () => {
 
 import { registerCrew } from '../src/bots.js';
 import { BUILTIN_BOTS } from '../src/crew.js';
+
+// ---- final review fixes: model hints on spawned steps, the plan roster for workers, swapped read-only bots ----
+describe('team runs: spawned steps', () => {
+  const hinted = { id: 'go-reviewer', name: 'Go', title: 'go', kind: 'agent' as const, persona: '', look: BUILTIN_BOTS[0]!.look, source: 'ecc@v2.2.3', modelHint: 'opus' as const };
+  /** A mock adapter that answers as the claude agent (same script, same call log). */
+  const asClaude = (mock: MockAdapter) => Object.create(mock, { id: { value: 'claude' } }) as MockAdapter;
+  async function run(managerAgent: 'mock' | 'claude', spawned: Record<string, object>, tasksJson: string, roster = ['coder', 'go-reviewer']) {
+    const mock = new MockAdapter();
+    const store = Store.open(':memory:');
+    const registry = new AdapterRegistry().register(mock).register(asClaude(mock));
+    const engine = new Engine(store, { home: tmp('home-'), registry, bindings: () => ({ orchestrator: { agent: 'mock' }, manager: { agent: managerAgent } }) });
+    const plan = { goal: 'ship', success: ['works'], assignments: roster.map((bot) => ({ bot, goal: 'c', why: 'fits' })) };
+    const id = await engine.startTeam({ task: 'build x', repo: makeRepo(), workspace: false, roster, mock: { plan, replies: { plan: [tasksJson], review: [ACCEPT] }, spawned } as never });
+    await engine.approveTeamPlan(id, true);
+    const s = await engine.wait(id);
+    return { s, mock, store, id };
+  }
+  const nodeOf = (s: { pipeline: { nodes: { id: string; agent?: string; model?: string; roster?: string[] }[] } }, id: string) => s.pipeline.nodes.find((n) => n.id === id)!;
+
+  it('a manager on another agent spawns a hinted bot with no model; on claude the hint applies', async () => {
+    registerCrew([...BUILTIN_BOTS, hinted]);
+    try {
+      const t = tasks({ id: 'a', to: 'go-reviewer' });
+      const off = await run('mock', { a: { output: 'fine' } }, t);
+      expect(nodeOf(off.s, 'manager-a')).toMatchObject({ agent: 'mock' });
+      expect(nodeOf(off.s, 'manager-a').model).toBeUndefined();
+      const on = await run('claude', { a: { output: 'fine' } }, t);
+      expect(nodeOf(on.s, 'manager-a')).toMatchObject({ agent: 'claude', model: 'opus' });
+    } finally {
+      registerCrew(BUILTIN_BOTS);
+    }
+  });
+
+  it('a worker hand-off to a hinted bot follows the same rule', async () => {
+    registerCrew([...BUILTIN_BOTS, hinted]);
+    try {
+      const t = tasks({ id: 'a', to: 'coder' });
+      const spawned = { a: { output: '@HAND go-reviewer: look at it', spawned: { 'go-reviewer': { output: 'looks fine' } } } };
+      const off = await run('mock', spawned, t);
+      expect(nodeOf(off.s, 'manager-a-h1')).toMatchObject({ agent: 'mock' });
+      expect(nodeOf(off.s, 'manager-a-h1').model).toBeUndefined();
+      const on = await run('claude', spawned, t);
+      expect(nodeOf(on.s, 'manager-a-h1')).toMatchObject({ agent: 'claude', model: 'opus' });
+    } finally {
+      registerCrew(BUILTIN_BOTS);
+    }
+  });
+
+  it("workers see only the plan's roster and cannot hand off outside it", async () => {
+    const r = await run('mock', { a: { output: '@HAND planner: plan it', spawned: { planner: { output: 'P' } } } }, tasks({ id: 'a', to: 'coder' }), ['coder', 'reviewer']);
+    expect(nodeOf(r.s, 'manager-a').roster).toEqual(['coder', 'reviewer']);
+    const prompt = r.mock.calls.find((c) => c.nodeId === 'manager-a')!.prompt;
+    expect(prompt).toContain('Bots you can hand to: coder, reviewer.');
+    const hand = evs(r.store, r.id, 'handoff').find((e) => e.from === 'manager-a')!;
+    expect(hand).toMatchObject({ to: 'planner' });
+    expect(hand.answer).toMatch(/^refused: unknown bot "planner"/);
+    expect(r.s.pipeline.nodes.some((n) => n.id === 'manager-a-h1')).toBe(false);
+  });
+});
+
+describe('swapping a read-only bot into a write assignment', () => {
+  const writes = { id: 'writes', ask: 'may I write?', options: [{ id: 'yes', label: 'yes' }, { id: 'no', label: 'no' }], recommended: 'no' };
+  it('the engine records the assignment as read, and the fold applies it', async () => {
+    const t = team();
+    const id = await t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, roster: ['coder', 'planner'], mock: { questions: [[writes]], plan: { goal: 'g', assignments: [{ bot: 'coder', goal: 'c', mode: 'write', why: 'w' }, { bot: 'coder', goal: 'd', mode: 'write', why: 'w' }] } } });
+    await t.engine.answerPlan(id, [{ question: 'writes', option: 'yes', by: 'user' }]);
+    expect(t.store.state(id)!.plan!.assignments.map((a) => a.mode)).toEqual(['write', 'write']);
+    const s = t.engine.swapAssignment(id, 0, 'planner');
+    expect(evs(t.store, id, 'plan.edit')[0]).toMatchObject({ assignment: 0, from: 'coder', to: 'planner', mode: 'read' });
+    expect(s.plan!.assignments[0]).toMatchObject({ bot: 'planner', mode: 'read', swapped: true });
+    expect(s.plan!.assignments[1]).toMatchObject({ bot: 'coder', mode: 'write' });
+    // a writable bot taking a write keeps it
+    t.engine.swapAssignment(id, 1, 'planner');
+    t.engine.swapAssignment(id, 1, 'coder');
+    expect(evs(t.store, id, 'plan.edit')[2]!.mode).toBeUndefined();
+  });
+
+  it('the fold sets the mode only when the event carries one', () => {
+    const plan = { goal: 'g', success: [], assignments: [{ bot: 'coder', goal: 'x', mode: 'write' as const }], limits: { allowWrites: true }, answers: [] };
+    const read = foldRun(log({ ...started, kind: 'team' }, { type: 'plan.ready', plan }, { type: 'plan.edit', assignment: 0, from: 'coder', to: 'planner', mode: 'read' }));
+    expect(read!.plan!.assignments[0]).toMatchObject({ bot: 'planner', mode: 'read' });
+    const kept = foldRun(log({ ...started, kind: 'team' }, { type: 'plan.ready', plan }, { type: 'plan.edit', assignment: 0, from: 'coder', to: 'go-reviewer' }));
+    expect(kept!.plan!.assignments[0]).toMatchObject({ bot: 'go-reviewer', mode: 'write' });
+  });
+});

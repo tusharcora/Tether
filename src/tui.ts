@@ -802,6 +802,7 @@ export class Tui {
       note('/run <workflow> <task>                 start a saved workflow');
       note('/team <task>                           start a team run (it asks you questions first)');
       note('/mode live|autonomous                  how much a team run talks to you');
+      note('/swap <n> <bot>                        give a plan assignment to another bot');
       note('/allowed [clear]                       commands you always allow for Maestro');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');

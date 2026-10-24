@@ -237,7 +237,8 @@ export type RunEvent =
   | { type: 'plan.answer'; answers: Answer[] }
   | { type: 'plan.ready'; plan: TeamPlan }
   /** Before approval the person gave assignment `assignment` (0-based) to another roster bot. */
-  | { type: 'plan.edit'; assignment: number; from: string; to: string }
+  /** `mode`: set when the new bot is read-only and the assignment was a write; the assignment becomes read. */
+  | { type: 'plan.edit'; assignment: number; from: string; to: string; mode?: 'read' }
   /** A background planning step failed; the run stays as it was and the person can try again. */
   | { type: 'team.error'; message: string }
   | { type: 'team.mode'; mode: TeamMode }
@@ -459,7 +460,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
     if (e.type === 'plan.edit') {
       // copy, never mutate: the plan object is the stored plan.ready event's
       const a = s.plan?.assignments[e.assignment];
-      if (s.plan && a) s.plan = { ...s.plan, assignments: s.plan.assignments.map((x, i) => (i === e.assignment ? { ...a, bot: e.to, swapped: true as const } : x)) };
+      if (s.plan && a) s.plan = { ...s.plan, assignments: s.plan.assignments.map((x, i) => (i === e.assignment ? { ...a, bot: e.to, swapped: true as const, ...(e.mode ? { mode: e.mode } : {}) } : x)) };
       continue;
     }
     if (e.type === 'team.mode') {

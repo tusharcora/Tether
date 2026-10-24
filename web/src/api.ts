@@ -83,7 +83,7 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
     case 'plan.ready':
       return { text: 'the plan is ready for approval', tone: 'wait' };
     case 'plan.edit':
-      return { text: `you gave assignment ${e.assignment + 1} to ${e.to} (was ${e.from})`, tone: 'info' };
+      return { text: `you gave assignment ${e.assignment + 1} to ${e.to} (was ${e.from})${e.mode === 'read' ? ', read only' : ''}`, tone: 'info' };
     case 'team.mode':
       return { text: `mode: ${e.mode}`, tone: 'info' };
     case 'team.error':

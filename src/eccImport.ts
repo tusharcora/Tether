@@ -1,7 +1,7 @@
 /** Vendor a pinned ECC checkout under <home>/vendor/ecc and keep the crew's ECC bots in sync with it. */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { BUILTIN_IDS, loadCrew, MAX_IMPORTED_BOTS, removeBot, saveBot, SOURCE_RE, type BotDef } from './crew.js';
+import { BUILTIN_IDS, loadCrew, MAX_IMPORTED_BOTS, removeBot, saveBot, SOURCE_RE, type BotDef, type FaceLook } from './crew.js';
 import { agentToBot, ECC_REF, ECC_REPO } from './ecc.js';
 import { git } from './git.js';
 
@@ -56,6 +56,16 @@ function owner(home: string, id: string): 'ecc' | 'user' | 'none' {
     return typeof j.source === 'string' && j.source.startsWith('ecc@') ? 'ecc' : 'user';
   } catch {
     return 'user';
+  }
+}
+
+/** The face overrides saved in a bot file, if any (saveBot cleans them again). */
+function faceOnDisk(home: string, id: string): FaceLook | undefined {
+  try {
+    const face = (JSON.parse(readFileSync(crewFile(home, id), 'utf8')) as { look?: { face?: unknown } }).look?.face;
+    return face && typeof face === 'object' && !Array.isArray(face) ? (face as FaceLook) : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -149,7 +159,9 @@ export function applyEcc(home: string, p: Prepared): EccDiff {
       diff.skipped.push(`${b.id}: a bot of yours now has this id; skipped`);
       continue;
     }
-    saveBot(home, b);
+    // an update keeps the face you set in the Crew tab (only that: everything else is the library's)
+    const face = owner(home, b.id) === 'ecc' ? faceOnDisk(home, b.id) : undefined;
+    saveBot(home, face ? { ...b, look: { ...b.look, face } } : b);
     (p.diff.updated.includes(b.id) ? diff.updated : diff.added).push(b.id);
   }
   for (const id of p.diff.removed) if (owner(home, id) === 'ecc' && removeBot(home, id) === 'deleted') diff.removed.push(id);

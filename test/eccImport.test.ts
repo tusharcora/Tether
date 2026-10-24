@@ -32,6 +32,23 @@ describe('ECC import', () => {
     expect(again.added).toEqual([]);
   });
 
+  it('an update keeps the face you set on an imported bot, and only that', async () => {
+    const home = tmp('home-');
+    await importEcc(home, { fetch: copyFetch });
+    const go = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+    const face = { hue: 120, tone: 0.4, traits: { round: 0.7 } };
+    saveBot(home, { ...go, name: 'Gopher', look: { ...go.look, color: '#123456', face } });
+    const again = await importEcc(home, { fetch: copyFetch });
+    expect(again.updated).toContain('go-reviewer');
+    const after = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
+    expect(after.look.face).toEqual(face);
+    // everything else is the library's again
+    expect(after.name).toBe(go.name);
+    expect(after.look.color).toBe(go.look.color);
+    // a bot without a face stays without one
+    expect(loadCrew(home).find((b) => b.id === 'tdd-guide')!.look.face).toBeUndefined();
+  });
+
   it('prepare shows the diff before anything is written; removed agents are deleted on apply', async () => {
     const home = tmp('home-');
     await importEcc(home, { fetch: copyFetch });

@@ -54,10 +54,20 @@ export function unlink(home: string, bot: string): Bindings {
 }
 
 /**
+ * An imported bot's model hint (opus/sonnet), but only for a step that runs on claude (the default agent).
+ * Callers apply it only when neither the step nor its bot binding set a model.
+ */
+export function hintFor(botId: string, agent: string | undefined): string | undefined {
+  return (agent ?? 'claude') === 'claude' ? CREW[botId]?.def?.modelHint : undefined;
+}
+
+/**
  * Fill in agent/model on steps that don't name their own, from the bot that would run them.
  * Returns a copy; what the run records is exactly what ran. Explicit step settings always win.
  * A bot's model only applies when the step ends up on that bot's agent.
  * An imported bot's model hint (opus/sonnet) applies only on claude, and only when nothing else set a model.
+ * A spawned step with no agent yet follows its delegator's agent, which is not known here: the engine applies
+ * the hint for it once the final agent is chosen (`hintFor`).
  */
 export function applyBindings(p: Pipeline, b: Bindings): Pipeline {
   return {
@@ -68,9 +78,7 @@ export function applyBindings(p: Pipeline, b: Bindings): Pipeline {
       const bound = b[who];
       const agent = n.agent ?? bound?.agent;
       let model = n.model ?? (bound && agent === bound.agent ? bound.model : undefined);
-      // an imported bot's model hint, only on claude (the default agent) and only when nothing else set a model
-      const hint = CREW[who]?.def?.modelHint;
-      if (!model && hint && (agent ?? 'claude') === 'claude') model = hint;
+      if (!model && (agent || !n.spawn)) model = hintFor(who, agent);
       if (agent === n.agent && model === n.model) return n;
       return { ...n, ...(agent ? { agent } : {}), ...(model ? { model } : {}) };
     }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBindings } from '../src/bindings.js';
+import { applyBindings, hintFor } from '../src/bindings.js';
 import { registerCrew } from '../src/bots.js';
 import { BUILTIN_BOTS } from '../src/crew.js';
 
@@ -15,5 +15,18 @@ describe('model hints', () => {
     expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', model: 'haiku', x: 0, y: 0 }]), {}).nodes[0]!.model).toBe('haiku');
     expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', x: 0, y: 0 }]), { arch2: { agent: 'claude', model: 'sonnet' } }).nodes[0]!.model).toBe('sonnet');
     expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', x: 0, y: 0 }]), { arch2: { agent: 'codex' } }).nodes[0]!.model).toBeUndefined();
+  });
+  it('a claude binding with no model gets the hint; a step on codex with no binding gets none', () => {
+    expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', x: 0, y: 0 }]), { arch2: { agent: 'claude' } }).nodes[0]).toMatchObject({ agent: 'claude', model: 'opus' });
+    expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', agent: 'codex', x: 0, y: 0 }]), {}).nodes[0]!.model).toBeUndefined();
+  });
+  it('leaves a spawned step with no agent yet to the engine, which knows the agent it falls back to', () => {
+    const spawn = { parent: 'm', depth: 1, contract: { to: 'arch2', goal: 'g', context: [], mode: 'read', after: [] } };
+    expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', spawn, x: 0, y: 0 }]), {}).nodes[0]!.model).toBeUndefined();
+    expect(applyBindings(pipe([{ id: 'a', kind: 'agent', role: 'arch2', spawn, x: 0, y: 0 }]), { arch2: { agent: 'claude' } }).nodes[0]!.model).toBe('opus');
+    expect(hintFor('arch2', undefined)).toBe('opus');
+    expect(hintFor('arch2', 'claude')).toBe('opus');
+    expect(hintFor('arch2', 'codex')).toBeUndefined();
+    expect(hintFor('coder', 'claude')).toBeUndefined();
   });
 });
