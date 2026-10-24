@@ -86,4 +86,10 @@ describe('roster', () => {
     expect(hints.some((h) => h.includes('opensource'))).toBe(false);
     expect(loadRouting(tmp('home-'))).toBeUndefined();
   });
+  it('caps each routing rule at one line of 160 characters', () => {
+    const es = [{ id: 'go-reviewer', kind: 'verdict' as const, readOnly: true, when: 'Go', builtin: false }];
+    const hints = routingHints({ table: [], rules: [{ when: 'Go\nchanges ' + 'x'.repeat(400), agents: ['go-reviewer'] }] }, es);
+    expect(hints).toHaveLength(1);
+    expect(hints[0]).toBe(`- ${('Go changes ' + 'x'.repeat(400)).slice(0, 160)} → go-reviewer`);
+  });
 });

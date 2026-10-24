@@ -12,7 +12,7 @@ import { cleanNote, RATINGS } from './signals.js';
 import { BUILTIN_BOTS } from './crew.js';
 import { buildPrompt, describeAnswer, userAnswersBlock } from './prompt.js';
 import { teamPipeline } from './composer.js';
-import { buildRoster, loadRouting, routingHints } from './roster.js';
+import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } from './roster.js';
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
@@ -676,8 +676,14 @@ export class Engine {
     // a crew registry that was never loaded (no defs) still offers the built-in bots, as rosterOf did
     const crew = registered.length ? registered : BUILTIN_BOTS;
     const routing = loadRouting(this.opts.home);
-    let entries = buildRoster({ dir: s.workdir, task: s.task, crew, routing });
-    if (explicit) entries = explicit.map((id) => entries.find((e) => e.id === id) ?? { id, kind: 'agent', readOnly: false, when: '', builtin: false });
+    const defs = new Map(crew.map((b) => [b.id, b]));
+    // an explicit roster is taken as given (no repo scan); each bot keeps its own when-to-use
+    const entries: RosterEntry[] = explicit
+      ? explicit.map((id): RosterEntry => {
+          const d = defs.get(id);
+          return d ? entryFor(d) : { id, kind: 'agent', readOnly: false, when: '', builtin: false };
+        })
+      : buildRoster({ dir: s.workdir, task: s.task, crew, routing });
     const roster = entries.map((e) => e.id);
     const bots: BotSummary[] = entries.map((e) => ({ id: e.id, title: CREW[e.id]?.title ?? e.id, kind: e.kind, readOnly: e.readOnly, ...(e.when ? { when: e.when } : {}) }));
     const hints = routingHints(routing, entries);

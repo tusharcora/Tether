@@ -118,7 +118,7 @@ export function botLanguage(id: string): string | undefined {
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 // built-ins are recognised by id too: CREW defs registered without load-time flags (tests, packs) still count as built-in
-const entry = (b: BotDef): RosterEntry => ({ id: b.id, kind: b.kind, readOnly: !!b.readOnly, when: oneLine(b.whenToUse ?? b.persona ?? b.title), builtin: !!b.builtin || BUILTIN_IDS.has(b.id), ...(b.source ? { source: b.source } : {}) });
+export const entryFor = (b: BotDef): RosterEntry => ({ id: b.id, kind: b.kind, readOnly: !!b.readOnly, when: oneLine(b.whenToUse ?? b.persona ?? b.title), builtin: !!b.builtin || BUILTIN_IDS.has(b.id), ...(b.source ? { source: b.source } : {}) });
 const baseName = (id: string) => id.replace(/^ecc-/, '');
 
 export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; routing?: Routing }): RosterEntry[] {
@@ -144,7 +144,7 @@ export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; rou
   for (const b of [...fixed, ...lang, ...domain, ...general]) {
     if (seen.has(b.id) || out.length >= ROSTER_CAP) continue;
     seen.add(b.id);
-    out.push(entry(b));
+    out.push(entryFor(b));
   }
   return out;
 }
@@ -163,7 +163,8 @@ export function routingHints(routing: Routing | undefined, es: RosterEntry[]): s
   return routing.rules
     .flatMap((r) => {
       const got = r.agents.map(pick).filter((x): x is string => !!x);
-      return got.length ? [`- ${r.when} → ${got.join(', ')}`] : [];
+      // a rule's text comes from a vendored file: one line, capped, so it cannot crowd out the prompt
+      return got.length ? [`- ${oneLine(r.when).slice(0, 160)} → ${got.join(', ')}`] : [];
     })
     .slice(0, 12);
 }

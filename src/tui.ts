@@ -1936,7 +1936,7 @@ export class Tui {
         const plan: Extract<Screen, { kind: 'plan' }> = { kind: 'plan', task, repo: r };
         this.push(plan);
         const ac = new AbortController();
-        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, orchestrator: custom, agent: this.bindings()[lead?.id ?? 'orchestrator']?.agent, model: this.bindings()[lead?.id ?? 'orchestrator']?.model })
+        composePipeline(task, { repo: r, registry: this.registry, signal: ac.signal, orchestrator: custom, agent: this.bindings()[lead?.id ?? 'orchestrator']?.agent, model: this.bindings()[lead?.id ?? 'orchestrator']?.model, home: this.d.cfg.home })
           .then((c) => (plan.comp = c))
           .catch((e: Error) => (plan.error = e.message));
       }, process.cwd());

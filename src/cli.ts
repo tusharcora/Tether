@@ -753,7 +753,7 @@ async function main() {
       await banner('orchestrator bot');
       if (caps.animate) console.log(dim('  Reading your task and designing a workflow…'));
       const maestro = loadBindings(ctx.cfg.home).orchestrator;
-      const comp = await composePipeline(task, { repo, registry: makeRegistry(ctx.cfg), heuristicOnly: v['rules-only'], agent: maestro?.agent, model: maestro?.model });
+      const comp = await composePipeline(task, { repo, registry: makeRegistry(ctx.cfg), heuristicOnly: v['rules-only'], agent: maestro?.agent, model: maestro?.model, home: ctx.cfg.home });
       if (caps.animate) process.stdout.write('\x1b[1A\x1b[J');
       console.log(`  ${comp.rationale}`);
       console.log('');
