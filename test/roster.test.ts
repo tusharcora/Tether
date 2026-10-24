@@ -52,6 +52,13 @@ describe('roster', () => {
     expect(buildRoster({ task: 'patient records export', crew }).map((e) => e.id)).toContain('healthcare-reviewer');
   });
 
+  it('falls back from an empty when-to-use or persona to the next field', () => {
+    const crew = [...BUILTIN_BOTS, { ...ecc('code-reviewer', ''), persona: 'Reviews code' }, { id: 'helper', name: 'Help', title: 'general helper', kind: 'agent' as const, persona: '', look }];
+    const es = buildRoster({ task: 'x', crew });
+    expect(es.find((e) => e.id === 'code-reviewer')!.when).toBe('Reviews code');
+    expect(es.find((e) => e.id === 'helper')!.when).toBe('general helper');
+  });
+
   it('works with no repo and no ECC', () => {
     const ids = buildRoster({ task: 'x', crew: [...BUILTIN_BOTS] }).map((e) => e.id);
     expect(ids).toEqual(['planner', 'architect', 'coder', 'reviewer']);

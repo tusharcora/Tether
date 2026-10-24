@@ -255,4 +255,16 @@ describe('roster in the compose prompt', () => {
       registerCrew(BUILTIN_BOTS);
     }
   });
+
+  it('lists your own approval bots for workflow design, but not the built-in one', () => {
+    const look = BUILTIN_BOTS[0]!.look;
+    registerCrew([...BUILTIN_BOTS, { id: 'legal', name: 'Legal', title: 'legal sign-off', kind: 'approval', persona: 'Legal signs off', look }]);
+    try {
+      const custom = rosterCustomText(repoWith({}), 'task');
+      expect(custom).toContain('- legal (approval) — Legal signs off');
+      expect(custom).not.toContain('- approval ');
+    } finally {
+      registerCrew(BUILTIN_BOTS);
+    }
+  });
 });

@@ -250,8 +250,8 @@ export function rosterCustomText(repo: string | undefined, task: string, home?: 
   const crew = Object.values(CREW).flatMap((c) => (c.def ? [c.def] : []));
   const routing = home ? loadRouting(home) : undefined;
   const lines = buildRoster({ dir: repo, task, crew, routing }).filter((e) => !e.builtin).map(rosterLine);
-  // team rosters stay gate-free, but your own gate bots are valid workflow steps
-  const gates = crew.filter((b) => b.kind === 'gate' && !b.source && !b.builtin && !BUILTIN_IDS.has(b.id)).map((b) => rosterLine(entryFor(b)));
+  // team rosters stay gate-free and person-free, but your own gate and approval bots are valid workflow steps
+  const gates = crew.filter((b) => (b.kind === 'gate' || b.kind === 'approval') && !b.source && !b.builtin && !BUILTIN_IDS.has(b.id)).map((b) => rosterLine(entryFor(b)));
   return [...lines, ...gates].join('\n');
 }
 

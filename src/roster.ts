@@ -118,7 +118,7 @@ export function botLanguage(id: string): string | undefined {
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 // built-ins are recognised by id too: CREW defs registered without load-time flags (tests, packs) still count as built-in
-export const entryFor = (b: BotDef): RosterEntry => ({ id: b.id, kind: b.kind, readOnly: !!b.readOnly, when: oneLine(b.whenToUse ?? b.persona ?? b.title), builtin: !!b.builtin || BUILTIN_IDS.has(b.id), ...(b.source ? { source: b.source } : {}) });
+export const entryFor = (b: BotDef): RosterEntry => ({ id: b.id, kind: b.kind, readOnly: !!b.readOnly, when: oneLine(b.whenToUse || b.persona || b.title), builtin: !!b.builtin || BUILTIN_IDS.has(b.id), ...(b.source ? { source: b.source } : {}) });
 const baseName = (id: string) => id.replace(/^ecc-/, '');
 
 export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; routing?: Routing }): RosterEntry[] {
