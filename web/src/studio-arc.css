@@ -1,0 +1,11 @@
+/* Studio overrides for vendored Arc parts whose colours the bridge cannot reach. */
+:root:root:root {
+  /* chart series from the Studio palette (status hues only) */
+  --series-1: var(--acc);
+  --series-2: var(--ok);
+  --series-3: var(--warn);
+  --series-4: var(--mut);
+}
+/* --acc is a fill colour (3.8:1 on dark): accent-coloured TEXT uses --accent-strong (--accInk). */
+:root [class*="value"][data-type="number"] { color: var(--accent-strong); }
+:root [class*="icon"][data-type="info"] { color: var(--accent-strong); }
