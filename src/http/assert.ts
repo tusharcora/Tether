@@ -1,5 +1,5 @@
 /** Evaluate a request's checks against a send result: one `{ check, ok, actual }` per check, never throwing. */
-import { compileRegex } from './regex.js';
+import { compileRegex, regexTest } from './regex.js';
 import type { Check, CheckResult, SendResult } from './types.js';
 
 /** A small path syntax: `$`, `$.a.b`, `$[0].id`, `$.items.length`, `$["odd key"]`. found=false when a step is missing. */
@@ -52,6 +52,9 @@ function pattern(src: unknown): RegExp | string {
   }
 }
 
+/** A body check's actual value is the start of the body (redactExchange recomputes it from the redacted body). */
+export const BODY_ACTUAL_MAX = 200;
+
 export function evaluate(checks: Check[], r: SendResult): CheckResult[] {
   let parsed: { ok: boolean; value?: unknown } | undefined;
   const json = () => {
@@ -68,6 +71,17 @@ export function evaluate(checks: Check[], r: SendResult): CheckResult[] {
     // compiled once up front so a bad pattern fails only its own check, with the reason as the actual value
     const re = c.op === 'matches' ? pattern(c.value) : /(?:)/;
     if (typeof re === 'string') return { check: c, ok: false, actual: re };
+    let timedOut = false;
+    const test = (text: string) => {
+      const m = regexTest(re, text);
+      if (m === 'timeout') timedOut = true;
+      return m === true;
+    };
+    const out = check(c, test);
+    return timedOut ? { check: c, ok: false, actual: 'pattern timed out' } : out;
+  });
+
+  function check(c: Check, test: (text: string) => boolean): CheckResult {
     switch (c.kind) {
       case 'status': {
         const a = r.status;
@@ -77,7 +91,7 @@ export function evaluate(checks: Check[], r: SendResult): CheckResult[] {
       case 'header': {
         const h = r.headers.find(([k]) => k.toLowerCase() === c.name.toLowerCase())?.[1];
         if (c.op === 'exists') return { check: c, ok: h !== undefined, actual: h ?? null };
-        const ok = h !== undefined && (c.op === 'eq' ? h === c.value : c.op === 'contains' ? h.includes(c.value) : re.test(h));
+        const ok = h !== undefined && (c.op === 'eq' ? h === c.value : c.op === 'contains' ? h.includes(c.value) : test(h));
         return { check: c, ok, actual: h ?? null };
       }
       case 'json': {
@@ -91,7 +105,7 @@ export function evaluate(checks: Check[], r: SendResult): CheckResult[] {
           c.op === 'eq' ? same(value, c.value)
           : c.op === 'ne' ? !same(value, c.value)
           : c.op === 'contains' ? contains(value, c.value)
-          : c.op === 'matches' ? re.test(asText(value))
+          : c.op === 'matches' ? test(asText(value))
           : c.op === 'lt' ? typeof value === 'number' && value < n
           : typeof value === 'number' && value > n;
         return { check: c, ok, actual: value };
@@ -99,9 +113,9 @@ export function evaluate(checks: Check[], r: SendResult): CheckResult[] {
       case 'time':
         return { check: c, ok: r.status !== 0 && r.ms < c.value, actual: r.ms };
       case 'body':
-        return { check: c, ok: c.op === 'contains' ? r.body.includes(c.value) : re.test(r.body), actual: r.body.slice(0, 200) };
+        return { check: c, ok: c.op === 'contains' ? r.body.includes(c.value) : test(r.body), actual: r.body.slice(0, BODY_ACTUAL_MAX) };
     }
-  });
+  }
 }
 
 export const allPass = (cs: CheckResult[]): boolean => cs.every((c) => c.ok);

@@ -1,4 +1,5 @@
 /** Everything that leaves the engine (stored, returned to the browser, printed, put in a prompt) goes through here first. */
+import { BODY_ACTUAL_MAX } from './assert.js';
 import { isObj, type CheckResult, type HistoryData, type ResolvedRequest, type SendResult } from './types.js';
 
 export const MASKED_HEADERS = new Set(['authorization', 'cookie', 'set-cookie', 'proxy-authorization', 'x-api-key']);
@@ -75,9 +76,6 @@ function dropPartialSecret(text: string, secrets: Map<string, string>): string {
   return text.slice(0, keep);
 }
 
-/** A body check's actual value: the start of the body, taken from the redacted body so a cut never splits a secret. */
-const BODY_ACTUAL_MAX = 200;
-
 const cutAt = (s: string, cut: boolean) => (cut && s.length > HISTORY_BODY_MAX ? { text: s.slice(0, HISTORY_BODY_MAX), cut: true } : { text: s, cut: false });
 
 /** The exchange as it may leave the engine. `cut` (default true) cuts bodies at 64 KB for storage. */
@@ -104,8 +102,9 @@ export function redactExchange(req: ResolvedRequest, res: SendResult, checks: Ch
       ...(res.error ? { error: { kind: res.error.kind, message: u(res.error.message) } } : {}),
     },
     checks: checks.map((c) => {
-      // the engine's body actual was cut before redaction (a secret across the cut would leave its start): recompute it
-      if (c.check.kind === 'body') return { ...c, actual: resFull.slice(0, BODY_ACTUAL_MAX) };
+      // the engine's body actual (the body head) was cut before redaction, so a secret across the cut would leave its
+      // start: take it from the redacted body instead. A reason (invalid pattern, timed out) is kept as it is.
+      if (c.check.kind === 'body' && c.actual === res.body.slice(0, BODY_ACTUAL_MAX)) return { ...c, actual: resFull.slice(0, BODY_ACTUAL_MAX) };
       const actual = c.actual === undefined ? null : redactValue(c.actual, secrets);
       // a header check's actual is the raw header value: a credential header is masked here as in the header list
       return { ...c, actual: c.check.kind === 'header' && typeof actual === 'string' ? maskValue(c.check.name, actual) : actual };

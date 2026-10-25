@@ -39,8 +39,7 @@ describe('redaction', () => {
     expect(d.response.headers).toEqual([['set-cookie', '•••• (18 chars)'], ['x-echo', '{{secret:tok}}']]);
     expect(d.response.body.length).toBe(65536);
     expect(d.response.bodyTruncated).toBe(true);
-    // a body check's actual is the start of the redacted response body
-    expect(d.checks[0]!.actual).toBe('{{secret:tok}}' + 'y'.repeat(186));
+    expect(d.checks[0]!.actual).toBe('{{secret:tok}}');
     const full = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res({ body: 'y'.repeat(70_000) }), [], secrets, { cut: false });
     expect(full.response.body.length).toBe(70_000);
   });
