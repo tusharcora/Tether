@@ -33,6 +33,7 @@ let repo = '';
 beforeAll(async () => {
   srv = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.url === '/big') return void res.end(JSON.stringify({ pad: 'x'.repeat(2 * 1024 * 1024) }));
     res.end(JSON.stringify({ auth: req.headers.authorization ?? null, items: [{ id: 1 }] }));
   });
   await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
@@ -43,6 +44,7 @@ beforeAll(async () => {
   writeEnvironment(repo, 'local', { vars: { base, tok: { secret: 'aorch_token' } } });
   writeRequest(repo, 'runs/list', { name: 'List runs', method: 'GET', url: '{{base}}/api/runs', headers: [{ key: 'Authorization', value: 'Bearer {{tok}}' }], checks: [{ kind: 'status', op: 'eq', value: 200 }, { kind: 'json', path: '$.items[0].id', op: 'exists' }] });
   writeRequest(repo, 'runs/fail', { name: 'Fails', method: 'GET', url: '{{base}}/x', checks: [{ kind: 'status', op: 'eq', value: 201 }] });
+  writeRequest(repo, 'big', { name: 'Big', method: 'GET', url: '{{base}}/big', checks: [{ kind: 'status', op: 'eq', value: 201 }] });
   writeRequest(repo, 'down', { name: 'Down', method: 'GET', url: 'http://127.0.0.1:1/' });
   mkdirSync(join(repo, 'src'), { recursive: true });
 });
@@ -69,7 +71,7 @@ describe('aorch http', { timeout: 120_000 }, () => {
 
   it('ls lists saved requests', async () => {
     const r = await aorch(home, repo, ['http', 'ls', '--json']);
-    expect(JSON.parse(r.out).map((x: { id: string }) => x.id)).toEqual(['down', 'runs/fail', 'runs/list']);
+    expect(JSON.parse(r.out).map((x: { id: string }) => x.id)).toEqual(['big', 'down', 'runs/fail', 'runs/list']);
   });
 
   it('run sends a saved request with secrets, prints a redacted result; exit 1 on a failed check, 2 on a network error', async () => {
@@ -85,6 +87,13 @@ describe('aorch http', { timeout: 120_000 }, () => {
     expect(fail.code).toBe(1);
     expect(fail.out).toContain('✘ status eq 201 (actual: 200)');
     expect((await aorch(home, repo, ['http', 'run', 'down', '--env', 'local'])).code).toBe(2);
+  });
+
+  it('--json output of a large response reaches a pipe whole, and the exit code still holds', async () => {
+    const r = await aorch(home, repo, ['http', 'run', 'big', '--json']);
+    expect(r.code).toBe(1);
+    const o = JSON.parse(r.out);
+    expect(o.result.body.length).toBeGreaterThan(2 * 1024 * 1024);
   });
 
   it('works from a subfolder of the project', async () => {

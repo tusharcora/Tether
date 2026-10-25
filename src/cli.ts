@@ -1066,7 +1066,9 @@ async function main() {
         confirm: (q) => confirm(q, { defaultNo: true }),
         isTTY: !!process.stdin.isTTY,
       });
-      process.exit(code);
+      // not process.exit: that drops stdout still queued for a pipe (a --json result can be megabytes)
+      process.exitCode = code;
+      return;
     }
     case 'workspace':
     case 'ws': {
