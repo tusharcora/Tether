@@ -3,6 +3,7 @@ import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
 import { Face, moodFor } from './Face';
+import { StatusChip, toneFor } from './ui/studio/StatusChip';
 import { cn } from './ui/cn';
 
 export const NODE_W = 212;
@@ -189,14 +190,18 @@ export function Canvas(props: CanvasProps) {
             if (!a || !b) return null;
             const d = edgePath(a.x + NODE_W, a.y + NODE_H / 2, b.x, b.y + NODE_H / 2);
             const st = props.statuses?.[e.from]?.status;
+            const to = props.statuses?.[e.to]?.status;
+            // done solid, working animated, next dashed
+            const edgeClass = cn('edge', {
+              sel: selEdge === id,
+              done: st === 'done' && !!to && to !== 'queued' && to !== 'running',
+              flow: st === 'done' && to === 'running',
+              next: st === 'done' && to === 'queued',
+            });
             return (
               <g key={id}>
                 <path d={d} className="edge-hit" data-edge={id} />
-                <path
-                  d={d}
-                  className={cn('edge', { sel: selEdge === id, flow: st === 'done' && props.statuses?.[e.to]?.status === 'running' })}
-                  markerEnd="url(#arrow)"
-                />
+                <path d={d} className={edgeClass} markerEnd="url(#arrow)" />
               </g>
             );
           })}
@@ -263,7 +268,7 @@ export function Canvas(props: CanvasProps) {
                 {n.kind === 'approval' ? <div className="cmd muted">human sign-off</div> : null}
                 {st ? (
                   <div className="run-line">
-                    <span className="status-pill">{st.status}</span>
+                    <StatusChip tone={toneFor(st.status)} label={st.status} pulse={st.status === 'running'} />
                     {st.attempts > 1 ? <span>×{st.attempts}</span> : null}
                     {st.costUsd > 0 ? <span>{fmtUsd(st.costUsd)}</span> : null}
                   </div>

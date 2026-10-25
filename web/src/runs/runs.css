@@ -19,3 +19,24 @@
 .ring-track { fill: none; stroke: var(--s3); stroke-width: 2.5; }
 .ring-fill { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; }
 .ring.live .ring-fill { stroke: var(--acc); }
+.run-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
+.run-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 20px 10px; }
+.run-head-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.run-head-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.run-head-title h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
+.run-head-task { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.run-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.run-centre { display: flex; flex-direction: column; gap: 10px; }
+.run-planning { display: flex; flex-direction: column; gap: 8px; margin: 0 20px; }
+.run-steptrack { margin: 0 20px; }
+.run-graph { display: flex; height: 320px; flex: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.run-graph .canvas { flex: 1; }
+.run-inspector-inline { padding: 0 12px 16px; }
+/* the Team panel, re-housed in the centre pane: Studio surfaces and spacing through tokens */
+.run-team .team-bar { margin: 0 20px; color: var(--mut); }
+.run-team .qpanel { margin: 0 20px 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
+.run-team .qpanel h4 { font-size: 14px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.run-team .qpanel h5 { font-size: 11px; font-weight: 500; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; }
+.run-team .dialogue { margin: 0 20px 10px; }
+.run-team .alert { margin-left: 20px; margin-right: 20px; }
+@media (max-width: 640px) { .run-team .team-bar, .run-team .qpanel, .run-team .dialogue, .run-team .alert { margin-left: 12px; margin-right: 12px; } }

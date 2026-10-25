@@ -61,4 +61,22 @@ describe('Canvas', () => {
     expect(code.tagName).toBe('SPAN');
     expect(container.querySelector('[data-id="gate"] [data-mood]')!.tagName).toBe('IMG');
   });
+
+  it('marks run edges: done solid, working animated, next dashed', () => {
+    const st = (s: string) => ({ status: s, attempts: 1, costUsd: 0, loops: 0 }) as (typeof run.nodes)[string];
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('done'), gate: st('running') }} />);
+    const edge = (from: string, to: string) => container.querySelector(`[data-edge="${from}→${to}"] + path.edge`)!;
+    expect(edge('plan', 'code').classList.contains('done')).toBe(true);
+    expect(edge('code', 'gate').classList.contains('flow')).toBe(true);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('queued'), gate: st('queued') }} />);
+    expect(edge('plan', 'code').classList.contains('next')).toBe(true);
+    expect(edge('code', 'gate').getAttribute('class')).toBe('edge');
+  });
+
+  it('shows a step status chip on run cards only', () => {
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} statuses={run.nodes} />);
+    expect(container.querySelector('[data-id="code"] .sl-chip.t-live')!.textContent).toBe('running');
+    rerender(<Canvas nodes={nodes} edges={edges} />);
+    expect(container.querySelector('.sl-chip')).toBeNull();
+  });
 });

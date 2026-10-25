@@ -66,6 +66,8 @@ main { flex: 1; min-height: 0; }
 .edge.sel { stroke: var(--accent); stroke-width: 3; }
 .edge.preview { stroke: var(--accent); stroke-dasharray: 4 4; }
 .edge.flow { stroke: var(--run); stroke-dasharray: 6 6; animation: flow 0.8s linear infinite; }
+.edge.done { stroke: var(--ok); }
+.edge.next { stroke-dasharray: 4 4; }
 .edge-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
 .arrowhead { fill: var(--queued); }
 .loop path { fill: none; stroke: var(--wait); stroke-width: 1.6; stroke-dasharray: 5 4; }
@@ -96,7 +98,6 @@ main { flex: 1; min-height: 0; }
 .flags span { border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
 .cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
 .run-line { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
-.status-pill { text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; font-weight: 700; color: var(--text); }
 .port { position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--queued); }
 .port.in { left: -8px; }
 .port.out { right: -8px; cursor: crosshair; }
@@ -119,11 +120,6 @@ main { flex: 1; min-height: 0; }
 .badge.s-paused, .badge.s-awaiting { background: var(--warnBg); color: var(--warn); }
 .badge.s-error { background: var(--badBg); color: var(--bad); }
 .badge.s-stopped, .badge.s-skipped, .badge.s-queued { background: var(--s2); color: var(--mut); }
-.run-detail { overflow: auto; display: flex; flex-direction: column; min-width: 0; }
-.run-head { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; align-items: flex-start; }
-.run-head h3 { margin: 0; }
-.run-graph { height: 300px; flex: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; }
-.run-graph .canvas { flex: 1; }
 .pane { padding: 12px 16px 24px; }
 .placeholder { display: grid; place-items: center; height: 100%; color: var(--muted); padding: 24px; text-align: center; }
 .alert { margin: 0 16px 8px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; align-items: center; }

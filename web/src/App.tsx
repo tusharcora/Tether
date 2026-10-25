@@ -78,7 +78,16 @@ export function App() {
         <main className="shell-main">
           {screen.tab === 'home' ? <Home onGo={go} /> : null}
           {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
-          {screen.tab === 'runs' ? <Runs selected={screen.id} pane={screen.pane} onSelect={(id) => go({ tab: 'runs', id })} onStart={() => go({ tab: 'home' })} /> : null}
+          {screen.tab === 'runs' ? (
+            <Runs
+              selected={screen.id}
+              node={screen.node}
+              pane={screen.pane}
+              onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
+              onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
+              onStart={() => go({ tab: 'home' })}
+            />
+          ) : null}
           {screen.tab === 'api' ? <ApiTab onStarted={(id) => go({ tab: 'runs', id })} onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))} onDirtyChange={setApiDirty} /> : null}
           {screen.tab === 'graph' ? <GraphView /> : null}
           {screen.tab === 'crew' ? <Crew /> : null}

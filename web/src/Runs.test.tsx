@@ -7,7 +7,11 @@ import { Runs } from './Runs';
 import { calls, FakeEventSource, makeRow, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
-const awaitingRun = makeRun({ nodes: { ...makeRun().nodes, gate: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } } });
+const base = makeRun();
+const awaitingRun = makeRun({
+  pipeline: { ...base.pipeline, nodes: [...base.pipeline.nodes, { id: 'ship', kind: 'approval', title: 'Ship it', x: 780, y: 0 }], edges: [...base.pipeline.edges, { from: 'gate', to: 'ship' }] },
+  nodes: { ...base.nodes, gate: { status: 'done', attempts: 1, costUsd: 0, loops: 0 }, ship: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } },
+});
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
@@ -70,7 +74,7 @@ describe('Runs', () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
     await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Approve' })));
-    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'gate', approved: true });
+    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: true });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull());
   });
 
@@ -114,5 +118,52 @@ describe('Runs', () => {
     await waitFor(() => expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(2));
     await new Promise((r) => setTimeout(r, 20));
     expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(2);
+  });
+  it('shows approval banners only for approval steps', async () => {
+    const gateWaits = makeRun({ nodes: { ...makeRun().nodes, gate: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } } });
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', gateWaits));
+    await screen.findByRole('heading', { name: /plan-code-review/ });
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('puts the status, an interrupted chip, task, cost of budget and branch in the header', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun({ live: false, pipeline: { ...makeRun().pipeline, settings: { ...makeRun().pipeline.settings, maxCostUsd: 5 } } })));
+    await screen.findByRole('heading', { name: /plan-code-review/ });
+    expect(screen.getByText('interrupted')).toBeTruthy();
+    expect(screen.getByText(/\$0\.12 of \$5\.00 · aorch\/r1/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+  });
+
+  it('draws a step track above the graph', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect(await screen.findByRole('img', { name: '1 of 3 steps done, 1 working' })).toBeTruthy();
+  });
+
+  it('replaces the graph with the Team panel before the plan is approved', async () => {
+    const team = makeRun({ kind: 'team', planning: true, pipeline: { ...makeRun().pipeline, name: 'team', nodes: [], edges: [] }, nodes: {} });
+    const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', team));
+    expect(await screen.findByText('Maestro is planning…')).toBeTruthy();
+    expect(container.querySelector('.run-graph')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Team mode' })).toBeTruthy();
+  });
+
+  it('selects the step named in the route and reports clicks on steps', async () => {
+    const onSelectNode = vi.fn();
+    const { container } = renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} onSelectNode={onSelectNode} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun({ status: 'done', live: false })));
+    expect(await screen.findByLabelText('Why (optional)')).toBeTruthy();
+    fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    expect(onSelectNode).toHaveBeenLastCalledWith('code');
+  });
+
+  it('offers the latest run when none is selected (F14)', async () => {
+    const onSelect = vi.fn();
+    renderApp(<Runs onSelect={onSelect} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open latest run' }));
+    expect(onSelect).toHaveBeenCalledWith('r1');
   });
 });

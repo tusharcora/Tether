@@ -61,6 +61,12 @@ beforeEach(() => {
 });
 
 describe('App shell', () => {
+  it('passes the step named in the route to Runs', () => {
+    location.hash = '#/runs/r5/code';
+    render(<App />);
+    expect(screen.getByText(/runs screen r5 code/)).toBeTruthy();
+  });
+
   it('opens on Home with the rail as the main navigation', () => {
     startAt('#');
     render(<App />);
