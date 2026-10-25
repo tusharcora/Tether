@@ -8,6 +8,7 @@ import { Engine } from './engine.js';
 import { loadPipelineFile, preflight } from './pipeline.js';
 import { startServer } from './server.js';
 import { Store } from './store.js';
+import { httpCommand } from './http/cli.js';
 import type { Answer, Pipeline, Question, RunState, StoredEvent } from './types.js';
 import { answerFromInput, parseTeamArgs } from './team.js';
 import { Vault } from './vault.js';
@@ -76,6 +77,7 @@ Usage
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
   aorch skills [--source ecc|claude|aorch] [run <name> --task "…"]    list or run skills (Claude Code skills, aorch workflows, ECC skills and commands; ecc:<name> picks the ECC one)
+  aorch http ls | run <id> [--env e] | send <METHOD> <url> [-H k:v] [-d body] | import <file|-> --kind curl|openapi|postman | env ls|use|none | secret set|rm|ls   saved API requests (.aorch/http); exit 1 = a check failed, 2 = network error
   aorch models [agent]                list what each agent can run (local servers included)
   aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
@@ -617,6 +619,13 @@ async function main() {
       source: { type: 'string' },
       from: { type: 'string' },
       update: { type: 'boolean' },
+      env: { type: 'string' },
+      into: { type: 'string' },
+      out: { type: 'string' },
+      'with-secrets': { type: 'boolean' },
+      'no-endpoints': { type: 'boolean' },
+      header: { type: 'string', short: 'H', multiple: true },
+      data: { type: 'string', short: 'd' },
     },
   });
   applyTheme(v.theme);
@@ -1047,6 +1056,17 @@ async function main() {
         return;
       }
       return fail('usage: aorch providers [list | presets | add <preset> | remove <name>]');
+    }
+    case 'http': {
+      const cfg = loadConfig(v);
+      const code = await httpCommand(cfg.home, process.cwd(), ['http', ...pos], { json: v.json, env: v.env, header: v.header, data: v.data, kind: v.kind, into: v.into, yes: v.yes, workspace: v.workspace }, {
+        out: (s) => console.log(s),
+        err: (s) => console.error(s),
+        readStdin: () => readFileSync(0, 'utf8'),
+        confirm: (q) => confirm(q, { defaultNo: true }),
+        isTTY: !!process.stdin.isTTY,
+      });
+      process.exit(code);
     }
     case 'workspace':
     case 'ws': {

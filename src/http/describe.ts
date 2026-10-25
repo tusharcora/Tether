@@ -22,6 +22,9 @@ const actual = (v: unknown): string => {
   return s.length > ACTUAL_MAX ? `${s.slice(0, ACTUAL_MAX)}…` : s;
 };
 
+/** One evaluated check: its line, plus the actual value (JSON, cut at 200 chars) when it failed. */
+export const describeCheckResult = (c: CheckResult): string => (c.ok ? describeCheck(c.check) : `${describeCheck(c.check)} (actual: ${actual(c.actual)})`);
+
 /**
  * One line for a finished send: method, URL, status (or the network error), time, and every failed check with its
  * actual value (JSON, cut at 200 chars). The CLI, request gates and send-to-agent use this instead of their own format.
@@ -34,6 +37,6 @@ export function describeResult(req: Pick<ExchangeRequest, 'method' | 'url'>, r: 
     ? 'no checks'
     : !failed.length
       ? `${checks.length} check${checks.length === 1 ? '' : 's'} passed`
-      : `${failed.length} of ${checks.length} check${checks.length === 1 ? '' : 's'} failed: ${failed.map((c) => `${describeCheck(c.check)} (actual: ${actual(c.actual)})`).join('; ')}`;
+      : `${failed.length} of ${checks.length} check${checks.length === 1 ? '' : 's'} failed: ${failed.map(describeCheckResult).join('; ')}`;
   return `${req.method} ${req.url} → ${outcome} · ${r.ms} ms · ${verdict}`.replace(/[\r\n]+/g, ' ');
 }
