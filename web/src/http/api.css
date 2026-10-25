@@ -52,3 +52,36 @@
 .req-tabs-wrap { position: relative; }
 .tab-line { position: absolute; left: 0; top: 0; z-index: 1; height: 2px; border-radius: 1px; background: var(--ink); pointer-events: none; transition: transform var(--t-med) var(--ease), width var(--t-med) var(--ease); }
 .kv-input[aria-invalid="true"] { border-color: var(--bad); }
+
+/* Response. Pill colours by role: 2xx ok, 3xx/4xx warn, 5xx and network errors bad. The body arrives redacted and is shown as-is. */
+.resp { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px; overflow: auto; }
+.resp .resp-load { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; }
+.resp .hint { color: var(--mut); font-size: 12px; margin: 0; }
+.resp .spacer { flex: 1; }
+.resp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--mut); }
+.resp .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font: 600 12px var(--font-code); }
+.resp .pill[data-tone="ok"] { background: var(--okBg); color: var(--ok); }
+.resp .pill[data-tone="warn"] { background: var(--warnBg); color: var(--warn); }
+.resp .pill[data-tone="bad"] { background: var(--badBg); color: var(--bad); }
+.resp-error { color: var(--bad); background: var(--badBg); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin: 0; overflow-wrap: anywhere; }
+.resp .timing { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; }
+.resp .timing-track { display: flex; height: 6px; border-radius: 3px; background: var(--s2); overflow: hidden; }
+.resp .timing-bar { height: 100%; transition: width var(--t-slow) var(--ease); }
+.resp .timing-bar.ttfb { background: var(--acc); }
+.resp .timing-bar.dl { background: var(--ok); }
+.checks-out ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.checks-out li { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--ink); }
+.checks-out li[data-ok="true"] .tick { color: var(--ok); }
+.checks-out li[data-ok="false"] .tick { color: var(--bad); }
+.checks-out .tick { flex: none; }
+.checks-out .tick path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tick-draw var(--t-slow) var(--ease) forwards; }
+@keyframes tick-draw { to { stroke-dashoffset: 0; } }
+.resp-body { flex: 1; min-height: 160px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: var(--s1); overflow: auto; }
+/* Arc's JSON viewer, bridged: Studio Live mono, and its chevron turns on the Studio curve instead of a spring. */
+.resp-body > div { flex: 1; min-height: 0; border: 0; --mono: var(--font-code); --duration-spring: var(--t-med); --ease-spring: var(--ease); }
+.resp .raw { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.resp .hdrs { width: 100%; border-collapse: collapse; font-size: 12px; }
+.resp .hdrs th, .resp .hdrs td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.resp .hdrs th { color: var(--mut); font-weight: 500; width: 35%; }
+.resp .hdrs td { color: var(--ink); }
+.resp-empty { margin: auto; }

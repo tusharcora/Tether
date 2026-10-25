@@ -17,13 +17,14 @@ export function describeCheck(c: Check): string {
 }
 
 const ACTUAL_MAX = 200;
-const actual = (v: unknown): string => {
+/** A check's actual value as every surface shows it: JSON, cut at 200 chars. */
+export const describeActual = (v: unknown): string => {
   const s = JSON.stringify(v) ?? String(v);
   return s.length > ACTUAL_MAX ? `${s.slice(0, ACTUAL_MAX)}…` : s;
 };
 
 /** One evaluated check: its line, plus the actual value (JSON, cut at 200 chars) when it failed. */
-export const describeCheckResult = (c: CheckResult): string => (c.ok ? describeCheck(c.check) : `${describeCheck(c.check)} (actual: ${actual(c.actual)})`);
+export const describeCheckResult = (c: CheckResult): string => (c.ok ? describeCheck(c.check) : `${describeCheck(c.check)} (actual: ${describeActual(c.actual)})`);
 
 /**
  * One line for a finished send: method, URL, status (or the network error), time, and every failed check with its
