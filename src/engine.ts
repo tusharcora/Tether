@@ -8,6 +8,7 @@ import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolve
 import { childrenOf, normalizePipeline, parentsOf, preflight } from './pipeline.js';
 import { baseStep, handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
 import { getVersion, harnessForRun, NON_EVOLVABLE, type Harness } from './harness.js';
+import { runHttpGate } from './http/gate.js';
 import { cleanNote, RATINGS } from './signals.js';
 import { BUILTIN_BOTS } from './crew.js';
 import { buildPrompt, describeAnswer, userAnswersBlock } from './prompt.js';
@@ -1177,18 +1178,26 @@ export class Engine {
       let failureText: string;
       if (isGate) {
         const g0 = Date.now();
-        const r = await runProcess({
-          cmd: '/bin/sh',
-          args: ['-c', node.command!],
-          cwd: this.state(runId).workdir,
-          signal: AbortSignal.any([signal, AbortSignal.timeout(this.state(runId).pipeline.settings.nodeTimeoutMs)]),
-          env: { ...process.env, CI: '1' },
-        });
-        if (signal.aborted) return { ok: false, aborted: true };
-        const out = tail(`${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`.trim(), 20_000);
-        ok = r.code === 0 && !r.spawnError;
-        this.store.append(runId, { type: 'gate.result', node: node.id, ok, exitCode: r.code, output: out, durationMs: Date.now() - g0 });
-        failureText = out || r.spawnError || `exit ${r.code}`;
+        const st = this.state(runId);
+        const gateSignal = AbortSignal.any([signal, AbortSignal.timeout(st.pipeline.settings.nodeTimeoutMs)]);
+        let out: string;
+        let exitCode: number | null;
+        if (node.http) {
+          const r = await runHttpGate({ home: this.opts.home, db: this.store.raw(), state: st, gate: node.http, runId, signal: gateSignal });
+          if (signal.aborted) return { ok: false, aborted: true };
+          ok = r.ok;
+          out = tail(r.output, 20_000);
+          exitCode = ok ? 0 : 1;
+          failureText = out;
+        } else {
+          const r = await runProcess({ cmd: '/bin/sh', args: ['-c', node.command!], cwd: st.workdir, signal: gateSignal, env: { ...process.env, CI: '1' } });
+          if (signal.aborted) return { ok: false, aborted: true };
+          out = tail(`${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`.trim(), 20_000);
+          ok = r.code === 0 && !r.spawnError;
+          exitCode = r.code;
+          failureText = out || r.spawnError || `exit ${r.code}`;
+        }
+        this.store.append(runId, { type: 'gate.result', node: node.id, ok, exitCode, output: out, durationMs: Date.now() - g0 });
       } else {
         const r = await this.runAgentOnce(runId, node, signal);
         if (r.aborted) return { ok: false, aborted: true };

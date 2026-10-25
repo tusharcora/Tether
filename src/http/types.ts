@@ -166,6 +166,9 @@ export interface SendOutput {
   historyId: number;
 }
 
+/** A request gate sends at most this many times (`repeat`). */
+export const MAX_REPEAT = 500;
+
 /** A gate step's alternative to `command`: run a saved request. */
 export interface HttpGate {
   run: string;
