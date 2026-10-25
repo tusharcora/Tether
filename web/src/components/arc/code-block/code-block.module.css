@@ -25,7 +25,7 @@
 .comment { color: var(--text-muted); font-style: italic; }
 .string { color: oklch(46% .13 150); }
 .number { color: oklch(50% .14 55); }
-.keyword { color: oklch(48% .15 285); }
+.keyword { color: var(--accent-strong); }
 .type { color: oklch(46% .13 230); }
 .function { color: oklch(43% .12 25); }
 .property { color: oklch(44% .12 85); }
@@ -33,7 +33,6 @@
 .punctuation { color: var(--text-secondary); }
 :global(:root[data-theme="dark"]) .string { color: oklch(77% .15 150); }
 :global(:root[data-theme="dark"]) .number { color: oklch(80% .14 75); }
-:global(:root[data-theme="dark"]) .keyword { color: oklch(78% .16 285); }
 :global(:root[data-theme="dark"]) .type { color: oklch(79% .13 230); }
 :global(:root[data-theme="dark"]) .function { color: oklch(80% .13 25); }
 :global(:root[data-theme="dark"]) .property { color: oklch(79% .12 85); }

@@ -1,0 +1,12 @@
+import { Braces, House, ListChecks, Network, Users, Workflow, Zap, type LucideIcon } from 'lucide-react';
+import { TAB_LABEL, type Screen } from '../../hooks';
+
+export const NAV: { id: Screen; label: string; Icon: LucideIcon }[] = [
+  { id: 'home', label: TAB_LABEL.home, Icon: House },
+  { id: 'runs', label: TAB_LABEL.runs, Icon: ListChecks },
+  { id: 'builder', label: TAB_LABEL.builder, Icon: Workflow },
+  { id: 'crew', label: TAB_LABEL.crew, Icon: Users },
+  { id: 'api', label: TAB_LABEL.api, Icon: Braces },
+  { id: 'graph', label: TAB_LABEL.graph, Icon: Network },
+  { id: 'triggers', label: TAB_LABEL.triggers, Icon: Zap },
+];

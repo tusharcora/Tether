@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
@@ -6,6 +6,7 @@ import { api } from './api';
 import { Builder } from './Builder';
 import { calls, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
+import { PHONE } from './ui/studio/useMediaQuery';
 
 const pcr = makeRun().pipeline;
 const other = { ...pcr, name: 'other', nodes: pcr.nodes.slice(0, 1), edges: [] };
@@ -195,5 +196,73 @@ describe('Builder', () => {
       expect(g).toMatchObject({ kind: 'gate', title: 'list', http: { run: 'runs/list', env: 'local' } });
     });
     expect(used).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the workflow, step and loop counts in the header and adds steps from the palette', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
+    expect(screen.getByText('workflows / plan-code-review · 3 steps · 1 fix loop')).toBeTruthy();
+    expect(screen.getByText('Saved')).toBeTruthy();
+    const palette = screen.getByRole('complementary', { name: 'Steps palette' });
+    expect([...palette.querySelectorAll('.bl-item:not(.bl-skill) .bl-item-name')].map((e) => e.textContent)).toEqual(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'Approval']);
+    fireEvent.click(within(palette).getByRole('button', { name: /Approval/ }));
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+  });
+
+  it('selects the step an issue names', async () => {
+    routeApi({
+      'GET /api/doctor': {},
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [{ level: 'error', node: 'code', message: 'needs a role' }] },
+    });
+    renderApp(<Builder onStarted={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '1 error' }));
+    expect(screen.getByText('needs a role')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'code' }));
+    expect(await screen.findByLabelText('Instructions (blank = default for the role)')).toBeTruthy();
+  });
+
+  it('edits a step with switches and goes back to the pipeline settings', async () => {
+    const { container } = renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
+    fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    expect(screen.getByRole('heading', { level: 2, name: 'coder' })).toBeTruthy();
+    expect(screen.getByText('Agent step')).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Must end with VERDICT: PASS / FAIL' }));
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as typeof pcr;
+      expect(body.nodes.find((n) => n.id === 'code')).toMatchObject({ verdict: true });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Pipeline settings: mode pipeline · 4 parallel read-only · 30 min timeout/ }));
+    expect(screen.getByRole('heading', { level: 2, name: 'Pipeline settings' })).toBeTruthy();
+  });
+
+  it('is view-and-run only at phone width', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === PHONE, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
+    renderApp(<Builder onStarted={() => {}} />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'Steps palette' })).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Step inspector' })).toBeNull();
+    expect(screen.queryByLabelText('Pipeline name')).toBeNull();
+    expect(screen.getByText('Editing needs a wider screen. You can look around and run this workflow.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Run/ })).toBeTruthy();
+    expect(screen.getByText('Drag to pan · use + / − to zoom')).toBeTruthy();
+  });
+
+  it('shows issues without their step buttons at phone width (there is no inspector to open)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === PHONE, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
+    routeApi({
+      'GET /api/doctor': { claude: { ok: true } },
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [{ level: 'warn', node: 'plan', message: 'no gate after plan' }] },
+    });
+    renderApp(<Builder onStarted={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '1 warning' }));
+    expect(screen.getByText('no gate after plan')).toBeTruthy();
+    expect(document.querySelector('.bl-issue-node')).toBeNull();
   });
 });

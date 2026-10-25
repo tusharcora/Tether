@@ -17,16 +17,9 @@ import { SecretsDialog } from './SecretsDialog';
 import { SendToAgent } from './SendToAgent';
 import { Tree } from './Tree';
 import { WorkspaceDialog } from './WorkspaceDialog';
+import { storedWorkspace as readWs, WS_KEY } from '../home/workspaces';
 import './api.css';
 
-const WS_KEY = 'aorch.api.ws';
-const readWs = () => {
-  try {
-    return localStorage.getItem(WS_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-};
 /** A stored (redacted) exchange, shaped like a send's output so the response view and the agent panel can show it. */
 const fromHistory = (h: HistoryRow): SendOutput => ({ historyId: h.id, request: h.data.request, result: h.data.response, checks: h.data.checks ?? [] });
 const countRequests = (t?: HttpTree) => {
@@ -273,14 +266,14 @@ export function ApiTab(props: ApiTabProps) {
 
   if (treeError === 'no workspace')
     return (
-      <div className="studio api-tab api-empty">
+      <div className="api-tab api-empty">
         <EmptyState title="No workspace yet" description="Saved requests live next to the code, in the project's .aorch/http folder. Register the project folder first: run `aorch workspace init` in it, then come back here." />
       </div>
     );
 
   const total = countRequests(tree);
   return (
-    <div className="studio api-tab">
+    <div className="api-tab">
       <aside className="api-left" aria-label="Collections">
         {wsBar}
         <Tree tree={tree} selected={openId} filter={filter} onFilter={setFilter} onOpen={open} onNew={fresh} onImport={() => setDialog('import')} onSecrets={() => setDialog('secrets')} onEnv={setEnv} onEditEnv={(n) => (setEnvName(n), setDialog('env'))} history={history} historyError={historyError} shownHistory={shownHistory} onHistory={showHistory} />
@@ -333,7 +326,7 @@ export function ApiTab(props: ApiTabProps) {
       <EnvDialog ws={ws} open={dialog === 'env'} name={envName} onOpenChange={(o) => setDialog(o ? 'env' : null)} onSaved={() => (setDialog(null), void refresh())} />
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         {pending ? (
-          <DialogContent className="studio api-dialog" title="Discard unsaved changes?" description="This request has edits that are not saved.">
+          <DialogContent className="api-dialog" title="Discard unsaved changes?" description="This request has edits that are not saved.">
             <div className="row end">
               <Button variant="secondary" onClick={() => setPending(null)}>
                 Keep editing

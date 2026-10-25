@@ -1,0 +1,24 @@
+/* Evolve drawer (follows the Crew board): harness, proposals with picked edits, lessons. Tokens only. */
+.ev-panel { display: flex; flex-direction: column; gap: 18px; padding: 16px; background: var(--s1); border: 1px solid var(--line); border-radius: var(--radius-panel); }
+.ev-panel.in-drawer { padding: 0; border: 0; background: none; border-radius: 0; }
+.ev-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-top h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.ev-msg { font-size: 12.5px; color: var(--mut); }
+.ev-help { margin: 0; font-size: 12.5px; color: var(--mut); }
+.ev-section { display: flex; flex-direction: column; gap: 10px; }
+.ev-persona { margin: 0; font-size: 13px; color: var(--mut); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ev-guidance { margin: 0; padding-left: 18px; font-size: 13px; }
+.ev-versions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ev-versions li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-proposal { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--bg); }
+.ev-proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-edit { display: flex; flex-direction: column; gap: 6px; padding-left: 4px; }
+.ev-edit-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-diff { margin: 0; padding: 8px 0; border-radius: 8px; background: var(--s2); font-family: var(--font-code); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.ev-diff span { display: block; padding: 0 10px; }
+.ev-diff .del { color: var(--bad); background: var(--badBg); }
+.ev-diff .add { color: var(--ok); background: var(--okBg); }
+.ev-probe ul { margin: 6px 0 0; padding-left: 18px; }
+.ev-lessons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.ev-lessons li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.ev-actions { display: flex; flex-wrap: wrap; gap: 8px; }

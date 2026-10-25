@@ -126,11 +126,11 @@ describe('response styles', () => {
     expect(section).not.toMatch(/purple|violet|gradient\(|box-shadow/i);
   });
 
-  it("flattens the JSON viewer's gradient row actions to token backgrounds inside the studio response", () => {
+  it("flattens the JSON viewer's gradient row actions to token backgrounds inside the API tab", () => {
     // Arc's module paints .actions with linear-gradient (resting and on row hover); these rules outrank both.
-    expect(section).toContain('.studio .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }');
-    expect(section).toContain('.studio .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }');
-    expect(section).toContain('.studio .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }');
+    expect(section).toContain('.api-tab .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }');
+    expect(section).toContain('.api-tab .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }');
+    expect(section).toContain('.api-tab .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }');
     expect(section).not.toMatch(/linear-gradient/);
   });
 

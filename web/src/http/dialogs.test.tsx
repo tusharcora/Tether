@@ -207,10 +207,10 @@ describe('dialog errors are shown, never swallowed', () => {
 const here = import.meta.url;
 
 describe('dialogs in Studio Live', () => {
-  it('scope the whole dialog panel to .studio', async () => {
+  it('mark the whole dialog panel as an API dialog', async () => {
     renderApp(<SecretsDialog open onOpenChange={() => {}} />);
     await screen.findByText('aorch_token');
-    expect(screen.getByRole('dialog').classList.contains('studio')).toBe(true);
+    expect(screen.getByRole('dialog').classList.contains('api-dialog')).toBe(true);
   });
 
   it('style the dialogs from tokens only, with no purple, gradients or glows', () => {

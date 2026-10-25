@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { EvolvePanel } from './Evolve';
+import { cssRule, cssText } from './test/css';
 import { calls, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
@@ -65,4 +66,27 @@ it('drops its own heading inside a drawer but keeps Close', async () => {
   expect(screen.queryByRole('heading', { name: 'Evolve · Bolt' })).toBeNull();
   expect(screen.getByRole('region', { name: 'Evolve Bolt' }).classList.contains('in-drawer')).toBe(true);
   expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+});
+
+it('shows proposal, probe and lesson states as status chips', async () => {
+  routeApi({
+    'GET /api/harness/coder': { ...harness, evolvable: false },
+    'GET /api/proposals?bot=coder': { proposals: [proposal({ stale: true, edits: [{ ...edit(1), probe: 'dropped' }, { ...edit(2), probe: 'kept' }] })] },
+    'GET /api/lessons?bot=coder': { lessons: [{ id: 'L1', text: 'Run the tests first', polarity: 'do', provenance: 'feedback', status: 'confident', runs: 3, evidence: [] }] },
+  });
+  const { container } = renderApp(<EvolvePanel bot="coder" name="Bolt" onClose={() => {}} />);
+  expect(await screen.findByText('Run the tests first')).toBeTruthy();
+  const chip = (label: string) => [...container.querySelectorAll('.sl-chip')].find((c) => c.textContent === label)!;
+  expect(chip('open').classList.contains('t-needs')).toBe(true);
+  expect(chip('stale').classList.contains('t-needs')).toBe(true);
+  expect(chip('dropped by the probe').classList.contains('t-failed')).toBe(true);
+  expect(chip('kept by the probe').classList.contains('t-done')).toBe(true);
+  expect(chip('confident').classList.contains('t-done')).toBe(true);
+  expect(chip('not evolvable')).toBeTruthy();
+});
+
+it('styles the drawer from tokens only', () => {
+  expect(cssText('evolve.css').match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+  expect(cssRule('evolve.css', '.ev-diff .del')).toContain('color: var(--bad)');
+  expect(cssText('styles.css')).not.toMatch(/evolve-panel|probe-kept|proposal-mark/);
 });

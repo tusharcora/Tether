@@ -17,6 +17,12 @@ import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
+import { ACTIVITY_LIMIT, ACTIVITY_MAX, activityFeed, parseCursor } from './activityFeed.js';
+import { attentionReader } from './attention.js';
+import { PREVIEW_TASK_MAX, rosterPreview } from './rosterPreview.js';
+import { rowLive } from './runLabels.js';
+import { VAULT_ACTIVITY_LIMIT, VAULT_ACTIVITY_MAX, vaultActivity } from './vaultActivity.js';
+import { rowExtras } from './runRows.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
@@ -226,19 +232,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     );
   }
   const { engine, store, vault, registry, cfg } = o;
+  const attention = attentionReader(store);
   let doctorCache: { at: number; data: unknown } | undefined;
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
 
-  /**
-   * A team run before execution that waits for the person (a card or a ready plan) needs no process, so it is never
-   * "interrupted": it is live as far as the dashboard goes (Stop, no Resume). So is one whose planning call is in flight.
-   */
-  const teamWaits = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }) =>
-    r.kind === 'team' && r.status === 'running' && (engine.isPlanning(r.id) || r.pending > 0 || r.planReady);
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = engine.isLive(id) || teamWaits({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
+    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s), lastTs: store.lastTs(id) });
     return { ...s, live };
   };
 
@@ -701,7 +702,25 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'GET') {
       // Evolve probe replays are experiments, hidden unless ?all=1
       const all = url.searchParams.get('all') === '1';
-      return send(res, 200, store.list().filter((r) => all || !r.probe).map((r) => ({ ...r, live: engine.isLive(r.id) || teamWaits(r) }))), true;
+      const rows = store
+        .listRows()
+        .filter(({ summary: r }) => all || !r.probe)
+        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, { ...r, lastTs }) }));
+      return send(res, 200, rows), true;
+    }
+    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }), true;
+    if (p === '/api/activity' && m === 'GET') {
+      const raw = url.searchParams.get('since');
+      const since = raw ? parseCursor(raw) : undefined;
+      if (raw && !since) throw new HttpError(400, 'malformed "since" cursor');
+      const n = Number(url.searchParams.get('limit') ?? ACTIVITY_LIMIT);
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, ACTIVITY_MAX) : ACTIVITY_LIMIT;
+      return send(res, 200, activityFeed(store, { since, limit })), true;
+    }
+    if (p === '/api/roster/preview' && m === 'GET') {
+      const task = url.searchParams.get('task') ?? '';
+      if (task.length > PREVIEW_TASK_MAX) throw new HttpError(400, `"task" is too long (max ${PREVIEW_TASK_MAX})`);
+      return send(res, 200, rosterPreview({ home: cfg.home, task, ws: url.searchParams.get('ws') ?? undefined })), true;
     }
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
@@ -868,6 +887,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
 
     // ---- vault ----
+    if (p === '/api/vault/activity' && m === 'GET') {
+      const raw = url.searchParams.get('since');
+      const since = raw ? parseCursor(raw) : undefined;
+      if (raw && !since) throw new HttpError(400, 'malformed "since" cursor');
+      const n = Number(url.searchParams.get('limit') ?? VAULT_ACTIVITY_LIMIT);
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, VAULT_ACTIVITY_MAX) : VAULT_ACTIVITY_LIMIT;
+      return send(res, 200, vaultActivity(store, { since, limit })), true;
+    }
     if (p === '/api/vault/graph' && m === 'GET') return send(res, 200, await vault.graph()), true;
     if (p === '/api/vault/note' && m === 'GET') {
       const path = url.searchParams.get('path') ?? '';

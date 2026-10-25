@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
 import { Accordion } from './components/arc/accordion/accordion';
-import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
 import { ChatThread } from './components/arc/chat-thread/chat-thread';
 import { RadioCards } from './components/arc/radio-cards/radio-cards';
@@ -10,6 +9,10 @@ import SegmentedControl from './components/arc/segmented-control/segmented-contr
 import { Textarea } from './components/arc/textarea/textarea';
 import { Face } from './Face';
 import { ConfirmButton } from './ui/ConfirmButton';
+import { ListRow } from './ui/studio/ListRow';
+import { SectionHeading } from './ui/studio/SectionHeading';
+import { StatusChip } from './ui/studio/StatusChip';
+import './runs/team.css';
 
 /** One pick per card: an option id, or the person's own words. */
 type Pick = { option?: string; text?: string };
@@ -35,18 +38,17 @@ export function ModeToggle(props: { mode: TeamMode; onPick: (m: TeamMode) => voi
 function QuestionCard(props: { q: Question; index: number; total: number; pick: Pick | undefined; onPick: (p: Pick | undefined) => void; asker?: string }) {
   const { q, pick, onPick } = props;
   return (
-    <div className="qcard">
-      <div className="qhead">
-        <b>{q.ask}</b>
+    <div className="sl-panel tm-qcard">
+      <div className="tm-qhead">
+        <h3>{q.ask}</h3>
         {props.total > 1 ? (
-          <span className="muted small">
-            {' '}
+          <span className="sl-count">
             {props.index + 1} of {props.total}
           </span>
         ) : null}
       </div>
-      {props.asker ? <p className="muted small">asked by {props.asker}</p> : null}
-      {q.why ? <p className="muted small">{q.why}</p> : null}
+      {props.asker ? <p className="sl-meta">asked by {props.asker}</p> : null}
+      {q.why ? <p className="tm-why">{q.why}</p> : null}
       <RadioCards
         layout="list"
         aria-label={q.ask}
@@ -55,10 +57,8 @@ function QuestionCard(props: { q: Question; index: number; total: number; pick: 
           label:
             o.id === q.recommended ? (
               <>
-                {o.label}{' '}
-                <Badge tone="info" size="sm">
-                  recommended
-                </Badge>
+                {o.label}
+                <span className="tm-rec">recommended</span>
               </>
             ) : (
               o.label
@@ -172,28 +172,26 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
   const n = r.answers.length;
 
   return (
-    <>
+    <div className="tm-panel">
       {active ? (
-        <div className="team-bar">
-          <span className="badge s-team">Team</span>
+        <div className="tm-bar">
+          <StatusChip tone={r.status === 'running' ? 'live' : 'needs'} label={r.status === 'running' ? 'Team run' : 'Team run · paused'} pulse={r.status === 'running' && r.live} />
           <ModeToggle mode={r.mode} disabled={busy} onPick={(m) => void props.send('mode', { mode: m })} />
-          <span className="muted small">{MODES.find((m) => m.id === r.mode)!.hint}</span>
+          <span className="sl-meta">{MODES.find((m) => m.id === r.mode)!.hint}</span>
         </div>
       ) : null}
 
       {pending.length > 0 ? (
         <>
-          <div className="alert wait" role="status">
-            <div>
-              <b>{pending.length === 1 ? 'The team has a question for you.' : `The team has ${pending.length} questions for you.`}</b>
-              <span className="muted small"> {r.planning ? 'Planning continues once you answer.' : 'The asking step is paused until you answer.'}</span>
-            </div>
-          </div>
-          <section className="qpanel" aria-label="Questions from the team">
+          <p className="sl-note" role="status">
+            <b>{pending.length === 1 ? 'The team has a question for you.' : `The team has ${pending.length} questions for you.`}</b>{' '}
+            {r.planning ? 'Planning continues once you answer.' : 'The asking step is paused until you answer.'}
+          </p>
+          <section className="tm-questions" aria-label="Questions from the team">
             {pending.map((q, i) => (
               <QuestionCard key={q.id} q={q} index={i} total={pending.length} asker={askerOf(q)} pick={picks[q.id]} onPick={(p) => setPick(q.id, p)} />
             ))}
-            <div className="row end">
+            <div className="tm-actions">
               <Button variant="secondary" disabled={busy} onClick={() => void submit(recommendations())} title="Answer every question with the option marked recommended">
                 Use recommendations
               </Button>
@@ -206,73 +204,63 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
       ) : null}
 
       {planReady && plan ? (
-        <section className="qpanel plan" aria-label="The team's plan">
-          <h4>Plan ready for your approval</h4>
-          <p>{plan.goal}</p>
+        <section className="sl-panel tm-plan" aria-label="The team's plan">
+          <SectionHeading title="Plan ready for your approval" action={<StatusChip tone="needs" label="waits for you" />} />
+          <p className="tm-goal">{plan.goal}</p>
           {plan.success.length ? (
-            <>
-              <h5>Done when</h5>
-              <ul>
+            <div className="tm-block">
+              <h3>Done when</h3>
+              <ul className="tm-done">
                 {plan.success.map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
               </ul>
-            </>
+            </div>
           ) : null}
-          <h5>Who does what</h5>
-          <ul className="assign">
-            {plan.assignments.map((a, i) => (
-              <li key={`${a.bot}-${i}`} className="assign-row">
-                <Face id={a.bot} size={36} animate="hover" />
-                <div className="assign-main">
-                  <div>
-                    <b>{a.bot}</b>{' '}
-                    <Badge size="sm" tone={a.mode === 'write' ? 'warning' : 'neutral'}>
-                      {a.mode === 'write' ? 'can edit files' : 'read only'}
-                    </Badge>{' '}
-                    {a.swapped ? (
-                      <Badge size="sm" tone="info">
-                        swapped by you
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div>
-                    {a.goal}
-                    {a.expected ? <small className="muted"> — expects: {a.expected}</small> : null}
-                  </div>
-                  {a.why ? <small className="muted">Why: {a.why}</small> : null}
-                </div>
-                {plan.roster?.length ? (
-                  // the current bot is always first so the shown value exists among the options
-                  <Select
-                    label="Bot"
-                    options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ value: b, label: b }))}
-                    value={a.bot}
-                    onValueChange={(b) => b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
-                    disabled={busy}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <p className="muted small">
+          <div className="tm-block">
+            <h3>Who does what</h3>
+            <ul className="sl-list tm-assign">
+              {plan.assignments.map((a, i) => (
+                <ListRow
+                  key={`${a.bot}-${i}`}
+                  lead={<Face id={a.bot} size={32} animate="hover" />}
+                  title={a.bot}
+                  meta={a.expected ? `expects: ${a.expected}` : undefined}
+                  extra={
+                    <>
+                      <span className="tm-assign-goal">{a.goal}</span>
+                      {a.why ? <span className="sl-meta">Why: {a.why}</span> : null}
+                    </>
+                  }
+                  actions={
+                    <>
+                      <StatusChip tone="neutral" label={a.mode === 'write' ? 'can edit files' : 'read only'} />
+                      {a.swapped ? <StatusChip tone="neutral" label="swapped by you" /> : null}
+                      {plan.roster?.length ? (
+                        // the current bot is always first so the shown value exists among the options
+                        <Select
+                          label="Bot"
+                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ value: b, label: b }))}
+                          value={a.bot}
+                          onValueChange={(b) => b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
+                          disabled={busy}
+                        />
+                      ) : null}
+                    </>
+                  }
+                />
+              ))}
+            </ul>
+          </div>
+          <p className="sl-meta">
             Writes {plan.limits.allowWrites ? 'allowed' : 'off'}
             {plan.limits.maxCostUsd ? ` · budget ${fmtUsd(plan.limits.maxCostUsd)} in all` : ''}
             {plan.limits.maxCostUsd && r.costUsd > 0 ? ` (planning spent ${fmtUsd(r.costUsd)}, ${fmtUsd(Math.max(0, plan.limits.maxCostUsd - r.costUsd))} left)` : ''}
             {plan.limits.wallClockMs ? ` · ${Math.round(plan.limits.wallClockMs / 60_000)} min limit` : ''}
           </p>
-          <div className="row end">
+          <div className="tm-actions">
             {/* keyed by run so a half-asked reject does not carry over to another run */}
-            <ConfirmButton
-              key={r.id}
-              label="Reject"
-              prompt="Cancel this run?"
-              confirmLabel="Yes, reject"
-              cancelLabel="Keep plan"
-              disabled={busy}
-              onAskingChange={setRejecting}
-              onConfirm={() => decide(false)}
-            />
+            <ConfirmButton key={r.id} label="Reject" prompt="Cancel this run?" confirmLabel="Yes, reject" cancelLabel="Keep plan" disabled={busy} onAskingChange={setRejecting} onConfirm={() => decide(false)} />
             {rejecting ? null : (
               <Button variant="primary" disabled={busy} onClick={() => void decide(true)}>
                 Approve and start
@@ -283,7 +271,7 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
       ) : null}
 
       {showDialogue ? (
-        <div className="dialogue">
+        <div className="tm-dialogue">
           <Accordion
             defaultOpen={-1}
             items={[
@@ -295,6 +283,6 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
           />
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

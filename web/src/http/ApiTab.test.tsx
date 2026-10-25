@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api } from '../api';
 import { calls, routeApi } from '../test/fixtures';
+import { cssRule } from '../test/css';
 import { renderApp } from '../test/render';
 import { ApiTab } from './ApiTab';
 import { latencyBars } from './Tree';
@@ -261,5 +262,14 @@ describe('ApiTab', () => {
     expect(oldHistory()).toBe(before);
     expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'GET 200 · 40 ms' })).toBeTruthy();
+  });
+});
+
+describe('latency bars', () => {
+  it('are neutral (blue means live), full strength on hover or press, amber kept for slow sends', () => {
+    expect(cssRule('http/api.css', '.lat')).toContain('background: var(--mut)');
+    expect(cssRule('http/api.css', '.lat')).toContain('opacity: .7');
+    expect(cssRule('http/api.css', '.lat:hover,.lat[aria-pressed=\'true\']')).toContain('opacity: 1');
+    expect(cssRule('http/api.css', '.lat[data-amber]')).toContain('background: var(--warn)');
   });
 });

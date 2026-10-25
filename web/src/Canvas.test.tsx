@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Canvas } from './Canvas';
+import { cssRule, cssText } from './test/css';
 import { makeRun } from './test/fixtures';
 
 const run = makeRun();
@@ -14,6 +15,21 @@ describe('Canvas', () => {
     expect(container.querySelectorAll('path.edge')).toHaveLength(2);
     expect(container.textContent).toContain('fix loop 0/2');
     expect(container.textContent).toContain('$ npm test');
+  });
+
+  it('hovering a step tints its border without moving it off its ports', () => {
+    expect(cssRule('canvas.css', '.node:hover')).toContain('border-color: var(--edge)');
+    expect(cssRule('canvas.css', '.node:hover')).not.toContain('transform');
+  });
+
+  it('fits again when fitKey changes (another workflow opened)', async () => {
+    const world = (c: HTMLElement) => (c.querySelector('.world') as HTMLElement).style.transform;
+    const { container, rerender } = render(<Canvas nodes={[]} edges={[]} fitKey={0} />);
+    await new Promise((r) => requestAnimationFrame(r));
+    const before = world(container);
+    rerender(<Canvas nodes={nodes} edges={edges} fitKey={1} />);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    expect(world(container)).not.toBe(before);
   });
 
   it('selects a node on click and clears on empty canvas click', () => {
@@ -60,5 +76,57 @@ describe('Canvas', () => {
     expect(code.getAttribute('data-mood')).toBe('working');
     expect(code.tagName).toBe('SPAN');
     expect(container.querySelector('[data-id="gate"] [data-mood]')!.tagName).toBe('IMG');
+  });
+
+  it('marks run edges: done solid, working animated, next dashed', () => {
+    const st = (s: string) => ({ status: s, attempts: 1, costUsd: 0, loops: 0 }) as (typeof run.nodes)[string];
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('done'), gate: st('running') }} />);
+    const edge = (from: string, to: string) => container.querySelector(`[data-edge="${from}→${to}"] + path.edge`)!;
+    expect(edge('plan', 'code').classList.contains('done')).toBe(true);
+    expect(edge('code', 'gate').classList.contains('flow')).toBe(true);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('queued'), gate: st('queued') }} />);
+    expect(edge('plan', 'code').classList.contains('next')).toBe(true);
+    expect(edge('code', 'gate').getAttribute('class')).toBe('edge');
+  });
+
+  it('shows a step status chip on run cards only', () => {
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} statuses={run.nodes} />);
+    expect(container.querySelector('[data-id="code"] .sl-chip.t-live')!.textContent).toBe('running');
+    rerender(<Canvas nodes={nodes} edges={edges} />);
+    expect(container.querySelector('.sl-chip')).toBeNull();
+  });
+
+  it('names the zoom buttons', () => {
+    const { getByRole } = render(<Canvas nodes={nodes} edges={edges} />);
+    for (const name of ['Zoom in', 'Zoom out', 'Fit to view']) expect(getByRole('button', { name })).toBeTruthy();
+  });
+
+  it('moves a fix loop only while its fix step re-runs', () => {
+    const st = (status: string, loops = 0) => ({ status, attempts: 1, costUsd: 0, loops }) as never;
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} />);
+    const loop = () => container.querySelector('.loop')!;
+    expect(loop().classList.contains('live')).toBe(false);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('running'), gate: st('error', 1) }} />);
+    expect(loop().classList.contains('live')).toBe(true);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('done'), gate: st('done', 1) }} />);
+    expect(loop().classList.contains('live')).toBe(false);
+  });
+
+  it('shows a hint over a canvas with steps and none over an empty one', () => {
+    const { container, rerender } = render(<Canvas editable nodes={nodes} edges={edges} hint="Delete removes" />);
+    expect(container.querySelector('.canvas-hint')!.textContent).toBe('Delete removes');
+    rerender(<Canvas editable nodes={[]} edges={[]} hint="Delete removes" />);
+    expect(container.querySelector('.canvas-hint')).toBeNull();
+  });
+
+  it('is styled from tokens in its own stylesheet, and only live parts loop', () => {
+    const css = cssText('canvas.css');
+    expect(css.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+    expect(cssRule('canvas.css', '.edge')).toContain('stroke: var(--edge)');
+    expect(cssRule('canvas.css', '.loop path')).toContain('stroke: var(--warn)');
+    expect(cssRule('canvas.css', '.loop path')).not.toContain('animation');
+    expect(cssRule('canvas.css', '.loop.live path')).toContain('animation');
+    expect(cssRule('canvas.css', '.node.selected')).toContain('box-shadow: 0 0 0 3px var(--accBg)');
+    expect(cssText('styles.css')).not.toMatch(/\.canvas|\.node-head|\.port\b|\.zoom\b|\.empty-hint/);
   });
 });

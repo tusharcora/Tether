@@ -47,7 +47,7 @@ export function makeRun(o: Partial<RunView> = {}): RunView {
 }
 
 export function makeRow(o: Partial<RunRow> = {}): RunRow {
-  return { id: 'r1', pipeline: 'plan-code-review', task: 'Add rate limiting', repo: '/repo', status: 'running', startedAt: Date.now() - 60_000, costUsd: 0.12, live: true, nodes: {}, kind: 'workflow', mode: 'live', pending: 0, planReady: false, ...o };
+  return { id: 'r1', pipeline: 'plan-code-review', task: 'Add rate limiting', repo: '/repo', status: 'running', startedAt: Date.now() - 60_000, costUsd: 0.12, live: true, nodes: {}, kind: 'workflow', mode: 'live', pending: 0, planReady: false, branch: 'aorch/r1', lastTs: Date.now(), steps: [], bots: [], ...o };
 }
 
 /** Stand-in for EventSource: tests push `state` / `event` messages with emit(). */

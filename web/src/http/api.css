@@ -1,4 +1,4 @@
-/* API tab, Studio Live. Tokens come from studio.css (.studio). Motion: 150–280 ms on --ease; nothing loops except live state. */
+/* API tab, Studio Live. Tokens come from the root (studio.css). Motion: 150–280 ms on --ease; nothing loops except live state. */
 .api-tab { height: 100%; display: grid; grid-template-columns: 280px minmax(0, 1fr) 300px; background: var(--bg); color: var(--ink); }
 .api-tab .hint { color: var(--mut); font-size: 12px; margin: 6px 0; }
 .api-tab .hint.warn { color: var(--warn); }
@@ -81,9 +81,9 @@
 /* Arc's JSON viewer, bridged: Studio Live mono, and its chevron turns on the Studio curve instead of a spring. */
 .resp-body > div { flex: 1; min-height: 0; border: 0; --mono: var(--font-code); --duration-spring: var(--t-med); --ease-spring: var(--ease); }
 /* Its row actions sit on a fade to the row colour (resting and on hover); Studio Live has none, so they get flat tokens. */
-.studio .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }
-.studio .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }
-.studio .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }
+.api-tab .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }
+.api-tab .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }
+.api-tab .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }
 .resp .raw { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .resp .hdrs { width: 100%; border-collapse: collapse; font-size: 12px; }
 .resp .hdrs th, .resp .hdrs td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
@@ -91,8 +91,8 @@
 .resp .hdrs td { color: var(--ink); }
 .resp-empty { margin: auto; }
 
-/* Dialogs (Import, Secrets, Environment). The whole panel carries .studio, so its chrome takes the tokens too. */
-.studio.api-dialog { width: min(calc(100vw - 32px), 600px); }
+/* Dialogs (Import, Secrets, Environment). The whole panel carries .api-dialog. */
+[role="dialog"].api-dialog { width: min(calc(100vw - 32px), 600px); }
 .dialog-body { display: flex; flex-direction: column; gap: 12px; }
 .dialog-body h4 { margin: 8px 0 4px; font-size: 12px; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .dialog-body ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
@@ -152,7 +152,7 @@ details[open] > .coll::before { transform: rotate(90deg); }
 .method[data-method="PUT"], .method[data-method="PATCH"] { color: var(--warn); }
 .method[data-method="DELETE"], .method[data-method="?"] { color: var(--bad); }
 .latency { flex: none; display: flex; align-items: flex-end; gap: 2px; height: 28px; padding-top: 6px; border-top: 1px solid var(--line); }
-.lat { flex: 1; min-height: 2px; padding: 0; border: 0; border-radius: 1px; background: var(--acc); opacity: .7; cursor: pointer; transition: height var(--t-slow) var(--ease), opacity var(--t-fast) var(--ease); }
+.lat { flex: 1; min-height: 2px; padding: 0; border: 0; border-radius: 1px; background: var(--mut); opacity: .7; cursor: pointer; transition: height var(--t-slow) var(--ease), opacity var(--t-fast) var(--ease); }
 .lat:hover, .lat[aria-pressed="true"] { opacity: 1; }
 .lat[aria-pressed="true"] { outline: 1px solid var(--ink); outline-offset: 1px; }
 .lat[data-amber] { background: var(--warn); opacity: 1; }

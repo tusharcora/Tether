@@ -14,6 +14,9 @@ export function useRunStream(id: string | undefined) {
   const [run, setRunState] = useState<RunView>();
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [error, setError] = useState<string>();
+  // bumped by retry(): re-reads the snapshot and re-subscribes, keeping what is already shown
+  const [attempt, setAttempt] = useState(0);
+  const shown = useRef<string | undefined>(undefined);
   const followed = useRef(id);
   followed.current = id;
   /** Adopt a view (e.g. an action's reply) only while its run is still the one followed. */
@@ -22,8 +25,11 @@ export function useRunStream(id: string | undefined) {
   }, []);
 
   useEffect(() => {
-    setRunState(undefined);
-    setEvents([]);
+    if (shown.current !== id) {
+      shown.current = id;
+      setRunState(undefined);
+      setEvents([]);
+    }
     setError(undefined);
     if (!id) return;
     let closed = false;
@@ -44,7 +50,8 @@ export function useRunStream(id: string | undefined) {
       closed = true;
       es.close();
     };
-  }, [id]);
+  }, [id, attempt]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  return { run, setRun, events, error };
+  return { run, setRun, events, error, retry };
 }

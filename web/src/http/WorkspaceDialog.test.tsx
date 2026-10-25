@@ -29,7 +29,7 @@ describe('WorkspaceDialog', () => {
   it('reads a bundle file, previews creates and overwrites, then imports', async () => {
     const onImported = vi.fn();
     renderApp(<WorkspaceDialog open onOpenChange={() => {}} onImported={onImported} />);
-    expect(screen.getByRole('dialog').classList.contains('studio')).toBe(true);
+    expect(screen.getByRole('dialog').classList.contains('api-dialog')).toBe(true);
     await pick(JSON.stringify(bundle));
     into('/code/new');
     expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull(); // nothing to confirm before a preview

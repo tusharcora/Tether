@@ -1,0 +1,62 @@
+.runs { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 420px); height: 100%; min-height: 0; }
+.runs.mid { grid-template-columns: 280px minmax(0, 1fr); }
+.runs.stacked { display: block; height: auto; min-height: 100%; }
+.runs.stacked .run-list { border-right: 0; }
+.run-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; padding: 14px 10px; background: var(--s1); border-right: 1px solid var(--line); }
+.run-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.run-list-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.run-list-probes { padding: 0 4px; font-size: 12px; color: var(--mut); }
+.run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 4px; }
+.run-rows { display: flex; flex-direction: column; gap: 2px; }
+.run-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px; border: 1px solid transparent; border-radius: var(--radius-panel); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.run-row:hover { background: var(--s2); }
+.run-row.selected { background: var(--s2); border-color: var(--line2); }
+.run-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.run-row-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.run-row-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }
+.run-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+/* a live selected run's border marches (static under reduced motion: the root rule stops the loop) */
+.run-live-border { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* rx follows the row's radius, less the half-pixel inset (RunList keeps rx="9.5" as the fallback where CSS rx isn't supported) */
+.run-live-border rect { rx: calc(var(--radius-panel) - .5px); width: calc(100% - 1px); height: calc(100% - 1px); fill: none; stroke: var(--acc); stroke-width: 1; stroke-dasharray: 6 4; animation: run-march 1s linear infinite; }
+@keyframes run-march { to { stroke-dashoffset: -10; } }
+.ring-track { fill: none; stroke: var(--s3); stroke-width: 2.5; }
+.ring-fill { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; }
+.ring.live .ring-fill { stroke: var(--acc); }
+.run-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
+.run-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 20px 10px; }
+.run-head-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.run-head-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.run-head-title h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
+.run-head-task { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.run-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.run-centre { display: flex; flex-direction: column; gap: 10px; }
+.run-planning { display: flex; flex-direction: column; gap: 8px; margin: 0 20px; }
+.run-steptrack { margin: 0 20px; }
+.run-graph { display: flex; height: 320px; flex: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.run-graph .canvas { flex: 1; }
+/* the Team panel, re-housed in the centre pane: Studio surfaces and spacing through tokens */
+.run-team .team-bar { margin: 0 20px; color: var(--mut); }
+.run-team .qpanel { margin: 0 20px 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
+.run-team .qpanel h4 { font-size: 14px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.run-team .qpanel h5 { font-size: 11px; font-weight: 500; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; }
+.run-team .dialogue { margin: 0 20px 10px; }
+.run-team .alert { margin-left: 20px; margin-right: 20px; }
+@media (max-width: 640px) { .run-team .team-bar, .run-team .qpanel, .run-team .dialogue, .run-team .alert { margin-left: 12px; margin-right: 12px; } }
+.run-inspector { min-height: 0; overflow: auto; padding: 12px 14px; background: var(--s1); border-left: 1px solid var(--line); }
+.run-inspector-inline { padding: 0 12px 16px; }
+.run-back { padding: 8px 12px 0; }
+.run-phone-switch { padding: 0 20px 8px; }
+.step-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.step-head-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.step-head h4 { margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); overflow-wrap: anywhere; }
+.step-why { margin: 6px 0; display: flex; flex-direction: column; gap: 2px; }
+.caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--acc); animation: caret-blink 1s steps(1) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+.file-bars { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
+.file-bars li { display: grid; grid-template-columns: minmax(0, 1fr) auto 80px; gap: 8px; align-items: center; }
+.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 12px; }
+.file-count { font-family: var(--font-code); font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
+.file-bar { display: flex; height: 6px; overflow: hidden; border-radius: 2px; background: var(--s3); }
+.file-add { background: var(--ok); }
+.file-del { background: var(--bad); }
