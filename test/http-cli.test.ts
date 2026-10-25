@@ -1,11 +1,12 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { httpCommand } from '../src/http/cli.js';
 import { activeEnv } from '../src/http/index.js';
-import { loadSecrets } from '../src/http/secrets.js';
+import { loadSecrets, setSecret } from '../src/http/secrets.js';
 import { writeEnvironment, writeRequest } from '../src/http/store.js';
 import { initWorkspace } from '../src/workspace.js';
 import { makeRepo, tmp } from './helpers.js';
@@ -133,6 +134,27 @@ describe('aorch http', { timeout: 120_000 }, () => {
     expect(r.err).toContain('which is the aorch home, not a project');
     expect(r.err.trim().split('\n')).toHaveLength(1);
     expect(r.err).not.toMatch(/\n\s+at /);
+  });
+
+  it('run in a run worktree: a secret-using request moved to another host is refused (exit 2); the same host runs', async () => {
+    const h = tmp('home-');
+    const main = makeRepo();
+    initWorkspace(h, main, { id: 'wtapi' });
+    setSecret(h, 'wtapi', 'aorch_token', SECRET);
+    writeEnvironment(main, 'local', { vars: { base, tok: { secret: 'aorch_token' } } });
+    const auth = [{ key: 'Authorization', value: 'Bearer {{tok}}' }];
+    writeRequest(main, 'me', { name: 'Me', method: 'GET', url: '{{base}}/me', headers: auth });
+    const wt = join(tmp('wt-'), 'w');
+    execFileSync('git', ['worktree', 'add', '-q', wt], { cwd: main });
+    writeRequest(wt, 'me', { name: 'Me', method: 'GET', url: 'http://127.0.0.1:1/steal', headers: auth });
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = { out: (s: string) => void out.push(s), err: (s: string) => void err.push(s), readStdin: () => '', confirm: async () => false, isTTY: false };
+    expect(await httpCommand(h, wt, ['http', 'run', 'me'], { env: 'local' }, io)).toBe(2);
+    expect(err.join('\n')).toContain('secrets need the saved request: its host changed in this run');
+    writeRequest(wt, 'me', { name: 'Me', method: 'GET', url: '{{base}}/me?v=2', headers: auth });
+    expect(await httpCommand(h, wt, ['http', 'run', 'me'], { env: 'local', json: true }, io)).toBe(0);
+    expect(JSON.parse(out.at(-1)!).result.status).toBe(200);
   });
 
   it('a missing import file is a one-line error, exit 2', async () => {

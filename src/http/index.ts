@@ -31,6 +31,33 @@ export interface RunRequestInput {
   allowSecrets: boolean;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * Inside a run (a gate, or `aorch http run` in a run's worktree) the request file is one an agent can edit: secrets
+   * are only sent when the request's resolved origin equals that of the same request in this folder (the main checkout).
+   */
+  secretsOriginFrom?: string;
+}
+
+export const SECRETS_SCOPE_MESSAGE = 'secrets need the saved request: its host changed in this run';
+
+const originOf = (url: string): string | undefined => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The origin the same request id resolves to from `dir` (its own file, collections and environment), or undefined. */
+function savedOrigin(dir: string, id: string, envName: string | null, secrets: Record<string, string>): string | undefined {
+  try {
+    const r = readRequest(dir, id);
+    if (!r.file) return undefined;
+    const env = envName ? { name: envName, file: readEnvironment(dir, envName) } : undefined;
+    return originOf(resolveRequest(r.file, { collections: collectionChain(dir, id), env, secrets, allowSecrets: true }).request.url);
+  } catch {
+    return undefined;
+  }
 }
 
 export const activeEnv = (home: string, scope: string): string | null => loadPrefs(home).httpActiveEnv?.[scope] ?? null;
@@ -61,6 +88,11 @@ export async function runRequest(i: RunRequestInput): Promise<SendOutput> {
   const env = envName ? { name: envName, file: readEnvironment(i.envDir ?? i.dir, envName) } : undefined;
   const secrets = loadSecrets(i.home, i.workspace);
   const { request, secretsUsed } = resolveRequest(file, { collections: chain, env, secrets, allowSecrets: i.allowSecrets });
+  if (i.secretsOriginFrom !== undefined && secretsUsed.size) {
+    const saved = i.id !== undefined ? savedOrigin(i.secretsOriginFrom, i.id, envName, secrets) : undefined;
+    const now = originOf(request.url);
+    if (!saved || !now || saved !== now) throw new HttpClientError('secrets_scope', SECRETS_SCOPE_MESSAGE);
+  }
   // a header whose value used a secret never follows a redirect to another origin
   const used = [...secretsUsed.values()].filter(Boolean);
   const secretHeaders = request.headers.filter(([, v]) => used.some((s) => v.includes(s))).map(([k]) => k);

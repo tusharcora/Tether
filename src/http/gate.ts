@@ -7,6 +7,7 @@ import { HttpClientError } from './errors.js';
 import type { Db } from './history.js';
 import { runRequest } from './index.js';
 import { MAX_REPEAT, type HttpGate, type SendOutput } from './types.js';
+import { mainCheckout } from './workspace.js';
 
 export { MAX_REPEAT };
 const BODY_HEAD = 2048;
@@ -15,7 +16,10 @@ const BODY_HEAD = 2048;
 export async function runHttpGate(o: { home: string; db: Db; state: Pick<RunState, 'workdir' | 'workspace'>; gate: HttpGate; runId: string; signal: AbortSignal; timeoutMs?: number }): Promise<{ ok: boolean; output: string }> {
   const wsId = o.state.workspace?.id && o.state.workspace.id !== 'local' ? o.state.workspace.id : undefined;
   // requests come from the worktree (the code's own saved requests at this commit); environments and secrets from the workspace
-  const envDir = (wsId && getWorkspace(o.home, wsId)?.path) || o.state.workdir;
+  const wsPath = wsId ? getWorkspace(o.home, wsId)?.path : undefined;
+  const envDir = wsPath || o.state.workdir;
+  // the worktree's request file is one the run's agent can edit: secrets only go to the host saved in the main checkout
+  const originDir = wsPath || mainCheckout(o.state.workdir) || o.state.workdir;
   const repeat = Math.min(MAX_REPEAT, Math.max(1, Math.trunc(o.gate.repeat ?? 1)));
   const expect = o.gate.expect ?? 'all';
   const sends: SendOutput[] = [];
@@ -26,7 +30,7 @@ export async function runHttpGate(o: { home: string; db: Db; state: Pick<RunStat
         cut = true;
         break;
       }
-      const out = await runRequest({ home: o.home, db: o.db, workspace: wsId ?? 'default', dir: o.state.workdir, envDir, id: o.gate.run, env: o.gate.env, source: 'gate', runId: o.runId, allowSecrets: true, signal: o.signal });
+      const out = await runRequest({ home: o.home, db: o.db, workspace: wsId ?? 'default', dir: o.state.workdir, envDir, id: o.gate.run, env: o.gate.env, source: 'gate', runId: o.runId, allowSecrets: true, secretsOriginFrom: originDir, signal: o.signal });
       sends.push(out);
       if (o.signal.aborted && out.result.error) {
         cut = true;

@@ -78,7 +78,7 @@ export async function httpCommand(home: string, cwd: string, args: string[], f: 
       }
       case 'run': {
         if (!a1) return usage();
-        return show(await runRequest({ home, db: db(), workspace: proj.scope, dir: proj.dir, envDir: proj.envDir, id: a1, env: f.env, source: 'cli', allowSecrets: true }));
+        return show(await runRequest({ home, db: db(), workspace: proj.scope, dir: proj.dir, envDir: proj.envDir, id: a1, env: f.env, source: 'cli', allowSecrets: true, secretsOriginFrom: proj.originDir }));
       }
       case 'send': {
         if (!a1 || !a2) return usage();

@@ -13,6 +13,8 @@ export interface HttpProject {
   dir: string;
   /** Folder whose environments apply (the workspace's own folder, even when `dir` is a run's worktree). */
   envDir: string;
+  /** Set when `dir` is a git worktree of a registered workspace (a run's): secrets need the request as saved there. */
+  originDir?: string;
 }
 
 /** ?ws=<id>, else the default workspace, else the first one, else undefined (the route answers 409 "no workspace"). */
@@ -25,7 +27,7 @@ export function projectFor(home: string, id?: string | null): HttpProject | unde
 }
 
 /** The main checkout a git worktree belongs to (runs execute in worktrees under <home>/worktrees). */
-function mainCheckout(dir: string): string | undefined {
+export function mainCheckout(dir: string): string | undefined {
   try {
     const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).toString().trim();
     return common.endsWith('/.git') ? dirname(common) : undefined;
@@ -62,6 +64,8 @@ export function projectFromCwd(home: string, cwd: string, explicit?: string): Ht
     }
   };
   const main = mainCheckout(dir);
-  const w = registered(dir) ?? (main ? registered(main) : undefined);
-  return w ? { scope: w.id, workspaceId: w.id, dir, envDir: w.path } : { scope: 'default', dir, envDir: dir };
+  const direct = registered(dir);
+  const viaMain = direct ? undefined : main ? registered(main) : undefined;
+  const w = direct ?? viaMain;
+  return w ? { scope: w.id, workspaceId: w.id, dir, envDir: w.path, ...(viaMain ? { originDir: w.path } : {}) } : { scope: 'default', dir, envDir: dir };
 }
