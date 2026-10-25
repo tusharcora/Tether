@@ -215,20 +215,39 @@ function postmanBody(b: unknown, name: string, out: Parsed): Body | null {
   out.skip.push({ name, reason });
   return null;
 }
+/** Every string anywhere inside a value. */
+const stringsIn = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(stringsIn) : isObj(v) ? Object.values(v).flatMap(stringsIn) : []);
+/**
+ * The variables any auth block (of any type, at any level) or any credential header refers to. A full pass over the
+ * document that runs before, and is not limited by, the folder depth, the request cap or any skip: the values of these
+ * variables must never reach _collection.json.
+ */
+function postmanCredentialVars(doc: Record<string, unknown>): Set<string> {
+  const found = new Set<string>();
+  const note = (texts: string[]) => texts.forEach((t) => varRefs(t).forEach((n) => found.add(n)));
+  const visit = (node: unknown): void => {
+    if (!isObj(node)) return;
+    note(stringsIn(node.auth));
+    const r = node.request;
+    if (isObj(r)) {
+      note(stringsIn(r.auth));
+      for (const h of Array.isArray(r.header) ? r.header : []) if (isObj(h) && typeof h.key === 'string' && isCredentialHeader(h.key)) note(stringsIn(h.value));
+    }
+    if (Array.isArray(node.item)) node.item.forEach(visit);
+  };
+  visit(doc);
+  return found;
+}
 function fromPostman(text: string): Parsed {
   const doc = tryJson(text);
   if (!isObj(doc) || !isObj(doc.info) || typeof doc.info.schema !== 'string' || !doc.info.schema.includes('v2.1')) throw new Error('not a Postman v2.1 collection');
   const out = empty();
-  /** Variables a credential header or a bearer/basic auth block refers to: their values must not reach _collection.json. */
-  const credentialVars = new Set<string>();
-  const noteAuth = (auth: unknown) => authValues(auth).forEach((v) => varRefs(v).forEach((n) => credentialVars.add(n)));
-  noteAuth(doc.auth);
+  const credentialVars = postmanCredentialVars(doc);
   const walk = (items: unknown[], folder: string[], inherited: unknown) => {
     for (const it of items) {
       if (!isObj(it)) continue;
       const name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : 'untitled';
       if (Array.isArray(it.item)) {
-        noteAuth(it.auth);
         if (folder.length >= 4) out.skip.push({ name, reason: 'folders nest deeper than 4' });
         else walk(it.item, [...folder, slugify(name)], it.auth ?? inherited);
         continue;
@@ -242,9 +261,7 @@ function fromPostman(text: string): Parsed {
         out.skip.push({ name, reason: 'no request' });
         continue;
       }
-      noteAuth(r.auth);
       const headers: KV[] = (Array.isArray(r.header) ? r.header : []).filter(isObj).filter((h) => typeof h.key === 'string').map((h) => ({ key: h.key as string, value: String(h.value ?? ''), on: h.disabled !== true }));
-      for (const h of headers) if (isCredentialHeader(h.key)) varRefs(h.value).forEach((n) => credentialVars.add(n));
       const url = typeof r.url === 'string' ? r.url : isObj(r.url) && typeof r.url.raw === 'string' ? r.url.raw : undefined;
       if (!url) {
         out.skip.push({ name, reason: 'no URL' });
@@ -263,12 +280,12 @@ function fromPostman(text: string): Parsed {
   for (const v of Array.isArray(doc.variable) ? doc.variable : []) {
     if (!isObj(v) || typeof v.key !== 'string' || !VAR_RE.test(v.key)) continue;
     const value = String(v.value ?? '');
-    if (value && credentialVars.has(v.key)) {
+    if (credentialVars.has(v.key)) {
       // left out entirely: collection vars resolve before secrets, so even a blank entry would hide the secret
       out.warnings.push(`collection variable "${v.key}" holds a credential and was not imported (files are committed); store it with: aorch http secret set ${v.key}`);
     } else vars[v.key] = value;
   }
-  if (Object.keys(vars).length) out.collections.unshift({ folder: [], file: { vars, headers: [] } });
+  if (Object.keys(vars).length) out.collections.push({ folder: [], file: { vars, headers: [] } });
   return out;
 }
 

@@ -119,6 +119,42 @@ describe('Postman import', () => {
     expect(JSON.parse(readFileSync(join(httpRoot(dir), '_collection.json'), 'utf8')).vars).not.toHaveProperty('token');
   });
 
+  it('a blank credential variable is left out too (a blank entry would hide the secret), with a warning', () => {
+    const doc = JSON.parse(fx('postman-2.1.json'));
+    doc.variable[1].value = '';
+    const p = previewImport('postman', JSON.stringify(doc));
+    expect(p.collections[0]!.file.vars).toEqual({ base: 'https://shop.example' });
+    expect(p.warnings.join('\n')).toMatch(/variable "token".*aorch http secret set token/);
+  });
+
+  it('credential variables are found in auth of any type and in items that are skipped (unsupported auth, too deep)', () => {
+    const apikey = { type: 'apikey', apikey: [{ key: 'key', value: 'X-Api-Key' }, { key: 'value', value: '{{api_key}}' }, { key: 'in', value: 'header' }] };
+    const deep = (n: number, leaf: unknown): unknown => (n === 0 ? leaf : { name: `f${n}`, item: [deep(n - 1, leaf)] });
+    const doc = {
+      info: { name: 'Keys', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' },
+      variable: [
+        { key: 'base', value: 'https://k.example' },
+        { key: 'api_key', value: 'live-123' },
+        { key: 'tok', value: 'oauth-live-456' },
+        { key: 'sid', value: 'cookie-live-789' },
+      ],
+      auth: apikey,
+      item: [
+        { name: 'Keyed', request: { method: 'GET', url: '{{base}}/k' } },
+        { name: 'OAuth', request: { method: 'GET', url: '{{base}}/o', auth: { type: 'oauth2', oauth2: [{ key: 'accessToken', value: '{{tok}}' }] } } },
+        deep(5, { name: 'Deep', request: { method: 'GET', url: '{{base}}/d', auth: { type: 'noauth' }, header: [{ key: 'Cookie', value: 'sid={{sid}}' }] } }),
+        { name: 'Plain', request: { method: 'GET', url: '{{base}}/p', auth: { type: 'noauth' } } },
+      ],
+    };
+    const p = previewImport('postman', JSON.stringify(doc));
+    expect(p.create.map((c) => c.id)).toEqual(['plain']);
+    expect(p.collections[0]!.file.vars).toEqual({ base: 'https://k.example' });
+    for (const k of ['api_key', 'tok', 'sid']) expect(p.warnings.join('\n')).toContain(`aorch http secret set ${k}`);
+    const dir = tmp('proj-');
+    applyImport(dir, p);
+    for (const text of writtenFiles(dir)) for (const lit of ['live-123', 'oauth-live-456', 'cookie-live-789']) expect(text).not.toContain(lit);
+  });
+
   it('refuses a document that is not Postman v2.1', () => {
     expect(previewImport('postman', JSON.stringify({ info: { schema: 'v2.0' } })).error).toBe('not a Postman v2.1 collection');
   });
