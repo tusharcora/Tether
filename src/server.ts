@@ -674,7 +674,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (b.maxRounds !== undefined && !(Number.isInteger(b.maxRounds) && b.maxRounds >= 1 && b.maxRounds <= 6)) throw new HttpError(400, '"maxRounds" must be a whole number from 1 to 6');
         // the run is created and returned at once; planning (model calls) runs in the background, so poll the run
         try {
-          const id = await engine.startTeam({ task: b.task, repo: resolve(b.repo), mode: b.mode, roster: roster.length ? roster : undefined, yes, budgetUsd: b.budget, maxRounds: b.maxRounds, background: true });
+          const id = await engine.startTeam({ task: b.task, repo: resolve(b.repo), mode: b.mode, roster: roster.length ? roster : undefined, yes, budgetUsd: b.budget, maxRounds: b.maxRounds, background: true, endpoints: b.endpoints === false ? false : undefined });
           return send(res, 201, { id }), true;
         } catch (e) {
           // a refusal of the input (an unknown roster bot) is 400; a run that could not be made (not a git repo) is 422, as for workflows
@@ -689,7 +689,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         throw new HttpError(400, (e as Error).message);
       }
       try {
-        const id = await engine.start({ pipeline: pl, task: b.task, repo: resolve(b.repo), ref: typeof b.ref === 'string' ? b.ref : undefined, autoApprove: !!b.autoApprove });
+        const id = await engine.start({ pipeline: pl, task: b.task, repo: resolve(b.repo), ref: typeof b.ref === 'string' ? b.ref : undefined, autoApprove: !!b.autoApprove, endpoints: b.endpoints === false ? false : undefined });
         return send(res, 201, { id }), true;
       } catch (e) {
         throw new HttpError(422, (e as Error).message);

@@ -74,6 +74,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [repo, setRepo] = useState('');
   const [task, setTask] = useState('');
   const [auto, setAuto] = useState(false);
+  const [endpoints, setEndpoints] = useState(true);
   const [busy, setBusy] = useState(false);
   const [teamRun, setTeamRun] = useState(false);
   const [teamMode, setTeamMode] = useState<'live' | 'autonomous'>('live');
@@ -264,7 +265,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       } catch {
         /* ignore */
       }
-      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo } : { pipeline: pl, task, repo, autoApprove: auto });
+      const off = endpoints ? {} : { endpoints: false };
+      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo, ...off } : { pipeline: pl, task, repo, autoApprove: auto, ...off });
       setRunOpen(false);
       props.onStarted(r.id);
     } catch (e) {
@@ -524,6 +526,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
             />
             <Textarea label="Task" required rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="Add rate limiting to POST /orders" />
             {!teamRun ? <Checkbox label="Auto-approve approval steps (skips the human sign-off)" checked={auto} onCheckedChange={(c) => setAuto(c === true)} /> : null}
+            <Checkbox label="Tell agents about this project's saved API requests" checked={endpoints} onCheckedChange={(c) => setEndpoints(c === true)} />
             <p className="muted small">Runs in an isolated git worktree on its own branch; your checkout is never touched. Agents run with this machine's permissions.</p>
             <div className="row end">
               <Button type="button" variant="secondary" onClick={() => setRunOpen(false)}>

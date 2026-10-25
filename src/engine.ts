@@ -55,6 +55,8 @@ export interface StartInput {
   workspace?: string | false;
   /** false: do not learn lessons from this run (probe replays). Default true. */
   reflect?: boolean;
+  /** false: leave the saved API requests block out of this run's prompts. */
+  endpoints?: boolean;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -136,6 +138,8 @@ export interface TeamStartInput {
   mock?: MockScript;
   /** Return as soon as the run exists; the first planning round runs in the background (the HTTP API). */
   background?: boolean;
+  /** false: leave the saved API requests block out of this run's prompts. */
+  endpoints?: boolean;
 }
 
 /** Test-only: the scripted planning replies. Roster, rounds and yes live in the run's events. */
@@ -393,7 +397,7 @@ export class Engine {
       branch: wt.branch,
       vault: this.opts.vault?.root,
       autoApprove: input.autoApprove,
-      workspace: ws ? snapshot(ws) : undefined,
+      workspace: ws ? snapshot(ws, { endpoints: rawInput.endpoints, dir: wt.workdir }) : undefined,
       ...(input.kind ? { kind: input.kind } : {}),
       ...(input.mode ? { mode: input.mode } : {}),
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
@@ -459,7 +463,7 @@ export class Engine {
       baseSha: wt.baseSha,
       branch: wt.branch,
       vault: this.opts.vault?.root,
-      workspace: ws ? snapshot(ws) : undefined,
+      workspace: ws ? snapshot(ws, { endpoints: i.endpoints, dir: wt.workdir }) : undefined,
       kind: 'team',
       mode: i.mode ?? 'live',
       ...(i.roster?.length ? { roster: i.roster } : {}),

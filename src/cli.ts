@@ -51,7 +51,7 @@ const s0 = (t: string) => bold(t.split('\n')[0]!.slice(0, 90));
 const HELP = `aorch — durable orchestrator for CLI coding agents
 
 Usage
-  aorch run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>]
+  aorch run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>] [--no-endpoints]
   aorch run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
   aorch resume <runId> [--retry-failed]
   aorch approve <runId> <node> [--reject] [--resume]
@@ -66,7 +66,7 @@ Usage
   aorch lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
   aorch                               interactive dashboard (runs, workflows, agent sessions)
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
-  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes]   Maestro asks questions, you approve a plan, a team of bots does it
+  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Maestro asks questions, you approve a plan, a team of bots does it
   aorch answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
   aorch plan <runId> [--reject]       approve (or reject) a team run's finished plan
   aorch mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
@@ -650,7 +650,7 @@ async function main() {
       const ctx = open(v);
       let id: string;
       try {
-        id = await ctx.engine.startTeam({ task: goal, repo, yes: v.yes, workspace: wsOpt(v), ...ta });
+        id = await ctx.engine.startTeam({ task: goal, repo, yes: v.yes, workspace: wsOpt(v), endpoints: v['no-endpoints'] ? false : undefined, ...ta });
       } catch (e) {
         fail((e as Error).message);
       }
@@ -1589,7 +1589,7 @@ async function main() {
       for (const i of preflight(ctx.engine.resolve(pipeline), makeRegistry(ctx.cfg))) if (i.level === 'warn') console.error(yellow(`warning: ${i.node ? `[${i.node}] ` : ''}${i.message}`));
       let id: string;
       try {
-        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v) });
+        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v), endpoints: v['no-endpoints'] ? false : undefined });
       } catch (e) {
         fail((e as Error).message);
       }

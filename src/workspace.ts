@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import { basename, join, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { detectTestCommand } from './composer.js';
+import { endpointsBlock } from './http/endpoints.js';
 import type { RunWorkspace } from './types.js';
 
 export interface WorkspaceMeta {
@@ -28,6 +29,8 @@ export interface WorkspaceMeta {
   avoid?: string[];
   /** owner/repo names on GitHub this folder is a checkout of; lets a PR find its workspace */
   repos?: string[];
+  /** "context": false keeps the saved API requests out of agent prompts */
+  http?: { context?: boolean };
 }
 
 export interface Workspace {
@@ -48,6 +51,8 @@ export interface Workspace {
   notes: string;
   /** at least one of the two .aorch files exists */
   described: boolean;
+  /** Saved API requests go into agent prompts (default true; off with "http": { "context": false }). */
+  httpContext: boolean;
   isDefault?: boolean;
 }
 
@@ -109,6 +114,7 @@ export function readMeta(dir: string): { meta: WorkspaceMeta; notes: string; des
       conventions: strs(j.conventions, 300),
       avoid: strs(j.avoid, 300),
       repos: strs(j.repos, 100).filter((r) => /^[\w.-]+\/[\w.-]+$/.test(r)),
+      http: j.http && typeof j.http === 'object' && (j.http as { context?: unknown }).context === false ? { context: false } : undefined,
     };
   } catch {
     /* no file, or not valid JSON */
@@ -143,6 +149,7 @@ export function readWorkspace(id: string, dir: string): Workspace {
     repos: meta.repos?.length ? meta.repos : exists ? detectRepos(path) : [],
     notes,
     described,
+    httpContext: meta.http?.context !== false,
   };
 }
 
@@ -223,8 +230,22 @@ export function contextOf(w: Workspace): string {
   return out.length > MAX_CONTEXT ? out.slice(0, MAX_CONTEXT - 40) + '\n\n[… project notes truncated]' : out;
 }
 
-/** What a run remembers about its workspace: enough to show it and to re-send the context. */
-export const snapshot = (w: Workspace): RunWorkspace => ({ id: w.id, name: w.name, context: contextOf(w) });
+/**
+ * What a run remembers about its workspace: enough to show it and to re-send the context (and the saved endpoints
+ * block). `dir` is the run's worktree: the block lists the requests found there, the same files `aorch http run` and
+ * a request gate read. A folder that cannot be listed leaves the block out (logged), never failing the run.
+ */
+export const snapshot = (w: Workspace, o: { endpoints?: boolean; dir?: string } = {}): RunWorkspace => {
+  let endpoints: string | undefined;
+  if (o.endpoints !== false && w.httpContext && w.exists) {
+    try {
+      endpoints = endpointsBlock(o.dir ?? w.path);
+    } catch (e) {
+      console.error(`[endpoints] could not list the saved API requests (${(e as Error).message}); prompts go without them`);
+    }
+  }
+  return { id: w.id, name: w.name, context: contextOf(w), ...(endpoints ? { endpoints } : {}) };
+};
 
 // ---------- creating ----------
 export const NOTES_TEMPLATE = (name: string) => `# ${name}

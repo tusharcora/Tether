@@ -88,6 +88,17 @@ describe('Builder', () => {
     expect(calls('POST', '/api/runs')[1]![2]).toEqual({ kind: 'team', mode: 'live', task: 'Add caching', repo: '/code/app' });
   });
 
+  it('can start a run without the saved API requests in prompts', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    fireEvent.click(screen.getByRole('button', { name: /Run/ }));
+    fireEvent.change(screen.getByLabelText(/Git repository/), { target: { value: '/code/app' } });
+    fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Add caching' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /saved API requests/ }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start run' })));
+    expect(calls('POST', '/api/runs')[0]![2]).toEqual({ pipeline: pcr, task: 'Add caching', repo: '/code/app', autoApprove: false, endpoints: false });
+  });
+
   it('asks before discarding unsaved changes', async () => {
     renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));

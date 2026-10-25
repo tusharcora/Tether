@@ -158,6 +158,8 @@ export interface RunWorkspace {
   id: string;
   name: string;
   context: string;
+  /** The saved API requests block for prompts, when the workspace has requests and the block is on. */
+  endpoints?: string;
 }
 
 export type RunKind = 'workflow' | 'team';
