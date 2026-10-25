@@ -58,4 +58,31 @@ describe('SettingsDrawer', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(opener);
   });
+
+  it('shows a neutral connecting state before the server first answers', () => {
+    const { container } = render(<SettingsDrawer {...base} connection="connecting" />);
+    expect(screen.getByText('connecting')).toBeTruthy();
+    expect(container.ownerDocument.querySelector('.sl-chip.t-neutral')).toBeTruthy();
+  });
+
+  it('returns focus to the fallback when the opener is gone', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button">Fallback</button>
+          {open ? null : <button type="button" onClick={() => setOpen(true)}>Menu item</button>}
+          <SettingsDrawer {...base} open={open} onClose={() => setOpen(false)} returnFocus={() => screen.getByRole('button', { name: 'Fallback' })} />
+        </>
+      );
+    }
+    render(<Harness />);
+    const item = screen.getByRole('button', { name: 'Menu item' });
+    item.focus();
+    fireEvent.click(item);
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Fallback' }));
+  });
 });

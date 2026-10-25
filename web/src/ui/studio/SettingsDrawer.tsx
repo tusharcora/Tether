@@ -7,11 +7,13 @@ import { CONNECTION_LABEL, type Connection } from './connection';
 import { StatusChip, type Tone } from './StatusChip';
 import './shell.css';
 
-const TONE: Record<Connection, Tone> = { connected: 'done', reconnecting: 'needs', offline: 'failed' };
+const TONE: Record<Connection, Tone> = { connecting: 'neutral', connected: 'done', reconnecting: 'needs', offline: 'failed' };
 const CHOICES: ThemeChoice[] = ['light', 'dark', 'system'];
+/** Still in the page and not hidden (`checkVisibility` where the browser has it). */
+const focusable = (el: HTMLElement) => el.isConnected && el.checkVisibility?.() !== false;
 
 /** Settings, opened over the current screen (which stays mounted): theme, vault, why loopback, connection. */
-export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; connection: Connection }) {
+export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; connection: Connection; returnFocus?: () => HTMLElement | null | undefined }) {
   // Radix only hands focus back to a DialogTrigger; Settings opens from the rail, the bottom bar, a key or a link, so the drawer remembers its opener.
   const opener = useRef<HTMLElement | null>(null);
   return (
@@ -27,9 +29,11 @@ export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: 
         onCloseAutoFocus={(e) => {
           const el = opener.current;
           opener.current = null;
-          if (el?.isConnected) {
+          // A More menu item or the ⌘K field is gone by now: fall back to the control that stays (More, or the rail's Settings).
+          const to = el && focusable(el) ? el : p.returnFocus?.();
+          if (to && focusable(to)) {
             e.preventDefault();
-            el.focus();
+            to.focus();
           }
         }}
       >

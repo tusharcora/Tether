@@ -195,4 +195,32 @@ describe('hash routes', () => {
     await settle();
     expect(result.current[0]).toEqual({ tab: 'triggers' });
   });
+
+  it('ignores browser moves that land while a blocked Back is being undone', async () => {
+    let guard = false;
+    const onBlocked = vi.fn();
+    const { result } = renderHook(() => useHashRoute((next, cur) => guard && cur.tab === 'api' && next.tab !== 'api', onBlocked));
+    act(() => result.current[1]({ tab: 'crew' }));
+    act(() => result.current[1]({ tab: 'graph' }));
+    act(() => result.current[1]({ tab: 'api' }));
+    await settle();
+    guard = true;
+    // A second browser move reaches the page before the undo of the first has landed (a rapid second Back)
+    onBlocked.mockImplementationOnce(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+
+    act(() => history.back());
+    await settle();
+    await settle();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+    expect(onBlocked).toHaveBeenCalledWith({ tab: 'graph' });
+    expect(location.hash).toBe('#/api');
+    expect(result.current[0]).toEqual({ tab: 'api' });
+
+    act(() => history.back()); // once the undo has landed, Back is asked about again
+    await settle();
+    expect(onBlocked).toHaveBeenCalledTimes(2);
+    expect(onBlocked).toHaveBeenLastCalledWith({ tab: 'graph' });
+    expect(location.hash).toBe('#/api');
+    expect(result.current[0]).toEqual({ tab: 'api' });
+  });
 });

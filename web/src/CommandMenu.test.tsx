@@ -1,28 +1,58 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
+import { api } from './api';
 import { CommandMenu } from './CommandMenu';
 import { makeRow, routeApi } from './test/fixtures';
-import { renderApp } from './test/render';
 
-beforeEach(() => routeApi({ 'GET /api/runs': [makeRow({ id: 'r7', pipeline: 'full-review', task: 'Review PR 12' })], 'GET /api/pipelines': [{ name: 'full-review', nodes: 5 }] }));
+const handlers = () => ({ onOpenChange: vi.fn(), onGo: vi.fn(), onSettings: vi.fn(), onTheme: vi.fn() });
+const open = () => {
+  const p = handlers();
+  render(<CommandMenu open {...p} />);
+  return p;
+};
 
-it('jumps to tabs, runs and workflows', async () => {
-  const go = vi.fn();
-  const close = vi.fn();
-  renderApp(<CommandMenu open onOpenChange={close} onGo={go} />);
-  fireEvent.click(await screen.findByText('Go to Crew'));
-  expect(go).toHaveBeenLastCalledWith({ tab: 'crew' });
-  expect(close).toHaveBeenLastCalledWith(false);
-  await waitFor(() => screen.getByText('Review PR 12'));
-  fireEvent.click(screen.getByText('Review PR 12'));
-  expect(go).toHaveBeenLastCalledWith({ tab: 'runs', id: 'r7' });
-  fireEvent.click(screen.getByText('Open in Builder'));
-  expect(go).toHaveBeenLastCalledWith({ tab: 'builder', id: 'full-review' });
+beforeEach(() => {
+  vi.mocked(api).mockReset();
+  routeApi({ 'GET /api/runs': [makeRow({ id: 'r3', task: 'Ship the thing' })], 'GET /api/pipelines': [{ name: 'full-review' }] });
 });
 
-it('fetches nothing while closed', () => {
-  renderApp(<CommandMenu open={false} onOpenChange={() => {}} onGo={() => {}} />);
-  expect(screen.queryByText('Go to Crew')).toBeNull();
+describe('CommandMenu', () => {
+  it('lists Go to entries for every screen in rail order', () => {
+    open();
+    for (const s of ['Home', 'Runs', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
+    expect(screen.getAllByText('Go to').length).toBeGreaterThan(0);
+    const labels = screen.getAllByText(/^Go to \w+$/).map((e) => e.textContent);
+    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
+  });
+  it('goes to a screen', () => {
+    const p = open();
+    fireEvent.click(screen.getByText('Go to Home'));
+    expect(p.onGo).toHaveBeenCalledWith({ tab: 'home' });
+    expect(p.onOpenChange).toHaveBeenCalledWith(false);
+  });
+  it('opens Settings', () => {
+    const p = open();
+    fireEvent.click(screen.getByText('Open Settings'));
+    expect(p.onSettings).toHaveBeenCalled();
+    expect(p.onGo).not.toHaveBeenCalled();
+  });
+  it.each([['Theme: Light', 'light'], ['Theme: Dark', 'dark'], ['Theme: Match system', 'system']])('picks %s', (label, choice) => {
+    const p = open();
+    fireEvent.click(screen.getByText(label));
+    expect(p.onTheme).toHaveBeenCalledWith(choice);
+  });
+  it('keeps recent runs and workflows', async () => {
+    const p = open();
+    fireEvent.click(await screen.findByText('Ship the thing'));
+    expect(p.onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r3' });
+    fireEvent.click(await screen.findByText('Open in Builder'));
+    expect(p.onGo).toHaveBeenLastCalledWith({ tab: 'builder', id: 'full-review' });
+  });
+  it('fetches nothing while closed', () => {
+    render(<CommandMenu open={false} {...handlers()} />);
+    expect(screen.queryByText('Go to Crew')).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
 });

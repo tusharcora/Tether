@@ -18,6 +18,13 @@ describe('connectionOf', () => {
 describe('useConnection', () => {
   const poll = (p: Partial<Poll<{ ok: boolean }>>): Poll<{ ok: boolean }> => ({ data: undefined, error: undefined, fails: 0, refresh: async () => {}, ...p });
 
+  it('is connecting until the first health poll answers', () => {
+    const { result, rerender } = renderHook((p: Poll<{ ok: boolean }>) => useConnection(p), { initialProps: poll({}) });
+    expect(result.current).toBe('connecting');
+    rerender(poll({ error: 'down', fails: 1 }));
+    expect(result.current).toBe('offline');
+  });
+
   it('is offline until the first good poll, then remembers it connected', () => {
     const { result, rerender } = renderHook((p: Poll<{ ok: boolean }>) => useConnection(p), { initialProps: poll({ error: 'down', fails: 4 }) });
     expect(result.current).toBe('offline');

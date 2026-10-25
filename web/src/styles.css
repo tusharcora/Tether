@@ -29,11 +29,6 @@ button.link { background: none; border: none; padding: 0; color: var(--accInk); 
 :where(textarea) { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12px; }
 :where(input[type='checkbox']) { width: auto; }
 
-.app { display: flex; flex-direction: column; height: 100%; }
-.topbar { display: flex; align-items: center; gap: 20px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
-.brand { font-weight: 700; letter-spacing: 0.02em; display: flex; gap: 6px; align-items: center; }
-.logo { color: var(--ink); font-size: 18px; }
-.status { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 main { flex: 1; min-height: 0; }
 .chip { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 .chip.agent { color: var(--accInk); }
@@ -178,8 +173,6 @@ main { flex: 1; min-height: 0; }
   .run-list { max-height: 180px; border-right: none; border-bottom: 1px solid var(--border); }
   .graph-view { grid-template-columns: 1fr; grid-template-rows: 60vh auto; overflow: auto; }
   .note-panel { border-left: none; border-top: 1px solid var(--border); }
-  .topbar { flex-wrap: wrap; gap: 8px 14px; }
-  .status .info-badge { display: none; }
 }
 
 /* crew */

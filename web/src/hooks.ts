@@ -116,6 +116,8 @@ export function useHashRoute(block?: (next: Route, current: Route) => boolean, o
   const expected = useRef<string | null>(null);
   /** The position of the history entry showing `current`. */
   const pos = useRef(0);
+  /** A blocked Back/Forward is being undone by stepping back to this position; browser moves landing meanwhile are not the person's choice yet. */
+  const restoring = useRef<number | null>(null);
 
   useEffect(() => {
     const at = posOf(history.state);
@@ -128,9 +130,20 @@ export function useHashRoute(block?: (next: Route, current: Route) => boolean, o
       expected.current = null;
       const at = posOf(history.state);
       const cur = current.current;
+      if (restoring.current !== null && !mine) {
+        if (at !== restoring.current) {
+          // Another move landed before the undo (a rapid second Back): aim at the entry again; never ask about it.
+          if (at !== undefined) history.go(restoring.current - at);
+          return;
+        }
+        restoring.current = null;
+      }
       if (!mine && hashFor(next) !== hashFor(cur) && guard.current.block?.(next, cur)) {
         if (at === undefined || at === pos.current) history.replaceState(stamped(at ?? ++pos.current), '', hashFor(cur));
-        else history.go(pos.current - at);
+        else {
+          restoring.current = pos.current;
+          history.go(pos.current - at);
+        }
         guard.current.onBlocked?.(next);
         return;
       }
@@ -145,6 +158,7 @@ export function useHashRoute(block?: (next: Route, current: Route) => boolean, o
 
   const go = useCallback((r: Route) => {
     const h = hashFor(r);
+    restoring.current = null;
     if (location.hash !== h) {
       expected.current = h;
       location.hash = h;
