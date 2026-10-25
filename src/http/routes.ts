@@ -4,7 +4,9 @@ import type { Engine } from '../engine.js';
 import { HttpError, readJson, reqObject, send as reply } from '../serverkit.js';
 import type { Store } from '../store.js';
 import { HttpClientError, statusFor } from './errors.js';
-import { activeEnv, setActiveEnv } from './index.js';
+import { HISTORY_LIST_MAX, listHistory } from './history.js';
+import { applyImport, previewImport, type ImportKind } from './import.js';
+import { activeEnv, runRequest, setActiveEnv } from './index.js';
 import { describeVars } from './resolve.js';
 import { deleteSecret, loadSecrets, secretKeys, setSecret } from './secrets.js';
 import * as hs from './store.js';
@@ -134,6 +136,40 @@ async function handle(c: HttpRouteCtx, req: IncomingMessage, res: ServerResponse
       deleteSecret(c.home, pr.scope, key);
       return reply(res, 200, { keys: secretKeys(c.home, pr.scope) }), true;
     }
+  }
+
+  if (p === '/api/http/send' && m === 'POST') {
+    const pr = proj();
+    const b = await body();
+    if (b.id !== undefined && typeof b.id !== 'string') throw new HttpError(400, '"id" must be a request id');
+    if (b.id === undefined && b.draft === undefined) throw new HttpError(400, 'send needs "id" or "draft"');
+    if (b.env !== undefined && b.env !== null && typeof b.env !== 'string') throw new HttpError(400, '"env" must be an environment name or null');
+    // the active environment gone from disk is a 409 with its name (as on a read), never a send without it
+    const env = b.env === undefined ? (envFor(pr)?.name ?? null) : (b.env as string | null);
+    const out = await runRequest({ home: c.home, db: c.store.raw(), workspace: pr.scope, dir: pr.dir, envDir: pr.envDir, id: b.id as string | undefined, draft: b.draft, env, source: 'ui', allowSecrets: true });
+    return reply(res, 200, out), true;
+  }
+
+  if (p === '/api/http/history' && m === 'GET') {
+    const pr = proj();
+    const raw = Number(url.searchParams.get('limit') || 20);
+    // never let NaN or Infinity reach SQL LIMIT
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(1, Math.trunc(raw)), HISTORY_LIST_MAX) : 20;
+    return reply(res, 200, listHistory(c.store.raw(), { workspace: pr.scope, request: url.searchParams.get('request') || undefined, limit })), true;
+  }
+
+  if ((p === '/api/http/import' || p === '/api/http/import/apply') && m === 'POST') {
+    const pr = proj();
+    const b = await body();
+    if (b.kind !== 'curl' && b.kind !== 'openapi' && b.kind !== 'postman') throw new HttpError(400, '"kind" must be curl, openapi or postman');
+    if (typeof b.text !== 'string' || !b.text.trim()) throw new HttpError(400, '"text" is required');
+    if (b.into !== undefined && typeof b.into !== 'string') throw new HttpError(400, '"into" must be a collection path');
+    // the preview is always recomputed here: apply never trusts a preview sent by the client
+    const preview = previewImport(b.kind as ImportKind, b.text, { into: (b.into as string | undefined) ?? '', exists: (id) => hs.requestExists(pr.dir, id) });
+    if (p === '/api/http/import') return reply(res, 200, preview), true;
+    if (b.confirm !== true) throw new HttpError(400, 'add "confirm": true to write the files');
+    if (preview.error) throw new HttpError(400, preview.error);
+    return reply(res, 200, { created: applyImport(pr.dir, preview) }), true;
   }
 
   return false;
