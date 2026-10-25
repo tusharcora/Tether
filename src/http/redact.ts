@@ -58,6 +58,26 @@ export function maskHeaders(h: [string, string][]): [string, string][] {
   return h.map(([k, v]) => [k, maskValue(k, v)]);
 }
 
+/** The send cut the body at 5 MB: a secret the cut split in two leaves its start at the end; drop that start. */
+function dropPartialSecret(text: string, secrets: Map<string, string>): string {
+  let keep = text.length;
+  for (const value of secrets.values()) {
+    if (!value) continue;
+    for (const form of new Set([value, encodeURIComponent(value), JSON.stringify(value).slice(1, -1)])) {
+      for (let n = Math.min(form.length - 1, text.length); n > 0; n--) {
+        if (text.endsWith(form.slice(0, n))) {
+          keep = Math.min(keep, text.length - n);
+          break;
+        }
+      }
+    }
+  }
+  return text.slice(0, keep);
+}
+
+/** A body check's actual value: the start of the body, taken from the redacted body so a cut never splits a secret. */
+const BODY_ACTUAL_MAX = 200;
+
 const cutAt = (s: string, cut: boolean) => (cut && s.length > HISTORY_BODY_MAX ? { text: s.slice(0, HISTORY_BODY_MAX), cut: true } : { text: s, cut: false });
 
 /** The exchange as it may leave the engine. `cut` (default true) cuts bodies at 64 KB for storage. */
@@ -69,7 +89,8 @@ export function redactExchange(req: ResolvedRequest, res: SendResult, checks: Ch
   const u = (s: string) => redactText(r(s), lower);
   const hdrs = (h: [string, string][]) => maskHeaders(h.map(([k, v]) => [r(k), r(v)]));
   const reqBody = req.body !== undefined ? cutAt(redactBody(req.body, secrets), cut) : undefined;
-  const resBody = cutAt(redactBody(res.body, secrets), cut);
+  const resFull = redactBody(res.truncated ? dropPartialSecret(res.body, secrets) : res.body, secrets);
+  const resBody = cutAt(resFull, cut);
   return {
     request: { method: req.method, url: u(req.url), headers: hdrs(req.headers), ...(reqBody ? { body: reqBody.text, ...(reqBody.cut ? { bodyTruncated: true } : {}) } : {}) },
     response: {
@@ -83,6 +104,8 @@ export function redactExchange(req: ResolvedRequest, res: SendResult, checks: Ch
       ...(res.error ? { error: { kind: res.error.kind, message: u(res.error.message) } } : {}),
     },
     checks: checks.map((c) => {
+      // the engine's body actual was cut before redaction (a secret across the cut would leave its start): recompute it
+      if (c.check.kind === 'body') return { ...c, actual: resFull.slice(0, BODY_ACTUAL_MAX) };
       const actual = c.actual === undefined ? null : redactValue(c.actual, secrets);
       // a header check's actual is the raw header value: a credential header is masked here as in the header list
       return { ...c, actual: c.check.kind === 'header' && typeof actual === 'string' ? maskValue(c.check.name, actual) : actual };

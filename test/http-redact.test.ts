@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { evaluate } from '../src/http/assert.js';
 import { maskHeaders, redactExchange, redactText } from '../src/http/redact.js';
 import type { SendResult } from '../src/http/types.js';
 
@@ -38,7 +39,8 @@ describe('redaction', () => {
     expect(d.response.headers).toEqual([['set-cookie', '•••• (18 chars)'], ['x-echo', '{{secret:tok}}']]);
     expect(d.response.body.length).toBe(65536);
     expect(d.response.bodyTruncated).toBe(true);
-    expect(d.checks[0]!.actual).toBe('{{secret:tok}}');
+    // a body check's actual is the start of the redacted response body
+    expect(d.checks[0]!.actual).toBe('{{secret:tok}}' + 'y'.repeat(186));
     const full = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res({ body: 'y'.repeat(70_000) }), [], secrets, { cut: false });
     expect(full.response.body.length).toBe(70_000);
   });
@@ -88,5 +90,30 @@ describe('redaction', () => {
     );
     expect(JSON.stringify(d).toLowerCase()).not.toContain('leakyhost');
     expect(d.response.error?.message).toBe('getaddrinfo ENOTFOUND {{secret:host}}.invalid');
+  });
+
+  it('a body check actual never keeps the prefix of a secret that straddles the 200-character cut', () => {
+    const secret = 'SUPERSECRETVALUE';
+    const s = new Map([['tok', secret]]);
+    const r = res({ body: 'x'.repeat(190) + secret + ' tail' });
+    const checks = evaluate([{ kind: 'body', op: 'contains', value: 'nope' }], r);
+    const d = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, r, checks, s);
+    const actual = d.checks[0]!.actual as string;
+    expect(actual).not.toContain('SUPERSECRE');
+    expect(actual.length).toBeLessThanOrEqual(200);
+    expect(actual.startsWith('x'.repeat(190) + '{{secret:')).toBe(true);
+  });
+
+  it('drops a trailing partial secret left at the 5 MB truncation cut', () => {
+    const secret = 'SUPERSECRETVALUE';
+    const s = new Map([['tok', secret]]);
+    const r = res({ body: 'abc ' + secret.slice(0, 9), truncated: true });
+    const checks = evaluate([{ kind: 'body', op: 'contains', value: 'nope' }], r);
+    const d = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, r, checks, s);
+    expect(d.response.body).toBe('abc ');
+    expect(JSON.stringify(d)).not.toContain('SUPERSEC');
+    // a body that was not cut keeps its text as it is
+    const whole = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res({ body: 'abc SUPER' }), [], s);
+    expect(whole.response.body).toBe('abc SUPER');
   });
 });
