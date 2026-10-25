@@ -18,7 +18,9 @@ const tryJson = (s: string): unknown => {
     return undefined;
   }
 };
-const isCredentialHeader = (key: string) => MASKED_HEADERS.has(key.toLowerCase());
+/** Header names that usually carry a credential, beyond the masked five (PRIVATE-TOKEN, X-Client-Secret, X-Session-Id…). */
+const CREDENTIAL_NAME = /token|secret|api[-_]?key|auth|session|passw/i;
+const isCredentialHeader = (key: string) => MASKED_HEADERS.has(key.toLowerCase()) || CREDENTIAL_NAME.test(key);
 /** The {{names}} a text refers to. */
 const varRefs = (text: string): string[] => [...text.matchAll(VAR_IN_TEXT)].map((m) => m[1]!);
 

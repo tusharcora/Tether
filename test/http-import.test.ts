@@ -39,6 +39,24 @@ describe('cURL import', () => {
     expect(JSON.stringify(bearer)).not.toContain('abc.def');
   });
 
+  it('any header whose name looks like a credential (token, secret, api key, auth, session, password) is scrubbed', () => {
+    const p = previewImport('curl', `curl https://gitlab.example/api -H 'PRIVATE-TOKEN: glpat-xyz' -H 'x-client-secret: cs1' -H 'Api_Key: ak1' -H 'X-Session-Id: ss1' -H 'X-Password: pw1' -H 'X-Auth-Ref: {{ref}}' -H 'Accept: application/json'`);
+    expect(p.create[0]!.file.headers).toEqual([
+      { key: 'PRIVATE-TOKEN', value: '{{private_token}}', on: true },
+      { key: 'x-client-secret', value: '{{x_client_secret}}', on: true },
+      { key: 'Api_Key', value: '{{api_key}}', on: true },
+      { key: 'X-Session-Id', value: '{{x_session_id}}', on: true },
+      { key: 'X-Password', value: '{{x_password}}', on: true },
+      { key: 'X-Auth-Ref', value: '{{ref}}', on: true },
+      { key: 'Accept', value: 'application/json', on: true },
+    ]);
+    expect(p.warnings.join('\n')).toMatch(/aorch http secret set private_token/);
+    const dir = tmp('proj-');
+    expect(applyImport(dir, p)).toHaveLength(1);
+    const all = writtenFiles(dir).join('\n');
+    for (const literal of ['glpat-xyz', 'cs1', 'ak1', 'ss1', 'pw1']) expect(all).not.toContain(literal);
+  });
+
   it('Cookie and Proxy-Authorization literals become variables too', () => {
     const p = previewImport('curl', `curl https://api.example/me -H 'Cookie: sid=s3cr3t' -H 'Proxy-Authorization: Basic cHJveHk='`);
     expect(JSON.stringify(p.create[0]!.file)).not.toMatch(/s3cr3t|cHJveHk=/);
