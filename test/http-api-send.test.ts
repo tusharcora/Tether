@@ -66,6 +66,14 @@ describe('/api/http send, history, import', () => {
     expect((await t.api('POST', '/api/http/send', { id: 'nope/none' })).status).toBe(404);
   });
 
+  it('a draft that is not an object is a 400, not a 500', async () => {
+    for (const draft of ['x', [], 42, null]) {
+      const r = await t.api('POST', '/api/http/send', { draft });
+      expect(r.status, JSON.stringify(draft)).toBe(400);
+      expect(typeof r.json.error).toBe('string');
+    }
+  });
+
   it('lists history, newest first, filtered by request, limit capped at 100', async () => {
     const h = await t.api('GET', `/api/http/history?request=${enc('echo/all')}&limit=500`);
     expect(h.status).toBe(200);
@@ -80,6 +88,15 @@ describe('/api/http send, history, import', () => {
       expect(Array.isArray(h.json), q).toBe(true);
     }
     expect((await t.api('GET', '/api/http/history?limit=1')).json).toHaveLength(1);
+  });
+
+  it('with both id and draft, the draft is what is sent and history keeps the id', async () => {
+    const r = await t.api('POST', '/api/http/send', { id: 'echo/all', draft: { name: 'dirty', method: 'PUT', url: '{{base}}/dirty' } });
+    expect(r.status).toBe(200);
+    const echoed = JSON.parse(r.json.result.body);
+    expect(echoed).toMatchObject({ method: 'PUT', url: '/dirty' });
+    const h = await t.api('GET', `/api/http/history?request=${enc('echo/all')}&limit=1`);
+    expect(h.json[0]).toMatchObject({ id: r.json.historyId, request: 'echo/all', method: 'PUT' });
   });
 
   it('previews an import, refuses to apply without confirm, then applies', async () => {
@@ -104,38 +121,39 @@ describe('/api/http send, history, import', () => {
 
   it('never returns the secret value from any route', async () => {
     const curl = `curl -X POST ${echoBase}/z -H 'Authorization: Bearer ${SECRET}' -H 'X-Api-Key: ${SECRET}'`;
-    const calls: [string, string, unknown?][] = [
-      ['GET', '/api/http/tree'],
-      ['POST', '/api/http/requests', { collection: 'leak', file: { name: 'Leak', method: 'GET', url: '{{base}}/l?t={{tok}}', headers: [{ key: 'Authorization', value: 'Bearer {{tok}}' }] } }],
-      ['GET', `/api/http/requests/${enc('echo/all')}`],
-      ['GET', `/api/http/requests/${enc('leak/leak')}`],
-      ['PUT', `/api/http/requests/${enc('leak/leak')}`, { name: 'Leak 2', method: 'GET', url: '{{base}}/l?t={{tok}}' }],
-      ['POST', `/api/http/requests/${enc('leak/leak')}/move`, { to: 'leak/moved' }],
-      ['DELETE', `/api/http/requests/${enc('leak/moved')}`],
-      ['PUT', '/api/http/collections/echo', { vars: { ctok: { secret: 'aorch_token' } } }],
-      ['GET', '/api/http/environments/local'],
-      ['PUT', '/api/http/environments/local', { vars: { base: echoBase, tok: { secret: 'aorch_token' } } }],
-      ['PUT', '/api/http/environments/throwaway', { vars: { t: { secret: 'aorch_token' } } }],
-      ['DELETE', '/api/http/environments/throwaway'],
-      ['PUT', '/api/http/active-env', { name: 'local' }],
-      ['GET', '/api/http/secrets'],
-      ['PUT', '/api/http/secrets/aorch_token', { value: SECRET }],
-      ['PUT', '/api/http/secrets/spare', { value: SECRET }],
-      ['DELETE', '/api/http/secrets/spare'],
-      ['POST', '/api/http/send', { id: 'echo/all' }],
-      ['POST', '/api/http/send', { draft: { name: 'd', method: 'GET', url: `{{base}}/p?q={{tok}}` } }],
-      ['POST', '/api/http/send', { id: 'echo/all', draft: { name: 'd', method: 'POST', url: '{{base}}/e/{{tok}}', body: { kind: 'text', value: '{{tok}}' } } }],
-      ['POST', '/api/http/send', { draft: { name: 'd', method: 'GET', url: 'http://{{tok}}.invalid/' } }],
-      ['GET', '/api/http/history?limit=100'],
-      ['GET', `/api/http/history?request=${enc('echo/all')}&limit=100`],
-      ['POST', '/api/http/import', { kind: 'curl', text: curl, into: 'leakimp' }],
-      ['POST', '/api/http/import/apply', { kind: 'curl', text: curl, into: 'leakimp', confirm: true }],
-      ['GET', `/api/http/requests/${enc('leakimp/post-z')}`],
-      ['GET', '/api/http/tree'],
+    // every call has its exact status, so a broken route or a broken chain (slug, move, import id) fails here
+    const calls: [number, string, string, unknown?][] = [
+      [200, 'GET', '/api/http/tree'],
+      [201, 'POST', '/api/http/requests', { collection: 'leak', file: { name: 'Leak', method: 'GET', url: '{{base}}/l?t={{tok}}', headers: [{ key: 'Authorization', value: 'Bearer {{tok}}' }] } }],
+      [200, 'GET', `/api/http/requests/${enc('echo/all')}`],
+      [200, 'GET', `/api/http/requests/${enc('leak/leak')}`],
+      [200, 'PUT', `/api/http/requests/${enc('leak/leak')}`, { name: 'Leak 2', method: 'GET', url: '{{base}}/l?t={{tok}}' }],
+      [200, 'POST', `/api/http/requests/${enc('leak/leak')}/move`, { to: 'leak/moved' }],
+      [200, 'DELETE', `/api/http/requests/${enc('leak/moved')}`],
+      [200, 'PUT', '/api/http/collections/echo', { vars: { cv: 'x-{{tok}}' } }],
+      [200, 'GET', '/api/http/environments/local'],
+      [200, 'PUT', '/api/http/environments/local', { vars: { base: echoBase, tok: { secret: 'aorch_token' } } }],
+      [200, 'PUT', '/api/http/environments/throwaway', { vars: { t: { secret: 'aorch_token' } } }],
+      [200, 'DELETE', '/api/http/environments/throwaway'],
+      [200, 'PUT', '/api/http/active-env', { name: 'local' }],
+      [200, 'GET', '/api/http/secrets'],
+      [200, 'PUT', '/api/http/secrets/aorch_token', { value: SECRET }],
+      [200, 'PUT', '/api/http/secrets/spare', { value: SECRET }],
+      [200, 'DELETE', '/api/http/secrets/spare'],
+      [200, 'POST', '/api/http/send', { id: 'echo/all' }],
+      [200, 'POST', '/api/http/send', { draft: { name: 'd', method: 'GET', url: `{{base}}/p?q={{tok}}` } }],
+      [200, 'POST', '/api/http/send', { id: 'echo/all', draft: { name: 'd', method: 'POST', url: '{{base}}/e/{{tok}}', body: { kind: 'text', value: '{{tok}}' } } }],
+      [200, 'POST', '/api/http/send', { draft: { name: 'd', method: 'GET', url: 'http://{{tok}}.invalid/' } }],
+      [200, 'GET', '/api/http/history?limit=100'],
+      [200, 'GET', `/api/http/history?request=${enc('echo/all')}&limit=100`],
+      [200, 'POST', '/api/http/import', { kind: 'curl', text: curl, into: 'leakimp' }],
+      [200, 'POST', '/api/http/import/apply', { kind: 'curl', text: curl, into: 'leakimp', confirm: true }],
+      [200, 'GET', `/api/http/requests/${enc('leakimp/post-z')}`],
+      [200, 'GET', '/api/http/tree'],
     ];
-    for (const [m, path, body] of calls) {
+    for (const [status, m, path, body] of calls) {
       const r = await t.api(m, path, body);
-      expect(r.status, `${m} ${path}`).toBeLessThan(500);
+      expect(r.status, `${m} ${path}: ${r.text.slice(0, 200)}`).toBe(status);
       expect(r.text, `${m} ${path}`).not.toContain(SECRET);
       expect(r.text, `${m} ${path}`).not.toContain(encodeURIComponent(SECRET));
     }
