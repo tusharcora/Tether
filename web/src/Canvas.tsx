@@ -1,3 +1,4 @@
+import { Maximize2, Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
@@ -5,6 +6,7 @@ import { crewFor, useCrew } from './crewStore';
 import { Face, moodFor } from './Face';
 import { StatusChip, toneFor } from './ui/studio/StatusChip';
 import { cn } from './ui/cn';
+import './canvas.css';
 
 export const NODE_W = 212;
 export const NODE_H = 92;
@@ -16,6 +18,8 @@ export interface CanvasProps {
   statuses?: Record<string, NodeState>;
   issueNodes?: Set<string>;
   editable?: boolean;
+  /** A short how-to line in the bottom-left corner while the canvas has steps. */
+  hint?: string;
   onSelect?: (id?: string) => void;
   onMove?: (id: string, x: number, y: number) => void;
   onConnect?: (from: string, to: string) => void;
@@ -215,7 +219,7 @@ export function Canvas(props: CanvasProps) {
               const x1 = n.x + NODE_W / 2, y1 = n.y + NODE_H, x2 = f.x + NODE_W / 2, y2 = f.y + NODE_H;
               const loops = props.statuses?.[n.id]?.loops ?? 0;
               return (
-                <g className="loop" key={n.id}>
+                <g className={cn('loop', { live: loops > 0 && props.statuses?.[n.fixNode!]?.status === 'running' })} key={n.id}>
                   <path d={`M ${x1} ${y1} C ${x1} ${y1 + depth}, ${x2} ${y2 + depth}, ${x2} ${y2}`} markerEnd="url(#arrow)" />
                   <text x={(x1 + x2) / 2} y={Math.max(y1, y2) + depth * 0.75 + 4} textAnchor="middle">
                     {props.statuses ? `fix loop ${loops}/${n.maxLoops ?? 2}` : `fix loop ≤${n.maxLoops ?? 2}`}
@@ -281,10 +285,17 @@ export function Canvas(props: CanvasProps) {
       </div>
 
       <div className="zoom">
-        <button onClick={() => zoom(1.2)} title="zoom in">+</button>
-        <button onClick={() => zoom(1 / 1.2)} title="zoom out">−</button>
-        <button onClick={fit} title="fit to view">⤢</button>
+        <button type="button" aria-label="Zoom in" onClick={() => zoom(1.2)}>
+          <Plus size={15} aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Zoom out" onClick={() => zoom(1 / 1.2)}>
+          <Minus size={15} aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Fit to view" onClick={fit}>
+          <Maximize2 size={14} aria-hidden="true" />
+        </button>
       </div>
+      {props.hint && props.nodes.length ? <div className="canvas-hint">{props.hint}</div> : null}
       {props.nodes.length === 0 ? <div className="empty-hint">Add a step from the palette to start building a pipeline.</div> : null}
     </div>
   );

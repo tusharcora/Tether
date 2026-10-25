@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Canvas } from './Canvas';
+import { cssRule, cssText } from './test/css';
 import { makeRun } from './test/fixtures';
 
 const run = makeRun();
@@ -78,5 +79,39 @@ describe('Canvas', () => {
     expect(container.querySelector('[data-id="code"] .sl-chip.t-live')!.textContent).toBe('running');
     rerender(<Canvas nodes={nodes} edges={edges} />);
     expect(container.querySelector('.sl-chip')).toBeNull();
+  });
+
+  it('names the zoom buttons', () => {
+    const { getByRole } = render(<Canvas nodes={nodes} edges={edges} />);
+    for (const name of ['Zoom in', 'Zoom out', 'Fit to view']) expect(getByRole('button', { name })).toBeTruthy();
+  });
+
+  it('moves a fix loop only while its fix step re-runs', () => {
+    const st = (status: string, loops = 0) => ({ status, attempts: 1, costUsd: 0, loops }) as never;
+    const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} />);
+    const loop = () => container.querySelector('.loop')!;
+    expect(loop().classList.contains('live')).toBe(false);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('running'), gate: st('error', 1) }} />);
+    expect(loop().classList.contains('live')).toBe(true);
+    rerender(<Canvas nodes={nodes} edges={edges} statuses={{ plan: st('done'), code: st('done'), gate: st('done', 1) }} />);
+    expect(loop().classList.contains('live')).toBe(false);
+  });
+
+  it('shows a hint over a canvas with steps and none over an empty one', () => {
+    const { container, rerender } = render(<Canvas editable nodes={nodes} edges={edges} hint="Delete removes" />);
+    expect(container.querySelector('.canvas-hint')!.textContent).toBe('Delete removes');
+    rerender(<Canvas editable nodes={[]} edges={[]} hint="Delete removes" />);
+    expect(container.querySelector('.canvas-hint')).toBeNull();
+  });
+
+  it('is styled from tokens in its own stylesheet, and only live parts loop', () => {
+    const css = cssText('canvas.css');
+    expect(css.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+    expect(cssRule('canvas.css', '.edge')).toContain('stroke: var(--edge)');
+    expect(cssRule('canvas.css', '.loop path')).toContain('stroke: var(--warn)');
+    expect(cssRule('canvas.css', '.loop path')).not.toContain('animation');
+    expect(cssRule('canvas.css', '.loop.live path')).toContain('animation');
+    expect(cssRule('canvas.css', '.node.selected')).toContain('box-shadow: 0 0 0 3px var(--accBg)');
+    expect(cssText('styles.css')).not.toMatch(/\.canvas|\.node-head|\.port\b|\.zoom\b|\.empty-hint/);
   });
 });

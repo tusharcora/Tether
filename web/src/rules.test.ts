@@ -182,7 +182,11 @@ describe('parity pass on styles.css', () => {
     expect(styles).not.toMatch(/(^|[;{\s])color:\s*var\(--accent\)/m);
   });
   it('draws the canvas dot grid with a mask moved by CSS variables, not a gradient fill', () => {
-    expect(rule('.canvas')).not.toMatch(/gradient/);
-    expect(styles).toMatch(/\.canvas::before \{[^}]*mask-position: var\(--grid-x, 0\) var\(--grid-y, 0\)/);
+    // The canvas rules moved to canvas.css (Plan B Task 1).
+    const canvas = read('canvas.css');
+    const i = canvas.indexOf('.canvas {');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(canvas.slice(i, canvas.indexOf('}', i))).not.toMatch(/gradient/);
+    expect(canvas).toMatch(/\.canvas::before \{[^}]*mask-position: var\(--grid-x, 0\) var\(--grid-y, 0\)/);
   });
 });

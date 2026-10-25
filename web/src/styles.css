@@ -51,67 +51,12 @@ main { flex: 1; min-height: 0; }
 .form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .form input, .form select { width: 100%; }
 
-.canvas { position: relative; overflow: hidden; outline: none; touch-action: none; user-select: none; cursor: grab; background-color: var(--bg); }
-/* The dot grid: a solid --grid fill cut into dots by a mask (no gradient fill). Canvas.tsx moves it with pan and zoom. */
-.canvas::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid);
-  -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px);
-  -webkit-mask-size: var(--grid-size, 24px) var(--grid-size, 24px); mask-size: var(--grid-size, 24px) var(--grid-size, 24px);
-  -webkit-mask-position: var(--grid-x, 0) var(--grid-y, 0); mask-position: var(--grid-x, 0) var(--grid-y, 0);
-}
-.canvas:active { cursor: grabbing; }
-.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.edges { position: absolute; left: 0; top: 0; pointer-events: none; }
-.edge { fill: none; stroke: var(--queued); stroke-width: 2; }
-.edge.sel { stroke: var(--accent); stroke-width: 3; }
-.edge.preview { stroke: var(--accent); stroke-dasharray: 4 4; }
-.edge.flow { stroke: var(--run); stroke-dasharray: 6 6; animation: flow 0.8s linear infinite; }
-.edge.done { stroke: var(--ok); }
-.edge.next { stroke-dasharray: 4 4; }
-.edge-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
-.arrowhead { fill: var(--queued); }
-.loop path { fill: none; stroke: var(--wait); stroke-width: 1.6; stroke-dasharray: 5 4; }
-.loop text { fill: var(--wait); font-size: 11px; font-family: var(--mono); paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round; }
-@keyframes flow { to { stroke-dashoffset: -12; } }
-
-.node {
-  position: absolute; background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--queued);
-  border-radius: 8px; box-shadow: var(--shadow); overflow: visible;
-}
-.node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent), var(--shadow); }
-.node.issue { border-color: var(--err); }
-.node.s-done { border-left-color: var(--done); }
-.node.s-running { border-left-color: var(--run); animation: pulse 1.4s ease-in-out infinite; }
-.node.s-awaiting { border-left-color: var(--wait); }
-.node.s-error { border-left-color: var(--err); }
-.node.s-skipped { border-left-color: var(--skip); opacity: 0.6; }
-.node.s-idle.k-gate { border-left-color: var(--wait); }
-.node.s-idle.k-approval { border-left-color: var(--done); }
-.node.s-idle.k-agent { border-left-color: var(--ink); }
-@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--run) 30%, transparent), var(--shadow); } }
-.node-head { display: flex; align-items: center; gap: 6px; padding: 7px 8px 3px; cursor: move; }
-.node-title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-head .face { border-radius: 6px; flex: none; }
-.node-body { padding: 0 10px 6px; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
-.meta { display: flex; gap: 4px; flex-wrap: wrap; }
-.flags { display: flex; gap: 6px; color: var(--muted); font-size: 10px; font-family: var(--mono); }
-.flags span { border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
-.cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
-.run-line { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
-.port { position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--queued); }
-.port.in { left: -8px; }
-.port.out { right: -8px; cursor: crosshair; }
-.port:hover { border-color: var(--accent); background: var(--accent); }
-.zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
-.zoom button { width: 30px; padding: 3px 0; }
-.empty-hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
-
-
 /* ---------- runs ---------- */
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--queued); flex: none; }
 .dot.s-done { background: var(--done); } .dot.s-running { background: var(--run); }
 .dot.s-paused, .dot.s-awaiting { background: var(--wait); }
 .dot.s-error { background: var(--err); } .dot.s-stopped { background: var(--skip); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--run) 30%, transparent), var(--shadow); } }
 .dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
 /* Tinted fill with the status colour as text (no white-on-colour). */
 .badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 6px; margin-left: 6px; vertical-align: middle; background: var(--s2); color: var(--mut); }
