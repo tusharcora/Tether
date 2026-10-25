@@ -39,6 +39,24 @@ export function checkPath(p: string, kind: 'request' | 'collection'): string[] {
   return segs;
 }
 
+/**
+ * `rel` (a path under .aorch/http) is a file the store itself reads and writes: a request (`<id>.req.json`), a
+ * collection file (`[<path>/]_collection.json`) or an environment (`environments/<name>.json`). Anything else (other
+ * names, `..`, absolute paths, too deep) is false. Used to decide what a workspace export carries and an import writes.
+ */
+export function isStorePath(rel: string): boolean {
+  const env = rel.startsWith(`${ENV_DIR}/`) ? rel.slice(ENV_DIR.length + 1) : undefined;
+  if (env !== undefined) return env.endsWith('.json') && SEG_RE.test(env.slice(0, -5));
+  try {
+    if (rel === COLL_FILE) return true;
+    if (rel.endsWith(`/${COLL_FILE}`)) return checkPath(rel.slice(0, -COLL_FILE.length - 1), 'collection').length > 0;
+    if (rel.endsWith(REQ_EXT)) return checkPath(rel.slice(0, -REQ_EXT.length), 'request').length > 0;
+  } catch {
+    /* fails the store's own path rules */
+  }
+  return false;
+}
+
 /** The absolute path for `rel` under .aorch/http, refusing anything that would leave it through a symlink. */
 export function safeHttpFile(dir: string, rel: string): string {
   const root = httpRoot(dir);

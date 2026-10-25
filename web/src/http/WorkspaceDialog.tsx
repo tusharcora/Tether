@@ -56,7 +56,11 @@ export function WorkspaceDialog(p: { open: boolean; onOpenChange: (o: boolean) =
       setError('that file is not JSON');
     }
   };
-  const n = plan?.overwrite.length ?? 0;
+  const nFiles = plan?.overwrite.length ?? 0;
+  const nSecrets = plan?.overwriteSecrets.length ?? 0;
+  // a secret the target workspace already holds is replaced too: it counts as an overwrite (key names only, never values)
+  const n = nFiles + nSecrets;
+  const replaced = [nFiles && plural(nFiles, 'file'), nSecrets && plural(nSecrets, 'secret')].filter(Boolean).join(' and ');
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       {p.open ? (
@@ -96,6 +100,11 @@ export function WorkspaceDialog(p: { open: boolean; onOpenChange: (o: boolean) =
                           {f}
                         </li>
                       ))}
+                      {plan.overwriteSecrets.map((k) => (
+                        <li key={`secret:${k}`} className="mono">
+                          {`secret ${k}`}
+                        </li>
+                      ))}
                     </ul>
                   </>
                 ) : null}
@@ -108,7 +117,7 @@ export function WorkspaceDialog(p: { open: boolean; onOpenChange: (o: boolean) =
               </Button>
               {plan ? (
                 <Button variant={n ? 'danger' : 'primary'} onClick={apply} loading={busy}>
-                  {n ? `Import and overwrite ${plural(n, 'file')}` : 'Import'}
+                  {n ? `Import and overwrite ${replaced}` : 'Import'}
                 </Button>
               ) : null}
             </div>

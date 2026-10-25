@@ -1194,15 +1194,19 @@ async function main() {
         let plan: ReturnType<typeof planBundleImport>;
         try {
           bundle = parseBundle(JSON.parse(readFileSync(file, 'utf8')));
-          plan = planBundleImport(bundle, dir);
+          plan = planBundleImport(bundle, dir, cfg.home);
         } catch (e) {
           return stop(`cannot import ${file}: ${(e as Error).message}`, 2);
         }
         console.log(`${bold('import into')} ${dir}`);
         for (const f of plan.create) console.log(`  ${green('+')} ${f}`);
         for (const f of plan.overwrite) console.log(`  ${amber('~')} ${f} ${dim('(overwritten)')}`);
+        // key names only: a value is never printed
+        for (const k of plan.overwriteSecrets) console.log(`  ${amber('~')} secret ${k} ${dim('(overwritten)')}`);
         if (plan.secrets.length) console.log(`  ${amber('!')} ${plan.secrets.length} secret(s) for this workspace: ${plan.secrets.join(', ')}`);
-        const go = v.yes || (process.stdin.isTTY && (await confirm(plan.overwrite.length ? `overwrite ${plan.overwrite.length} file(s) in ${dir}?` : `import into ${dir}?`, { defaultNo: plan.overwrite.length > 0 })));
+        const replaced = plan.overwrite.length + plan.overwriteSecrets.length;
+        const what = [plan.overwrite.length && `${plan.overwrite.length} file(s)`, plan.overwriteSecrets.length && `${plan.overwriteSecrets.length} secret(s)`].filter(Boolean).join(' and ');
+        const go = v.yes || (process.stdin.isTTY && (await confirm(replaced ? `overwrite ${what} in ${dir}?` : `import into ${dir}?`, { defaultNo: replaced > 0 })));
         if (!go) return stop('nothing written; run again with --yes to import', 2);
         try {
           const r = applyBundle(cfg.home, bundle, dir);

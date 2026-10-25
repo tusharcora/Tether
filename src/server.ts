@@ -12,7 +12,7 @@ import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { getWorkspace, listWorkspaces } from './workspace.js';
-import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
+import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -116,13 +116,15 @@ function evolveError(e: unknown, home: string): HttpError {
 const MAX_ANSWERS = 20;
 /** Map an engine refusal on a team route to an HTTP status by its code. Anything the engine did not mean to refuse is a 500. */
 /**
- * Workspace export/import failures: a refused path or a missing folder is the caller's (400), a secrets file that is too
- * open keeps its 500 with the chmod fix, and a file-system error (EACCES, ENOSPC…) is ours (500).
+ * Workspace export/import failures: a bad bundle or target (BundleError) is the caller's (400); a store refusal keeps
+ * its status (400/404/409/413, and 500 with the chmod fix for a secrets file that is too open); anything else, from a
+ * file-system error to a bug, is ours: 500 with the message.
  */
-function bundleError(e: unknown): HttpError {
+export function bundleError(e: unknown): HttpError {
+  if (e instanceof HttpError) return e;
+  if (e instanceof BundleError) return new HttpError(400, e.message);
   if (e instanceof HttpClientError) return new HttpError(statusFor(e.code), e.message);
-  const msg = e instanceof Error ? e.message : String(e);
-  return new HttpError(typeof (e as NodeJS.ErrnoException).code === 'string' ? 500 : 400, msg);
+  return new HttpError(500, e instanceof Error ? e.message : String(e));
 }
 
 function teamError(e: unknown): HttpError {
@@ -547,11 +549,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       try {
         bundle = parseBundle(b.bundle);
       } catch (e) {
-        throw new HttpError(400, (e as Error).message);
+        throw bundleError(e);
       }
       if (typeof b.into !== 'string' || !isAbsolute(b.into)) throw new HttpError(400, '"into" must be an absolute folder path');
       try {
-        if (b.confirm !== true) return send(res, 200, planBundleImport(bundle, b.into)), true;
+        if (b.confirm !== true) return send(res, 200, planBundleImport(bundle, b.into, cfg.home)), true;
         const r = applyBundle(cfg.home, bundle, b.into);
         return send(res, 200, { workspace: r.workspace.id, written: r.written }), true;
       } catch (e) {

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadSecrets, setSecret } from '../src/http/secrets.js';
@@ -47,16 +47,16 @@ describe('workspace bundle', () => {
     writeFileSync(join(h, 'runs/broken.req.json'), '{ not json');
     writeFileSync(join(h, 'notes.txt'), 'hello');
     writeFileSync(join(h, 'runs/list.req.json.tmp'), '{}');
-    writeFileSync(join(h, 'big.json'), JSON.stringify({ x: 'y'.repeat(1_100_000) }));
+    writeFileSync(join(h, 'big.req.json'), JSON.stringify({ x: 'y'.repeat(1_100_000) }));
     symlinkSync(join(dir, 'README.md'), join(h, 'link.json'));
     const { bundle, skipped } = exportWorkspace(home, w);
     expect(Object.keys(bundle.http.files).sort()).toEqual(['environments/local.json', 'runs/list.req.json']);
     expect(skipped).toEqual([
-      { path: '.aorch/http/big.json', reason: 'larger than 1 MB' },
+      { path: '.aorch/http/big.req.json', reason: 'larger than 1 MB' },
       { path: '.aorch/http/link.json', reason: 'a symlink (not followed)' },
-      { path: '.aorch/http/notes.txt', reason: 'not a .json file with an allowed name' },
+      { path: '.aorch/http/notes.txt', reason: 'not a request, collection or environment file' },
       { path: '.aorch/http/runs/broken.req.json', reason: 'not valid JSON' },
-      { path: '.aorch/http/runs/list.req.json.tmp', reason: 'not a .json file with an allowed name' },
+      { path: '.aorch/http/runs/list.req.json.tmp', reason: 'not a request, collection or environment file' },
     ]);
   });
 
@@ -88,14 +88,14 @@ describe('workspace bundle', () => {
   });
 
   it('refuses bundles with paths that leave .aorch/http or fail the store rules, and junk', () => {
-    for (const p of ['../../evil.json', '../evil', '/etc/evil.json', 'a/b.sh', 'A/b.json', '.hidden.json', 'a/../b.json', 'a\\b.json', 'x/_y.json', 'a/b/c/d/e/f.json'])
+    for (const p of ['../../evil.json', '../evil', '/etc/evil.json', 'a/b.sh', 'A/b.json', '.hidden.json', 'a/../b.json', 'a\\b.json', 'x/_y.json', 'a/b/c/d/e/f.json', 'a/b/c/d/e/f.req.json', 'environments/a/b.json', 'environments.req.json', 'notes.json', 'environments/_collection.json'])
       expect(() => parseBundle(emptyBundle({ [p]: {} })), p).toThrow(/refusing a file path/);
     expect(parseBundle(emptyBundle({ 'shop/_collection.json': {}, 'environments/local.json': {}, 'a/b/c/d/e.req.json': {} })).http.files).toHaveProperty(['shop/_collection.json']);
     expect(() => parseBundle({ v: 2 })).toThrow('not an aorch workspace export (v1)');
     expect(() => parseBundle(null)).toThrow('not an aorch workspace export (v1)');
     expect(() => parseBundle({ ...emptyBundle(), secrets: { '1bad': 'x' } })).toThrow(/secret key/);
     expect(() => parseBundle({ ...emptyBundle(), secrets: { ok: 7 } })).toThrow(/secret key/);
-    expect(() => parseBundle(emptyBundle({ 'big.json': { x: 'y'.repeat(1_100_000) } }))).toThrow(/big\.json is larger than 1 MB/);
+    expect(() => parseBundle(emptyBundle({ 'big.req.json': { x: 'y'.repeat(1_100_000) } }))).toThrow(/big\.req\.json is larger than 1 MB/);
   });
 
   it('plans creates and overwrites, then applies: files, registration, secrets in the new scope', () => {
@@ -115,6 +115,25 @@ describe('workspace bundle', () => {
     expect(listWorkspaces(home2).map((x) => x.id)).toEqual([r.workspace.id]);
     expect(r.workspace.name).toBe('API Server');
     expect(loadSecrets(home2, r.workspace.id)).toEqual({ tok: 'S3CRET-x' });
+  });
+
+  it('lists secret keys the target workspace already holds as overwrites (names only)', () => {
+    const { home, w } = project();
+    const b = exportWorkspace(home, w, { withSecrets: true }).bundle;
+    const home2 = tmp('home2-');
+    const target = tmp('target-');
+    expect(planBundleImport(b, target, home2).overwriteSecrets).toEqual([]); // not registered: a new scope
+    const reg = initWorkspace(home2, target, { id: 'there', write: false });
+    setSecret(home2, 'there', 'tok', 'OLD-VALUE');
+    setSecret(home2, 'there', 'other', 'KEEP');
+    const plan = planBundleImport(b, target, home2);
+    expect(plan.overwrite).toEqual([]);
+    expect(plan.overwriteSecrets).toEqual(['tok']);
+    expect(plan.secrets).toEqual(['tok']);
+    expect(JSON.stringify(plan)).not.toMatch(/OLD-VALUE|S3CRET-x|KEEP/);
+    expect(planBundleImport(b, target).overwriteSecrets).toEqual([]); // no home: nothing to look up
+    expect(applyBundle(home2, b, target).workspace.id).toBe(reg.workspace.id);
+    expect(loadSecrets(home2, 'there')).toEqual({ tok: 'S3CRET-x', other: 'KEEP' });
   });
 
   it('refuses a folder that does not exist', () => {
@@ -179,7 +198,7 @@ describe('aorch workspace export / import', { timeout: 120_000 }, () => {
     const ex = aorch(home, dir, 'workspace', 'export', 'api', '--out', out, '--with-secrets', '--yes');
     expect(ex.code, ex.err).toBe(0);
     expect(ex.err).toMatch(/secret values in plain text/);
-    expect(ex.out).toContain('left out .aorch/http/stray.txt (not a .json file with an allowed name)');
+    expect(ex.out).toContain('left out .aorch/http/stray.txt (not a request, collection or environment file)');
     expect(statSync(out).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(out, 'utf8')).secrets).toEqual({ tok: 'S3CRET-x' });
     const refused = join(tmp('out-'), 'r.aorch.json');
@@ -203,6 +222,21 @@ describe('aorch workspace export / import', { timeout: 120_000 }, () => {
     const again = aorch(home2, target, 'workspace', 'import', out, '--into', target);
     expect(again.out).toContain('~ .aorch/http/runs/list.req.json (overwritten)');
     expect(again.code).toBe(2);
+
+    // a registered target that already holds the secret: listed as an overwrite, refused without --yes, values never printed
+    const home3 = tmp('home3-');
+    const t3 = tmp('target3-');
+    initWorkspace(home3, t3, { id: 'held', write: false });
+    setSecret(home3, 'held', 'tok', 'OLD-VALUE');
+    const held = aorch(home3, t3, 'workspace', 'import', out, '--into', t3);
+    expect(held.code).toBe(2);
+    expect(held.out).toContain('~ secret tok (overwritten)');
+    expect(held.out + held.err).not.toMatch(/OLD-VALUE|S3CRET-x/);
+    expect(loadSecrets(home3, 'held')).toEqual({ tok: 'OLD-VALUE' });
+    const heldYes = aorch(home3, t3, 'workspace', 'import', out, '--into', t3, '--yes');
+    expect(heldYes.code, heldYes.err).toBe(0);
+    expect(heldYes.out + heldYes.err).not.toMatch(/OLD-VALUE|S3CRET-x/);
+    expect(loadSecrets(home3, 'held')).toEqual({ tok: 'S3CRET-x' });
 
     const bad = join(tmp('bad-'), 'bad.json');
     writeFileSync(bad, JSON.stringify({ v: 1, workspace: {}, notes: '', http: { files: { '../evil.json': {} } } }));
@@ -228,7 +262,7 @@ describe('workspace export / import routes', () => {
     expect(r.json.fileName).toBe('api.aorch.json');
     expect(Object.keys(r.json.bundle.http.files)).toEqual(['runs/list.req.json']);
     expect(r.json.bundle.secrets).toBeUndefined();
-    expect(r.json.skipped).toEqual([{ path: '.aorch/http/stray.txt', reason: 'not a .json file with an allowed name' }]);
+    expect(r.json.skipped).toEqual([{ path: '.aorch/http/stray.txt', reason: 'not a request, collection or environment file' }]);
     expect(r.text).not.toContain('S3CRET-web');
     expect((await t.api('GET', '/api/workspaces/nope/export')).status).toBe(404);
   });
@@ -261,5 +295,39 @@ describe('workspace export / import routes', () => {
     expect(ap.status).toBe(200);
     expect(pv.text + ap.text).not.toContain('S3CRET-carried');
     expect(loadSecrets(t.home, ap.json.workspace)).toEqual({ tok: 'S3CRET-carried' });
+    // importing again into the same (now registered) folder: the held key is an overwrite, its value never echoed
+    const again = await t.api('POST', '/api/workspaces/import', { bundle: { ...bundle, secrets: { tok: 'S3CRET-new' } }, into });
+    expect(again.json.overwriteSecrets).toEqual(['tok']);
+    expect(again.text).not.toMatch(/S3CRET-carried|S3CRET-new/);
+  });
+
+  it('an unexpected failure (a read-only .aorch) is a 500 with the message, not a 400', async () => {
+    const into = tmp('web-ro-');
+    mkdirSync(join(into, '.aorch'));
+    chmodSync(join(into, '.aorch'), 0o500);
+    try {
+      const r = await t.api('POST', '/api/workspaces/import', { bundle: { v: 1, workspace: { name: 'RO' }, notes: '', http: { files: {} } }, into, confirm: true });
+      expect(r.status).toBe(500);
+      expect(r.json.error).toMatch(/EACCES|permission denied/i);
+    } finally {
+      chmodSync(join(into, '.aorch'), 0o700);
+    }
+  });
+});
+
+describe('bundleError', () => {
+  it('maps validation to 4xx and anything unexpected to 500 with its message', async () => {
+    const { bundleError } = await import('../src/server.js');
+    const { BundleError } = await import('../src/wsexport.js');
+    const { HttpClientError } = await import('../src/http/errors.js');
+    expect(bundleError(new BundleError('not an aorch workspace export (v1)'))).toMatchObject({ status: 400, message: 'not an aorch workspace export (v1)' });
+    expect(bundleError(new HttpClientError('invalid', 'invalid request id')).status).toBe(400);
+    expect(bundleError(new HttpClientError('not_found', 'no request "x"')).status).toBe(404);
+    expect(bundleError(new HttpClientError('conflict', 'c')).status).toBe(409);
+    expect(bundleError(new HttpClientError('too_large', 'file too large')).status).toBe(413);
+    expect(bundleError(new HttpClientError('secrets_file', 'chmod 600')).status).toBe(500);
+    expect(bundleError(new TypeError("Cannot read properties of undefined (reading 'x')"))).toMatchObject({ status: 500, message: "Cannot read properties of undefined (reading 'x')" });
+    expect(bundleError(new Error('something odd')).status).toBe(500);
+    expect(bundleError(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })).status).toBe(500);
   });
 });

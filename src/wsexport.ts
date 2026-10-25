@@ -7,9 +7,9 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadSecrets, setSecret } from './http/secrets.js';
-import { MAX_FILE, SEG_RE, httpRoot, refuseLinkedRoot, safeAorchFile, safeHttpFile, slugify } from './http/store.js';
+import { MAX_FILE, SEG_RE, httpRoot, isStorePath, refuseLinkedRoot, safeAorchFile, safeHttpFile, slugify } from './http/store.js';
 import { SECRET_KEY_RE, isObj } from './http/types.js';
-import { META_FILE, NOTES_FILE, WS_DIR, initWorkspace, type Workspace } from './workspace.js';
+import { META_FILE, NOTES_FILE, WS_DIR, initWorkspace, registeredAt, type Workspace } from './workspace.js';
 
 export interface Bundle {
   v: 1;
@@ -27,23 +27,17 @@ export interface BundlePlan {
   dir: string;
   create: string[];
   overwrite: string[];
+  /** every secret key the bundle carries */
   secrets: string[];
+  /** the keys among `secrets` the target workspace already holds: importing replaces their values (names only, never values) */
+  overwriteSecrets: string[];
 }
+
+/** A bundle or a target the caller got wrong (400); anything else thrown here is unexpected. */
+export class BundleError extends Error {}
 
 const MAX_FILES = 2000;
-const MAX_FOLDERS = 4;
-const ENV_DIR = 'environments';
-const COLL_FILE = '_collection.json';
 const HTTP_PREFIX = `${WS_DIR}/http/`;
-
-/** A path under .aorch/http the store would read: lowercase segments, ≤ 4 folders, `.json`, environments flat. */
-function validRel(p: string): boolean {
-  const segs = p.split('/');
-  const name = segs.pop()!;
-  if (!name.endsWith('.json') || segs.length > MAX_FOLDERS || segs.some((s) => !SEG_RE.test(s))) return false;
-  if (segs[0] === ENV_DIR) return segs.length === 1 && SEG_RE.test(name);
-  return name === COLL_FILE || SEG_RE.test(name);
-}
 const serialize = (v: unknown) => JSON.stringify(v, null, 2) + '\n';
 const tooBig = (text: string) => Buffer.byteLength(text) > MAX_FILE;
 
@@ -51,7 +45,7 @@ export const bundleFileName = (w: Workspace): string => `${slugify(w.name || w.i
 
 /** Read a workspace into a bundle. Files that cannot travel are listed in `skipped`, never dropped silently. */
 export function exportWorkspace(home: string, w: Workspace, o: { withSecrets?: boolean } = {}): { bundle: Bundle; skipped: Skipped[] } {
-  if (!w.exists) throw new Error(`the folder ${w.path} is missing`);
+  if (!w.exists) throw new BundleError(`the folder ${w.path} is missing`);
   refuseLinkedRoot(w.path);
   const skipped: Skipped[] = [];
   const readText = (name: string): string | undefined => {
@@ -77,7 +71,7 @@ export function exportWorkspace(home: string, w: Workspace, o: { withSecrets?: b
   let count = 0;
   const root = httpRoot(w.path);
   const skip = (rel: string, reason: string) => skipped.push({ path: HTTP_PREFIX + rel, reason });
-  const walk = (rel: string, depth: number) => {
+  const walk = (rel: string) => {
     let names: string[];
     try {
       names = readdirSync(rel ? join(root, rel) : root).sort();
@@ -90,11 +84,11 @@ export function exportWorkspace(home: string, w: Workspace, o: { withSecrets?: b
       const st = lstatSync(join(root, r));
       if (st.isSymbolicLink()) skip(r, 'a symlink (not followed)');
       else if (st.isDirectory()) {
+        // symlinks are never followed, so this ends; files nested deeper than the store reads are listed below
         if (!SEG_RE.test(n)) skip(`${r}/`, 'a folder name the store does not allow');
-        else if (depth >= MAX_FOLDERS) skip(`${r}/`, `nested deeper than ${MAX_FOLDERS} folders`);
-        else walk(r, depth + 1);
+        else walk(r);
       } else if (!st.isFile()) skip(r, 'not a regular file');
-      else if (!validRel(r)) skip(r, 'not a .json file with an allowed name');
+      else if (!isStorePath(r)) skip(r, 'not a request, collection or environment file');
       else if (st.size > MAX_FILE) skip(r, 'larger than 1 MB');
       else if (count >= MAX_FILES) skip(r, `over the ${MAX_FILES}-file limit`);
       else {
@@ -114,7 +108,7 @@ export function exportWorkspace(home: string, w: Workspace, o: { withSecrets?: b
       }
     }
   };
-  walk('', 0);
+  walk('');
   const bundle: Bundle = { v: 1, workspace: meta, notes, http: { files }, ...(o.withSecrets ? { secrets: loadSecrets(home, w.id) } : {}) };
   return { bundle, skipped };
 }
@@ -134,19 +128,19 @@ export function writeBundle(file: string, b: Bundle): void {
 
 /** Untrusted JSON → a bundle, or throw with a precise message. Paths and sizes follow the store's rules. */
 export function parseBundle(raw: unknown): Bundle {
-  if (!isObj(raw) || raw.v !== 1 || !isObj(raw.workspace) || !isObj(raw.http) || !isObj(raw.http.files)) throw new Error('not an aorch workspace export (v1)');
-  if (raw.notes !== undefined && typeof raw.notes !== 'string') throw new Error('"notes" must be text');
+  if (!isObj(raw) || raw.v !== 1 || !isObj(raw.workspace) || !isObj(raw.http) || !isObj(raw.http.files)) throw new BundleError('not an aorch workspace export (v1)');
+  if (raw.notes !== undefined && typeof raw.notes !== 'string') throw new BundleError('"notes" must be text');
   const files = raw.http.files;
-  if (Object.keys(files).length > MAX_FILES) throw new Error(`too many files in the export (max ${MAX_FILES})`);
+  if (Object.keys(files).length > MAX_FILES) throw new BundleError(`too many files in the export (max ${MAX_FILES})`);
   for (const [p, content] of Object.entries(files)) {
-    if (!validRel(p)) throw new Error(`refusing a file path in the export: ${p}`);
-    if (tooBig(serialize(content))) throw new Error(`${p} is larger than 1 MB`);
+    if (!isStorePath(p)) throw new BundleError(`refusing a file path in the export: ${p}`);
+    if (tooBig(serialize(content))) throw new BundleError(`${p} is larger than 1 MB`);
   }
-  if (tooBig(serialize(raw.workspace))) throw new Error(`${META_FILE} is larger than 1 MB`);
-  if (typeof raw.notes === 'string' && tooBig(raw.notes)) throw new Error(`${NOTES_FILE} is larger than 1 MB`);
+  if (tooBig(serialize(raw.workspace))) throw new BundleError(`${META_FILE} is larger than 1 MB`);
+  if (typeof raw.notes === 'string' && tooBig(raw.notes)) throw new BundleError(`${NOTES_FILE} is larger than 1 MB`);
   if (raw.secrets !== undefined) {
-    if (!isObj(raw.secrets)) throw new Error('"secrets" must be an object');
-    for (const [k, v] of Object.entries(raw.secrets)) if (!SECRET_KEY_RE.test(k) || typeof v !== 'string') throw new Error(`invalid secret key or value: ${k}`);
+    if (!isObj(raw.secrets)) throw new BundleError('"secrets" must be an object');
+    for (const [k, v] of Object.entries(raw.secrets)) if (!SECRET_KEY_RE.test(k) || typeof v !== 'string') throw new BundleError(`invalid secret key or value: ${k}`);
   }
   return { v: 1, workspace: raw.workspace, notes: (raw.notes as string | undefined) ?? '', http: { files }, ...(raw.secrets ? { secrets: raw.secrets as Record<string, string> } : {}) };
 }
@@ -157,9 +151,9 @@ function targets(b: Bundle, dir: string): { rel: string; abs: string; text: stri
   try {
     st = statSync(dir);
   } catch {
-    throw new Error(`${dir} does not exist`);
+    throw new BundleError(`${dir} does not exist`);
   }
-  if (!st.isDirectory()) throw new Error(`${dir} is not a folder`);
+  if (!st.isDirectory()) throw new BundleError(`${dir} is not a folder`);
   return [
     { rel: `${WS_DIR}/${META_FILE}`, abs: safeAorchFile(dir, META_FILE), text: serialize(b.workspace) },
     ...(b.notes ? [{ rel: `${WS_DIR}/${NOTES_FILE}`, abs: safeAorchFile(dir, NOTES_FILE), text: b.notes }] : []),
@@ -167,12 +161,20 @@ function targets(b: Bundle, dir: string): { rel: string; abs: string; text: stri
   ];
 }
 
-/** What an import into `dir` would create and overwrite (project-relative paths), and which secret keys it carries. */
-export function planBundleImport(b: Bundle, dir: string): BundlePlan {
+/**
+ * What an import into `dir` would create and overwrite (project-relative paths), which secret keys it carries, and
+ * which of those the workspace already registered for `dir` in `home` holds (applyBundle writes into that same scope,
+ * so their values would be replaced). Key names only: no secret value is ever read into the plan.
+ */
+export function planBundleImport(raw: Bundle, dir: string, home?: string): BundlePlan {
+  const b = parseBundle(raw);
   const create: string[] = [];
   const overwrite: string[] = [];
-  for (const t of targets(parseBundle(b), dir)) (existsSync(t.abs) ? overwrite : create).push(t.rel);
-  return { dir, create, overwrite, secrets: Object.keys(b.secrets ?? {}) };
+  for (const t of targets(b, dir)) (existsSync(t.abs) ? overwrite : create).push(t.rel);
+  const secrets = Object.keys(b.secrets ?? {});
+  const reg = home && secrets.length ? registeredAt(home, dir) : undefined;
+  const held = reg ? new Set(Object.keys(loadSecrets(home!, reg.id))) : new Set<string>();
+  return { dir, create, overwrite, secrets, overwriteSecrets: secrets.filter((k) => held.has(k)) };
 }
 
 /** Write the bundle into `dir`, register it as a workspace in `home`, and put its secrets in that workspace's scope. */

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HttpClientError } from '../src/http/errors.js';
-import { checkPath, collectionChain, createRequest, deleteEnvironment, httpRoot, listEnvironments, moveRequest, readEnvironment, readRequest, readTree, slugify, writeCollection, writeEnvironment, writeRequest } from '../src/http/store.js';
+import { checkPath, collectionChain, isStorePath, createRequest, deleteEnvironment, httpRoot, listEnvironments, moveRequest, readEnvironment, readRequest, readTree, slugify, writeCollection, writeEnvironment, writeRequest } from '../src/http/store.js';
 import { tmp } from './helpers.js';
 
 const req = (o: Record<string, unknown> = {}) => ({ v: 1, name: 'List runs', method: 'GET', url: '{{base}}/api/runs', ...o });
@@ -142,5 +142,14 @@ describe('http store', () => {
     expect(existsSync(join(httpRoot(dir), 'big.req.json'))).toBe(false);
     expect(existsSync(join(httpRoot(dir), 'big.req.json.tmp'))).toBe(false);
     expect(code(() => writeCollection(dir, '', { vars: { big: 'x'.repeat(1_000_001) } }))).toBe('too_large: file too large');
+  });
+});
+
+describe('isStorePath', () => {
+  it('accepts exactly the request, collection and environment files the store reads', () => {
+    for (const p of ['a.req.json', 'runs/list.req.json', 'a/b/c/d/e.req.json', '_collection.json', 'shop/_collection.json', 'a/b/c/d/_collection.json', 'environments/local.json', 'environments/stage.v2.json', 'environments/x.req.json'])
+      expect(isStorePath(p), p).toBe(true);
+    for (const p of ['', 'notes.json', 'a.txt', '../evil.req.json', '/abs.req.json', 'a/../b.req.json', 'A/b.req.json', 'a\\b.req.json', 'a/b/c/d/e/f.req.json', 'a/b/c/d/e/_collection.json', 'x/_y.json', 'environments/a/b.json', 'environments/_collection.json', 'environments.req.json', 'environments/.json'])
+      expect(isStorePath(p), p).toBe(false);
   });
 });

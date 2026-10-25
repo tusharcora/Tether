@@ -269,12 +269,18 @@ export interface InitResult {
   existed: boolean;
 }
 
+/** The registration for exactly this folder (symlinks resolved), if any. */
+export function registeredAt(home: string, dir: string): { id: string; path: string } | undefined {
+  const path = real(dir);
+  return loadRegistry(home).workspaces.find((w) => real(w.path) === path);
+}
+
 /** Register a folder, writing the two files if they are missing (never overwriting). */
 export function initWorkspace(home: string, dir: string, o: { name?: string; id?: string; write?: boolean } = {}): InitResult {
   const path = real(dir);
   if (!existsSync(path)) throw new Error(`${dir} does not exist`);
   const reg = loadRegistry(home);
-  const prior = reg.workspaces.find((w) => real(w.path) === path);
+  const prior = registeredAt(home, path);
   const created: string[] = [];
   if (o.write !== false) {
     const base = readWorkspace('x', path);
