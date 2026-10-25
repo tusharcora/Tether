@@ -78,7 +78,7 @@ export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o:
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       {p.open ? (
-        <DialogContent className="studio api-dialog" title="Secrets" description="Stored on this machine (secrets.json, mode 600). Values are never shown again, never sent to the browser and never put in a prompt.">
+        <DialogContent className="api-dialog" title="Secrets" description="Stored on this machine (secrets.json, mode 600). Values are never shown again, never sent to the browser and never put in a prompt.">
           <div className="dialog-body">
             {loadErr ? (
               <p className="resp-error" role="alert">

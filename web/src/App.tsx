@@ -117,7 +117,7 @@ function LeaveDialog(p: { to: Route | undefined; onKeep: () => void; onDiscard: 
   return (
     <Dialog open={!!to} onOpenChange={(o) => !o && p.onKeep()}>
       {to ? (
-        <DialogContent className="studio api-dialog" title="Discard unsaved changes?" description="The open API request has edits that are not saved.">
+        <DialogContent className="api-dialog" title="Discard unsaved changes?" description="The open API request has edits that are not saved.">
           <div className="row end">
             <Button variant="secondary" onClick={p.onKeep}>
               Keep editing

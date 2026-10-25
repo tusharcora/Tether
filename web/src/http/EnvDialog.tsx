@@ -77,7 +77,7 @@ export function EnvDialog(p: { ws?: string; open: boolean; onOpenChange: (o: boo
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       {p.open ? (
-        <DialogContent className="studio api-dialog" title={p.name ? `Environment ${p.name}` : 'New environment'} description="Saved in .aorch/http/environments/ (committed). Secret values stay on this machine.">
+        <DialogContent className="api-dialog" title={p.name ? `Environment ${p.name}` : 'New environment'} description="Saved in .aorch/http/environments/ (committed). Secret values stay on this machine.">
           <div className="dialog-body">
             <Input label="Environment name" placeholder="local" value={name} disabled={!!p.name} spellCheck={false} onChange={(e) => setName(e.target.value)} />
             {loadErr ? (

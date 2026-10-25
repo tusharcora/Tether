@@ -55,9 +55,6 @@
 html, body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
 code, pre, kbd, .mono { font-family: var(--font-code); }
 
-/* Kept while screens move over (deleted at the end of Plan B): the class no longer carries tokens, only the base look. */
-.studio { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
-
 @media (prefers-reduced-motion: reduce) {
   :root *, :root *::before, :root *::after {
     animation-duration: 0s !important;

@@ -59,7 +59,7 @@ export function ImportDialog(p: { ws?: string; open: boolean; onOpenChange: (o: 
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       {p.open ? (
-        <DialogContent className="studio api-dialog" title="Import requests" description="Nothing is written until you confirm. Credentials are never written into files.">
+        <DialogContent className="api-dialog" title="Import requests" description="Nothing is written until you confirm. Credentials are never written into files.">
           <div className="dialog-body">
             <SegmentedControl
               label="Format"

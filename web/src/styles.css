@@ -34,22 +34,6 @@ main { flex: 1; min-height: 0; }
 .chip.agent { color: var(--accInk); }
 .chip.id { opacity: 0.8; }
 
-/* ---------- builder ---------- */
-
-/* ---------- runs ---------- */
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--queued); flex: none; }
-.dot.s-done { background: var(--done); } .dot.s-running { background: var(--run); }
-.dot.s-paused, .dot.s-awaiting { background: var(--wait); }
-.dot.s-error { background: var(--err); } .dot.s-stopped { background: var(--skip); }
-@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--run) 30%, transparent), var(--shadow); } }
-.dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
-/* Tinted fill with the status colour as text (no white-on-colour). */
-.badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 6px; margin-left: 6px; vertical-align: middle; background: var(--s2); color: var(--mut); }
-.badge.s-done { background: var(--okBg); color: var(--ok); }
-.badge.s-running, .badge.s-team { background: var(--accBg); color: var(--accInk); }
-.badge.s-paused, .badge.s-awaiting { background: var(--warnBg); color: var(--warn); }
-.badge.s-error { background: var(--badBg); color: var(--bad); }
-.badge.s-stopped, .badge.s-skipped, .badge.s-queued { background: var(--s2); color: var(--mut); }
 .pane { padding: 12px 16px 24px; }
 .placeholder { display: grid; place-items: center; height: 100%; color: var(--muted); padding: 24px; text-align: center; }
 .alert { margin: 0 16px 8px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; align-items: center; }

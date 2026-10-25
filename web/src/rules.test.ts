@@ -173,11 +173,6 @@ describe('parity pass on styles.css', () => {
   it('gives hand-built buttons a neutral hover border', () => {
     expect(rule(':where(button:hover:not(:disabled))')).toMatch(/border-color: var\(--(line2|edge)\)/);
   });
-  it('takes badge colours from tokens as tinted fills', () => {
-    expect(rule('.badge')).toContain('color: var(--mut)');
-    expect(rule('.badge.s-done')).toContain('color: var(--ok)');
-    expect(rule('.badge.s-error')).toContain('color: var(--bad)');
-  });
   it('never paints text in the fill-only accent', () => {
     expect(styles).not.toMatch(/(^|[;{\s])color:\s*var\(--accent\)/m);
   });

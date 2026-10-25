@@ -103,11 +103,11 @@ describe('Studio Live tokens at the root', () => {
     expect(read('./styles.css')).not.toMatch(/prefers-reduced-motion/);
   });
 
-  it('drops the old aliases and keeps .studio only as a base-look alias', () => {
+  it('drops the old aliases and the .studio class', () => {
     expect(existsSync(file('./theme.css'))).toBe(false);
     expect(studio).not.toContain('.studio.studio');
     expect(studio).not.toMatch(/\[data-theme="dark"\] \.studio/);
-    expect(studio).toMatch(/\.studio\s*{[^}]*background: var\(--bg\)/);
+    expect(studio).not.toMatch(/\.studio\b/);
     expect(read('./main.tsx')).not.toContain('theme.css');
     expect(read('./main.tsx')).toContain("import './studio-arc.css'");
   });
