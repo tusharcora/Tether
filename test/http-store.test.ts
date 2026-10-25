@@ -113,12 +113,27 @@ describe('http store', () => {
     expect(code(() => readRequest(viaHttp, 'x'))).toBe('invalid: invalid request id');
     expect(code(() => writeEnvironment(viaHttp, 'local', { vars: {} }))).toBe('invalid: invalid request id');
     expect(existsSync(join(outside, 'y.req.json'))).toBe(false);
-    expect(readTree(viaHttp)).toEqual({ root: { path: '', name: '', collections: [], requests: [] }, environments: [] });
+    expect(code(() => readTree(viaHttp))).toBe('invalid: symlinked .aorch');
+    expect(code(() => listEnvironments(viaHttp))).toBe('invalid: symlinked .aorch');
     const viaAorch = tmp('proj-');
     mkdirSync(join(outside, 'http'));
     symlinkSync(outside, join(viaAorch, '.aorch'));
     expect(code(() => writeRequest(viaAorch, 'y', req()))).toBe('invalid: invalid request id');
     expect(existsSync(join(outside, 'http', 'y.req.json'))).toBe(false);
+    expect(code(() => readTree(viaAorch))).toBe('invalid: symlinked .aorch');
+    expect(code(() => listEnvironments(viaAorch))).toBe('invalid: symlinked .aorch');
+  });
+
+  it('refuses a dangling symlink anywhere on the path with the usual error, not a raw ENOENT', () => {
+    const dir = tmp('proj-');
+    mkdirSync(httpRoot(dir), { recursive: true });
+    symlinkSync(join(tmp('gone-'), 'missing'), join(httpRoot(dir), 'dangling'));
+    expect(code(() => writeRequest(dir, 'dangling/x', req()))).toBe('invalid: invalid request id');
+    expect(code(() => readRequest(dir, 'dangling/x'))).toBe('invalid: invalid request id');
+    expect(code(() => writeCollection(dir, 'dangling', { vars: {} }))).toBe('invalid: invalid request id');
+    symlinkSync(join(tmp('gone-'), 'missing.req.json'), join(httpRoot(dir), 'stale.req.json'));
+    expect(code(() => writeRequest(dir, 'stale', req()))).toBe('invalid: invalid request id');
+    expect(code(() => readRequest(dir, 'stale'))).toBe('invalid: invalid request id');
   });
 
   it('refuses to write a file larger than 1 MB and writes nothing', () => {

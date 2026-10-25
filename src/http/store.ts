@@ -45,7 +45,11 @@ export function safeHttpFile(dir: string, rel: string): string {
   if (rootIsLinked(dir)) throw invalid('invalid request id');
   const realRoot = existsSync(root) ? realpathSync(root) : resolve(root);
   let probe = target;
-  while (!existsSync(probe) && probe.startsWith(root + sep)) probe = dirname(probe);
+  while (!existsSync(probe) && probe.startsWith(root + sep)) {
+    // a dangling symlink reads as missing through existsSync; lstat sees it, and it is refused like any other link
+    if (isLink(probe)) throw invalid('invalid request id');
+    probe = dirname(probe);
+  }
   if (existsSync(probe) && probe.startsWith(root)) {
     const real = realpathSync(probe);
     if (real !== realRoot && !real.startsWith(realRoot + sep)) throw invalid('invalid request id');
@@ -301,8 +305,14 @@ export function collectionChain(dir: string, id: string): { path: string; file: 
 }
 
 // ---------- environments ----------
+/** Refuses a symlinked .aorch or .aorch/http outright, so a listing reports it instead of showing an empty tree. */
+const refuseLinkedRoot = (dir: string): void => {
+  if (rootIsLinked(dir)) throw invalid('symlinked .aorch');
+};
+
 export function listEnvironments(dir: string): string[] {
-  if (rootIsLinked(dir) || isLink(join(httpRoot(dir), ENV_DIR))) return [];
+  refuseLinkedRoot(dir);
+  if (isLink(join(httpRoot(dir), ENV_DIR))) return [];
   try {
     return readdirSync(join(httpRoot(dir), ENV_DIR))
       .filter((f) => f.endsWith('.json'))
@@ -365,11 +375,10 @@ export function deleteEnvironment(dir: string, name: string): boolean {
 
 // ---------- tree ----------
 export function readTree(dir: string): { root: TreeCollection; environments: string[] } {
+  refuseLinkedRoot(dir);
   const walk = (rel: string[], depth: number): TreeCollection => {
     const node: TreeCollection = { path: rel.join('/'), name: rel.at(-1) ?? '', collections: [], requests: [] };
     let names: string[] = [];
-    // A symlinked .aorch or .aorch/http lists as empty, like any other symlink in the tree; reads and writes refuse it.
-    if (rootIsLinked(dir)) return node;
     try {
       names = readdirSync(join(httpRoot(dir), ...rel)).sort();
     } catch {
