@@ -89,7 +89,7 @@ export function App() {
             />
           ) : null}
           {screen.tab === 'api' ? <ApiTab onStarted={(id) => go({ tab: 'runs', id })} onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))} onDirtyChange={setApiDirty} /> : null}
-          {screen.tab === 'graph' ? <GraphView /> : null}
+          {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} /> : null}
           {screen.tab === 'crew' ? <Crew /> : null}
           {screen.tab === 'triggers' ? <Triggers /> : null}
         </main>

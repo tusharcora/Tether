@@ -35,7 +35,6 @@ main { flex: 1; min-height: 0; }
 .chip.id { opacity: 0.8; }
 
 /* ---------- builder ---------- */
-.toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 
 /* ---------- runs ---------- */
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--queued); flex: none; }
@@ -65,30 +64,6 @@ main { flex: 1; min-height: 0; }
 .diff .da { background: color-mix(in srgb, var(--done) 18%, transparent); color: var(--text); }
 .diff .dd { background: color-mix(in srgb, var(--err) 18%, transparent); }
 .diff .dk { color: var(--accInk); } .diff .dh { color: var(--muted); }
-
-/* ---------- graph ---------- */
-.graph-view { display: grid; grid-template-columns: 1fr 340px; height: 100%; }
-.graph-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.graph-svg { flex: 1; min-height: 0; width: 100%; background: var(--bg); touch-action: none; cursor: grab; }
-.note-panel { background: var(--panel); border-left: 1px solid var(--border); overflow: auto; padding: 12px 14px; }
-.note-body { max-height: 300px; }
-.links { margin: 0; padding-left: 18px; font-size: 13px; }
-.legend { font-size: 12px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
-.node-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.g-edge { stroke: var(--border); stroke-width: 1.2; }
-.g-edge.hot { stroke: var(--accent); stroke-width: 2; }
-.g-node { cursor: pointer; }
-.g-node text { fill: var(--muted); font-size: 11px; pointer-events: none; }
-.g-node.sel circle { stroke: var(--text); stroke-width: 2.5; }
-.g-node.hit circle { stroke: var(--wait); stroke-width: 3; }
-.g-node.dim { opacity: 0.25; }
-.t-run { --c: var(--acc); } .t-pipeline { --c: var(--ink); } .t-role { --c: var(--wait); } .t-file { --c: var(--done); } .t-note { --c: var(--queued); }
-.g-node circle, .node-dot.t-run, .node-dot.t-pipeline, .node-dot.t-role, .node-dot.t-file, .node-dot.t-note { fill: var(--c); background: var(--c); }
-
-@media (max-width: 1000px) {
-  .graph-view { grid-template-columns: 1fr; grid-template-rows: 60vh auto; overflow: auto; }
-  .note-panel { border-left: none; border-top: 1px solid var(--border); }
-}
 
 /* crew */
 .crew-page { padding: 20px; max-width: 1100px; margin: 0 auto; overflow: auto; }

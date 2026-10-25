@@ -15,7 +15,7 @@ vi.mock('./Builder', () => ({
   ),
 }));
 vi.mock('./Runs', () => ({ Runs: (p: { selected?: string; node?: string }) => <div>runs screen {p.selected ?? ''} {p.node ?? ''}</div> }));
-vi.mock('./Graph', () => ({ GraphView: () => <div>graph screen</div> }));
+vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph screen {p.note ?? ''}</div> }));
 vi.mock('./Crew', () => ({ Crew: () => <div>crew screen</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
 vi.mock('./http/ApiTab', () => ({
@@ -93,6 +93,12 @@ describe('App shell', () => {
     expect(location.hash).toBe('#/runs/r5');
     browserGoes('#/graph');
     expect(screen.getByText('graph screen')).toBeTruthy();
+  });
+
+  it('hands the note in the hash to the Graph', () => {
+    startAt('#/graph/Roles%2Fcoder.md');
+    render(<App />);
+    expect(screen.getByText('graph screen Roles/coder.md')).toBeTruthy();
   });
 
   it('asks before leaving a dirty API tab by the rail', async () => {
