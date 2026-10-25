@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HttpClientError } from '../src/http/errors.js';
@@ -42,6 +42,19 @@ describe('http store', () => {
     for (const id of ['../x', '/abs', 'A/b', 'a b', 'a/b/c/d/e/f', 'environments/x', '', 'x/.hidden']) expect(code(() => checkPath(id, 'request'))).toBe('invalid: invalid request id');
     expect(checkPath('a/b/c/d/e', 'request')).toEqual(['a', 'b', 'c', 'd', 'e']);
     expect(checkPath('', 'collection')).toEqual([]);
+  });
+
+  it('never follows a symlink planted at a temp path next to the target', () => {
+    const dir = tmp('proj-');
+    mkdirSync(httpRoot(dir), { recursive: true });
+    const outside = join(dir, 'outside.txt');
+    writeFileSync(outside, 'keep');
+    symlinkSync('../../outside.txt', join(httpRoot(dir), 'a.req.json.tmp'));
+    writeRequest(dir, 'a', req());
+    expect(readFileSync(outside, 'utf8')).toBe('keep');
+    expect(lstatSync(join(httpRoot(dir), 'a.req.json')).isFile()).toBe(true);
+    expect(readRequest(dir, 'a').file?.name).toBe('List runs');
+    expect(readdirSync(httpRoot(dir)).filter((n) => n.endsWith('.tmp') && n !== 'a.req.json.tmp')).toEqual([]);
   });
 
   it('refuses symlinks that leave .aorch/http', () => {

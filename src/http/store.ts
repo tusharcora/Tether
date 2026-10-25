@@ -3,6 +3,7 @@
  * `*.req.json` is a request, `_collection.json` holds a collection's vars and default headers, `environments/<name>.json`
  * an environment. Everything read from disk is validated; an invalid request is reported with its error, never thrown.
  */
+import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { HttpClientError } from './errors.js';
@@ -93,13 +94,22 @@ function readJsonFile(file: string): unknown {
   if (statSync(file).size > MAX_FILE) throw new Error('file is larger than 1 MB');
   return JSON.parse(readFileSync(file, 'utf8'));
 }
-/** Temp file + rename. Refuses content over the same 1 MB cap the readers enforce, before touching the disk. */
+/**
+ * Temp file + rename. Refuses content over the same 1 MB cap the readers enforce, before touching the disk. The temp
+ * name is fresh and opened exclusively, so a symlink planted at a predictable temp path is never followed.
+ */
 function writeAtomic(file: string, data: unknown): void {
   const text = JSON.stringify(data, null, 2) + '\n';
   if (Buffer.byteLength(text) > MAX_FILE) throw new HttpClientError('too_large', 'file too large');
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(`${file}.tmp`, text);
-  renameSync(`${file}.tmp`, file);
+  const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    writeFileSync(tmp, text, { flag: 'wx' });
+    renameSync(tmp, file);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 // ---------- validation ----------
