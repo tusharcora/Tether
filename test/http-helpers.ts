@@ -9,8 +9,8 @@ import { initWorkspace } from '../src/workspace.js';
 import { makeRepo, tmp } from './helpers.js';
 
 /** A real server on port 0 with a registered workspace (a git repo) whose bots run on the mock adapter. */
-export async function startHttpTestServer(o: { register?: boolean } = {}) {
-  const home = tmp('home-');
+export async function startHttpTestServer(o: { register?: boolean; home?: string } = {}) {
+  const home = o.home ?? tmp('home-');
   const dir = makeRepo();
   if (o.register !== false) initWorkspace(home, dir, { id: 'api', name: 'API' });
   for (const bot of ['coder', 'planner', 'reviewer', 'orchestrator']) link(home, bot, { agent: 'mock' });

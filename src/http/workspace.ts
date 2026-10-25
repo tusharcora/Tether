@@ -1,8 +1,8 @@
 /** Which project (folder, secrets scope) an API client call is about: from ?ws= on the server, from the current directory in the CLI. */
 import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { listWorkspaces, resolveWorkspace, WS_DIR } from '../workspace.js';
+import { aorchHomeMessage, isAorchHome, listWorkspaces, resolveWorkspace, WS_DIR } from '../workspace.js';
 import { HttpClientError } from './errors.js';
 
 export interface HttpProject {
@@ -20,6 +20,7 @@ export function projectFor(home: string, id?: string | null): HttpProject | unde
   const all = listWorkspaces(home);
   const w = id ? all.find((x) => x.id === id) : (all.find((x) => x.isDefault) ?? all[0]);
   if (id && !w) throw new HttpClientError('not_found', `unknown workspace "${id}"`);
+  if (w && isAorchHome(w.path, home)) throw new HttpClientError('invalid', aorchHomeMessage(w.path, home));
   return w ? { scope: w.id, workspaceId: w.id, dir: w.path, envDir: w.path } : undefined;
 }
 
@@ -33,14 +34,6 @@ function mainCheckout(dir: string): string | undefined {
   }
 }
 
-const real = (p: string) => {
-  try {
-    return realpathSync(p);
-  } catch {
-    return resolve(p);
-  }
-};
-
 /**
  * For the CLI and agents: the nearest folder at or above `cwd` that has .aorch/, and the registered workspace it belongs
  * to (directly, or through the main checkout of the git worktree it is in), the same lookup runs use. Unregistered: scope "default".
@@ -50,8 +43,7 @@ const real = (p: string) => {
 export function projectFromCwd(home: string, cwd: string, explicit?: string): HttpProject {
   if (explicit) return projectFor(home, explicit)!;
   const start = resolve(cwd);
-  const homeReal = real(home);
-  const isHome = (d: string) => real(join(d, WS_DIR)) === homeReal;
+  const isHome = (d: string) => isAorchHome(d, home);
   let dir = start;
   for (let d = start; ; d = dirname(d)) {
     if (existsSync(join(d, WS_DIR))) {
@@ -60,7 +52,7 @@ export function projectFromCwd(home: string, cwd: string, explicit?: string): Ht
     }
     if (dirname(d) === d) break;
   }
-  if (isHome(dir)) throw new HttpClientError('invalid', `${dir} holds ${home}, which is the aorch home, not a project; run this inside a project folder`);
+  if (isHome(dir)) throw new HttpClientError('invalid', `${aorchHomeMessage(dir, home)}; run this inside a project folder`);
   const registered = (repo: string) => {
     try {
       const w = resolveWorkspace(home, { repo });

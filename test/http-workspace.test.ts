@@ -37,6 +37,15 @@ describe('project lookup', () => {
     expect(projectFromCwd(home, join(root, 'a', 'b'))).toEqual({ scope: 'default', dir: root, envDir: root });
   });
 
+  it('server: a registered workspace at the folder that holds the aorch home is refused', () => {
+    const base = realpathSync(tmp('user-'));
+    const home = join(base, '.aorch');
+    mkdirSync(home, { recursive: true });
+    initWorkspace(home, base, { id: 'homedir', write: false });
+    expect(() => projectFor(home, 'homedir')).toThrow('is the aorch home, not a project');
+    expect(() => projectFor(home)).toThrow('is the aorch home, not a project');
+  });
+
   it('cli: never takes the aorch home for a project, and stops looking there', () => {
     const base = realpathSync(tmp('user-'));
     const home = join(base, '.aorch'); // the layout of ~/.aorch

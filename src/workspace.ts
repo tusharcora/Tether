@@ -189,6 +189,9 @@ const real = (p: string) => {
     return resolve(p);
   }
 };
+/** `dir` is the folder that holds the aorch home (~ for ~/.aorch): never a project, or its files would land in the home. */
+export const isAorchHome = (dir: string, home: string): boolean => real(join(dir, WS_DIR)) === real(home);
+export const aorchHomeMessage = (dir: string, home: string): string => `${dir} holds ${home}, which is the aorch home, not a project`;
 const inside = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
 
 /**

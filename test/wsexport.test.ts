@@ -143,6 +143,16 @@ describe('workspace bundle', () => {
     expect(existsSync(missing)).toBe(false);
   });
 
+  it('refuses the folder that holds the aorch home', () => {
+    const base = tmp('user-');
+    const home = join(base, '.aorch'); // the layout of ~/.aorch
+    mkdirSync(join(home, 'http'), { recursive: true });
+    expect(() => planBundleImport(emptyBundle({ 'x.req.json': {} }), base, home)).toThrow(/is the aorch home, not a project/);
+    expect(() => applyBundle(home, emptyBundle({ 'x.req.json': {} }), base)).toThrow(/is the aorch home, not a project/);
+    expect(existsSync(join(home, 'http', 'x.req.json'))).toBe(false);
+    expect(listWorkspaces(home)).toEqual([]);
+  });
+
   it('does not follow a symlink in the target', () => {
     const { home, w } = project();
     const target = makeRepo();
@@ -244,6 +254,18 @@ describe('aorch workspace export / import', { timeout: 120_000 }, () => {
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/refusing a file path/);
   });
+
+  it('refuses to import into the folder that holds the aorch home (the default --into from ~)', () => {
+    const base = tmp('user-');
+    const home = join(base, '.aorch');
+    mkdirSync(home, { recursive: true });
+    const file = join(tmp('b-'), 'b.aorch.json');
+    writeFileSync(file, JSON.stringify(emptyBundle({ 'x.req.json': { v: 1, name: 'x', method: 'GET', url: 'http://h/' } })));
+    const r = aorch(home, base, 'workspace', 'import', file, '--yes');
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('is the aorch home, not a project');
+    expect(existsSync(join(home, 'http', 'x.req.json'))).toBe(false);
+  });
 });
 
 describe('workspace export / import routes', () => {
@@ -311,6 +333,26 @@ describe('workspace export / import routes', () => {
       expect(r.json.error).toMatch(/EACCES|permission denied/i);
     } finally {
       chmodSync(join(into, '.aorch'), 0o700);
+    }
+  });
+});
+
+describe('workspace import route and the aorch home', () => {
+  it('refuses into = the folder that holds the aorch home, in the preview and on confirm', async () => {
+    const base = tmp('user-');
+    const home = join(base, '.aorch');
+    mkdirSync(home, { recursive: true });
+    const s = await startHttpTestServer({ home, register: false });
+    try {
+      const bundle = emptyBundle({ 'x.req.json': { v: 1, name: 'x', method: 'GET', url: 'http://h/' } });
+      for (const confirm of [false, true]) {
+        const r = await s.api('POST', '/api/workspaces/import', { bundle, into: base, confirm });
+        expect(r.status).toBe(400);
+        expect(r.json.error).toContain('is the aorch home, not a project');
+      }
+      expect(existsSync(join(home, 'http', 'x.req.json'))).toBe(false);
+    } finally {
+      await s.close();
     }
   });
 });

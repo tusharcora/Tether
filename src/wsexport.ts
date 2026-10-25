@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { loadSecrets, setSecret } from './http/secrets.js';
 import { MAX_FILE, SEG_RE, httpRoot, isStorePath, refuseLinkedRoot, safeAorchFile, safeHttpFile, slugify } from './http/store.js';
 import { SECRET_KEY_RE, isObj } from './http/types.js';
-import { META_FILE, NOTES_FILE, WS_DIR, initWorkspace, registeredAt, type Workspace } from './workspace.js';
+import { META_FILE, NOTES_FILE, WS_DIR, aorchHomeMessage, initWorkspace, isAorchHome, registeredAt, type Workspace } from './workspace.js';
 
 export interface Bundle {
   v: 1;
@@ -146,7 +146,9 @@ export function parseBundle(raw: unknown): Bundle {
 }
 
 /** Every file the bundle would write, each through a guarded path. Throws before anything is written. */
-function targets(b: Bundle, dir: string): { rel: string; abs: string; text: string }[] {
+function targets(b: Bundle, dir: string, home?: string): { rel: string; abs: string; text: string }[] {
+  // the folder holding the aorch home (~, the default --into from there) would put the files in the home itself
+  if (home && isAorchHome(dir, home)) throw new BundleError(aorchHomeMessage(dir, home));
   let st;
   try {
     st = statSync(dir);
@@ -170,7 +172,7 @@ export function planBundleImport(raw: Bundle, dir: string, home?: string): Bundl
   const b = parseBundle(raw);
   const create: string[] = [];
   const overwrite: string[] = [];
-  for (const t of targets(b, dir)) (existsSync(t.abs) ? overwrite : create).push(t.rel);
+  for (const t of targets(b, dir, home)) (existsSync(t.abs) ? overwrite : create).push(t.rel);
   const secrets = Object.keys(b.secrets ?? {});
   const reg = home && secrets.length ? registeredAt(home, dir) : undefined;
   const held = reg ? new Set(Object.keys(loadSecrets(home!, reg.id))) : new Set<string>();
@@ -180,7 +182,7 @@ export function planBundleImport(raw: Bundle, dir: string, home?: string): Bundl
 /** Write the bundle into `dir`, register it as a workspace in `home`, and put its secrets in that workspace's scope. */
 export function applyBundle(home: string, raw: Bundle, dir: string): { workspace: Workspace; written: string[] } {
   const b = parseBundle(raw); // a caller may hand over an object that never went through parseBundle
-  const list = targets(b, dir);
+  const list = targets(b, dir, home);
   if (b.secrets && Object.keys(b.secrets).length) loadSecrets(home, 'default'); // a secrets file that is too open fails before any write
   const written: string[] = [];
   for (const t of list) {
