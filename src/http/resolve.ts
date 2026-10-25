@@ -4,7 +4,7 @@
  * only resolved when the caller allows it (the UI, a gate, `aorch http run <id>`).
  */
 import { HttpClientError } from './errors.js';
-import { isObj, type CollectionFile, type Environment, type HttpRequestFile, type KV, type ResolvedRequest, type VarInfo, type VarSource } from './types.js';
+import { isObj, VAR_IN_TEXT, type CollectionFile, type Environment, type HttpRequestFile, type KV, type ResolvedRequest, type VarInfo, type VarSource } from './types.js';
 
 export interface ResolveContext {
   /** Collection files that apply, innermost first. */
@@ -14,7 +14,6 @@ export interface ResolveContext {
   allowSecrets: boolean;
 }
 
-export const VAR_IN_TEXT = /\{\{\s*([A-Za-z_][A-Za-z0-9_.-]{0,63})\s*\}\}/g;
 const MAX_NEST = 5;
 
 interface Hit {

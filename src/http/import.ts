@@ -5,9 +5,8 @@
  */
 import { parse as parseYaml } from 'yaml';
 import { MASKED_HEADERS } from './redact.js';
-import { VAR_IN_TEXT } from './resolve.js';
 import { checkPath, parseRequest, readCollection, requestExists, slugify, writeCollection, writeRequest } from './store.js';
-import { isObj, VAR_RE, type Body, type CollectionFile, type ImportPreview, type KV } from './types.js';
+import { isObj, VAR_IN_TEXT, VAR_RE, type Body, type CollectionFile, type ImportPreview, type KV } from './types.js';
 
 export type ImportKind = 'curl' | 'openapi' | 'postman';
 const MAX_ITEMS = 500;

@@ -3,6 +3,8 @@ export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTION
 export type Method = (typeof METHODS)[number];
 /** A {{name}} variable. */
 export const VAR_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
+/** A {{name}} reference inside text (URL, header, body). Global flag: use matchAll / replace / split only, never .test() or .exec() on this shared instance. */
+export const VAR_IN_TEXT = /\{\{\s*([A-Za-z_][A-Za-z0-9_.-]{0,63})\s*\}\}/g;
 export const SECRET_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 /** A plain JSON object (not null, not an array). The one shared guard for untrusted input across src/http. */
 export const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);

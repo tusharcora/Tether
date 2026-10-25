@@ -1,0 +1,47 @@
+/* API tab, Studio Live. Tokens come from studio.css (.studio). Motion: 150–280 ms on --ease; nothing loops except live state. */
+.api-tab { height: 100%; display: grid; grid-template-columns: 280px minmax(0, 1fr) 300px; background: var(--bg); color: var(--ink); }
+.api-tab .hint { color: var(--mut); font-size: 12px; margin: 6px 0; }
+.api-tab .hint.warn { color: var(--warn); }
+.api-tab kbd { font-family: var(--font-code); font-size: 10px; color: inherit; opacity: .7; margin-left: 6px; }
+.api-tab .spacer { flex: 1; }
+
+.req-editor { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.req-head { display: flex; align-items: center; gap: 8px; }
+.req-name { font: 600 15px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; min-width: 0; }
+.req-name:hover, .req-name:focus { border-color: var(--line2); background: var(--s1); }
+.dirty { font-size: 11px; color: var(--warn); }
+
+.urlbar { display: flex; align-items: stretch; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); transition: border-color var(--t-fast) var(--ease); }
+.urlbar:focus-within { border-color: var(--acc); }
+.method-select { appearance: none; border: 0; border-right: 1px solid var(--line); background: transparent; padding: 0 12px; font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.method-select[data-method="GET"] { color: var(--ok); }
+.method-select[data-method="POST"] { color: var(--accInk); }
+.method-select[data-method="PUT"], .method-select[data-method="PATCH"] { color: var(--warn); }
+.method-select[data-method="DELETE"] { color: var(--bad); }
+.url-view, .url-input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; color: var(--ink); background: transparent; border: 0; outline: none; cursor: text; white-space: nowrap; overflow-x: auto; }
+
+.var-chip { position: relative; display: inline-flex; align-items: center; margin: 0 1px; padding: 0 6px; border-radius: 5px; background: var(--accBg); color: var(--accInk); font-size: 12px; line-height: 20px; outline: none; }
+.var-chip[data-state="secret"] { background: var(--s3); color: var(--ink); }
+.var-chip[data-state="secret"] .var-name::before { content: '● '; color: var(--warn); }
+.var-chip[data-state="missing"] { background: var(--badBg); color: var(--bad); }
+.var-chip:focus-visible { box-shadow: 0 0 0 2px var(--acc); }
+.var-pop { position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; white-space: nowrap; padding: 5px 8px; border-radius: 6px; background: var(--s2); border: 1px solid var(--line2); color: var(--ink); font-size: 11px; opacity: 0; transform: translateY(-2px); pointer-events: none; transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+.var-chip:hover .var-pop, .var-chip:focus .var-pop { opacity: 1; transform: none; }
+
+.kv { display: flex; flex-direction: column; gap: 4px; }
+.kv-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; align-items: center; }
+.kv-row[data-off] .kv-input { opacity: .5; }
+.kv-input { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 12px; color: var(--ink); background: var(--s1); border: 1px solid var(--line); border-radius: 6px; transition: border-color var(--t-fast) var(--ease); }
+.kv-input:focus { border-color: var(--acc); outline: none; }
+.kv-x { border: 0; background: transparent; color: var(--mut); font-size: 16px; cursor: pointer; width: 24px; }
+.kv-x:hover { color: var(--bad); }
+.check-row { display: grid; grid-template-columns: 90px minmax(0, 1.4fr) 100px minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 4px; }
+.check-row select, .api-tab select:not(.method-select) { padding: 6px; font-size: 12px; color: var(--ink); background: var(--s1); border: 1px solid var(--line); border-radius: 6px; }
+.body-edit { display: flex; flex-direction: column; gap: 8px; }
+
+/* Arc's tabs, drawn as a sliding underline: the gliding highlight span becomes a 2px ink bar under the active label. */
+.req-tabs > div:has(> div > [role="tablist"]) { display: flex; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.req-tabs [role="tablist"] { padding: 0; gap: 2px; }
+.req-tabs [role="tab"] { min-width: 0; border-radius: 0; padding: 0 10px; color: var(--mut); }
+.req-tabs [role="tab"][data-state="active"] { color: var(--ink); }
+.req-tabs [role="tab"] > span[aria-hidden="true"] { inset: auto 0 0 0; height: 2px; border: 0; border-radius: 1px; background: var(--ink); }
