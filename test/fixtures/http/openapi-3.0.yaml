@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info: { title: Runs API, version: '1' }
+servers:
+  - url: http://127.0.0.1:4177
+paths:
+  /api/runs:
+    get:
+      tags: [Runs]
+      summary: List runs
+      description: All runs, newest first.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, example: 20 } }
+    post:
+      tags: [Runs]
+      summary: Start a team run
+      requestBody:
+        content:
+          application/json:
+            example: { kind: team, task: Add caching, repo: /code/app }
+  /api/runs/{id}:
+    get:
+      tags: [Runs]
+      operationId: getRun
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, example: r1 } }
+        - { name: X-Trace, in: header, required: true, schema: { type: string } }
+  /health:
+    get: {}
