@@ -27,6 +27,8 @@ export interface Prefs {
   themes?: Record<string, unknown>;
   /** Commands Maestro proposes: ask each time (default), run without asking, or never. */
   commands?: 'ask' | 'always' | 'off';
+  /** API client: the active environment per workspace id (not in the repo, so teammates don't fight over it). */
+  httpActiveEnv?: Record<string, string>;
 }
 
 export function loadPrefs(home: string): Prefs {
@@ -45,6 +47,8 @@ export function loadPrefs(home: string): Prefs {
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
     if (j.commands === 'ask' || j.commands === 'always' || j.commands === 'off') out.commands = j.commands;
     if (j.themes && typeof j.themes === 'object' && !Array.isArray(j.themes)) out.themes = j.themes as Record<string, unknown>;
+    if (j.httpActiveEnv && typeof j.httpActiveEnv === 'object' && !Array.isArray(j.httpActiveEnv))
+      out.httpActiveEnv = Object.fromEntries(Object.entries(j.httpActiveEnv as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'));
     return out;
   } catch {
     return {};

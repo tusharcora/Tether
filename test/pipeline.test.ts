@@ -31,6 +31,24 @@ describe('pipeline', () => {
     expect(errs(pipe([{ id: 'g', kind: 'gate', command: 'true', verdict: true }], [])).join()).toMatch(/only agent nodes/);
   });
 
+  it('a gate runs a command or a saved request, exactly one', () => {
+    expect(errs(pipe([{ id: 'g', kind: 'gate' }], [])).join()).toMatch(/needs a command or a saved request/);
+    expect(errs(pipe([{ id: 'g', kind: 'gate', command: 'true', http: { run: 'runs/list' } }], [])).join()).toMatch(/not both/);
+    expect(errs(pipe([{ id: 'g', kind: 'gate', http: { run: 'runs/list', repeat: 130, expect: 'last' } }], []))).toEqual([]);
+    expect(errs(pipe([{ id: 'g', kind: 'gate', http: { run: '../x' } }], [])).join()).toMatch(/not a valid saved request id/);
+    expect(errs(pipe([{ id: 'a', http: { run: 'x' } }], [])).join()).toMatch(/only gates/);
+    expect(() => normalizePipeline({ name: 'x', nodes: [{ id: 'g', kind: 'gate', http: { run: 'a', repeat: 501 } }] })).toThrow(/1 to 500/);
+    expect(() => normalizePipeline({ name: 'x', nodes: [{ id: 'g', kind: 'gate', http: { run: 'a', expect: 'some' } }] })).toThrow(/"all" or "last"/);
+    expect(normalizePipeline({ name: 'x', nodes: [{ id: 'g', kind: 'gate', http: { run: 'a', env: 'local' } }] }).nodes[0]!.http).toEqual({ run: 'a', env: 'local' });
+  });
+
+  it('a half-filled request gate saves but is an error issue, never a throw', () => {
+    const p = normalizePipeline({ name: 'x', nodes: [{ id: 'g', kind: 'gate', http: { run: '' } }] });
+    expect(p.nodes[0]!.http).toEqual({ run: '' });
+    expect(preflight(p, reg()).filter((i) => i.level === 'error')).toEqual([{ level: 'error', node: 'g', message: 'gate needs a request' }]);
+    expect(() => normalizePipeline({ name: 'x', nodes: [{ id: 'g', kind: 'gate', http: { run: 7 } }] })).toThrow(/http needs "run"/);
+  });
+
   it('warns when nothing independent verifies the work', () => {
     const w = preflight(pipe([{ id: 'a' }], []), reg()).filter((i) => i.level === 'warn');
     expect(w.map((x) => x.message).join()).toMatch(/no gate node/);

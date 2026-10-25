@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
@@ -117,6 +118,22 @@ describe('http api', () => {
     expect(text).toContain('event: state');
     expect(text).toContain('event: event');
     expect(text).toContain('node.finished');
+  });
+
+  it('POST /api/runs with endpoints: false leaves the saved API requests out of the run', async () => {
+    const proj = makeRepo();
+    mkdirSync(join(proj, '.aorch/http'), { recursive: true });
+    writeFileSync(join(proj, '.aorch/project.md'), '# Demo\n');
+    writeFileSync(join(proj, '.aorch/http/ping.req.json'), JSON.stringify({ name: 'Ping', method: 'GET', url: 'http://h/ping' }));
+    execFileSync('git', ['add', '-A'], { cwd: proj });
+    execFileSync('git', ['commit', '-q', '-m', 'aorch'], { cwd: proj });
+    const ws = async (body: object) => {
+      const started = await api('POST', '/api/runs', { pipeline: demo, task: 't', repo: proj, autoApprove: true, ...body });
+      expect(started.status).toBe(201);
+      return (await api('GET', `/api/runs/${started.json.id}`)).json.workspace;
+    };
+    expect((await ws({})).endpoints).toContain('ping');
+    expect((await ws({ endpoints: false })).endpoints).toBeUndefined();
   });
 
   it('rejects bad input with useful errors', async () => {

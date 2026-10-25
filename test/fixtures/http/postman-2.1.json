@@ -1,0 +1,17 @@
+{
+  "info": { "name": "Shop", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [{ "key": "base", "value": "https://shop.example" }, { "key": "token", "value": "tok-live-9f8e7d" }],
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+  "item": [
+    {
+      "name": "Orders",
+      "item": [
+        { "name": "List orders", "request": { "method": "GET", "url": { "raw": "{{base}}/orders?limit=5" }, "header": [{ "key": "Accept", "value": "application/json" }] } },
+        { "name": "Create order", "request": { "method": "POST", "url": "{{base}}/orders", "body": { "mode": "raw", "raw": "{\"sku\":\"a1\"}", "options": { "raw": { "language": "json" } } } } },
+        { "name": "Upload", "request": { "method": "POST", "url": "{{base}}/up", "body": { "mode": "formdata", "formdata": [] } } }
+      ]
+    },
+    { "name": "Login", "request": { "method": "POST", "url": "{{base}}/login", "auth": { "type": "basic", "basic": [{ "key": "username", "value": "me" }, { "key": "password", "value": "hunter2" }] }, "body": { "mode": "urlencoded", "urlencoded": [{ "key": "remember", "value": "1" }] } } },
+    { "name": "OAuth thing", "request": { "method": "GET", "url": "{{base}}/o", "auth": { "type": "oauth2" } } }
+  ]
+}

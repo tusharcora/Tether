@@ -5,6 +5,7 @@ import './components/arc/foundation.css';
 import 'blobatar/motion.css';
 import './theme.css';
 import './styles.css';
+import './studio.css';
 import { applyTheme, initialTheme } from './theme';
 
 applyTheme(initialTheme());

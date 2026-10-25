@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
@@ -12,6 +12,7 @@ import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { getWorkspace, listWorkspaces } from './workspace.js';
+import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -26,6 +27,9 @@ import { loadLessons, type Lesson } from './lessons.js';
 import { eccInfo, gitFetch, importEcc, removeEcc, type Fetch } from './eccImport.js';
 import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
+import { HttpError, readJson, reqObject, send } from './serverkit.js';
+import { httpRoute } from './http/routes.js';
+import { HttpClientError, statusFor } from './http/errors.js';
 
 export interface ServerOptions {
   engine: Engine;
@@ -46,7 +50,6 @@ export interface ServerOptions {
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
 const LIST_PERSONA_MAX = 2000;
 
-const MAX_BODY = 1_000_000;
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -59,21 +62,7 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 const MAX_LIST = 20;
-/** Body must be a JSON object. */
-function reqObject(b: unknown): Record<string, unknown> {
-  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'the body must be a JSON object');
-  return b as Record<string, unknown>;
-}
 /** Optional single-line string, trimmed; empty means absent. */
 function reqString(b: Record<string, unknown>, k: string, max = 200): string | undefined {
   const v = b[k];
@@ -126,6 +115,18 @@ function evolveError(e: unknown, home: string): HttpError {
 
 const MAX_ANSWERS = 20;
 /** Map an engine refusal on a team route to an HTTP status by its code. Anything the engine did not mean to refuse is a 500. */
+/**
+ * Workspace export/import failures: a bad bundle or target (BundleError) is the caller's (400); a store refusal keeps
+ * its status (400/404/409/413, and 500 with the chmod fix for a secrets file that is too open); anything else, from a
+ * file-system error to a bug, is ours: 500 with the message.
+ */
+export function bundleError(e: unknown): HttpError {
+  if (e instanceof HttpError) return e;
+  if (e instanceof BundleError) return new HttpError(400, e.message);
+  if (e instanceof HttpClientError) return new HttpError(statusFor(e.code), e.message);
+  return new HttpError(500, e instanceof Error ? e.message : String(e));
+}
+
 function teamError(e: unknown): HttpError {
   if (e instanceof HttpError) return e;
   const msg = (e as Error).message;
@@ -216,28 +217,6 @@ async function readRaw(req: IncomingMessage, max = 5_000_000): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function readJson(req: IncomingMessage): Promise<any> {
-  const chunks: Buffer[] = [];
-  let n = 0;
-  for await (const c of req) {
-    n += (c as Buffer).length;
-    if (n > MAX_BODY) throw new HttpError(413, 'request body too large');
-    chunks.push(c as Buffer);
-  }
-  if (!n) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch {
-    throw new HttpError(400, 'invalid JSON body');
-  }
-}
-
-function send(res: ServerResponse, status: number, body: unknown) {
-  const data = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(data) });
-  res.end(data);
-}
-
 export function startServer(o: ServerOptions): Promise<{ server: Server; url: string; close(): Promise<void> }> {
   const host = o.host ?? '127.0.0.1';
   if (!isLoopback(host) && process.env.AORCH_ALLOW_REMOTE !== '1') {
@@ -310,6 +289,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const p = url.pathname;
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
+    if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
@@ -551,6 +531,35 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/workspaces' && m === 'GET') {
       return send(res, 200, listWorkspaces(cfg.home).map((w) => ({ id: w.id, name: w.name, path: w.path, isDefault: !!w.isDefault, exists: w.exists, repos: w.repos }))), true;
     }
+    if ((g = p.match(/^\/api\/workspaces\/([a-z][a-z0-9_-]{0,31})\/export$/)) && m === 'GET') {
+      const w = getWorkspace(cfg.home, g[1]!);
+      if (!w) throw new HttpError(404, `unknown workspace "${g[1]}"`);
+      // never with secrets: secret values must not reach the browser (only the CLI has --with-secrets)
+      let r: ReturnType<typeof exportWorkspace>;
+      try {
+        r = exportWorkspace(cfg.home, w);
+      } catch (e) {
+        throw bundleError(e);
+      }
+      return send(res, 200, { fileName: bundleFileName(w), bundle: r.bundle, skipped: r.skipped }), true;
+    }
+    if (p === '/api/workspaces/import' && m === 'POST') {
+      const b = reqObject(await readJson(req, 6_000_000));
+      let bundle: Bundle;
+      try {
+        bundle = parseBundle(b.bundle);
+      } catch (e) {
+        throw bundleError(e);
+      }
+      if (typeof b.into !== 'string' || !isAbsolute(b.into)) throw new HttpError(400, '"into" must be an absolute folder path');
+      try {
+        if (b.confirm !== true) return send(res, 200, planBundleImport(bundle, b.into, cfg.home)), true;
+        const r = applyBundle(cfg.home, bundle, b.into);
+        return send(res, 200, { workspace: r.workspace.id, written: r.written }), true;
+      } catch (e) {
+        throw bundleError(e);
+      }
+    }
 
     // ---- triggers: PR rules with ids, status and a delivery log. The webhook secret is only ever returned by POST /api/triggers/setup/secret. ----
     if (p === '/api/triggers' && m === 'GET') {
@@ -708,7 +717,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (b.maxRounds !== undefined && !(Number.isInteger(b.maxRounds) && b.maxRounds >= 1 && b.maxRounds <= 6)) throw new HttpError(400, '"maxRounds" must be a whole number from 1 to 6');
         // the run is created and returned at once; planning (model calls) runs in the background, so poll the run
         try {
-          const id = await engine.startTeam({ task: b.task, repo: resolve(b.repo), mode: b.mode, roster: roster.length ? roster : undefined, yes, budgetUsd: b.budget, maxRounds: b.maxRounds, background: true });
+          const id = await engine.startTeam({ task: b.task, repo: resolve(b.repo), mode: b.mode, roster: roster.length ? roster : undefined, yes, budgetUsd: b.budget, maxRounds: b.maxRounds, background: true, endpoints: b.endpoints === false ? false : undefined });
           return send(res, 201, { id }), true;
         } catch (e) {
           // a refusal of the input (an unknown roster bot) is 400; a run that could not be made (not a git repo) is 422, as for workflows
@@ -723,7 +732,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         throw new HttpError(400, (e as Error).message);
       }
       try {
-        const id = await engine.start({ pipeline: pl, task: b.task, repo: resolve(b.repo), ref: typeof b.ref === 'string' ? b.ref : undefined, autoApprove: !!b.autoApprove });
+        const id = await engine.start({ pipeline: pl, task: b.task, repo: resolve(b.repo), ref: typeof b.ref === 'string' ? b.ref : undefined, autoApprove: !!b.autoApprove, endpoints: b.endpoints === false ? false : undefined });
         return send(res, 201, { id }), true;
       } catch (e) {
         throw new HttpError(422, (e as Error).message);
@@ -904,7 +913,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       serveStatic(req, res, url);
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof HttpError) {
+        // the rest of an oversized upload is never read: close the connection instead of reusing a half-read socket
+        if (e.status === 413) res.setHeader('connection', 'close');
+        return send(res, e.status, { error: e.message });
+      }
       send(res, 500, { error: (e as Error).message });
     }
   });

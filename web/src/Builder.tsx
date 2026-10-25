@@ -12,6 +12,7 @@ import SegmentedControl from './components/arc/segmented-control/segmented-contr
 import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
 import { crewFor, useCrew } from './crewStore';
+import { RequestGateFields } from './RequestGateFields';
 import { ModeToggle } from './Team';
 import { NONE, fromNone } from './ui/cn';
 import { useNotify } from './ui/notify';
@@ -55,7 +56,11 @@ const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kin
 
 type Adapters = Record<string, { ok: boolean; version?: string; detail?: string }>;
 
-export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void }) {
+/**
+ * `gate`: a saved request handed over from the API tab ("Use as gate in a workflow"); once the first workflow has
+ * loaded it is appended as a request gate chained after the last step, and `onGateUsed` is called so the shell can clear it.
+ */
+export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void; gate?: { run: string; env?: string }; onGateUsed?: () => void }) {
   const notify = useNotify();
   const { crew } = useCrew();
   const [pl, setPl] = useState<Pipeline>(() => structuredClone(BLANK));
@@ -69,10 +74,14 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [repo, setRepo] = useState('');
   const [task, setTask] = useState('');
   const [auto, setAuto] = useState(false);
+  const [endpoints, setEndpoints] = useState(true);
   const [busy, setBusy] = useState(false);
   const [teamRun, setTeamRun] = useState(false);
   const [teamMode, setTeamMode] = useState<'live' | 'autonomous'>('live');
   const [pending, setPending] = useState<null | (() => void)>(null);
+  const [loaded, setLoaded] = useState(false);
+  // a gate's command while it runs a request instead, so switching back to Command restores it
+  const parkedCommands = useRef<Record<string, string>>({});
 
   const dirty = JSON.stringify(pl) !== savedJson;
   const errors = issues.filter((i) => i.level === 'error');
@@ -136,6 +145,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       const list = await refreshList();
       const first = props.pipeline ?? (list.find((n) => n.name === 'plan-code-review') ?? list[0])?.name;
       if (first) await load(first);
+      setLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -196,6 +206,29 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
     setSelected(id);
   }
 
+  // "Use as gate in a workflow" from the API tab: append a prefilled request gate once the workflow has loaded
+  const gateDone = useRef<unknown>(null);
+  useEffect(() => {
+    const g = props.gate;
+    if (!g || !loaded || gateDone.current === g) return;
+    gateDone.current = g;
+    addNode(() => ({ kind: 'gate', title: g.run.split('/').at(-1), http: { run: g.run, ...(g.env ? { env: g.env } : {}) }, maxLoops: 2 }));
+    props.onGateUsed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.gate, loaded]);
+
+  /** A gate runs exactly one of a shell command or a saved request. */
+  function setGateKind(n: PipelineNode, kind: string) {
+    if (kind === 'request') {
+      if (n.http) return;
+      if (n.command) parkedCommands.current[n.id] = n.command;
+      patch(n.id, { command: undefined, http: { run: '' } });
+    } else {
+      if (!n.http) return;
+      patch(n.id, { http: undefined, command: parkedCommands.current[n.id] ?? 'npm test' });
+    }
+  }
+
   function connect(from: string, to: string) {
     if (from === to) return;
     if (pl.edges.some((e) => e.from === from && e.to === to)) return notify.info('Already connected.');
@@ -232,7 +265,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       } catch {
         /* ignore */
       }
-      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo } : { pipeline: pl, task, repo, autoApprove: auto });
+      const off = endpoints ? {} : { endpoints: false };
+      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo, ...off } : { pipeline: pl, task, repo, autoApprove: auto, ...off });
       setRunOpen(false);
       props.onStarted(r.id);
     } catch (e) {
@@ -322,7 +356,24 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
             <Checkbox label="Use knowledge-graph context" checked={n.vault !== false} onCheckedChange={(c) => patch(n.id, { vault: c === true ? undefined : false })} />
           </>
         ) : null}
-        {n.kind === 'gate' ? <Input label="Command (exit 0 = pass)" value={n.command ?? ''} spellCheck={false} onChange={(e) => patch(n.id, { command: e.target.value })} /> : null}
+        {n.kind === 'gate' ? (
+          <>
+            <SegmentedControl
+              label="The gate runs"
+              options={[
+                { value: 'command', label: 'Command' },
+                { value: 'request', label: 'Request' },
+              ]}
+              value={n.http ? 'request' : 'command'}
+              onValueChange={(v) => setGateKind(n, v)}
+            />
+            {n.http ? (
+              <RequestGateFields key={n.id} http={n.http} onChange={(h) => patch(n.id, { http: h })} />
+            ) : (
+              <Input label="Command (exit 0 = pass)" value={n.command ?? ''} spellCheck={false} onChange={(e) => patch(n.id, { command: e.target.value })} />
+            )}
+          </>
+        ) : null}
         {n.kind !== 'approval' && (n.kind === 'gate' || n.verdict) ? (
           <>
             <Select
@@ -475,6 +526,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
             />
             <Textarea label="Task" required rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="Add rate limiting to POST /orders" />
             {!teamRun ? <Checkbox label="Auto-approve approval steps (skips the human sign-off)" checked={auto} onCheckedChange={(c) => setAuto(c === true)} /> : null}
+            <Checkbox label="Tell agents about this project's saved API requests" checked={endpoints} onCheckedChange={(c) => setEndpoints(c === true)} />
             <p className="muted small">Runs in an isolated git worktree on its own branch; your checkout is never touched. Agents run with this machine's permissions.</p>
             <div className="row end">
               <Button type="button" variant="secondary" onClick={() => setRunOpen(false)}>

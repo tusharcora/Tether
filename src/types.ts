@@ -1,3 +1,6 @@
+import type { HttpGate } from './http/types.js';
+export type { HttpGate };
+
 // Shared types. The pipeline file is the visual builder's document; RunEvent is the
 // append-only log every run is rebuilt from (that is what makes runs resumable).
 
@@ -75,6 +78,8 @@ export interface PipelineNode {
   vault?: boolean;
   /** gate: shell command, run in the run's worktree. Exit 0 = pass. */
   command?: string;
+  /** gate: run a saved API request instead of a command (exactly one of the two). */
+  http?: HttpGate;
   /** For gates and verdict nodes: re-run this upstream agent node with the failure output. */
   fixNode?: string;
   /** Max fix loops for this check (default 2). */
@@ -153,6 +158,8 @@ export interface RunWorkspace {
   id: string;
   name: string;
   context: string;
+  /** The saved API requests block for prompts, when the workspace has requests and the block is on. */
+  endpoints?: string;
 }
 
 export type RunKind = 'workflow' | 'team';
@@ -286,6 +293,8 @@ export type RunEvent =
   | { type: 'supervisor.action'; round: number; action: 'retry' | 'escalate' | 'stop'; node?: string; detail: string }
   | { type: 'run.coach'; findings: CoachFinding[] }
   | { type: 'vault.note'; path: string }
+  /** An API exchange (a history row) was handed to this run from the API client. */
+  | { type: 'http.attached'; historyId: number }
   | { type: 'run.finished'; status: RunStatus; error?: string; /** The run ended because its spend cap was reached. */ budget?: true };
 
 export interface StoredEvent {

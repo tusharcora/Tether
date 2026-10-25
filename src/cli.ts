@@ -8,6 +8,7 @@ import { Engine } from './engine.js';
 import { loadPipelineFile, preflight } from './pipeline.js';
 import { startServer } from './server.js';
 import { Store } from './store.js';
+import { httpCommand } from './http/cli.js';
 import type { Answer, Pipeline, Question, RunState, StoredEvent } from './types.js';
 import { answerFromInput, parseTeamArgs } from './team.js';
 import { Vault } from './vault.js';
@@ -35,6 +36,7 @@ import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs,
 import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
+import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, writeBundle, type Bundle } from './wsexport.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
 import { CREW, crewFor } from './bots.js';
@@ -50,7 +52,7 @@ const s0 = (t: string) => bold(t.split('\n')[0]!.slice(0, 90));
 const HELP = `aorch — durable orchestrator for CLI coding agents
 
 Usage
-  aorch run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>]
+  aorch run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>] [--no-endpoints]
   aorch run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
   aorch resume <runId> [--retry-failed]
   aorch approve <runId> <node> [--reject] [--resume]
@@ -65,7 +67,7 @@ Usage
   aorch lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
   aorch                               interactive dashboard (runs, workflows, agent sessions)
   aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
-  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes]   Maestro asks questions, you approve a plan, a team of bots does it
+  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Maestro asks questions, you approve a plan, a team of bots does it
   aorch answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
   aorch plan <runId> [--reject]       approve (or reject) a team run's finished plan
   aorch mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
@@ -76,6 +78,8 @@ Usage
   aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
   aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
   aorch skills [--source ecc|claude|aorch] [run <name> --task "…"]    list or run skills (Claude Code skills, aorch workflows, ECC skills and commands; ecc:<name> picks the ECC one)
+  aorch http ls | run <id> [--env e] | send <METHOD> <url> [-H k:v] [-d body] | import <file|-> --kind curl|openapi|postman | env ls|use|none | secret set|rm|ls   saved API requests (.aorch/http); exit 1 = a check failed, 2 = network error
+  aorch workspace export [id] [--out f] [--with-secrets] | import <file> [--into dir] [--yes]   move a workspace (notes, saved requests, optionally secrets) as one JSON file
   aorch models [agent]                list what each agent can run (local servers included)
   aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
@@ -617,6 +621,13 @@ async function main() {
       source: { type: 'string' },
       from: { type: 'string' },
       update: { type: 'boolean' },
+      env: { type: 'string' },
+      into: { type: 'string' },
+      out: { type: 'string' },
+      'with-secrets': { type: 'boolean' },
+      'no-endpoints': { type: 'boolean' },
+      header: { type: 'string', short: 'H', multiple: true },
+      data: { type: 'string', short: 'd' },
     },
   });
   applyTheme(v.theme);
@@ -641,7 +652,7 @@ async function main() {
       const ctx = open(v);
       let id: string;
       try {
-        id = await ctx.engine.startTeam({ task: goal, repo, yes: v.yes, workspace: wsOpt(v), ...ta });
+        id = await ctx.engine.startTeam({ task: goal, repo, yes: v.yes, workspace: wsOpt(v), endpoints: v['no-endpoints'] ? false : undefined, ...ta });
       } catch (e) {
         fail((e as Error).message);
       }
@@ -1048,6 +1059,19 @@ async function main() {
       }
       return fail('usage: aorch providers [list | presets | add <preset> | remove <name>]');
     }
+    case 'http': {
+      const cfg = loadConfig(v);
+      const code = await httpCommand(cfg.home, process.cwd(), ['http', ...pos], { json: v.json, env: v.env, header: v.header, data: v.data, kind: v.kind, into: v.into, yes: v.yes, workspace: v.workspace }, {
+        out: (s) => console.log(s),
+        err: (s) => console.error(s),
+        readStdin: () => readFileSync(0, 'utf8'),
+        confirm: (q) => confirm(q, { defaultNo: true }),
+        isTTY: !!process.stdin.isTTY,
+      });
+      // not process.exit: that drops stdout still queued for a pipe (a --json result can be megabytes)
+      process.exitCode = code;
+      return;
+    }
     case 'workspace':
     case 'ws': {
       const cfg = loadConfig(v);
@@ -1137,7 +1161,62 @@ async function main() {
         console.log(`${green('✔')} wrote ${join(w.path, '.aorch/project.md')} ${dim(`${out.split('\n').length} lines · $${st.costUsd.toFixed(2)}`)}\n  ${dim('read it, correct anything wrong, and commit it. Every agent in this project will see it.')}`);
         return;
       }
-      fail('usage: aorch workspace [list | init [dir] | add [dir] | show [id] | context [id] | set [id] --summary … | survey [id] | use <id> | remove <id>]');
+      // export / import print a preview or a summary first: errors set process.exitCode instead of process.exit, which drops stdout still queued for a pipe
+      const stop = (msg: string, code: number) => {
+        console.error(`${red('✘ error')} ${msg}`);
+        process.exitCode = code;
+      };
+      if (sub === 'export') {
+        const w = need(pos[1]);
+        if (v['with-secrets']) {
+          console.error(amber('warning: the export will contain secret values in plain text; keep the file private (it is written with mode 600)'));
+          if (!v.yes && !(process.stdin.isTTY && (await confirm('include the secrets?', { defaultNo: true })))) return stop('not exported (add --yes to include secrets without asking)', 2);
+        }
+        let r: ReturnType<typeof exportWorkspace>;
+        const file = resolve(v.out ?? bundleFileName(w));
+        try {
+          r = exportWorkspace(cfg.home, w, { withSecrets: !!v['with-secrets'] });
+          writeBundle(file, r.bundle);
+        } catch (e) {
+          return stop(`cannot export ${w.id}: ${(e as Error).message}`, 1);
+        }
+        const n = Object.keys(r.bundle.http.files).length;
+        const s = r.bundle.secrets ? Object.keys(r.bundle.secrets).length : 0;
+        console.log(`${green('✔')} wrote ${file} ${dim(`(${n} file${n === 1 ? '' : 's'} from .aorch/http${r.bundle.secrets ? `, ${s} secret${s === 1 ? '' : 's'}, mode 600` : ''})`)}`);
+        for (const k of r.skipped) console.log(`  ${amber('!')} left out ${k.path} ${dim(`(${k.reason})`)}`);
+        return;
+      }
+      if (sub === 'import') {
+        const file = pos[1];
+        if (!file) return stop('usage: aorch workspace import <file> [--into <dir>] [--yes]', 2);
+        const dir = resolve(v.into ?? '.');
+        let bundle: Bundle;
+        let plan: ReturnType<typeof planBundleImport>;
+        try {
+          bundle = parseBundle(JSON.parse(readFileSync(file, 'utf8')));
+          plan = planBundleImport(bundle, dir, cfg.home);
+        } catch (e) {
+          return stop(`cannot import ${file}: ${(e as Error).message}`, 2);
+        }
+        console.log(`${bold('import into')} ${dir}`);
+        for (const f of plan.create) console.log(`  ${green('+')} ${f}`);
+        for (const f of plan.overwrite) console.log(`  ${amber('~')} ${f} ${dim('(overwritten)')}`);
+        // key names only: a value is never printed
+        for (const k of plan.overwriteSecrets) console.log(`  ${amber('~')} secret ${k} ${dim('(overwritten)')}`);
+        if (plan.secrets.length) console.log(`  ${amber('!')} ${plan.secrets.length} secret(s) for this workspace: ${plan.secrets.join(', ')}`);
+        const replaced = plan.overwrite.length + plan.overwriteSecrets.length;
+        const what = [plan.overwrite.length && `${plan.overwrite.length} file(s)`, plan.overwriteSecrets.length && `${plan.overwriteSecrets.length} secret(s)`].filter(Boolean).join(' and ');
+        const go = v.yes || (process.stdin.isTTY && (await confirm(replaced ? `overwrite ${what} in ${dir}?` : `import into ${dir}?`, { defaultNo: replaced > 0 })));
+        if (!go) return stop('nothing written; run again with --yes to import', 2);
+        try {
+          const r = applyBundle(cfg.home, bundle, dir);
+          console.log(`${green('✔')} imported into ${dir} as workspace ${bold(r.workspace.id)} ${dim(`(${r.written.length} files${plan.secrets.length ? `, ${plan.secrets.length} secret(s)` : ''})`)}`);
+        } catch (e) {
+          return stop(`cannot import ${file}: ${(e as Error).message}`, 1);
+        }
+        return;
+      }
+      fail('usage: aorch workspace [list | init [dir] | add [dir] | show [id] | context [id] | set [id] --summary … | survey [id] | use <id> | remove <id> | export [id] [--out f] [--with-secrets] | import <file> [--into dir] [--yes]]');
     }
     case 'triggers':
     case 'trigger': {
@@ -1567,7 +1646,7 @@ async function main() {
       for (const i of preflight(ctx.engine.resolve(pipeline), makeRegistry(ctx.cfg))) if (i.level === 'warn') console.error(yellow(`warning: ${i.node ? `[${i.node}] ` : ''}${i.message}`));
       let id: string;
       try {
-        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v) });
+        id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v), endpoints: v['no-endpoints'] ? false : undefined });
       } catch (e) {
         fail((e as Error).message);
       }

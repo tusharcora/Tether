@@ -117,6 +117,7 @@ export function buildPrompt(i: PromptInput): string {
   }
 
   if (state.workspace?.context) parts.push(`# Project context (what you are working on)\n${state.workspace.context}`);
+  if (state.workspace?.endpoints) parts.push(state.workspace.endpoints);
 
   parts.push(`# Task\n${state.task}`);
 

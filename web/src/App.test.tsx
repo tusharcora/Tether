@@ -3,11 +3,29 @@ import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
-vi.mock('./Builder', () => ({ Builder: (p: { pipeline?: string }) => <div>builder screen {p.pipeline ?? ''}</div> }));
+vi.mock('./Builder', () => ({
+  Builder: (p: { pipeline?: string; gate?: { run: string; env?: string }; onGateUsed?: () => void }) => (
+    <div>
+      builder screen {p.pipeline ?? ''}
+      {p.gate ? ` gate ${p.gate.run} in ${p.gate.env ?? '-'}` : ''}
+      {p.gate ? <button onClick={p.onGateUsed}>use gate</button> : null}
+    </div>
+  ),
+}));
 vi.mock('./Runs', () => ({ Runs: (p: { selected?: string }) => <div>runs screen {p.selected ?? ''}</div> }));
 vi.mock('./Graph', () => ({ GraphView: () => <div>graph screen</div> }));
 vi.mock('./Crew', () => ({ Crew: () => <div>crew screen</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
+vi.mock('./http/ApiTab', () => ({
+  ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void }) => (
+    <div>
+      api screen
+      <button onClick={() => p.onDirtyChange?.(true)}>edit draft</button>
+      <button onClick={() => p.onUseAsGate({ run: 'runs/list', env: 'stage' })}>gate it</button>
+      <button onClick={() => p.onStarted('r9')}>started</button>
+    </div>
+  ),
+}));
 import { api } from './api';
 import { App } from './App';
 import { routeApi } from './test/fixtures';
@@ -18,6 +36,45 @@ beforeEach(() => {
 });
 
 describe('App', () => {
+  it('has an API tab', async () => {
+    location.hash = '#/api';
+    render(<App />);
+    expect(screen.getByText('api screen')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'API' })).toBeTruthy();
+  });
+
+  it('asks before leaving the API tab with unsaved edits', async () => {
+    location.hash = '#/api';
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit draft' }));
+    const crew = () => fireEvent.mouseDown(screen.getByRole('tab', { name: 'Crew' })); // Radix tabs switch on mouse down
+    crew();
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+    expect(location.hash).toBe('#/api');
+    expect(screen.getByText('api screen')).toBeTruthy();
+    await screen.findByRole('tab', { name: 'Crew' }); // the dialog has let go of the page
+    crew();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    expect(location.hash).toBe('#/crew');
+    expect(screen.getByText('crew screen')).toBeTruthy();
+  });
+
+  it('hands a request gate from the API tab to the Builder once, and opens started runs', async () => {
+    location.hash = '#/api';
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'gate it' }));
+    expect(location.hash).toBe('#/builder');
+    expect(screen.getByText(/gate runs\/list in stage/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'use gate' }));
+    expect(screen.queryByText(/gate runs\/list/)).toBeNull();
+    act(() => {
+      location.hash = '#/api';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'started' }));
+    expect(location.hash).toBe('#/runs/r9');
+  });
+
   it('switches tabs through the hash and remembers the last run', async () => {
     location.hash = '#/runs/r5';
     render(<App />);

@@ -4,6 +4,8 @@ import { parse as parseYaml } from 'yaml';
 import type { AdapterRegistry } from './adapters/index.js';
 import { CREW } from './bots.js';
 import { STEP_TYPES } from './composer.js';
+import { checkPath } from './http/store.js';
+import { isObj, MAX_REPEAT, type HttpGate } from './http/types.js';
 import {
   DEFAULT_SETTINGS,
   SUPPORTED_MODES,
@@ -24,10 +26,20 @@ export interface Issue {
   message: string;
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** A gate's saved request. `run: ''` is kept (a half-filled Builder draft); preflight reports it, so a run refuses it. */
+function httpGate(v: unknown, id: string): HttpGate | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!isObj(v) || typeof v.run !== 'string') throw new Error(`node "${id}": http needs "run" (a saved request id)`);
+  const repeat = num(v.repeat);
+  if (v.repeat !== undefined && !(repeat !== undefined && Number.isInteger(repeat) && repeat >= 1 && repeat <= MAX_REPEAT)) throw new Error(`node "${id}": http.repeat must be a whole number from 1 to ${MAX_REPEAT}`);
+  if (v.expect !== undefined && v.expect !== 'all' && v.expect !== 'last') throw new Error(`node "${id}": http.expect must be "all" or "last"`);
+  const env = str(v.env);
+  return { run: v.run, ...(env ? { env } : {}), ...(repeat !== undefined ? { repeat } : {}), ...(v.expect ? { expect: v.expect } : {}) };
+}
 
 /** Turn untrusted JSON/YAML into a well-formed Pipeline, or throw with a precise message. */
 export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipeline {
@@ -61,6 +73,7 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
       verdict: bool(rn.verdict),
       vault: bool(rn.vault),
       command: str(rn.command),
+      http: httpGate(rn.http, id),
       fixNode: str(rn.fixNode),
       maxLoops: num(rn.maxLoops),
       manager: bool(rn.manager),
@@ -191,8 +204,17 @@ export function preflight(p: Pipeline, registry?: AdapterRegistry): Issue[] {
     }
     if (n.kind === 'gate') {
       gates++;
-      if (!n.command) err('gate needs a command', n.id);
-    }
+      if (n.command && n.http) err('a gate runs a command or a saved request, not both', n.id);
+      else if (!n.command && !n.http) err('gate needs a command or a saved request', n.id);
+      else if (n.http && !n.http.run) err('gate needs a request', n.id);
+      else if (n.http) {
+        try {
+          checkPath(n.http.run, 'request');
+        } catch {
+          err(`"${n.http.run}" is not a valid saved request id`, n.id);
+        }
+      }
+    } else if (n.http) err('only gates can run a saved request', n.id);
     if (n.manager) {
       if (n.kind !== 'agent') err('only agent nodes can be managers', n.id);
       if (n.fixNode) warn('a manager with a fixNode may spawn work that the fix loop then re-runs', n.id);

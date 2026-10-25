@@ -1,0 +1,64 @@
+/* Studio Live: the look new screens are built in (the API tab first; the other screens follow in the restyle).
+   Scoped to .studio so existing screens keep their look until they opt in. Light here, dark under the theme
+   attribute theme.ts sets (dark is the default when the system states no preference). */
+@font-face { font-family: 'Geist'; src: url('./assets/fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Geist Mono'; src: url('./assets/fonts/GeistMono-Variable.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+
+.studio {
+  --bg: #fbfbfa; --s1: #ffffff; --s2: #f4f4f5; --s3: #e4e4e7;
+  --line: rgba(9, 9, 11, .08); --line2: rgba(9, 9, 11, .16);
+  --ink: #09090b; --mut: #52525b;
+  --acc: #2563eb; --accInk: #1d4ed8; --accBg: #eff6ff;
+  --ok: #047857; --okBg: #ecfdf5;
+  --warn: #a16207; --warnBg: #fefce8;
+  --bad: #b91c1c; --badBg: #fef2f2;
+}
+:root[data-theme="dark"] .studio {
+  --bg: #0a0a0b; --s1: #111113; --s2: #18181b; --s3: #26262b;
+  --line: rgba(255, 255, 255, .07); --line2: rgba(255, 255, 255, .14);
+  --ink: #f4f4f5; --mut: #a1a1aa;
+  --acc: #2563eb; --accInk: #93c5fd; --accBg: rgba(59, 130, 246, .15);
+  --ok: #34d399; --okBg: rgba(52, 211, 153, .12);
+  --warn: #fbbf24; --warnBg: rgba(251, 191, 36, .12);
+  --bad: #f87171; --badBg: rgba(248, 113, 113, .12);
+}
+.studio.studio {
+  --font-ui: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-code: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --t-fast: 150ms; --t-med: 200ms; --t-slow: 280ms;
+
+  /* Arc's tokens, bridged: Arc components inside take the Studio Live look. Arc's primary button paints --foreground, so it is ink. */
+  --background: var(--bg); --surface: var(--s1); --surface-raised: var(--s1); --surface-muted: var(--s2);
+  --foreground: var(--ink); --text-secondary: var(--mut); --text-muted: var(--mut);
+  --border: var(--line); --border-subtle: var(--line); --border-strong: var(--line2);
+  --accent: var(--acc); --accent-strong: var(--accInk); --accent-subtle: var(--accBg); --accent-foreground: #ffffff;
+  --control-on: var(--ink); --control-glyph: var(--bg); --control-fill: var(--ink); --control-thumb-on: var(--bg);
+  --success: var(--ok); --warning: var(--warn); --danger: var(--bad);
+  --shadow-resting: none; --shadow-raised: none; --shadow-floating: 0 0 0 1px var(--line2);
+  --arc-gradient: var(--s2); --arc-gradient-soft: var(--s1); --arc-gradient-line: var(--line2); --arc-gradient-ink: var(--ink); --arc-gradient-foreground: var(--ink);
+  --radius-control: 8px; --radius-panel: 10px; --radius-surface: 12px;
+  --font-body: var(--font-ui); --font-display: var(--font-ui);
+  --ease-enter: var(--ease); --ease-standard: var(--ease);
+  --duration-instant: var(--t-fast); --duration-fast: var(--t-fast); --duration-standard: var(--t-slow);
+
+  /* aorch's own names (theme.css), re-pointed: they were resolved at :root */
+  --panel: var(--s1); --panel-2: var(--s2); --text: var(--ink); --muted: var(--mut); --accent-fg: #ffffff;
+  --done: var(--ok); --run: var(--acc); --wait: var(--warn); --err: var(--bad); --queued: var(--mut); --grid: var(--line); --shadow: none;
+  --sans: var(--font-ui); --mono: var(--font-code);
+
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.studio code, .studio pre, .studio .mono { font-family: var(--font-code); }
+.studio :focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .studio, .studio *, .studio *::before, .studio *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+  }
+}
