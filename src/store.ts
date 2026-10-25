@@ -50,6 +50,50 @@ const summarize = (id: string, s: RunState): RunSummary => ({
   ...(s.probe ? { probe: true as const } : {}),
 });
 
+/** A position in the cross-run event order (ts, run id, seq). */
+export interface FeedCursor {
+  ts: number;
+  runId: string;
+  seq: number;
+}
+
+export interface FeedOptions {
+  types: readonly string[];
+  /** Only events strictly after this position, oldest first. */
+  after?: FeedCursor;
+  /** Run ids to leave out. */
+  exclude?: readonly string[];
+  /** Only events with `ts <= until`. */
+  until?: number;
+  limit: number;
+}
+
+/**
+ * Events of some types across runs. With `after`: strictly after that position, oldest first, so a gap longer than
+ * `limit` is paged forward without holes. Without: the newest, newest first. Pinned to the events_type (type, ts)
+ * index so a log full of chunk rows is never scanned.
+ */
+export function feedQuery(o: FeedOptions): { sql: string; params: (string | number)[] } {
+  const params: (string | number)[] = [...o.types];
+  let sql = `SELECT run_id, seq, ts, data FROM events INDEXED BY events_type WHERE type IN (${o.types.map(() => '?').join(', ')})`;
+  if (o.until !== undefined) {
+    sql += ' AND ts <= ?';
+    params.push(o.until);
+  }
+  if (o.after) {
+    sql += ' AND (ts, run_id, seq) > (?, ?, ?)';
+    params.push(o.after.ts, o.after.runId, o.after.seq);
+  }
+  if (o.exclude?.length) {
+    sql += ` AND run_id NOT IN (${o.exclude.map(() => '?').join(', ')})`;
+    params.push(...o.exclude);
+  }
+  const dir = o.after ? 'ASC' : 'DESC';
+  sql += ` ORDER BY ts ${dir}, run_id ${dir}, seq ${dir} LIMIT ?`;
+  params.push(o.limit);
+  return { sql, params };
+}
+
 type Listener = (e: StoredEvent) => void;
 
 /** Append-only event log in SQLite (WAL, so the CLI and the server can share one file). */
@@ -130,6 +174,13 @@ export class Store {
       .prepare(`SELECT seq, ts, data FROM events WHERE run_id = ? AND seq > ? AND type IN (${types.map(() => '?').join(', ')}) ORDER BY seq`)
       .all(runId, afterSeq, ...types) as { seq: number; ts: number; data: string }[];
     return rows.map((r) => ({ runId, seq: r.seq, ts: r.ts, event: JSON.parse(r.data) as RunEvent }));
+  }
+
+  /** Events of some types across runs (see feedQuery for the order). */
+  feed(o: FeedOptions): StoredEvent[] {
+    const q = feedQuery(o);
+    const rows = this.db.prepare(q.sql).all(...q.params) as { run_id: string; seq: number; ts: number; data: string }[];
+    return rows.map((r) => ({ runId: r.run_id, seq: r.seq, ts: r.ts, event: JSON.parse(r.data) as RunEvent }));
   }
 
   private maxSeq(runId: string): number {

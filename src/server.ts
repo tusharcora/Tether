@@ -17,6 +17,7 @@ import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
+import { ACTIVITY_LIMIT, ACTIVITY_MAX, activityFeed, parseCursor } from './activityFeed.js';
 import { attentionReader } from './attention.js';
 import { rowLive } from './runLabels.js';
 import { rowExtras } from './runRows.js';
@@ -706,6 +707,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return send(res, 200, rows), true;
     }
     if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }), true;
+    if (p === '/api/activity' && m === 'GET') {
+      const raw = url.searchParams.get('since');
+      const since = raw ? parseCursor(raw) : undefined;
+      if (raw && !since) throw new HttpError(400, 'malformed "since" cursor');
+      const n = Number(url.searchParams.get('limit') ?? ACTIVITY_LIMIT);
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, ACTIVITY_MAX) : ACTIVITY_LIMIT;
+      return send(res, 200, activityFeed(store, { since, limit })), true;
+    }
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
       if (b.kind !== undefined && b.kind !== 'workflow' && b.kind !== 'team') throw new HttpError(400, '"kind" must be "workflow" or "team"');
