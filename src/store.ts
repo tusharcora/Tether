@@ -124,6 +124,14 @@ export class Store {
     return rows.map((r) => ({ runId, seq: r.seq, ts: r.ts, event: JSON.parse(r.data) as RunEvent }));
   }
 
+  /** The run's events of the given types after seq `afterSeq`, oldest first (a primary-key range read; nothing else is parsed). */
+  eventsOfTypes(runId: string, types: readonly RunEvent['type'][], afterSeq = 0): StoredEvent[] {
+    const rows = this.db
+      .prepare(`SELECT seq, ts, data FROM events WHERE run_id = ? AND seq > ? AND type IN (${types.map(() => '?').join(', ')}) ORDER BY seq`)
+      .all(runId, afterSeq, ...types) as { seq: number; ts: number; data: string }[];
+    return rows.map((r) => ({ runId, seq: r.seq, ts: r.ts, event: JSON.parse(r.data) as RunEvent }));
+  }
+
   private maxSeq(runId: string): number {
     const row = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM events WHERE run_id = ?').get(runId) as {
       m: number;
@@ -164,21 +172,21 @@ export class Store {
   }
 
   /**
-   * Every run, newest first, with its folded state and newest event time. A fixed number of queries however many runs
+   * Every run, newest first, with its folded state, newest event time and newest seq. A fixed number of queries however many runs
    * there are (one grouped read of every run's newest seq and ts, one of the run ids); only runs that changed since the
    * last call re-read their events.
    */
-  listRows(): { summary: RunSummary; state: RunState; lastTs: number }[] {
+  listRows(): { summary: RunSummary; state: RunState; lastTs: number; seq: number }[] {
     const heads = new Map<string, { seq: number; ts: number }>();
     const rows = this.db.prepare('SELECT run_id, MAX(seq) AS seq, MAX(ts) AS ts FROM events GROUP BY run_id').all() as { run_id: string; seq: number; ts: number }[];
     for (const r of rows) heads.set(r.run_id, { seq: r.seq, ts: r.ts });
-    const out: { summary: RunSummary; state: RunState; lastTs: number }[] = [];
+    const out: { summary: RunSummary; state: RunState; lastTs: number; seq: number }[] = [];
     for (const id of this.runIds()) {
       const head = heads.get(id);
       if (!head) continue; // started (by another process) between the two reads: next call lists it
       const s = this.stateAt(id, head.seq);
       if (!s) continue;
-      out.push({ summary: summarize(id, s), state: s, lastTs: head.ts });
+      out.push({ summary: summarize(id, s), state: s, lastTs: head.ts, seq: head.seq });
     }
     return out;
   }

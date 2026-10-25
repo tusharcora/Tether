@@ -17,6 +17,7 @@ import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
+import { attentionReader } from './attention.js';
 import { rowLive } from './runLabels.js';
 import { rowExtras } from './runRows.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
@@ -228,6 +229,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     );
   }
   const { engine, store, vault, registry, cfg } = o;
+  const attention = attentionReader(store);
   let doctorCache: { at: number; data: unknown } | undefined;
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
 
@@ -703,6 +705,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, r) }));
       return send(res, 200, rows), true;
     }
+    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r) => rowLive(engine, r)) }), true;
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
       if (b.kind !== undefined && b.kind !== 'workflow' && b.kind !== 'team') throw new HttpError(400, '"kind" must be "workflow" or "team"');
