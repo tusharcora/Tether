@@ -1,0 +1,104 @@
+/* Graph (Studio Live board, v2): a live note board, a reader and a note list. Type is a shape, never a hue.
+   Loops: the green ping of a note a run just wrote (a 12 s live window), and flowing dashes along the hovered note's
+   links while the pointer is over it (interaction feedback that ends with the hover). Matches pulse three times.
+   The root reduced-motion rule stops both. */
+.gv-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.gv-page > .sl-screen-header { border-bottom: 1px solid var(--line); }
+.gv-search { display: flex; align-items: flex-end; gap: 8px; }
+.gv-found { padding-bottom: 10px; font-family: var(--font-code); font-size: 11.5px; color: var(--mut); white-space: nowrap; }
+.gv-types { display: flex; flex-wrap: wrap; gap: 4px; }
+.gv-types button {
+  height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--mut); font: inherit; font-size: 12.5px; cursor: pointer;
+  transition: background-color var(--t-med) var(--ease), color var(--t-med) var(--ease), border-color var(--t-med) var(--ease);
+}
+.gv-types button[aria-pressed='true'] { border-color: var(--edge); background: var(--s2); color: var(--ink); }
+.gv-glyph { fill: currentColor; stroke: currentColor; stroke-width: 1.5; }
+.gv-glyph.hollow { fill: none; }
+.gv-count { font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.gv-search-note { margin: 8px 24px 0; }
+.gv-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.gv-side { border-left: 1px solid var(--line); background: var(--s1); display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+
+/* the board */
+.gb { position: relative; min-height: 520px; overflow: hidden; background: var(--bg); }
+.gb-svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.gb-svg:active { cursor: grabbing; }
+.gb-dot { fill: var(--line2); }
+.gb-edge { stroke: var(--edge); stroke-width: 1.2; stroke-linecap: round; opacity: .5; transition: opacity var(--t-slow) var(--ease), stroke var(--t-med) var(--ease); }
+.gb-edge.close { opacity: .7; }
+.gb-edge.hot { stroke: var(--acc); stroke-width: 2.2; opacity: .95; }
+.gb-edge.flow { stroke-dasharray: 6 8; animation: gb-flow .9s linear infinite; }
+@keyframes gb-flow { to { stroke-dashoffset: -28; } }
+.gb-edge.dim { opacity: .15; }
+.gb-edge.hidden { opacity: 0; }
+.gb-node { cursor: grab; outline: none; transition: opacity var(--t-slow) var(--ease); }
+.gb-node:active { cursor: grabbing; }
+.gb-shape { fill: var(--s3); stroke: var(--edge); stroke-width: 1.5; transition: fill var(--t-med) var(--ease), stroke var(--t-med) var(--ease); }
+.gb-node.t-note .gb-shape { fill: var(--bg); }
+.gb-node.near .gb-shape { stroke: var(--ink); }
+.gb-node:hover .gb-shape { fill: var(--ink); stroke: var(--ink); }
+.gb-node.sel .gb-shape { fill: var(--acc); stroke: var(--acc); stroke-width: 2.5; }
+.gb-node:focus-visible .gb-shape { stroke: var(--acc); stroke-width: 3; }
+.gb-node.dim { opacity: .25; }
+.gb-node.hidden { opacity: 0; pointer-events: none; }
+.gb-label { fill: var(--mut); font-size: 12px; font-weight: 500; pointer-events: none; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.gb-node.near .gb-label { fill: var(--ink); }
+.gb-node.sel .gb-label { fill: var(--accInk); font-size: 13.5px; font-weight: 600; }
+.gb-ping { fill: none; stroke: var(--ok); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: gb-ping 1.6s var(--ease) infinite; }
+.gb-match { fill: var(--accBg); stroke: var(--acc); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: gb-match 1.1s ease-in-out 3; }
+@keyframes gb-ping { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.6); } }
+@keyframes gb-match { 50% { transform: scale(1.25); } }
+.gb-tools { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 4px; }
+.gb-tools button {
+  width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border-radius: 9px; border: 1px solid var(--edge);
+  background: var(--s1); color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+}
+.gb-tools button:hover { background: var(--s2); }
+.gb-hint { position: absolute; right: 14px; bottom: 14px; margin: 0; font-size: 12px; color: var(--mut); pointer-events: none; }
+.gb-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--mut); pointer-events: none; }
+
+/* overlays from the screen */
+.gv-hops {
+  position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px;
+  border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); font-size: 12px; color: var(--mut);
+}
+.gv-hops button { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--line2); background: transparent; color: var(--ink); cursor: pointer; }
+.gv-hops button:disabled { opacity: .4; cursor: default; }
+.gv-ticker {
+  position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px); display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); font-size: 12.5px; color: var(--ink); animation: gv-pop var(--t-slow) var(--ease) both;
+}
+.gv-ticker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.gv-ticker-age { font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+@keyframes gv-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* reader and list */
+.gv-reader { padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--line); animation: gv-in var(--t-slow) var(--ease) both; }
+@keyframes gv-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+.gv-reader h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.gv-path { margin: 0; display: flex; align-items: center; gap: 8px; font-family: var(--font-code); font-size: 12px; color: var(--mut); overflow-wrap: anywhere; }
+.gv-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.gv-tags button { padding: 2px 8px; border: 0; border-radius: 999px; background: var(--s2); color: var(--mut); font: inherit; font-size: 11.5px; cursor: pointer; }
+.gv-tags button:hover { color: var(--ink); }
+.gv-text { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-ui); font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.gv-reader-empty { margin: 0; padding: 20px; color: var(--mut); border-bottom: 1px solid var(--line); }
+.gv-connected { display: flex; flex-direction: column; gap: 4px; }
+.gv-link, .gv-list-item {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+}
+.gv-link:hover, .gv-list-item:hover { background: var(--s2); }
+.gv-dir { width: 14px; color: var(--mut); }
+.gv-link-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-link-kind { font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.gv-list { padding: 14px 20px; display: flex; flex-direction: column; gap: 2px; }
+.gv-list-item.on { background: var(--accBg); color: var(--accInk); }
+.gv-list-item.off { color: var(--mut); }
+@media (max-width: 1199px) { .gv-body { grid-template-columns: minmax(0, 1fr) 300px; } }
+@media (max-width: 899px) {
+  .gv-body { grid-template-columns: minmax(0, 1fr); }
+  .gb { min-height: 60vh; }
+  .gv-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .gb-hint { display: none; }
+}
