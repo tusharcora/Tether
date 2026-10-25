@@ -12,7 +12,7 @@ import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
 import { ApiTab } from './http/ApiTab';
-import { TAB_LABEL, TABS, useHashRoute, usePoll, type Route, type Tab } from './hooks';
+import { SCREENS, TAB_LABEL, useHashRoute, usePoll, type Route, type Screen } from './hooks';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
@@ -51,7 +51,7 @@ export function App() {
 
   const online = !!health.data?.ok && !health.error;
   const vault = health.data?.vault;
-  const openTab = (t: Tab) => go(t === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : { tab: t });
+  const openTab = (t: Screen) => go(t === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : { tab: t });
 
   return (
     <ToastStackProvider>
@@ -60,9 +60,9 @@ export function App() {
           <div className="brand">
             <span className="logo">◈</span> aorch
           </div>
-          <Tabs value={route.tab} onValueChange={(v) => openTab(v as Tab)}>
+          <Tabs value={route.tab} onValueChange={(v) => openTab(v as Screen)}>
             <TabsList aria-label="Main">
-              {TABS.map((t) => (
+              {SCREENS.map((t) => (
                 <TabsTrigger key={t} value={t}>
                   {TAB_LABEL[t]}
                 </TabsTrigger>

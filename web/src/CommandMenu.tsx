@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { RunRow } from './api';
 import { CommandPalette, type CommandItem } from './components/arc/command-palette/command-palette';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
-import { TAB_LABEL, TABS, usePoll, type Route, type Tab } from './hooks';
+import { SCREENS, TAB_LABEL, usePoll, type Route, type Screen } from './hooks';
 
 /** Ctrl/Cmd-K: jump to a tab, a recent run or a saved workflow. Arc's palette is an inline panel, so it sits in a Dialog. */
 export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) => void; onGo: (r: Route) => void }) {
@@ -10,7 +10,7 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
   const flows = usePoll<{ name: string }[]>(props.open ? '/api/pipelines' : null, 30_000);
   const items = useMemo<CommandItem[]>(
     () => [
-      ...TABS.map((t) => ({ id: `tab:${t}`, label: `Go to ${TAB_LABEL[t]}`, group: 'Tabs' })),
+      ...SCREENS.map((t) => ({ id: `tab:${t}`, label: `Go to ${TAB_LABEL[t]}`, group: 'Tabs' })),
       ...(runs.data ?? []).slice(0, 10).map((r) => ({
         id: `run:${r.id}`,
         label: r.task.split('\n')[0]!.slice(0, 80),
@@ -27,7 +27,7 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
     const kind = item.id.slice(0, i);
     const value = item.id.slice(i + 1);
     props.onOpenChange(false);
-    if (kind === 'tab') props.onGo({ tab: value as Tab });
+    if (kind === 'tab') props.onGo({ tab: value as Screen });
     else if (kind === 'run') props.onGo({ tab: 'runs', id: value });
     else props.onGo({ tab: 'builder', id: value });
   };
