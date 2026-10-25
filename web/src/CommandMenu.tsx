@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { runTitle } from '../../src/runLabels';
 import type { RunRow } from './api';
 import { CommandPalette, type CommandItem } from './components/arc/command-palette/command-palette';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
@@ -19,7 +20,7 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
       ...(runs.data ?? []).slice(0, 10).map((r) => ({
         id: `run:${r.id}`,
         label: r.task.split('\n')[0]!.slice(0, 80),
-        description: `${r.kind === 'team' ? 'Team run' : r.pipeline} · ${r.status}`,
+        description: `${runTitle(r)} · ${r.status}`,
         group: 'Recent runs',
         keywords: [r.id],
       })),

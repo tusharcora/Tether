@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { stepLabel } from '../../src/runLabels';
+import { runTitle, stepLabel } from '../../src/runLabels';
 import { ago, api, describeEvent, fmtDur, fmtUsd, type RunRow, type RunView } from './api';
 import { Canvas } from './Canvas';
 import { Badge, type BadgeTone } from './components/arc/badge/badge';
@@ -103,7 +103,7 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
       <header className="run-head">
         <div>
           <h3>
-            {r.kind === 'team' ? 'Team run' : r.pipeline.name} <Badge tone={STATUS_TONE[r.status] ?? 'neutral'}>{r.status}</Badge>
+            {runTitle({ kind: r.kind, pipeline: r.pipeline.name })} <Badge tone={STATUS_TONE[r.status] ?? 'neutral'}>{r.status}</Badge>
             {r.kind === 'team' ? <Badge tone="info">Team</Badge> : null}
             {r.status === 'running' && !r.live ? (
               <Badge tone="danger" title="No process is driving this run. Resume it.">
@@ -295,7 +295,7 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
             <span className={cn(`dot s-${r.status}`, { pulse: r.live && r.status === 'running' })} />
             <span className="run-main">
               <b>
-                {r.kind === 'team' ? 'Team run' : r.pipeline}
+                {runTitle(r)}
                 {r.kind === 'team' ? (
                   <Badge size="sm" tone="info">
                     Team
