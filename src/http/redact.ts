@@ -52,8 +52,10 @@ function redactValue(v: unknown, secrets: Map<string, string>): unknown {
   return v;
 }
 
+const maskValue = (name: string, v: string) => (MASKED_HEADERS.has(name.toLowerCase()) && !SECRET_REF.test(v) ? `•••• (${v.length} chars)` : v);
+
 export function maskHeaders(h: [string, string][]): [string, string][] {
-  return h.map(([k, v]) => [k, MASKED_HEADERS.has(k.toLowerCase()) && !SECRET_REF.test(v) ? `•••• (${v.length} chars)` : v]);
+  return h.map(([k, v]) => [k, maskValue(k, v)]);
 }
 
 const cutAt = (s: string, cut: boolean) => (cut && s.length > HISTORY_BODY_MAX ? { text: s.slice(0, HISTORY_BODY_MAX), cut: true } : { text: s, cut: false });
@@ -80,6 +82,10 @@ export function redactExchange(req: ResolvedRequest, res: SendResult, checks: Ch
       ...(resBody.cut ? { bodyTruncated: true } : {}),
       ...(res.error ? { error: { kind: res.error.kind, message: u(res.error.message) } } : {}),
     },
-    checks: checks.map((c) => ({ ...c, actual: c.actual === undefined ? null : redactValue(c.actual, secrets) })),
+    checks: checks.map((c) => {
+      const actual = c.actual === undefined ? null : redactValue(c.actual, secrets);
+      // a header check's actual is the raw header value: a credential header is masked here as in the header list
+      return { ...c, actual: c.check.kind === 'header' && typeof actual === 'string' ? maskValue(c.check.name, actual) : actual };
+    }),
   };
 }

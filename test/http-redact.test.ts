@@ -67,6 +67,17 @@ describe('redaction', () => {
     expect(redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res({ body: 'code 200 ok' }), [], s).response.body).toBe('code {{secret:code}} ok');
   });
 
+  it('masks a credential header value in a header check\'s actual unless it is a secret ref', () => {
+    const d = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res(), [
+      { check: { kind: 'header', name: 'Authorization', op: 'exists' }, ok: true, actual: 'Bearer abc123' },
+      { check: { kind: 'header', name: 'cookie', op: 'eq', value: 'x' }, ok: false, actual: 'sid=p@ss "w/ord"' },
+      { check: { kind: 'header', name: 'X-Echo', op: 'exists' }, ok: true, actual: 'plain' },
+    ], secrets);
+    expect(d.checks.map((c) => c.actual)).toEqual(['•••• (13 chars)', '•••• (18 chars)', 'plain']);
+    const ref = redactExchange({ method: 'GET', url: 'http://x/', headers: [] }, res(), [{ check: { kind: 'header', name: 'authorization', op: 'exists' }, ok: true, actual: 'Bearer p@ss "w/ord"' }], secrets);
+    expect(ref.checks[0]!.actual).toBe('Bearer {{secret:tok}}');
+  });
+
   it('catches a secret the URL parser lowercased (a host name in an error message or final URL)', () => {
     const s = new Map([['host', 'LeakyHost']]);
     const d = redactExchange(

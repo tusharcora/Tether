@@ -13,7 +13,7 @@ let srv: Server;
 let base = '';
 beforeAll(async () => {
   srv = createServer((req, res) => {
-    res.writeHead(200, { 'content-type': 'application/json' });
+    res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'sid=cookie-value-xyz', 'x-api-key': 'apikey-value-xyz' });
     res.end(JSON.stringify({ auth: req.headers.authorization ?? null, url: req.url }));
   });
   await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
@@ -71,6 +71,28 @@ describe('runRequest', () => {
     expect(JSON.parse(out.result.body).url).toBe('/api/runs?edited=1');
     expect(getHistory(db, 'api', out.historyId)!.request).toBe('runs/list');
     expect(listHistory(db, { workspace: 'api', request: 'runs/list' }).map((r) => r.id)).toEqual([out.historyId]);
+  });
+
+  it('masks a credential header in a header check\'s actual, in the result and in history', async () => {
+    const { home, dir, db } = fixture();
+    writeRequest(dir, 'hdr', {
+      name: 'hdr',
+      method: 'GET',
+      url: `${base}/h`,
+      checks: [
+        { kind: 'header', name: 'Set-Cookie', op: 'exists' },
+        { kind: 'header', name: 'x-api-key', op: 'contains', value: 'apikey' },
+        { kind: 'header', name: 'content-type', op: 'exists' },
+      ],
+    });
+    const out = await runRequest({ home, db, workspace: 'api', dir, id: 'hdr', env: null, source: 'cli', allowSecrets: true });
+    expect(out.checks.map((c) => c.ok)).toEqual([true, true, true]);
+    expect(out.checks.map((c) => c.actual)).toEqual(['•••• (20 chars)', '•••• (16 chars)', 'application/json']);
+    const row = JSON.stringify(getHistory(db, 'api', out.historyId));
+    for (const leak of ['cookie-value-xyz', 'apikey-value-xyz']) {
+      expect(JSON.stringify(out)).not.toContain(leak);
+      expect(row).not.toContain(leak);
+    }
   });
 
   it('fails clearly on an invalid request file and on a stale active environment', async () => {
