@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
@@ -11,22 +11,24 @@ const trig = (o = {}) => ({ id: 'acme-full-review', repo: 'acme/api', workflow: 
 const setup = (hasSecret: boolean) => ({ payloadPath: '/api/webhooks/github', hasSecret, secretHint: hasSecret ? 'ab12' : null, secretSource: hasSecret ? 'file' : null, eventsToSelect: ['Pull requests'], contentType: 'application/json' });
 let triggers = [trig()];
 
+const baseRoutes = () => ({
+  'GET /api/triggers': () => triggers,
+  'GET /api/triggers/deliveries': [] as unknown,
+  'GET /api/triggers/setup': setup(true),
+  'GET /api/workspaces': [],
+  'GET /api/pipelines': [{ name: 'full-review', nodes: 5 }],
+  'GET /api/bots': { agents: { claude: { ok: true, models: [] } } },
+  'PATCH /api/triggers/acme-full-review': {},
+  'DELETE /api/triggers/acme-full-review': {},
+  'POST /api/triggers': (b: unknown) => ({ ...trig(), ...(b as object), id: 'acme-full-review' }),
+  'POST /api/triggers/acme-full-review/test': (b: unknown) => ({ matches: true, why: '', fired: (b as { fire: boolean }).fire, runId: (b as { fire: boolean }).fire ? 'r9' : undefined, pr: { repo: 'acme/api', number: 12, title: 'Fix bug', url: 'u' } }),
+  'POST /api/triggers/setup/secret': { secret: 'new-secret-value' },
+});
+
 beforeEach(() => {
   vi.mocked(api).mockReset();
   triggers = [trig()];
-  routeApi({
-    'GET /api/triggers': () => triggers,
-    'GET /api/triggers/deliveries': [],
-    'GET /api/triggers/setup': setup(true),
-    'GET /api/workspaces': [],
-    'GET /api/pipelines': [{ name: 'full-review', nodes: 5 }],
-    'GET /api/bots': { agents: { claude: { ok: true, models: [] } } },
-    'PATCH /api/triggers/acme-full-review': {},
-    'DELETE /api/triggers/acme-full-review': {},
-    'POST /api/triggers': (b: unknown) => ({ ...trig(), ...(b as object), id: 'acme-full-review' }),
-    'POST /api/triggers/acme-full-review/test': (b: unknown) => ({ matches: true, why: '', fired: (b as { fire: boolean }).fire, runId: (b as { fire: boolean }).fire ? 'r9' : undefined, pr: { repo: 'acme/api', number: 12, title: 'Fix bug', url: 'u' } }),
-    'POST /api/triggers/setup/secret': { secret: 'new-secret-value' },
-  });
+  routeApi(baseRoutes());
 });
 
 describe('Triggers', () => {
@@ -47,7 +49,7 @@ describe('Triggers', () => {
 
   it('saves a new trigger with split lists', async () => {
     renderApp(<Triggers />);
-    fireEvent.click(await screen.findByRole('button', { name: '+ New trigger' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New trigger' }));
     fireEvent.change(screen.getByLabelText('Repo'), { target: { value: 'acme/api' } });
     fireEvent.change(screen.getByLabelText('Events'), { target: { value: 'opened, labeled' } });
     fireEvent.change(screen.getByLabelText('Only with labels'), { target: { value: 'aorch' } });
@@ -77,8 +79,8 @@ describe('Triggers', () => {
     triggers = [trig(), trig({ id: 'acme-paused', status: 'paused', enabled: false })];
     renderApp(<Triggers />);
     await screen.findByRole('switch', { name: /Enable acme-paused/ });
-    expect(document.querySelector('.trig-scroll .dot.idle')).toBeTruthy();
-    expect(document.querySelector('.trig-scroll .dot.paused')).toBeTruthy();
+    expect(document.querySelector('.tg-dot[data-status="idle"]')).toBeTruthy();
+    expect(document.querySelector('.tg-dot[data-status="paused"]')).toBeTruthy();
   });
 
   it('keeps focus on a row control across polls', async () => {
@@ -91,5 +93,35 @@ describe('Triggers', () => {
     expect(calls('GET', '/api/triggers').length).toBeGreaterThan(1);
     expect(screen.getByText('active')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole('switch', { name: /Pause acme-full-review/ }));
+  });
+
+  it('lists deliveries with run links and reasons, sorts them and filters by trigger', async () => {
+    const now = Date.now();
+    const deliveries = [
+      { at: new Date(now - 60_000).toISOString(), trigger: 'zeta', source: 'webhook', repo: 'acme/api', pr: 41, outcome: 'skipped', reason: 'draft PR (include drafts is off)' },
+      { at: new Date(now - 1_000).toISOString(), trigger: 'acme-full-review', source: 'webhook', repo: 'acme/api', pr: 42, outcome: 'started', runId: 'r7' },
+    ];
+    routeApi({ ...baseRoutes(), 'GET /api/triggers/deliveries': deliveries });
+    renderApp(<Triggers />);
+    const log = await screen.findByRole('region', { name: 'Delivery log' });
+    expect(await within(log).findByRole('link', { name: 'Open the run →' })).toHaveProperty('hash', '#/runs/r7');
+    expect(within(log).getByText('draft PR (include drafts is off)')).toBeTruthy();
+    const order = () => [...log.querySelectorAll('.tg-delivery .tg-what')].map((e) => e.textContent);
+    expect(order()).toEqual(['acme/api#42', 'acme/api#41']);
+    fireEvent.click(within(log).getByRole('combobox', { name: /Sort by/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Trigger' }));
+    expect(order()).toEqual(['acme/api#42', 'acme/api#41']);
+    fireEvent.click(within(log).getByRole('combobox', { name: /Sort by/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Oldest first' }));
+    expect(order()).toEqual(['acme/api#41', 'acme/api#42']);
+    fireEvent.click(screen.getByRole('button', { name: 'Log' }));
+    await waitFor(() => expect(calls('GET', '/api/triggers/deliveries?trigger=acme-full-review&limit=50').length).toBeGreaterThan(0));
+  });
+
+  it('takes you to the test panel from the header', async () => {
+    renderApp(<Triggers />);
+    await screen.findByRole('switch', { name: /Pause acme-full-review/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Test a trigger' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Pull request'));
   });
 });

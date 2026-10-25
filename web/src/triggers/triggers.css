@@ -32,3 +32,25 @@
   .tg-body { padding: 0 16px; }
   .tg-pair { grid-template-columns: 1fr; }
 }
+.tg-test, .tg-setup { display: flex; flex-direction: column; gap: 12px; }
+.tg-test-fields { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 8px; align-items: end; }
+.tg-result { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-control); background: var(--s2); font-size: 13px; line-height: 1.5; }
+.tg-result p { margin: 0; }
+.tg-dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 12px; margin: 0; font-size: 13px; }
+.tg-dl dt { color: var(--mut); padding-top: 6px; }
+.tg-dl dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.tg-code { padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-family: var(--font-code); font-size: 12.5px; }
+.tg-secret { user-select: all; }
+.tg-log { display: flex; flex-direction: column; gap: 10px; }
+.tg-log-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-deliveries { border-top: 1px solid var(--line); }
+.tg-delivery { display: flex; flex-direction: column; gap: 4px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.tg-delivery.fresh { animation: tg-fresh var(--t-slow) var(--ease) both; }
+@keyframes tg-fresh { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.tg-delivery-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tg-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 12px; color: var(--ink); }
+.tg-delivery-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--mut); }
+.tg-delivery-sub > span { flex: 1; min-width: 0; }
+.tg-delivery-sub a { color: var(--accInk); text-decoration: none; }
+.tg-delivery-sub a:hover { text-decoration: underline; }
+@media (max-width: 899px) { .tg-test-fields, .tg-log-tools, .tg-dl { grid-template-columns: 1fr; } }
