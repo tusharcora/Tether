@@ -1,46 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
-import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
-import { Card } from './components/arc/card/card';
-import { Checkbox } from './components/arc/checkbox/checkbox';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { Drawer, DrawerContent, useDrawerItem } from './components/arc/drawer/drawer';
-import { Input } from './components/arc/input/input';
-import { Select } from './components/arc/select/select';
-import { Slider } from './components/arc/slider/slider';
+import { SearchField } from './components/arc/search-field/search-field';
 import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
-import { Textarea } from './components/arc/textarea/textarea';
 import { Loading } from './components/Loading';
+import { BotEditor } from './crew/BotEditor';
+import { CrewCard } from './crew/CrewCard';
+import { RunsOn } from './crew/RunsOn';
+import { isEcc, sourceOf, type AgentInfo, type Binding, type CrewReply, type Filter, type ImportReply, type Meta, type Pack, type Row } from './crew/types';
 import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
 import { EvolvePanel } from './Evolve';
 import { Face } from './Face';
-import { NONE, fromNone } from './ui/cn';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { useNotify } from './ui/notify';
+import { EmptyState } from './ui/studio/EmptyState';
+import { InlineError } from './ui/studio/InlineError';
+import { ScreenHeader } from './ui/studio/ScreenHeader';
+import { SectionHeading } from './ui/studio/SectionHeading';
+import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
+import './crew/crew.css';
 
-interface Pack { id: string; name: string; blurb: string; bots: BotDef[] }
-interface Ecc { ref: string; at: string }
-interface Meta { kinds: { kind: string; blurb: string }[]; packs: Pack[]; ecc: Ecc | null; eccDefault: string }
-interface ImportReply { ref: string; added: string[]; updated: string[]; removed: string[]; skipped: string[]; notes: string[]; skills: number; commands: number }
-type Filter = 'all' | 'builtin' | 'custom' | 'ecc';
-const isEcc = (b?: BotDef) => !!b?.source?.startsWith('ecc@');
-const sourceOf = (b?: BotDef): Exclude<Filter, 'all'> => (isEcc(b) ? 'ecc' : b?.builtin ? 'builtin' : 'custom');
-/** The hue the slider shows before it is moved; not saved until then. */
-const DEFAULT_HUE = 200;
+/** Face colours for a new bot. Faces are identity art, exempt from the no-purple rule (see rules.test.ts). */
 const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
 const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
+const NO_BINDING: Binding = { agent: '', model: '' };
 
-interface AgentInfo { ok: boolean; version?: string; detail?: string; models: string[] }
-interface Row { role: string; name: string; title: string; kind: string; binding: { agent: string; model?: string } | null }
-type CrewReply = { bots: BotDef[]; packs: Pack[]; kinds: { kind: string; blurb: string }[]; evolve?: Record<string, { version: number; open: number }>; ecc?: Ecc | null; eccDefault?: string };
-
-export function Crew() {
+export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
   const notify = useNotify();
+  const phone = useMediaQuery(PHONE);
   const [rows, setRows] = useState<Row[]>([]);
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
-  const [draft, setDraft] = useState<Record<string, { agent: string; model: string }>>({});
+  const [draft, setDraft] = useState<Record<string, Binding>>({});
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState('');
   const [meta, setMeta] = useState<Meta>({ kinds: [], packs: [], ecc: null, eccDefault: '' });
@@ -52,19 +45,22 @@ export function Crew() {
   // a truncated persona is replaced by the full one from GET /api/crew/:id; until then it cannot be edited
   const [personaLoad, setPersonaLoad] = useState<'ok' | 'loading' | 'failed'>('ok');
   const opening = useRef(0);
+  /** The editor's draft as opened, to tell unsaved edits apart. */
+  const base = useRef('');
+  const [sel, setSel] = useState<string>();
+  const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [importing, setImporting] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [evo, setEvo] = useState<Record<string, { version: number; open: number }>>({});
   const [evolving, setEvolving] = useState<Row | null>(null);
+  const [pending, setPending] = useState<null | (() => void)>(null);
   // the drawers keep showing their last item while they slide out
   const shown = useDrawerItem(edit);
   const evolveShown = useDrawerItem(evolving);
+  const dirty = !!edit && JSON.stringify(edit) !== base.current;
 
-  const patch = (p: Partial<BotDef>) => {
-    if (!edit) return; // the drawer is sliding out
-    setEdit({ ...edit, ...p });
-  };
+  const patch = (p: Partial<BotDef>) => edit && setEdit({ ...edit, ...p });
   const patchFace = (p: Partial<FaceLook>) => edit && patch({ look: { ...edit.look, face: { ...edit.look.face, ...p } } });
   const resetFace = () => {
     if (!edit) return;
@@ -73,7 +69,9 @@ export function Crew() {
   };
   const open = (b: BotDef, fresh = false) => {
     const token = ++opening.current;
-    setEdit(JSON.parse(JSON.stringify(b)) as BotDef);
+    const copy = JSON.parse(JSON.stringify(b)) as BotDef;
+    base.current = JSON.stringify(copy);
+    setEdit(copy);
     setIsNew(fresh);
     setPersonaEdited(false);
     setPersonaLoad(b.personaTruncated && b.id ? 'loading' : 'ok');
@@ -82,11 +80,12 @@ export function Crew() {
       (full) => {
         if (opening.current !== token) return; // another bot was opened meanwhile
         // only the persona comes from the full bot, so edits made while it loaded are kept
-        setEdit((cur) => {
-          if (!cur || cur.id !== b.id) return cur;
-          const { personaTruncated: _cut, ...rest } = cur;
+        const withFull = (x: BotDef): BotDef => {
+          const { personaTruncated: _cut, ...rest } = x;
           return { ...rest, persona: full.persona };
-        });
+        };
+        base.current = JSON.stringify(withFull(JSON.parse(base.current) as BotDef));
+        setEdit((cur) => (cur && cur.id === b.id ? withFull(cur) : cur));
         setPersonaLoad('ok');
       },
       () => opening.current === token && setPersonaLoad('failed'),
@@ -99,19 +98,22 @@ export function Crew() {
     applyCrew(r.bots);
     setDefs(r.bots);
     setMeta({ kinds: r.kinds, packs: r.packs, ecc: r.ecc ?? null, eccDefault: r.eccDefault ?? '' });
+    return r.bots;
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<BotDef[] | undefined> => {
     try {
-      await loadDefs();
+      const bots = await loadDefs();
       const r = await api<{ crew: Row[]; agents: Record<string, AgentInfo> }>('GET', '/api/bots');
       setRows(r.crew);
       setAgents(r.agents);
       setDraft(Object.fromEntries(r.crew.map((c) => [c.role, { agent: c.binding?.agent ?? '', model: c.binding?.model ?? '' }])));
       setLoadErr('');
+      return bots;
     } catch (e) {
       // a load failure shows inline with a retry; action failures are toasts
       setLoadErr((e as Error).message);
+      return undefined;
     } finally {
       setLoading(false);
     }
@@ -119,6 +121,48 @@ export function Crew() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Run `fn` now, or after the person agrees to drop the editor's unsaved edits. */
+  const guard = (fn: () => void) => (dirty ? setPending(() => fn) : fn());
+  const pick = (role: string) => {
+    if (role === sel && edit && !isNew) return;
+    guard(() => {
+      const d = defs.find((x) => x.id === role);
+      if (!d) return;
+      setSel(role);
+      open(d);
+      props.onBot?.(role);
+    });
+  };
+  const newBot = () =>
+    guard(() => {
+      setSel(undefined);
+      open(blank(), true);
+      props.onBot?.(undefined);
+    });
+  const cancelEdit = () => {
+    const d = !isNew && sel ? defs.find((x) => x.id === sel) : undefined;
+    if (d) open(d);
+    else setEdit(null);
+  };
+  const closeDrawer = () =>
+    guard(() => {
+      setEdit(null);
+      setSel(undefined);
+      props.onBot?.(undefined);
+    });
+
+  // the deep link (#/crew/<bot>) opens that bot once the crew has loaded
+  useEffect(() => {
+    if (!props.bot || loading || props.bot === sel) return;
+    const d = defs.find((x) => x.id === props.bot);
+    if (d) {
+      setSel(d.id);
+      open(d);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.bot, loading]);
+  const missing = props.bot && !loading && !loadErr && !defs.some((d) => d.id === props.bot) ? props.bot : undefined;
 
   async function importEcc() {
     if (importBusy) return;
@@ -154,18 +198,23 @@ export function Crew() {
     if (isNew) for (let i = 2; taken.has(use); i++) use = `${id.slice(0, 20)}${i}`;
     try {
       await api('PUT', `/api/crew/${use}`, { ...b, id: use });
-      setEdit(null);
       notify.ok(`${b.name} saved`);
-      await load();
+      const saved = (await load())?.find((d) => d.id === use);
+      if (saved) {
+        setSel(use);
+        open(saved);
+        props.onBot?.(use);
+      } else setEdit(null);
     } catch (e) {
       notify.fail(e);
     }
   }
   async function removeDef(b: BotDef) {
-    if (!edit) return;
     try {
       await api('DELETE', `/api/crew/${b.id}`);
       setEdit(null);
+      setSel(undefined);
+      props.onBot?.(undefined);
       notify.ok(b.builtin ? `${b.name} reset to its original look` : `${b.name} removed`);
       await load();
     } catch (e) {
@@ -182,13 +231,12 @@ export function Crew() {
     }
   }
 
-  const set = (role: string, p: Partial<{ agent: string; model: string }>) => setDraft((all) => ({ ...all, [role]: { ...all[role]!, ...p } }));
-  const dirty = (r: Row) => {
+  const setBinding = (role: string, p: Partial<Binding>) => setDraft((all) => ({ ...all, [role]: { ...(all[role] ?? NO_BINDING), ...p } }));
+  const bindingDirty = (r: Row) => {
     const d = draft[r.role];
     return !!d && (d.agent !== (r.binding?.agent ?? '') || d.model !== (r.binding?.model ?? ''));
   };
-
-  async function save(r: Row, d = draft[r.role]!) {
+  async function saveBinding(r: Row, d = draft[r.role] ?? NO_BINDING) {
     try {
       if (!d.agent) await api('DELETE', `/api/bots/${r.role}`);
       else await api('PUT', `/api/bots/${r.role}`, { agent: d.agent, model: d.model });
@@ -199,228 +247,195 @@ export function Crew() {
     }
   }
 
+  const defOf = (r: Row) => defs.find((d) => d.id === r.role);
   const counts: Record<Filter, number> = { all: rows.length, builtin: 0, custom: 0, ecc: 0 };
-  for (const r of rows) counts[sourceOf(defs.find((d) => d.id === r.role))]++;
+  for (const r of rows) counts[sourceOf(defOf(r))]++;
   const hasEcc = defs.some(isEcc);
   const view: Filter = filter === 'ecc' && !hasEcc ? 'all' : filter;
-  const shownRows = view === 'all' ? rows : rows.filter((r) => sourceOf(defs.find((d) => d.id === r.role)) === view);
+  const needle = q.trim().toLowerCase();
+  const shownRows = rows
+    .filter((r) => view === 'all' || sourceOf(defOf(r)) === view)
+    .filter((r) => {
+      if (!needle) return true;
+      const d = defOf(r);
+      return `${r.name} ${r.title} ${r.role} ${d?.whenToUse ?? ''} ${d?.persona ?? ''}`.toLowerCase().includes(needle);
+    });
+  const selRow = rows.find((r) => r.role === sel);
+  const evolvable = !!selRow && (selRow.kind === 'agent' || selRow.kind === 'verdict');
+
+  const editorFor = (b: BotDef) => (
+    <>
+      <BotEditor
+        bot={b}
+        isNew={isNew}
+        kinds={meta.kinds}
+        personaLoad={personaLoad}
+        onPatch={patch}
+        onFace={patchFace}
+        onResetFace={resetFace}
+        onPersona={(text) => {
+          setPersonaEdited(true);
+          patch({ persona: text });
+        }}
+        onSave={() => void saveEdit()}
+        onCancel={cancelEdit}
+        onRemove={() => void removeDef(b)}
+      />
+      {!isNew && selRow ? (
+        <RunsOn
+          row={selRow}
+          agents={agents}
+          draft={draft[selRow.role] ?? NO_BINDING}
+          dirty={bindingDirty(selRow)}
+          onChange={(p) => setBinding(selRow.role, p)}
+          onSave={() => void saveBinding(selRow)}
+          onUnlink={() => {
+            setBinding(selRow.role, NO_BINDING);
+            void saveBinding(selRow, NO_BINDING);
+          }}
+        />
+      ) : null}
+    </>
+  );
+
   return (
-    <div className="crew-page">
-      <div className="crew-head">
-        <h2>Crew</h2>
-        <p className="muted">
-          Link each bot to an agent and model. A step with no agent of its own follows its bot; a step that names one keeps it.
-          Changes apply to the next run you start. Click a bot's look to edit it, or add your own.
-        </p>
-        <div className="row">
-          <Button variant="primary" onClick={() => open(blank(), true)}>+ New bot</Button>
-          <Button variant="secondary" onClick={() => setImporting(true)}>{meta.ecc ? 'Update ECC…' : 'Import ECC…'}</Button>
-          {meta.ecc ? <ConfirmButton label="Remove ECC" prompt="Remove every ECC bot and the vendored checkout?" confirmLabel="Remove" onConfirm={removeEcc} /> : null}
-        </div>
-      </div>
+    <div className="cw-page">
+      <ScreenHeader
+        meta={`crew · ${counts.builtin} built-in · ${counts.custom} yours${meta.ecc ? ` · ${counts.ecc} from ECC ${meta.ecc.ref}` : ''}`}
+        title="Crew"
+        summary="Each bot's look, persona and the agent it runs on. Changes apply to the next run you start."
+        actions={
+          <>
+            <SearchField label="Find a bot" value={q} onValueChange={setQ} placeholder="Name or when to use" />
+            <Button variant="secondary" onClick={() => document.getElementById('crew-packs')?.scrollIntoView({ block: 'start' })}>
+              Crew packs
+            </Button>
+            <Button variant="secondary" disabled={!evolvable} title={evolvable ? 'Proposals, lessons and harness versions' : 'Select an agent or verdict bot'} onClick={() => selRow && setEvolving(selRow)}>
+              Evolve
+            </Button>
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              {meta.ecc ? 'Update ECC…' : 'Import ECC…'}
+            </Button>
+            {meta.ecc ? <ConfirmButton label="Remove ECC" prompt="Remove every ECC bot and the vendored checkout?" confirmLabel="Remove" onConfirm={removeEcc} /> : null}
+            <Button variant="primary" onClick={newBot}>
+              + New bot
+            </Button>
+          </>
+        }
+      />
+      {loadErr ? <InlineError message={loadErr} onRetry={() => void load()} /> : null}
+      <Loading loading={loading} lines={6} label="Checking which agents are installed">
+        {loadErr ? null : (
+          <div className="cw-body">
+            <div className="cw-main">
+              <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
+                <TabsList aria-label="Bot source">
+                  <TabsTrigger value="all">{`All ${counts.all}`}</TabsTrigger>
+                  <TabsTrigger value="builtin">{`Built-in ${counts.builtin}`}</TabsTrigger>
+                  <TabsTrigger value="custom">{`Yours ${counts.custom}`}</TabsTrigger>
+                  {hasEcc ? <TabsTrigger value="ecc">{`ECC ${counts.ecc}`}</TabsTrigger> : null}
+                </TabsList>
+              </Tabs>
+              {missing ? (
+                <p className="sl-note" role="status">
+                  No bot called “{missing}”.
+                </p>
+              ) : null}
+              {shownRows.length ? (
+                <section className="cw-grid" aria-label="Bots">
+                  {shownRows.map((r) => {
+                    const b = r.binding ? agents[r.binding.agent] : undefined;
+                    return <CrewCard key={r.role} row={r} def={defOf(r)} evo={evo[r.role]} agentMissing={!!b && !b.ok} selected={sel === r.role} onPick={() => pick(r.role)} />;
+                  })}
+                </section>
+              ) : (
+                <EmptyState title="No bots match" description="Try another name, or another source." />
+              )}
+              <section id="crew-packs" className="cw-packs" aria-labelledby="crew-packs-h">
+                <SectionHeading id="crew-packs-h" title="Crew packs" count={meta.packs.length} />
+                <div className="cw-pack-grid">
+                  {meta.packs.map((k) => (
+                    <div key={k.id} className="sl-panel cw-pack">
+                      <h3>{k.name}</h3>
+                      <p className="sl-summary">{k.blurb}</p>
+                      <div className="cw-pack-faces">
+                        {k.bots.map((b) => (
+                          <span key={b.id} title={`${b.name}: ${b.persona}`}>
+                            <Face id={b.id} size={34} label={b.name} />
+                          </span>
+                        ))}
+                      </div>
+                      <p className="sl-meta">{k.bots.map((b) => b.name).join(' · ')}</p>
+                      <div>
+                        <Button variant="secondary" size="sm" onClick={() => void addPack(k)}>
+                          Add to my crew
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <p className="sl-meta">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
+            </div>
+            {phone ? null : (
+              <aside className="cw-side" aria-label="Edit bot">
+                {edit ? editorFor(edit) : <p className="cw-side-empty">Select a bot to change its look, persona and agent, or add a new one.</p>}
+              </aside>
+            )}
+          </div>
+        )}
+      </Loading>
+
+      {phone ? (
+        <Drawer open={!!edit} onOpenChange={(o) => !o && closeDrawer()}>
+          <DrawerContent side="right" title={isNew ? 'New bot' : `Edit ${shown?.name ?? ''}`}>
+            {shown ? <div className="cw-side">{editorFor(shown)}</div> : null}
+          </DrawerContent>
+        </Drawer>
+      ) : null}
+
+      <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
+        <DrawerContent side="right" title={`Evolve ${evolveShown?.name ?? ''}`}>
+          {evolveShown ? <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} /> : null}
+        </DrawerContent>
+      </Drawer>
+
       <Dialog open={importing} onOpenChange={(o) => !importBusy && setImporting(o)}>
         <DialogContent
           title="Import ECC"
           description="Adds ECC's agents as crew bots and its skills and commands to the skills list. Hooks and rules are not imported. Source: github.com/affaan-m/ECC (MIT)."
         >
-          <p className="small">{`Version ${meta.ecc?.ref ? `${meta.ecc.ref} → ` : ''}${meta.eccDefault}`}</p>
-          <div className="row end">
-            <Button variant="secondary" disabled={importBusy} onClick={() => setImporting(false)}>Cancel</Button>
-            <Button variant="primary" loading={importBusy} onClick={() => void importEcc()}>Import</Button>
+          <p className="sl-meta">{`Version ${meta.ecc?.ref ? `${meta.ecc.ref} → ` : ''}${meta.eccDefault}`}</p>
+          <div className="cw-actions">
+            <Button variant="secondary" disabled={importBusy} onClick={() => setImporting(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={importBusy} onClick={() => void importEcc()}>
+              Import
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
-      {loadErr ? (
-        <div className="alert error" role="alert">
-          {loadErr}{' '}
-          <Button variant="secondary" size="sm" onClick={() => void load()}>Retry</Button>
-        </div>
-      ) : null}
-      <Loading loading={loading} lines={6} label="Checking which agents are installed">
-        <>
-          <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
-            <TabsList aria-label="Bot source">
-              <TabsTrigger value="all">{`All ${counts.all}`}</TabsTrigger>
-              <TabsTrigger value="builtin">{`Built-in ${counts.builtin}`}</TabsTrigger>
-              <TabsTrigger value="custom">{`Custom ${counts.custom}`}</TabsTrigger>
-              {hasEcc ? <TabsTrigger value="ecc">{`ECC ${counts.ecc}`}</TabsTrigger> : null}
-            </TabsList>
-          </Tabs>
-          <div className="crew-grid">
-            {shownRows.map((r) => {
-              const def = defs.find((x) => x.id === r.role);
-              const ev = evo[r.role];
-              const agent = draft[r.role]?.agent ?? '';
-              return (
-                <div className="crew-card" key={r.role}>
-                  <button className="sprite-btn" title="Edit this bot" aria-label={`Edit ${r.name}`} onClick={() => def && open(def)}>
-                    <Face id={r.role} size={48} animate="hover" />
-                  </button>
-                  <div className="crew-main">
-                    <h4>
-                      {r.name} <span className="muted">{r.title}</span>
-                      {isEcc(def) ? (
-                        <>
-                          {' '}
-                          <Badge size="sm" title={def?.source}>ECC</Badge>
-                        </>
-                      ) : null}
-                      {r.kind !== 'approval' && ev ? (
-                        <>
-                          {' '}
-                          <Badge size="sm" title="Harness version: persona, guidance and skills">v{ev.version}</Badge>
-                          {ev.open ? (
-                            <>
-                              {' '}
-                              <Badge size="sm" tone="info" className="proposal-mark" title="A harness proposal waits for review">● proposal</Badge>
-                            </>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </h4>
-                    {def?.whenToUse || def?.persona ? <p className="muted small persona">{def.whenToUse || def.persona}</p> : null}
-                    {r.kind !== 'approval' ? (
-                      <>
-                        <Select
-                          label="Agent"
-                          options={[{ value: NONE, label: 'default (claude)' }, ...Object.keys(agents).map((a) => ({ value: a, label: a + (agents[a]!.ok ? '' : ' (not available)') }))]}
-                          value={agent || NONE}
-                          onValueChange={(v) => set(r.role, { agent: fromNone(v), model: '' })}
-                        />
-                        <Input
-                          label="Model"
-                          list={`models-${r.role}`}
-                          value={draft[r.role]?.model ?? ''}
-                          placeholder="adapter default"
-                          spellCheck={false}
-                          onChange={(e) => set(r.role, { model: e.target.value })}
-                        />
-                        <datalist id={`models-${r.role}`}>
-                          {(agents[agent]?.models ?? []).map((m) => <option key={m} value={m} />)}
-                        </datalist>
-                        <div className="row">
-                          <Button variant="primary" size="sm" disabled={!dirty(r)} onClick={() => void save(r)}>Save</Button>
-                          {r.binding ? (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => {
-                                const cleared = { agent: '', model: '' };
-                                set(r.role, cleared);
-                                void save(r, cleared);
-                              }}
-                            >
-                              Unlink
-                            </Button>
-                          ) : null}
-                          {r.kind === 'agent' || r.kind === 'verdict' ? (
-                            <Button variant="secondary" size="sm" title="Proposals, lessons and harness versions" onClick={() => setEvolving(r)}>Evolve</Button>
-                          ) : null}
-                        </div>
-                      </>
-                    ) : (
-                      <p className="muted">A person signs off here. Nothing to link.</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+
+      <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
+        <DialogContent title={`Discard your changes to ${edit?.name || 'the new bot'}?`} description="They are not saved.">
+          <div className="cw-actions">
+            <Button variant="secondary" onClick={() => setPending(null)}>
+              Keep editing
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const fn = pending;
+                setPending(null);
+                fn?.();
+              }}
+            >
+              Discard
+            </Button>
           </div>
-
-          <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
-            <DrawerContent side="right" title={`Evolve ${evolveShown?.name ?? ''}`}>
-              {evolveShown ? (
-                <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} />
-              ) : null}
-            </DrawerContent>
-          </Drawer>
-
-          <Drawer open={!!edit} onOpenChange={(o) => !o && setEdit(null)}>
-            <DrawerContent side="right" title={isNew ? 'New bot' : `Edit ${shown?.name ?? ''}`}>
-              {shown ? (
-                <div className="bot-editor in-drawer" aria-label="Edit bot">
-                  <div className="bot-preview">
-                    <Face id={shown.id || 'new-bot'} face={shown.look.face ?? {}} size={120} animate="hover" label={`${shown.name || 'New bot'} preview`} />
-                    <div className="muted small">{shown.name || 'New bot'}</div>
-                    <Slider label="Hue" min={0} max={359} step={1} value={shown.look.face?.hue ?? DEFAULT_HUE} onValueChange={(v) => patchFace({ hue: v })} />
-                    <Slider label="Tone" min={0} max={1} step={0.05} value={shown.look.face?.tone ?? 0.5} format={(v) => v.toFixed(2)} onValueChange={(v) => patchFace({ tone: v })} />
-                    <Button variant="ghost" size="sm" disabled={!shown.look.face} onClick={resetFace}>Reset to generated</Button>
-                  </div>
-                  <div className="bot-fields">
-                    <div className="row">
-                      <Input label="Name" value={shown.name} maxLength={24} onChange={(e) => patch({ name: e.target.value })} />
-                      <Input label="Title" value={shown.title} maxLength={28} placeholder="what it is" onChange={(e) => patch({ title: e.target.value })} />
-                    </div>
-                    <Select
-                      label="Kind"
-                      options={meta.kinds.map((k) => ({ value: k.kind, label: `${k.kind}: ${k.blurb}` }))}
-                      value={shown.kind}
-                      disabled={!isNew && !!shown.builtin}
-                      onValueChange={(v) => patch({ kind: v })}
-                    />
-                    <Textarea
-                      label="Persona (becomes this bot's instructions)"
-                      rows={4}
-                      maxLength={isEcc(shown) ? 24000 : 600}
-                      value={shown.persona}
-                      readOnly={personaLoad !== 'ok'}
-                      aria-busy={personaLoad === 'loading' || undefined}
-                      description={
-                        personaLoad === 'loading'
-                          ? 'Loading the full persona…'
-                          : personaLoad === 'failed'
-                            ? 'Showing the first 2000 characters; edits are disabled until the full text loads'
-                            : isEcc(shown)
-                              ? 'From ECC; an update replaces your edits'
-                              : undefined
-                      }
-                      onChange={(e) => {
-                        if (personaLoad !== 'ok') return;
-                        setPersonaEdited(true);
-                        patch({ persona: e.target.value });
-                      }}
-                    />
-                    {shown.kind === 'agent' && !shown.builtin ? (
-                      <Checkbox label="read-only (may not edit files)" checked={!!shown.readOnly} onCheckedChange={(c) => patch({ readOnly: c === true })} />
-                    ) : null}
-                    <div className="row">
-                      <Button variant="primary" disabled={!shown.name.trim()} onClick={() => void saveEdit()}>Save</Button>
-                      <Button variant="secondary" onClick={() => setEdit(null)}>Cancel</Button>
-                      {!isNew && (!shown.builtin || shown.edited) ? (
-                        <Button variant="secondary" onClick={() => void removeDef(shown)}>{shown.builtin ? 'Reset to original' : 'Remove'}</Button>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </DrawerContent>
-          </Drawer>
-
-          <h3 className="packs-h">Crew packs</h3>
-          <div className="crew-grid">
-            {meta.packs.map((k) => (
-              <Card
-                key={k.id}
-                className="pack"
-                title={k.name}
-                description={k.blurb}
-                meta={`${k.bots.length} bots`}
-                action={<Button variant="secondary" size="sm" onClick={() => void addPack(k)}>Add to my crew</Button>}
-              >
-                <div className="row pack-sprites">
-                  {k.bots.map((b) => (
-                    <span key={b.id} title={`${b.name}: ${b.persona}`}>
-                      <Face id={b.id} size={34} label={b.name} />
-                    </span>
-                  ))}
-                </div>
-                <p className="muted small">{k.bots.map((b) => b.name).join(' · ')}</p>
-              </Card>
-            ))}
-          </div>
-          <p className="muted small">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
-        </>
-      </Loading>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

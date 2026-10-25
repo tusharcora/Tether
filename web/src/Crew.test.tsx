@@ -23,6 +23,13 @@ const routes = {
   'POST /api/crew/import': { ref: 'v2.2.3', added: ['go-reviewer'], updated: [], removed: [], skipped: [], notes: [], skills: 1, commands: 1 },
   'DELETE /api/crew': { removed: ['go-reviewer'] },
 };
+const goBot = { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', persona: '', look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go' };
+const twoBots = () =>
+  routeApi({
+    ...routes,
+    'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, goBot], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } },
+    'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] },
+  });
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
@@ -39,8 +46,8 @@ describe('Crew', () => {
   });
   it('saves a link only when changed; the default agent unlinks (as in the Solid UI)', async () => {
     renderApp(<Crew />);
-    expect(await screen.findByText('Bolt')).toBeTruthy();
-    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    const save = screen.getByRole('button', { name: 'Save agent' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'opus' } });
     expect(save.disabled).toBe(false);
@@ -80,7 +87,60 @@ describe('Crew', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));
     await waitFor(() => expect(calls('GET', '/api/bots')).toHaveLength(2));
     expect(screen.queryByText('down')).toBeNull();
-    expect(await screen.findByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /Edit Bolt/ })).toBeTruthy();
+  });
+
+  it('counts the crew in the header and opens Evolve for the selected bot', async () => {
+    routeApi({
+      ...routes,
+      'GET /api/harness/coder': { bot: 'coder', evolvable: true, current: { version: 1, persona: 'Writes code', guidance: [], skills: [] }, versions: [{ version: 1, at: '2026-10-20T10:00:00Z' }], total: 1 },
+      'GET /api/proposals': { proposals: [] },
+      'GET /api/lessons': { lessons: [] },
+    });
+    const onBot = vi.fn();
+    renderApp(<Crew onBot={onBot} />);
+    expect(await screen.findByText('crew · 1 built-in · 0 yours')).toBeTruthy();
+    const evolve = screen.getByRole('button', { name: 'Evolve' }) as HTMLButtonElement;
+    expect(evolve.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Edit Bolt/ }));
+    expect(onBot).toHaveBeenCalledWith('coder');
+    expect(screen.getByRole('button', { name: /Edit Bolt/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(evolve.disabled).toBe(false);
+    fireEvent.click(evolve);
+    expect(await screen.findByRole('region', { name: 'Evolve Bolt' })).toBeTruthy();
+  });
+
+  it('finds bots by name or when-to-use', async () => {
+    twoBots();
+    renderApp(<Crew />);
+    await screen.findByRole('button', { name: /Edit Go Reviewer/ });
+    fireEvent.change(screen.getByLabelText('Find a bot'), { target: { value: 'use for go' } });
+    expect(screen.queryByRole('button', { name: /Edit Bolt/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Edit Go Reviewer/ })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Find a bot'), { target: { value: 'zzz' } });
+    expect(screen.getByText('No bots match')).toBeTruthy();
+  });
+
+  it('asks before switching bots with unsaved edits', async () => {
+    twoBots();
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'changed' } });
+    fireEvent.click(screen.getByRole('button', { name: /Edit Go Reviewer/ }));
+    expect(await screen.findByText('Discard your changes to Bolt?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('changed');
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Go Reviewer'));
+  });
+
+  it('opens the bot a deep link names and says so when there is none', async () => {
+    const { unmount } = renderApp(<Crew bot="coder" onBot={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt'));
+    unmount();
+    renderApp(<Crew bot="ghost" onBot={() => {}} />);
+    expect(await screen.findByText('No bot called “ghost”.')).toBeTruthy();
   });
 });
 

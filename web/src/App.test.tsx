@@ -16,7 +16,7 @@ vi.mock('./Builder', () => ({
 }));
 vi.mock('./Runs', () => ({ Runs: (p: { selected?: string; node?: string }) => <div>runs screen {p.selected ?? ''} {p.node ?? ''}</div> }));
 vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph screen {p.note ?? ''}</div> }));
-vi.mock('./Crew', () => ({ Crew: () => <div>crew screen</div> }));
+vi.mock('./Crew', () => ({ Crew: (p: { bot?: string }) => <div>crew screen {p.bot ?? ''}</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
 vi.mock('./http/ApiTab', () => ({
   ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void }) => {
@@ -93,6 +93,12 @@ describe('App shell', () => {
     expect(location.hash).toBe('#/runs/r5');
     browserGoes('#/graph');
     expect(screen.getByText('graph screen')).toBeTruthy();
+  });
+
+  it('hands the bot in the hash to Crew', () => {
+    startAt('#/crew/coder');
+    render(<App />);
+    expect(screen.getByText('crew screen coder')).toBeTruthy();
   });
 
   it('hands the note in the hash to the Graph', () => {
