@@ -161,4 +161,51 @@ describe('ApiTab', () => {
     expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('edited');
     expect(calls('POST', '/api/http/requests')).toHaveLength(0);
   });
+
+  it('drops a send that finishes after another request was opened: no response, no spinner, nothing to hand over', async () => {
+    let finish!: (v: unknown) => void;
+    routeApi({ ...routes, 'POST /api/http/send': () => new Promise((r) => (finish = r)), 'GET /api/crew': { bots: [] } });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const list = await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(list));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
+    expect(screen.getByRole('button', { name: /^Send/ }).getAttribute('aria-busy')).toBe('true');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'POST Start run' })));
+    expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('Start run');
+    await act(async () => finish(structuredClone(out)));
+    expect(screen.queryByText('200 OK')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Send/ }).getAttribute('aria-busy')).toBeNull();
+    expect((screen.getByRole('button', { name: /^Start run with/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('when request responses arrive out of order, the last one opened wins', async () => {
+    let finish!: (v: unknown) => void;
+    routeApi({ ...routes, 'GET /api/http/requests/runs%2Flist': () => new Promise((r) => (finish = r)) });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const list = await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(list));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'POST Start run' })));
+    await act(async () => finish({ id: 'runs/list', file: req('List runs'), vars: {} }));
+    expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('Start run');
+    expect(screen.getByRole('button', { name: 'POST Start run' }).getAttribute('aria-current')).toBe('true');
+  });
+
+  it('warns before the page unloads only while there are unsaved edits, and reports them to the shell', async () => {
+    const dirty = vi.fn();
+    const unload = () => {
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} onDirtyChange={dirty} />);
+    const list = await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(list));
+    expect(unload()).toBe(false);
+    fireEvent.change(screen.getByLabelText('Request name'), { target: { value: 'edited' } });
+    expect(unload()).toBe(true);
+    expect(dirty).toHaveBeenLastCalledWith(true);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Save/ })));
+    expect(unload()).toBe(false);
+    expect(dirty).toHaveBeenLastCalledWith(false);
+  });
 });

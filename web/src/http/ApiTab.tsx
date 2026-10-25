@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../components/arc/button/button';
 import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
 import { EmptyState } from '../components/arc/empty-state/empty-state';
@@ -35,7 +35,14 @@ const countRequests = (t?: HttpTree) => {
 
 type DialogName = null | 'import' | 'secrets' | 'env';
 
-export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void }) {
+export interface ApiTabProps {
+  onStarted: (runId: string) => void;
+  onUseAsGate: (g: { run: string; env?: string }) => void;
+  /** Told whenever the open request gains or loses unsaved edits (and false on unmount), so the shell can ask before leaving the tab. */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function ApiTab(props: ApiTabProps) {
   const notify = useNotify();
   const [ws, setWsState] = useState<string | undefined>(readWs);
   const workspaces = usePoll<{ id: string; name: string; isDefault: boolean }[]>('/api/workspaces', 30_000);
@@ -59,19 +66,44 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
   const [pending, setPending] = useState<null | (() => void)>(null);
   const dirty = !!file && JSON.stringify(file) !== saved;
 
-  const loadHistory = useCallback(
-    () =>
-      httpApi.history(ws, undefined, 20).then(
-        (h) => (setHistory(h), setHistoryError(undefined)),
-        (e: Error) => setHistoryError(e.message),
-      ),
-    [ws],
-  );
+  // Async results apply only to the view they started for. `view` moves on whenever the open request or the workspace
+  // changes; a send, open, save or env reload that finishes after that is dropped. Tree and history loads keep their own count.
+  const view = useRef(0);
+  const treeSeq = useRef(0);
+  const histSeq = useRef(0);
+  const envSeq = useRef(0);
+  const sendSeq = useRef(0);
+
+  const onDirty = useRef(props.onDirtyChange);
+  onDirty.current = props.onDirtyChange;
+  useEffect(() => onDirty.current?.(dirty), [dirty]);
+  useEffect(() => () => onDirty.current?.(false), []);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  const loadHistory = useCallback(() => {
+    const t = ++histSeq.current;
+    return httpApi.history(ws, undefined, 20).then(
+      (h) => t === histSeq.current && (setHistory(h), setHistoryError(undefined)),
+      (e: Error) => t === histSeq.current && setHistoryError(e.message),
+    );
+  }, [ws]);
   const refresh = useCallback(async () => {
+    const t = ++treeSeq.current;
     try {
-      setTree(await httpApi.tree(ws));
+      const next = await httpApi.tree(ws);
+      if (t !== treeSeq.current) return;
+      setTree(next);
       setTreeError(undefined);
     } catch (e) {
+      if (t !== treeSeq.current) return;
       setTree(undefined);
       setTreeError((e as Error).message);
     }
@@ -81,7 +113,10 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
 
   /** Run `fn` now, or after the person agrees to drop their unsaved edits. */
   const guard = (fn: () => void) => (dirty ? setPending(() => fn) : fn());
+  /** A new view: whatever is still in flight for the old one is dropped when it lands. */
   const reset = () => {
+    view.current++;
+    setSending(false);
     setOutput(undefined);
     setShownHistory(undefined);
     setSendError(undefined);
@@ -103,9 +138,11 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
     });
   const open = (id: string) =>
     guard(() => {
+      const t = ++view.current;
       void (async () => {
         try {
           const r = await httpApi.request(ws, id);
+          if (t !== view.current) return; // another request was opened (or New pressed) meanwhile
           reset();
           setOpenId(id);
           if (r.file) {
@@ -117,7 +154,7 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
             setInvalid({ id, error: r.error ?? 'invalid request file', raw: r.raw });
           }
         } catch (e) {
-          notify.fail(e);
+          if (t === view.current) notify.fail(e);
         }
       })();
     });
@@ -131,10 +168,14 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
     });
   const save = async () => {
     if (!file || !dirty) return;
+    const t = view.current;
     try {
       if (openId) await httpApi.save(ws, openId, file);
-      else setOpenId((await httpApi.create(ws, '', file)).id);
-      setSaved(JSON.stringify(file));
+      else {
+        const { id } = await httpApi.create(ws, '', file);
+        if (t === view.current) setOpenId(id);
+      }
+      if (t === view.current) setSaved(JSON.stringify(file));
       notify.ok('Saved');
       void refresh();
     } catch (e) {
@@ -143,31 +184,45 @@ export function ApiTab(props: { onStarted: (runId: string) => void; onUseAsGate:
   };
   const send = async () => {
     if (!file) return;
+    const v = view.current;
+    const n = ++sendSeq.current;
+    const isLive = () => v === view.current && n === sendSeq.current;
     setSending(true);
     setSendError(undefined);
     setShownHistory(undefined);
     try {
-      setOutput(await httpApi.send(ws, !dirty && openId ? { id: openId } : { draft: file, ...(openId ? { id: openId } : {}) }));
+      const o = await httpApi.send(ws, !dirty && openId ? { id: openId } : { draft: file, ...(openId ? { id: openId } : {}) });
+      if (isLive()) setOutput(o);
     } catch (e) {
+      if (!isLive()) return;
       setOutput(undefined);
       setSendError((e as Error).message);
     } finally {
-      setSending(false);
+      if (isLive()) setSending(false);
       void loadHistory();
     }
   };
   const setEnv = async (name: string | null) => {
+    const t = view.current;
+    const e = ++envSeq.current;
+    const live = () => t === view.current && e === envSeq.current;
     try {
       await httpApi.setEnv(ws, name);
-      setTree((t) => (t ? { ...t, activeEnv: name } : t));
+      if (!live()) return;
+      setTree((x) => (x ? { ...x, activeEnv: name } : x));
       // the saved request's vars resolve against the new environment (the draft's own vars still win in the editor)
-      if (openId && file) setVars((await httpApi.request(ws, openId)).vars);
-    } catch (e) {
-      notify.fail(e);
+      if (openId && file) {
+        const r = await httpApi.request(ws, openId);
+        if (live()) setVars(r.vars);
+      }
+    } catch (err) {
+      if (e === envSeq.current) notify.fail(err);
     }
   };
   const showHistory = (h: HistoryRow) => {
     if (!h.data?.response) return notify.fail(new Error(`history entry ${h.id} has no stored exchange`));
+    sendSeq.current++; // a send still on its way no longer replaces what is shown
+    setSending(false);
     setOutput(fromHistory(h));
     setSendError(undefined);
     setShownHistory(h.id);

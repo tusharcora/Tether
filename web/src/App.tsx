@@ -3,6 +3,7 @@ import { Builder } from './Builder';
 import { CommandMenu } from './CommandMenu';
 import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
+import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
 import { ThemeSwitch } from './components/arc/theme-switch/theme-switch';
 import { ToastStack, ToastStackProvider } from './components/arc/toast-stack/toast-stack';
@@ -11,7 +12,7 @@ import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
 import { ApiTab } from './http/ApiTab';
-import { TAB_LABEL, TABS, useHashRoute, usePoll, type Tab } from './hooks';
+import { TAB_LABEL, TABS, useHashRoute, usePoll, type Route, type Tab } from './hooks';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
@@ -20,7 +21,11 @@ const isTextField = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 
 export function App() {
-  const [route, go] = useHashRoute();
+  const [route, goNow] = useHashRoute();
+  /** The API tab has a request with unsaved edits: leaving the tab asks first (the tab unmounts and the draft would be lost). */
+  const [apiDirty, setApiDirty] = useState(false);
+  const [leaving, setLeaving] = useState<Route>();
+  const go = (r: Route) => (route.tab === 'api' && r.tab !== 'api' && apiDirty ? setLeaving(r) : goNow(r));
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
   const [theme, setTheme] = useTheme();
   const [palette, setPalette] = useState(false);
@@ -89,12 +94,34 @@ export function App() {
         <main>
           {route.tab === 'builder' ? <Builder pipeline={route.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
           {route.tab === 'runs' ? <Runs selected={route.id} onSelect={(id) => go({ tab: 'runs', id })} /> : null}
-          {route.tab === 'api' ? <ApiTab onStarted={(id) => go({ tab: 'runs', id })} onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))} /> : null}
+          {route.tab === 'api' ? <ApiTab onStarted={(id) => go({ tab: 'runs', id })} onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))} onDirtyChange={setApiDirty} /> : null}
           {route.tab === 'graph' ? <GraphView /> : null}
           {route.tab === 'crew' ? <Crew /> : null}
           {route.tab === 'triggers' ? <Triggers /> : null}
         </main>
         <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} />
+        <Dialog open={!!leaving} onOpenChange={(o) => !o && setLeaving(undefined)}>
+          {leaving ? (
+            <DialogContent className="studio api-dialog" title="Discard unsaved changes?" description="The open API request has edits that are not saved.">
+              <div className="row end">
+                <Button variant="secondary" onClick={() => setLeaving(undefined)}>
+                  Keep editing
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    const r = leaving;
+                    setLeaving(undefined);
+                    setApiDirty(false);
+                    goNow(r);
+                  }}
+                >
+                  Discard
+                </Button>
+              </div>
+            </DialogContent>
+          ) : null}
+        </Dialog>
       </div>
       <ToastStack />
     </ToastStackProvider>

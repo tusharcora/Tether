@@ -17,9 +17,10 @@ vi.mock('./Graph', () => ({ GraphView: () => <div>graph screen</div> }));
 vi.mock('./Crew', () => ({ Crew: () => <div>crew screen</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
 vi.mock('./http/ApiTab', () => ({
-  ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void }) => (
+  ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void }) => (
     <div>
       api screen
+      <button onClick={() => p.onDirtyChange?.(true)}>edit draft</button>
       <button onClick={() => p.onUseAsGate({ run: 'runs/list', env: 'stage' })}>gate it</button>
       <button onClick={() => p.onStarted('r9')}>started</button>
     </div>
@@ -40,6 +41,22 @@ describe('App', () => {
     render(<App />);
     expect(screen.getByText('api screen')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'API' })).toBeTruthy();
+  });
+
+  it('asks before leaving the API tab with unsaved edits', async () => {
+    location.hash = '#/api';
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit draft' }));
+    const crew = () => fireEvent.mouseDown(screen.getByRole('tab', { name: 'Crew' })); // Radix tabs switch on mouse down
+    crew();
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+    expect(location.hash).toBe('#/api');
+    expect(screen.getByText('api screen')).toBeTruthy();
+    await screen.findByRole('tab', { name: 'Crew' }); // the dialog has let go of the page
+    crew();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    expect(location.hash).toBe('#/crew');
+    expect(screen.getByText('crew screen')).toBeTruthy();
   });
 
   it('hands a request gate from the API tab to the Builder once, and opens started runs', async () => {
