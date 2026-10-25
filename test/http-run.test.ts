@@ -47,6 +47,26 @@ describe('runRequest', () => {
     expect(JSON.stringify(out)).not.toContain('S3CRET-abc');
   });
 
+  it('a header that carries a secret does not follow a redirect to another origin', async () => {
+    let seen: Record<string, unknown> = {};
+    const other = createServer((req, res) => ((seen = req.headers), res.end('landed')));
+    await new Promise<void>((r) => other.listen(0, '127.0.0.1', r));
+    const otherBase = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
+    const hop = createServer((_req, res) => (res.writeHead(307, { location: `${otherBase}/x` }), res.end()));
+    await new Promise<void>((r) => hop.listen(0, '127.0.0.1', r));
+    try {
+      const { home, dir, db } = fixture();
+      writeRequest(dir, 'hop', { name: 'Hop', method: 'GET', url: `http://127.0.0.1:${(hop.address() as AddressInfo).port}/`, headers: [{ key: 'X-Token', value: '{{tok}}' }, { key: 'X-Plain', value: 'p' }] });
+      const out = await runRequest({ home, db, workspace: 'api', dir, id: 'hop', env: 'local', source: 'ui', allowSecrets: true });
+      expect(out.result.body).toBe('landed');
+      expect(seen['x-token']).toBeUndefined();
+      expect(seen['x-plain']).toBe('p');
+    } finally {
+      other.close();
+      hop.close();
+    }
+  });
+
   it('keeps the active environment per workspace in ui.json, and clears it', () => {
     const home = tmp('home-');
     setActiveEnv(home, 'api', 'local');

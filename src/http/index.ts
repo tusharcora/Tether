@@ -61,7 +61,10 @@ export async function runRequest(i: RunRequestInput): Promise<SendOutput> {
   const env = envName ? { name: envName, file: readEnvironment(i.envDir ?? i.dir, envName) } : undefined;
   const secrets = loadSecrets(i.home, i.workspace);
   const { request, secretsUsed } = resolveRequest(file, { collections: chain, env, secrets, allowSecrets: i.allowSecrets });
-  const result = await send(request, { timeoutMs: i.timeoutMs, signal: i.signal });
+  // a header whose value used a secret never follows a redirect to another origin
+  const used = [...secretsUsed.values()].filter(Boolean);
+  const secretHeaders = request.headers.filter(([, v]) => used.some((s) => v.includes(s))).map(([k]) => k);
+  const result = await send(request, { timeoutMs: i.timeoutMs, signal: i.signal, secretHeaders });
   const checks = evaluate(file.checks, result);
   const stored = redactExchange(request, result, checks, secretsUsed);
   // a dirty send of a saved request (draft + id) keeps its id, so its per-request history stays whole

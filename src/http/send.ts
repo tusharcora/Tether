@@ -10,12 +10,14 @@ export const MAX_TIMEOUT_MS = 120_000;
 export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 /** Never forwarded to a different origin on a redirect: a token should reach only the host it was saved for. */
-const CREDENTIAL_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization']);
+const CREDENTIAL_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization', 'x-api-key']);
 
 export interface SendOptions {
   timeoutMs?: number;
   maxBytes?: number;
   signal?: AbortSignal;
+  /** Header names whose value used a secret: dropped on a cross-origin redirect like the credential headers. */
+  secretHeaders?: string[];
 }
 
 export function netErrorKind(e: unknown): NetErrorKind {
@@ -64,6 +66,7 @@ export async function send(req: ResolvedRequest, o: SendOptions = {}): Promise<S
   let method: string = req.method;
   let body = req.body;
   let headers = req.headers;
+  const dropped = new Set([...CREDENTIAL_HEADERS, ...(o.secretHeaders ?? []).map((k) => k.toLowerCase())]);
   const failed = (kind: NetErrorKind, message: string): SendResult => ({ status: 0, statusText: '', url, headers: [], body: '', size: 0, truncated: false, ms: since(), timing: { ttfb: since(), download: 0 }, redirects, error: { kind, message } });
   try {
     for (;;) {
@@ -73,7 +76,7 @@ export async function send(req: ResolvedRequest, o: SendOptions = {}): Promise<S
         await res.body?.cancel();
         if (redirects.length >= MAX_REDIRECTS) return failed('other', `more than ${MAX_REDIRECTS} redirects`);
         const next = new URL(loc, url);
-        if (next.origin !== new URL(url).origin) headers = headers.filter(([k]) => !CREDENTIAL_HEADERS.has(k.toLowerCase()));
+        if (next.origin !== new URL(url).origin) headers = headers.filter(([k]) => !dropped.has(k.toLowerCase()));
         if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
           method = 'GET';
           body = undefined;

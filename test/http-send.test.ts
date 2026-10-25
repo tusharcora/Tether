@@ -77,6 +77,17 @@ describe('send', () => {
     expect(seenByB['x-keep']).toBe('yes');
   });
 
+  it('drops X-Api-Key and every header named as carrying a secret on a cross-origin redirect', async () => {
+    const r = await send(
+      { method: 'GET', url: `${A}/away`, headers: [['X-Api-Key', 'k1'], ['X-Custom-Auth', 'tok-value'], ['X-Keep', 'yes']] },
+      { secretHeaders: ['x-custom-auth'] },
+    );
+    expect(r.body).toBe('on b');
+    expect(seenByB['x-api-key']).toBeUndefined();
+    expect(seenByB['x-custom-auth']).toBeUndefined();
+    expect(seenByB['x-keep']).toBe('yes');
+  });
+
   it('keeps credentials on a same-origin redirect', async () => {
     const r = await send({ method: 'GET', url: `${A}/self`, headers: [['Authorization', 'Bearer s3cr3t'], ['Cookie', 'sid=1'], ['Proxy-Authorization', 'Basic eA==']] });
     expect(JSON.parse(r.body)).toMatchObject({ authorization: 'Bearer s3cr3t', cookie: 'sid=1', 'proxy-authorization': 'Basic eA==' });
