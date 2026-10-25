@@ -13,6 +13,7 @@ beforeAll(async () => {
   srv = createServer((req, res) => {
     if (req.url === '/ok') return res.writeHead(200, { 'content-type': 'application/json' }), res.end('{"ok":true}');
     if (req.url === '/count') return hits++, res.writeHead(hits > 3 ? 429 : 200), res.end();
+    if (req.url === '/slow') return void setTimeout(() => (hits++, res.writeHead(200), res.end('slow ok')), 400);
     res.writeHead(500), res.end('broken on purpose');
   });
   await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
@@ -73,7 +74,23 @@ describe('request gate', () => {
     expect(s.nodes.gate!.gate!.output).toMatch(/^FAIL request rate \(send 1 of 5, expect all\)/);
   });
 
-  it('a request missing from the commit fails the gate with a clear message instead of crashing', async () => {
+  it('a node timeout during a repeat fails the gate for "all" and "last", and says it timed out', async () => {
+    const { engine } = setup();
+    const repo = makeRepo();
+    writeRequest(repo, 'slow', { name: 'Slow', method: 'GET', url: `${base}/slow`, checks: [{ kind: 'status', op: 'eq', value: 200 }] });
+    commit(repo);
+    for (const mode of ['all', 'last'] as const) {
+      hits = 0;
+      const p = pipe([{ id: 'gate', kind: 'gate', http: { run: 'slow', repeat: 5, expect: mode } }], [], { nodeTimeoutMs: 1000 });
+      const s = await engine.wait(await engine.start({ pipeline: p, task: 't', repo }));
+      expect(s.status).toBe('error');
+      const out = s.nodes.gate!.gate!.output;
+      expect(out).toMatch(new RegExp(`^FAIL request slow \\(send 3 of 5, expect ${mode}\\)\nstopped after 2 of 5 sends: gate timed out after 1000 ms\n`));
+      expect(hits).toBeLessThan(5);
+    }
+  });
+
+    it('a request missing from the commit fails the gate with a clear message instead of crashing', async () => {
     const { engine } = setup();
     const repo = makeRepo();
     const p = pipe([{ id: 'gate', kind: 'gate', http: { run: 'not/there' } }], []);

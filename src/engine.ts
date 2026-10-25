@@ -1183,7 +1183,7 @@ export class Engine {
         let out: string;
         let exitCode: number | null;
         if (node.http) {
-          const r = await runHttpGate({ home: this.opts.home, db: this.store.raw(), state: st, gate: node.http, runId, signal: gateSignal });
+          const r = await runHttpGate({ home: this.opts.home, db: this.store.raw(), state: st, gate: node.http, runId, signal: gateSignal, timeoutMs: st.pipeline.settings.nodeTimeoutMs });
           if (signal.aborted) return { ok: false, aborted: true };
           ok = r.ok;
           out = tail(r.output, 20_000);
