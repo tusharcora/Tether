@@ -21,3 +21,13 @@ Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 document.elementFromPoint ??= () => null;
+// ascii-reveal draws on <canvas>, which jsdom lacks: tests get a plain stand-in that records the props Loading passes.
+vi.mock('ascii-reveal', async () => {
+  const React = await import('react');
+  return {
+    AsciiReveal: ({ loading, children, className, preset: _p, duration: _d, revealOnMount: _r, ...rest }: Record<string, unknown>) =>
+      React.createElement('div', { 'data-ascii-reveal': '', 'data-loading': String(!!loading), className, ...rest }, children as never),
+    AsciiSkeleton: ({ variant, animate, lines, rows }: { variant?: string; animate?: boolean; lines?: number; rows?: number }) =>
+      React.createElement('span', { 'data-ascii-skeleton': '', 'data-variant': variant, 'data-animate': String(animate !== false), 'data-lines': lines, 'data-rows': rows }),
+  };
+});
