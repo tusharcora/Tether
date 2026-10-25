@@ -1,7 +1,9 @@
 import { chmodSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { HttpClientError } from '../src/http/errors.js';
-import { deleteSecret, loadSecrets, secretKeys, secretsPath, setSecret } from '../src/http/secrets.js';
+import { activeEnv, setActiveEnv } from '../src/http/index.js';
+import { deleteScope, deleteSecret, loadSecrets, secretKeys, secretsPath, setSecret } from '../src/http/secrets.js';
+import { initWorkspace, removeWorkspace } from '../src/workspace.js';
 import { tmp } from './helpers.js';
 
 // pass-through, so one test can make the atomic rename fail
@@ -80,5 +82,32 @@ describe('secrets', () => {
     }
     expect(m).toMatch(/not a valid secrets file/);
     expect(m).not.toContain('hunter2');
+  });
+
+  it('deleteScope drops one scope and leaves the others', () => {
+    const home = tmp('home-');
+    setSecret(home, 'api', 'a', '1');
+    setSecret(home, 'web', 'b', '2');
+    expect(deleteScope(home, 'api')).toBe(true);
+    expect(deleteScope(home, 'api')).toBe(false);
+    expect(loadSecrets(home, 'api')).toEqual({});
+    expect(loadSecrets(home, 'web')).toEqual({ b: '2' });
+    expect(statSync(secretsPath(home)).mode & 0o777).toBe(0o600);
+  });
+
+  it('removing a workspace deletes its secrets and its active environment', () => {
+    const home = tmp('home-');
+    initWorkspace(home, tmp('a-'), { id: 'api', write: false });
+    initWorkspace(home, tmp('b-'), { id: 'web', write: false });
+    setSecret(home, 'api', 'tok', 'S3CRET-gone');
+    setSecret(home, 'web', 'tok', 'S3CRET-kept');
+    setActiveEnv(home, 'api', 'local');
+    setActiveEnv(home, 'web', 'prod');
+    expect(removeWorkspace(home, 'api')).toBe(true);
+    expect(loadSecrets(home, 'api')).toEqual({});
+    expect(readFileSync(secretsPath(home), 'utf8')).not.toContain('S3CRET-gone');
+    expect(activeEnv(home, 'api')).toBeNull();
+    expect(loadSecrets(home, 'web')).toEqual({ tok: 'S3CRET-kept' });
+    expect(activeEnv(home, 'web')).toBe('prod');
   });
 });

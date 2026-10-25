@@ -16,6 +16,8 @@ import { basename, join, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { detectTestCommand } from './composer.js';
 import { endpointsBlock } from './http/endpoints.js';
+import { deleteScope, SCOPE_RE } from './http/secrets.js';
+import { loadPrefs, savePrefs } from './prefs.js';
 import type { RunWorkspace } from './types.js';
 
 export interface WorkspaceMeta {
@@ -311,11 +313,20 @@ export function initWorkspace(home: string, dir: string, o: { name?: string; id?
   return { workspace: { ...readWorkspace(id, path), isDefault: reg.default === id }, created, existed: false };
 }
 
+/** Unregister a workspace and forget what aorch kept for it: its secrets scope and its active environment. */
 export function removeWorkspace(home: string, id: string): boolean {
   const reg = loadRegistry(home);
   const next = reg.workspaces.filter((w) => w.id !== id);
   if (next.length === reg.workspaces.length) return false;
+  // secrets first: a secrets file that is too open fails here, before the workspace is gone
+  if (SCOPE_RE.test(id) && id !== 'default') deleteScope(home, id);
   saveRegistry(home, { default: reg.default === id ? next[0]?.id : reg.default, workspaces: next });
+  const envs = loadPrefs(home).httpActiveEnv;
+  if (envs && Object.hasOwn(envs, id)) {
+    const { [id]: _gone, ...rest } = envs;
+    void _gone;
+    savePrefs(home, { httpActiveEnv: rest });
+  }
   return true;
 }
 

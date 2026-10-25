@@ -82,3 +82,13 @@ export function deleteSecret(home: string, scope: string, key: string): boolean 
   save(home, s);
   return true;
 }
+
+/** Drop a whole scope (a removed workspace's secrets). False when it held nothing. */
+export function deleteScope(home: string, scope: string): boolean {
+  scopeOk(scope);
+  const s = load(home);
+  if (!Object.hasOwn(s.scopes, scope)) return false;
+  delete s.scopes[scope];
+  save(home, s);
+  return true;
+}
