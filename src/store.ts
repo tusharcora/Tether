@@ -118,6 +118,8 @@ export class Store {
         PRIMARY KEY (run_id, seq)
       );
       CREATE INDEX IF NOT EXISTS events_type ON events(type, ts);
+      -- covers listRows' per-run MAX(seq)/MAX(ts) so a poll never reads the data pages (node.chunk rows are big)
+      CREATE INDEX IF NOT EXISTS events_head ON events(run_id, seq, ts);
     `);
     ensureHistory(db);
     return new Store(db);

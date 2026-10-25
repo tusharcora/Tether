@@ -47,6 +47,15 @@ describe('language cache', () => {
     vi.advanceTimersByTime(2_000);
     expect([...workspaceLanguages('w', dir)]).toEqual(['go']);
   });
+
+  it('rescans when a workspace id is re-registered with a new path', () => {
+    clearLanguageCache();
+    const a = makeRepo();
+    const b = makeRepo();
+    writeFileSync(join(b, 'go.mod'), 'module x\n');
+    expect(workspaceLanguages('w', a).size).toBe(0);
+    expect([...workspaceLanguages('w', b)]).toEqual(['go']);
+  });
 });
 
 describe('GET /api/roster/preview', () => {

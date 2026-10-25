@@ -10,14 +10,14 @@ const LANG_TTL_MS = 60_000;
 const WHY_MAX = 80;
 const STOP = new Set(['with', 'that', 'this', 'from', 'into', 'have', 'make', 'when', 'what', 'they', 'them', 'then', 'than', 'there', 'their', 'about', 'should', 'would', 'could', 'also', 'some', 'more', 'only', 'just', 'your', 'where', 'which', 'while', 'will', 'each', 'other', 'after', 'before', 'over', 'under', 'using', 'need', 'needs', 'want', 'like', 'please']);
 
-const langCache = new Map<string, { at: number; langs: Set<string> }>();
+const langCache = new Map<string, { at: number; dir: string; langs: Set<string> }>();
 
 /** The repo scan, cached per workspace for 60 s (the preview is asked as the person types). */
 export function workspaceLanguages(key: string, dir: string, now = Date.now()): Set<string> {
   const hit = langCache.get(key);
-  if (hit && now - hit.at < LANG_TTL_MS) return hit.langs;
+  if (hit && hit.dir === dir && now - hit.at < LANG_TTL_MS) return hit.langs;
   const langs = detectLanguages(dir);
-  langCache.set(key, { at: now, langs });
+  langCache.set(key, { at: now, dir, langs });
   return langs;
 }
 export const clearLanguageCache = (): void => langCache.clear();

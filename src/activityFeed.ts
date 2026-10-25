@@ -19,7 +19,8 @@ export const ACTIVITY_MAX = 100;
 /**
  * Events younger than this are held back (neither returned nor moving the cursor). An event's ts is taken before its
  * commit, and another process can commit one stamped with the same or an earlier ms after a poll has read past it;
- * waiting until every event at or before the watermark is committed means a cursor never skips one.
+ * holding back the last SETTLE_MS assumes every such commit lands within SETTLE_MS of its ts, so a cursor skips one only in
+ * the rare case a commit waits longer than that (e.g. behind a long write lock).
  */
 export const SETTLE_MS = 2000;
 
