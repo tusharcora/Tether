@@ -20,7 +20,7 @@ export function BottomBar(p: Omit<RailProps, 'onSearch'>) {
     if (!open) return;
     menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     const onDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node) && e.target !== moreRef.current) setOpen(false);
+      if (!moreRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);

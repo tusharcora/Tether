@@ -33,6 +33,27 @@ describe('BottomBar', () => {
     expect(document.activeElement).toBe(more);
   });
 
+  it('closes when the More icon is tapped again or the pointer goes down outside, but not on a menu item', () => {
+    const onGo = vi.fn();
+    render(<BottomBar active="home" onGo={onGo} onSettings={() => {}} />);
+    const more = screen.getByRole('button', { name: 'More' });
+    const icon = more.querySelector('svg')!;
+    fireEvent.click(more);
+    fireEvent.pointerDown(icon);
+    fireEvent.click(icon);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(more);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(more);
+    const triggers = screen.getByRole('menuitem', { name: 'Triggers' });
+    fireEvent.pointerDown(triggers.querySelector('svg')!);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.click(triggers);
+    expect(onGo).toHaveBeenCalledWith('triggers');
+  });
+
   it('focuses the first menu item on open and moves through the menu with arrows, Home and End', () => {
     render(<BottomBar active="home" onGo={() => {}} onSettings={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
