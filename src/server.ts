@@ -26,6 +26,8 @@ import { loadLessons, type Lesson } from './lessons.js';
 import { eccInfo, gitFetch, importEcc, removeEcc, type Fetch } from './eccImport.js';
 import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
+import { HttpError, readJson, reqObject, send } from './serverkit.js';
+import { httpRoute } from './http/routes.js';
 
 export interface ServerOptions {
   engine: Engine;
@@ -46,7 +48,6 @@ export interface ServerOptions {
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
 const LIST_PERSONA_MAX = 2000;
 
-const MAX_BODY = 1_000_000;
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -59,21 +60,7 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 const MAX_LIST = 20;
-/** Body must be a JSON object. */
-function reqObject(b: unknown): Record<string, unknown> {
-  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'the body must be a JSON object');
-  return b as Record<string, unknown>;
-}
 /** Optional single-line string, trimmed; empty means absent. */
 function reqString(b: Record<string, unknown>, k: string, max = 200): string | undefined {
   const v = b[k];
@@ -216,28 +203,6 @@ async function readRaw(req: IncomingMessage, max = 5_000_000): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function readJson(req: IncomingMessage): Promise<any> {
-  const chunks: Buffer[] = [];
-  let n = 0;
-  for await (const c of req) {
-    n += (c as Buffer).length;
-    if (n > MAX_BODY) throw new HttpError(413, 'request body too large');
-    chunks.push(c as Buffer);
-  }
-  if (!n) return {};
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch {
-    throw new HttpError(400, 'invalid JSON body');
-  }
-}
-
-function send(res: ServerResponse, status: number, body: unknown) {
-  const data = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(data) });
-  res.end(data);
-}
-
 export function startServer(o: ServerOptions): Promise<{ server: Server; url: string; close(): Promise<void> }> {
   const host = o.host ?? '127.0.0.1';
   if (!isLoopback(host) && process.env.AORCH_ALLOW_REMOTE !== '1') {
@@ -310,6 +275,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const p = url.pathname;
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
+    if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
@@ -904,7 +870,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       serveStatic(req, res, url);
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof HttpError) {
+        // the rest of an oversized upload is never read: close the connection instead of reusing a half-read socket
+        if (e.status === 413) res.setHeader('connection', 'close');
+        return send(res, e.status, { error: e.message });
+      }
       send(res, 500, { error: (e as Error).message });
     }
   });
