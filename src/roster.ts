@@ -21,7 +21,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'vendor', '.
 const LANGS = new Set(['go', 'typescript', 'javascript', 'python', 'rust', 'java', 'kotlin', 'cpp', 'csharp', 'fsharp', 'php', 'ruby', 'swift', 'flutter', 'dart', 'react', 'vue', 'django', 'fastapi', 'pytorch']);
 const net = /network|vlan|router|firewall|dns/i;
 const oss = /open.?source|release|publish/i;
-const DOMAIN: Record<string, RegExp> = {
+export const DOMAIN: Record<string, RegExp> = {
   'healthcare-reviewer': /health|clinical|patient|medical/i,
   'mle-reviewer': /\bml\b|machine learning|model training/i,
   'rag-pipeline-reviewer': /\brag\b|retriev|embedding|vector/i,
@@ -119,10 +119,10 @@ export function botLanguage(id: string): string | undefined {
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 // built-ins are recognised by id too: CREW defs registered without load-time flags (tests, packs) still count as built-in
 export const entryFor = (b: BotDef): RosterEntry => ({ id: b.id, kind: b.kind, readOnly: !!b.readOnly, when: oneLine(b.whenToUse || b.persona || b.title), builtin: !!b.builtin || BUILTIN_IDS.has(b.id), ...(b.source ? { source: b.source } : {}) });
-const baseName = (id: string) => id.replace(/^ecc-/, '');
+export const baseName = (id: string): string => id.replace(/^ecc-/, '');
 
-export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; routing?: Routing }): RosterEntry[] {
-  const langs = detectLanguages(o.dir);
+export function buildRoster(o: { dir?: string; task: string; crew: BotDef[]; routing?: Routing; /** Languages already detected for `dir` (skips the scan). */ langs?: Set<string> }): RosterEntry[] {
+  const langs = o.langs ?? detectLanguages(o.dir);
   const usable = o.crew.filter((b) => !SKIP_KINDS.has(b.kind) && !SKIP_IDS.has(b.id));
   const fixed = usable.filter((b) => b.builtin || !b.source);
   const imported = usable.filter((b) => b.source);

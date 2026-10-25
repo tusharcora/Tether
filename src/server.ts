@@ -19,6 +19,7 @@ import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
 import { ACTIVITY_LIMIT, ACTIVITY_MAX, activityFeed, parseCursor } from './activityFeed.js';
 import { attentionReader } from './attention.js';
+import { PREVIEW_TASK_MAX, rosterPreview } from './rosterPreview.js';
 import { rowLive } from './runLabels.js';
 import { rowExtras } from './runRows.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
@@ -714,6 +715,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const n = Number(url.searchParams.get('limit') ?? ACTIVITY_LIMIT);
       const limit = Number.isInteger(n) && n > 0 ? Math.min(n, ACTIVITY_MAX) : ACTIVITY_LIMIT;
       return send(res, 200, activityFeed(store, { since, limit })), true;
+    }
+    if (p === '/api/roster/preview' && m === 'GET') {
+      const task = url.searchParams.get('task') ?? '';
+      if (task.length > PREVIEW_TASK_MAX) throw new HttpError(400, `"task" is too long (max ${PREVIEW_TASK_MAX})`);
+      return send(res, 200, rosterPreview({ home: cfg.home, task, ws: url.searchParams.get('ws') ?? undefined })), true;
     }
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
