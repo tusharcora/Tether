@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Question } from './api';
 import { TeamPanel } from './Team';
 import { makeRun } from './test/fixtures';
+import { cssText } from './test/css';
 import { renderApp } from './test/render';
 
 const q = (id: string, from?: string): Question => ({
@@ -81,5 +82,29 @@ describe('TeamPanel', () => {
     fireEvent.click(screen.getAllByRole('combobox', { name: /Bot/ })[0]!);
     fireEvent.click(await screen.findByRole('option', { name: 'go-reviewer' }));
     await waitFor(() => expect(send).toHaveBeenCalledWith('swap', { assignment: 0, bot: 'go-reviewer' }));
+  });
+
+  it('shows the run state, write access and the plan with Studio chips', () => {
+    const send = vi.fn().mockResolvedValue(true);
+    const plan = { goal: 'Ship', success: ['429 with Retry-After'], assignments: [{ bot: 'coder', goal: 'write it', mode: 'write' as const, expected: 'a passing gate' }], limits: { allowWrites: true }, answers: [] };
+    const { container } = renderApp(<TeamPanel run={teamRun({ planning: false, plan })} send={send} />);
+    expect(container.querySelector('.tm-bar .sl-chip')!.classList.contains('t-live')).toBe(true);
+    const region = screen.getByRole('region', { name: "The team's plan" });
+    expect(region.querySelector('.sl-chip.t-needs')!.textContent).toBe('waits for you');
+    expect(screen.getByText('can edit files').closest('.sl-chip')).toBeTruthy();
+    expect(screen.getByText('expects: a passing gate')).toBeTruthy();
+    expect(region.querySelectorAll('li.sl-row')).toHaveLength(1);
+  });
+
+  it('tags the recommended option and numbers the cards', () => {
+    renderApp(<TeamPanel run={teamRun({ pending: [q('q1'), q('q2')] })} send={vi.fn().mockResolvedValue(true)} />);
+    expect(screen.getAllByText('recommended')).toHaveLength(2);
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Question q1?' })).toBeTruthy();
+  });
+
+  it('is styled from tokens in its own stylesheet', () => {
+    expect(cssText('runs/team.css').match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+    expect(cssText('styles.css')).not.toMatch(/\.qpanel|\.qcard|\.team-bar|\.assign/);
   });
 });

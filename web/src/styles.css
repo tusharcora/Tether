@@ -65,20 +65,6 @@ main { flex: 1; min-height: 0; }
 .diff .dd { background: color-mix(in srgb, var(--err) 18%, transparent); }
 .diff .dk { color: var(--accInk); } .diff .dh { color: var(--muted); }
 
-/* team runs */
-.team-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 16px 8px; }
-.qpanel { margin: 0 16px 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
-.qpanel h4, .qpanel h5, .qpanel p, .qpanel ul { margin: 0; }
-.qpanel ul { padding-left: 18px; }
-.qcard { display: flex; flex-direction: column; gap: 6px; }
-.qcard p { margin: 0; }
-.dialogue { margin: 0 16px 10px; }
-.dialogue p { margin: 6px 0; }
-.assign { list-style: none; padding-left: 0 !important; display: flex; flex-direction: column; gap: 6px; }
-.assign-row { display: flex; gap: 12px; align-items: flex-start; }
-.assign-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
-@media (max-width: 640px) { .team-bar, .qpanel, .dialogue { margin-left: 8px; margin-right: 8px; } }
-
 .face { display: inline-block; line-height: 0; }
 span.face > svg { width: 100%; height: 100%; }
 /* animate="hover" wakes the face anywhere over its tile, not only over the drawn blob (mirrors blobatar/motion.css .mo-root:hover) */

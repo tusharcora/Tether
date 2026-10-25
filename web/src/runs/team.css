@@ -1,0 +1,18 @@
+/* Team panel (follows the Runs board and the component kit): mode bar, questions, plan review, dialogue. Tokens only. */
+.tm-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tm-questions { display: flex; flex-direction: column; gap: 12px; }
+.tm-qcard { display: flex; flex-direction: column; gap: 8px; }
+.tm-qhead { display: flex; align-items: baseline; gap: 8px; }
+.tm-qhead h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.tm-why { margin: 0; font-size: 13px; color: var(--mut); }
+.tm-rec { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 5px; background: var(--s2); color: var(--mut); font-size: 11px; line-height: 18px; vertical-align: middle; }
+.tm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.tm-plan { display: flex; flex-direction: column; gap: 12px; }
+.tm-goal { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.tm-block { display: flex; flex-direction: column; gap: 6px; }
+.tm-block h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--mut); }
+.tm-done { margin: 0; padding-left: 18px; }
+.tm-assign { --row-lead: 36px; }
+.tm-assign-goal { color: var(--ink); }
+.tm-dialogue { min-width: 0; }
