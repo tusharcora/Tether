@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { stepLabel } from '../../src/runLabels';
 import { ago, api, describeEvent, fmtDur, fmtUsd, type RunRow, type RunView } from './api';
 import { Canvas } from './Canvas';
 import { Badge, type BadgeTone } from './components/arc/badge/badge';
@@ -68,10 +69,7 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
     };
   }, [props.selected, selNode, pane, commit, hasRun, branchKey]);
 
-  const nameOf = (id: string) => {
-    const n = run?.pipeline.nodes.find((x) => x.id === id);
-    return n ? `${n.title ?? n.role ?? n.kind} (${id})` : id;
-  };
+  const nameOf = (id: string) => stepLabel(run?.pipeline.nodes ?? [], id);
   const awaiting = run ? Object.entries(run.nodes).filter(([, n]) => n.status === 'awaiting').map(([id]) => id) : [];
   const node = run && selNode ? run.nodes[selNode] : undefined;
   const pnode = run?.pipeline.nodes.find((n) => n.id === selNode);

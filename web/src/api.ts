@@ -1,8 +1,9 @@
-import type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
+import type { Answer, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
 
 export type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
+export type { ActivityLine, AttentionAction, AttentionItem, RosterPreview, RunStep } from '../../src/types.js';
 export type RunView = RunState & { live: boolean };
-export interface RunRow {
+export interface RunRow extends RunRowExtras {
   id: string;
   pipeline: string;
   task: string;
@@ -42,6 +43,16 @@ export interface VaultNote {
   backlinks: string[];
 }
 
+/** A non-2xx reply: the server's JSON `error` text plus the HTTP status (Home tells a 409 "no workspace" apart). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -55,7 +66,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   } catch {
     /* non-JSON error body */
   }
-  if (!res.ok) throw new Error(json?.error ?? (text.slice(0, 200) || `HTTP ${res.status}`));
+  if (!res.ok) throw new ApiError(json?.error ?? (text.slice(0, 200) || `HTTP ${res.status}`), res.status);
   return json as T;
 }
 

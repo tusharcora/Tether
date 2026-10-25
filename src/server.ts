@@ -17,6 +17,8 @@ import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
+import { rowLive } from './runLabels.js';
+import { rowExtras } from './runRows.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
@@ -229,16 +231,10 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   let doctorCache: { at: number; data: unknown } | undefined;
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
 
-  /**
-   * A team run before execution that waits for the person (a card or a ready plan) needs no process, so it is never
-   * "interrupted": it is live as far as the dashboard goes (Stop, no Resume). So is one whose planning call is in flight.
-   */
-  const teamWaits = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }) =>
-    r.kind === 'team' && r.status === 'running' && (engine.isPlanning(r.id) || r.pending > 0 || r.planReady);
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = engine.isLive(id) || teamWaits({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
+    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
     return { ...s, live };
   };
 
@@ -701,7 +697,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'GET') {
       // Evolve probe replays are experiments, hidden unless ?all=1
       const all = url.searchParams.get('all') === '1';
-      return send(res, 200, store.list().filter((r) => all || !r.probe).map((r) => ({ ...r, live: engine.isLive(r.id) || teamWaits(r) }))), true;
+      const rows = store
+        .listRows()
+        .filter(({ summary: r }) => all || !r.probe)
+        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, r) }));
+      return send(res, 200, rows), true;
     }
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);

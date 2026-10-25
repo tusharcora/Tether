@@ -33,6 +33,23 @@ export interface RunSummary {
   probe?: true;
 }
 
+const summarize = (id: string, s: RunState): RunSummary => ({
+  id,
+  pipeline: s.pipeline.name,
+  task: s.task,
+  repo: s.repo,
+  status: s.status,
+  startedAt: s.startedAt,
+  finishedAt: s.finishedAt,
+  costUsd: s.costUsd,
+  nodes: Object.fromEntries(Object.entries(s.nodes).map(([k, v]) => [k, v.status])),
+  kind: s.kind,
+  mode: s.mode,
+  pending: s.pending.length,
+  planReady: planWaiting(s),
+  ...(s.probe ? { probe: true as const } : {}),
+});
+
 type Listener = (e: StoredEvent) => void;
 
 /** Append-only event log in SQLite (WAL, so the CLI and the server can share one file). */
@@ -121,7 +138,11 @@ export class Store {
   }
 
   state(runId: string): RunState | undefined {
-    const max = this.maxSeq(runId);
+    return this.stateAt(runId, this.maxSeq(runId));
+  }
+
+  /** The folded state at newest seq `max`: from the cache when nothing was appended since, else one events read. */
+  private stateAt(runId: string, max: number): RunState | undefined {
     const hit = this.cache.get(runId);
     if (hit && hit.seq === max) return hit.state;
     const state = foldRun(this.events(runId));
@@ -139,26 +160,25 @@ export class Store {
   }
 
   list(): RunSummary[] {
-    const out: RunSummary[] = [];
+    return this.listRows().map((r) => r.summary);
+  }
+
+  /**
+   * Every run, newest first, with its folded state and newest event time. A fixed number of queries however many runs
+   * there are (one grouped read of every run's newest seq and ts, one of the run ids); only runs that changed since the
+   * last call re-read their events.
+   */
+  listRows(): { summary: RunSummary; state: RunState; lastTs: number }[] {
+    const heads = new Map<string, { seq: number; ts: number }>();
+    const rows = this.db.prepare('SELECT run_id, MAX(seq) AS seq, MAX(ts) AS ts FROM events GROUP BY run_id').all() as { run_id: string; seq: number; ts: number }[];
+    for (const r of rows) heads.set(r.run_id, { seq: r.seq, ts: r.ts });
+    const out: { summary: RunSummary; state: RunState; lastTs: number }[] = [];
     for (const id of this.runIds()) {
-      const s = this.state(id);
+      const head = heads.get(id);
+      if (!head) continue; // started (by another process) between the two reads: next call lists it
+      const s = this.stateAt(id, head.seq);
       if (!s) continue;
-      out.push({
-        id,
-        pipeline: s.pipeline.name,
-        task: s.task,
-        repo: s.repo,
-        status: s.status,
-        startedAt: s.startedAt,
-        finishedAt: s.finishedAt,
-        costUsd: s.costUsd,
-        nodes: Object.fromEntries(Object.entries(s.nodes).map(([k, v]) => [k, v.status])),
-        kind: s.kind,
-        mode: s.mode,
-        pending: s.pending.length,
-        planReady: planWaiting(s),
-        ...(s.probe ? { probe: true as const } : {}),
-      });
+      out.push({ summary: summarize(id, s), state: s, lastTs: head.ts });
     }
     return out;
   }

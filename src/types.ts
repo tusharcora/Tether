@@ -686,3 +686,54 @@ export interface AgentAdapter {
   /** Command that reopens this agent's interactive session for a step, run inside the run's worktree. */
   attachCommand?(sessionId?: string): { cmd: string; args: string[] } | undefined;
 }
+
+// ---------- dashboard read models (Home) ----------
+
+export interface RunStep {
+  id: string;
+  status: NodeStatus;
+  /** The crew bot that runs it (a bot id, for faces). */
+  bot: string;
+}
+export interface RunCurrent {
+  node: string;
+  /** Display name of the bot. */
+  bot: string;
+  title: string;
+}
+/** What GET /api/runs adds to each run row. */
+export interface RunRowExtras {
+  branch: string;
+  lastTs: number;
+  steps: RunStep[];
+  current?: RunCurrent;
+  bots: string[];
+}
+export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
+export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open';
+export interface AttentionItem {
+  id: string;
+  ts: number;
+  runId: string;
+  kind: AttentionKind;
+  title: string;
+  meta: string;
+  actions: AttentionAction[];
+  /** The step an approval or a worker's question belongs to. */
+  node?: string;
+}
+export type ActivityKind = 'working' | 'needs' | 'done' | 'failed' | 'info';
+export interface ActivityLine {
+  id: string;
+  ts: number;
+  runId: string;
+  who: string;
+  text: string;
+  kind: ActivityKind;
+  /** The bot whose face goes with the line. */
+  bot?: string;
+}
+export interface RosterPreview {
+  bots: { id: string; name: string; why: string }[];
+  core: string[];
+}
