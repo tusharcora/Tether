@@ -63,12 +63,14 @@ export function Inspector({ run: r, events, selected, pane: hint, onAct }: { run
   }, [path, branchKey, retries]);
 
   /** The loaded diff, its load error with a retry (never "no changes" on error), or the skeleton while it loads. */
+  // until the effect catches up, a diff from another path (the previous step's) counts as loading
+  const stale = diff.path !== path;
   const diffBlock = (empty: string) =>
-    diff.error ? (
+    !stale && diff.error ? (
       <InlineError message={diff.error} onRetry={() => setRetries((n) => n + 1)} />
     ) : (
-      <Loading loading={diff.text === undefined} lines={6} label="Loading diff">
-        {diff.text ? (
+      <Loading loading={stale || diff.text === undefined} lines={6} label="Loading diff">
+        {!stale && diff.text ? (
           <>
             <FileBars diff={diff.text} />
             <Diff text={diff.text} />

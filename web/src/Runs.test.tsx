@@ -213,4 +213,30 @@ describe('Runs', () => {
     expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /Timeline/, selected: true })).toBeTruthy();
   });
+
+  it('keeps the drawer open on the picked step after a Timeline link drops its pane (F24, mid width)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
+    const view = renderApp(<Runs selected="r1" pane="timeline" onSelect={() => {}} onSelectNode={(n) => view.rerender(<Runs selected="r1" node={n} onSelect={() => {}} />)} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
+    // pick a step in the graph, as a click on the page does
+    act(() => {
+      fireEvent.pointerDown(document.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    });
+    expect(await screen.findByRole('heading', { name: /Bolt · coder/ })).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(screen.getByRole('dialog', { name: 'Inspector' }).getAttribute('data-state')).not.toBe('closed');
+    expect(screen.getByRole('tab', { name: 'Step', selected: true })).toBeTruthy();
+  });
+
+  it('keeps the Inspector view on the picked step after a Timeline link drops its pane (F24, phone)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 899px)' || q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
+    const view = renderApp(<Runs selected="r1" pane="timeline" onSelect={() => {}} onSelectNode={(n) => view.rerender(<Runs selected="r1" node={n} onSelect={() => {}} />)} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect(await screen.findByRole('tab', { name: /Timeline/, selected: true })).toBeTruthy();
+    // the route moves to #/runs/r1/code with no pane, as App does after a pick
+    view.rerender(<Runs selected="r1" node="code" onSelect={() => {}} />);
+    expect(await screen.findByRole('heading', { name: /Bolt · coder/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Inspector', pressed: true })).toBeTruthy();
+  });
 });

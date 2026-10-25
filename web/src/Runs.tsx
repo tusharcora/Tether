@@ -50,10 +50,19 @@ export function Runs(props: RunsProps) {
 
   // the route names the step; a different run starts with the route's step (none when it names none)
   useEffect(() => setSelNode(props.node), [props.selected, props.node]);
+  // a different run starts closed on the Graph, or open when its link asks for a pane
   useEffect(() => {
     setDrawer(!!props.pane);
     setPhoneView(props.pane ? 'inspector' : 'graph');
-  }, [props.selected, props.pane]);
+    // keyed on the run only: picking a step drops the pane hint from the route and must not close anything
+  }, [props.selected]);
+  // a pane hint only ever opens the Inspector, never closes it
+  useEffect(() => {
+    if (props.pane) {
+      setDrawer(true);
+      setPhoneView('inspector');
+    }
+  }, [props.pane]);
   const pick = (id?: string) => {
     setSelNode(id);
     props.onSelectNode?.(id);
