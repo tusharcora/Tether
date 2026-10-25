@@ -135,6 +135,46 @@ describe('Crew', () => {
     await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Go Reviewer'));
   });
 
+  it('keeps the board and the editor when a refresh fails, with a retry', async () => {
+    let n = 0;
+    const prev = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path === '/api/bots' && ++n === 2) throw new Error('refresh down');
+      return prev(method, path, body);
+    });
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'builder' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save' })));
+    expect((await screen.findByRole('alert')).textContent).toContain('refresh down');
+    expect(screen.getByRole('button', { name: /Edit Bolt/ })).toBeTruthy();
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('builder');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  it('clears the selection when the hash goes back to plain #/crew', async () => {
+    const { rerender } = renderApp(<Crew bot="coder" onBot={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt'));
+    rerender(<Crew onBot={() => {}} />);
+    await waitFor(() => expect(screen.queryByLabelText('Name')).toBeNull());
+    expect(screen.getByRole('button', { name: /Edit Bolt/ }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('moves focus to the first card after removing a bot', async () => {
+    const quill = { ...bots[0]!, id: 'quill', name: 'Quill', builtin: false };
+    routeApi({
+      ...routes,
+      'GET /api/crew': { ...crewReply, bots: [...bots, quill] },
+      'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'quill', name: 'Quill', title: 'coder', kind: 'agent', binding: null }] },
+      'DELETE /api/crew/quill': {},
+    });
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Quill/ }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Remove' })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Edit Bolt/ })));
+  });
+
   it('opens the bot a deep link names and says so when there is none', async () => {
     const { unmount } = renderApp(<Crew bot="coder" onBot={() => {}} />);
     await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt'));

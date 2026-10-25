@@ -36,6 +36,11 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
   const [draft, setDraft] = useState<Record<string, Binding>>({});
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState('');
+  // after one good load a failed refresh keeps the board and shows a compact retry above it
+  const [loaded, setLoaded] = useState(false);
+  const gridRef = useRef<HTMLElement>(null);
+  const emptyRef = useRef<HTMLParagraphElement>(null);
+  const [refocus, setRefocus] = useState(0);
   const [meta, setMeta] = useState<Meta>({ kinds: [], packs: [], ecc: null, eccDefault: '' });
   const [defs, setDefs] = useState<BotDef[]>([]);
   const [edit, setEdit] = useState<BotDef | null>(null);
@@ -109,6 +114,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
       setAgents(r.agents);
       setDraft(Object.fromEntries(r.crew.map((c) => [c.role, { agent: c.binding?.agent ?? '', model: c.binding?.model ?? '' }])));
       setLoadErr('');
+      setLoaded(true);
       return bots;
     } catch (e) {
       // a load failure shows inline with a retry; action failures are toasts
@@ -162,7 +168,19 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.bot, loading]);
-  const missing = props.bot && !loading && !loadErr && !defs.some((d) => d.id === props.bot) ? props.bot : undefined;
+  // Back/Forward to plain #/crew clears the selection (unless there are unsaved edits, or a new bot is open: newBot clears the hash itself)
+  useEffect(() => {
+    if (props.bot || dirty || isNew || !sel) return;
+    setSel(undefined);
+    setEdit(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.bot]);
+  // after Delete / Reset closes the editor, focus goes to the first card or the empty panel, not the page body
+  useEffect(() => {
+    if (!refocus) return;
+    (gridRef.current?.querySelector<HTMLElement>('.cw-card') ?? emptyRef.current)?.focus();
+  }, [refocus]);
+  const missing = props.bot && !loading && loaded && !defs.some((d) => d.id === props.bot) ? props.bot : undefined;
 
   async function importEcc() {
     if (importBusy) return;
@@ -199,7 +217,9 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
     try {
       await api('PUT', `/api/crew/${use}`, { ...b, id: use });
       notify.ok(`${b.name} saved`);
-      const saved = (await load())?.find((d) => d.id === use);
+      const fresh = await load();
+      // a failed refresh keeps the editor on what was just saved (the save itself worked)
+      const saved = fresh ? fresh.find((d) => d.id === use) : { ...b, id: use };
       if (saved) {
         setSel(use);
         open(saved);
@@ -217,6 +237,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
       props.onBot?.(undefined);
       notify.ok(b.builtin ? `${b.name} reset to its original look` : `${b.name} removed`);
       await load();
+      setRefocus((n) => n + 1);
     } catch (e) {
       notify.fail(e);
     }
@@ -323,9 +344,9 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
           </>
         }
       />
-      {loadErr ? <InlineError message={loadErr} onRetry={() => void load()} /> : null}
+      {loadErr && !loaded ? <InlineError message={loadErr} onRetry={() => void load()} /> : null}
       <Loading loading={loading} lines={6} label="Checking which agents are installed">
-        {loadErr ? null : (
+        {loadErr && !loaded ? null : (
           <div className="cw-body">
             <div className="cw-main">
               <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
@@ -336,13 +357,14 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
                   {hasEcc ? <TabsTrigger value="ecc">{`ECC ${counts.ecc}`}</TabsTrigger> : null}
                 </TabsList>
               </Tabs>
+              {loadErr ? <InlineError compact message={loadErr} onRetry={() => void load()} /> : null}
               {missing ? (
                 <p className="sl-note" role="status">
                   No bot called “{missing}”.
                 </p>
               ) : null}
               {shownRows.length ? (
-                <section className="cw-grid" aria-label="Bots">
+                <section ref={gridRef} className="cw-grid" aria-label="Bots">
                   {shownRows.map((r) => {
                     const b = r.binding ? agents[r.binding.agent] : undefined;
                     return <CrewCard key={r.role} row={r} def={defOf(r)} evo={evo[r.role]} agentMissing={!!b && !b.ok} selected={sel === r.role} onPick={() => pick(r.role)} />;
@@ -379,7 +401,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
             </div>
             {phone ? null : (
               <aside className="cw-side" aria-label="Edit bot">
-                {edit ? editorFor(edit) : <p className="cw-side-empty">Select a bot to change its look, persona and agent, or add a new one.</p>}
+                {edit ? editorFor(edit) : <p ref={emptyRef} tabIndex={-1} className="cw-side-empty">Select a bot to change its look, persona and agent, or add a new one.</p>}
               </aside>
             )}
           </div>
@@ -396,7 +418,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
 
       <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
         <DrawerContent side="right" title={`Evolve ${evolveShown?.name ?? ''}`}>
-          {evolveShown ? <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs()} /> : null}
+          {evolveShown ? <EvolvePanel key={evolveShown.role} inDrawer bot={evolveShown.role} name={evolveShown.name} onClose={() => setEvolving(null)} onChange={() => void loadDefs().catch((e: unknown) => setLoadErr((e as Error).message))} /> : null}
         </DrawerContent>
       </Drawer>
 
