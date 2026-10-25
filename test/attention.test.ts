@@ -164,8 +164,10 @@ describe('GET /api/attention', () => {
   afterAll(() => srv.close());
 
   it('answers with the items of real runs only', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() - 180_000); // quiet for 3 minutes
     seedRun(srv.store, 'ra');
     seedRun(srv.store, 'rp', { probe: true });
+    clock.mockRestore();
     const r = await srv.api('GET', '/api/attention');
     expect(r.status).toBe(200);
     expect(r.json.items.map((i: { id: string }) => i.id)).toEqual(['ra:interrupted']);
@@ -188,6 +190,17 @@ describe('GET /api/attention', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('does not call a run interrupted while another process drives it (an event in the last 2 minutes)', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() - 30_000);
+    seedRun(srv.store, 'cli');
+    clock.mockReturnValue(Date.now() - 180_000);
+    seedRun(srv.store, 'quiet');
+    clock.mockRestore();
+    const ids = (await srv.api('GET', '/api/attention')).json.items.map((i: { id: string }) => i.id);
+    expect(ids).not.toContain('cli:interrupted');
+    expect(ids).toContain('quiet:interrupted');
   });
 
   it('refuses a non-loopback Host', async () => {

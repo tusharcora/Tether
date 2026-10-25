@@ -27,6 +27,9 @@ export interface LiveProbe {
 }
 type LiveRow = { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean };
 
+/** A running run with an event this recent is being driven by some process (the CLI or another server), not interrupted. */
+export const RECENT_ACTIVITY_MS = 120_000;
+
 /**
  * A team run before execution that waits for the person (a card or a ready plan) needs no process, so it is never
  * "interrupted": it is live as far as the dashboard goes (Stop, no Resume). So is one whose planning call is in flight.
@@ -34,5 +37,9 @@ type LiveRow = { id: string; kind: RunState['kind']; status: RunState['status'];
 export const teamWaits = (engine: LiveProbe, r: LiveRow): boolean =>
   r.kind === 'team' && r.status === 'running' && (engine.isPlanning(r.id) || r.pending > 0 || r.planReady);
 
-/** A run row's `live`: its process runs in this server, or it is a team run waiting on the person. */
-export const rowLive = (engine: LiveProbe, r: LiveRow): boolean => engine.isLive(r.id) || teamWaits(engine, r);
+/**
+ * A run's `live`, the one rule every screen uses (run view, run rows, Needs you): its process runs in this server, it is
+ * a team run waiting on the person, or it is running and had an event (`lastTs`) within `RECENT_ACTIVITY_MS`.
+ */
+export const rowLive = (engine: LiveProbe, r: LiveRow & { lastTs: number }, now = Date.now()): boolean =>
+  engine.isLive(r.id) || teamWaits(engine, r) || (r.status === 'running' && now - r.lastTs < RECENT_ACTIVITY_MS);

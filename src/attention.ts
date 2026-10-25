@@ -19,7 +19,7 @@ export interface AttentionRun {
   state: RunState;
   /** The run's events, oldest first; at least those of `ATTENTION_TYPES` (others are ignored). */
   events: StoredEvent[];
-  /** As GET /api/runs computes it (`rowLive`): driven by this server, or a team run waiting on the person. */
+  /** As every screen computes it (`rowLive`): driven by this server, a team run waiting on the person, or recent activity. */
   live: boolean;
   lastTs: number;
 }
@@ -91,11 +91,11 @@ export function attentionItems(runs: AttentionRun[], now = Date.now()): Attentio
 export function attentionReader(store: Pick<Store, 'listRows' | 'eventsOfTypes'>) {
   const cache = new Map<string, { seq: number; startedAt: number; events: StoredEvent[] }>();
   return {
-    items(live: (r: RunSummary) => boolean, now = Date.now()): AttentionItem[] {
+    items(live: (r: RunSummary, lastTs: number) => boolean, now = Date.now()): AttentionItem[] {
       const runs: AttentionRun[] = [];
       const seen = new Set<string>();
       for (const { summary, state, lastTs, seq } of store.listRows()) {
-        const isLive = live(summary);
+        const isLive = live(summary, lastTs);
         if (!mayNeedAttention({ ...summary, live: isLive, lastTs }, now)) continue;
         seen.add(summary.id);
         let hit = cache.get(summary.id);

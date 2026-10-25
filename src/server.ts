@@ -236,7 +236,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }) || (s.status === 'running' && Date.now() - store.lastTs(id) < 120_000);
+    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s), lastTs: store.lastTs(id) });
     return { ...s, live };
   };
 
@@ -702,10 +702,10 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const rows = store
         .listRows()
         .filter(({ summary: r }) => all || !r.probe)
-        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, r) }));
+        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, { ...r, lastTs }) }));
       return send(res, 200, rows), true;
     }
-    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r) => rowLive(engine, r)) }), true;
+    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }), true;
     if (p === '/api/runs' && m === 'POST') {
       const b = await readJson(req);
       if (b.kind !== undefined && b.kind !== 'workflow' && b.kind !== 'team') throw new HttpError(400, '"kind" must be "workflow" or "team"');

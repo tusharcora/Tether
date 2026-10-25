@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { FINISHED, isFinished, rowLive, runMeta, runTitle, stepLabel } from '../src/runLabels.js';
+import { FINISHED, isFinished, RECENT_ACTIVITY_MS, rowLive, runMeta, runTitle, stepLabel } from '../src/runLabels.js';
 import { rowExtras } from '../src/runRows.js';
 import { Store } from '../src/store.js';
 import { seedRun } from './home-helpers.js';
@@ -62,7 +62,7 @@ describe('shared run labels', () => {
 
   it('counts a run live when its process runs or a team run waits on the person', () => {
     const eng = (live: boolean, planning = false) => ({ isLive: () => live, isPlanning: () => planning });
-    const team = { id: 't', kind: 'team' as const, status: 'running' as const, pending: 0, planReady: false };
+    const team = { id: 't', kind: 'team' as const, status: 'running' as const, pending: 0, planReady: false, lastTs: 0 };
     expect(rowLive(eng(true), { ...team, kind: 'workflow' })).toBe(true);
     expect(rowLive(eng(false), team)).toBe(false);
     expect(rowLive(eng(false), { ...team, pending: 1 })).toBe(true);
@@ -70,6 +70,16 @@ describe('shared run labels', () => {
     expect(rowLive(eng(false, true), team)).toBe(true);
     expect(rowLive(eng(false), { ...team, status: 'paused', pending: 1 })).toBe(false);
     expect(rowLive(eng(false), { ...team, kind: 'workflow', pending: 1 })).toBe(false);
+  });
+
+  it('counts a running run live while it has had an event in the last 2 minutes (driven by another process)', () => {
+    const eng = { isLive: () => false, isPlanning: () => false };
+    const row = { id: 'w', kind: 'workflow' as const, status: 'running' as const, pending: 0, planReady: false };
+    const now = 10_000_000;
+    expect(RECENT_ACTIVITY_MS).toBe(120_000);
+    expect(rowLive(eng, { ...row, lastTs: now - 30_000 }, now)).toBe(true);
+    expect(rowLive(eng, { ...row, lastTs: now - 180_000 }, now)).toBe(false);
+    expect(rowLive(eng, { ...row, status: 'paused', lastTs: now - 30_000 }, now)).toBe(false);
   });
 });
 
@@ -81,13 +91,27 @@ describe('GET /api/runs', () => {
   afterAll(() => srv.close());
 
   it('adds branch, lastTs, steps, current and bots and keeps the existing fields', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() - 180_000); // no event for 3 minutes: not live
     seedRun(srv.store, 'rx', { nodes: [{ id: 'code', role: 'coder', title: 'Implement' }] });
     srv.store.append('rx', { type: 'node.started', node: 'code', attempt: 1 });
+    clock.mockRestore();
     const r = await srv.api('GET', '/api/runs');
     expect(r.status).toBe(200);
     const row = r.json.find((x: { id: string }) => x.id === 'rx');
     expect(row).toMatchObject({ id: 'rx', pipeline: 'flow', status: 'running', pending: 0, planReady: false, live: false, branch: 'aorch/rx', steps: [{ id: 'code', status: 'running', bot: 'coder' }], current: { node: 'code', bot: 'Bolt', title: 'Implement' }, bots: ['coder'] });
     expect(row.lastTs).toBe(srv.store.lastTs('rx'));
+  });
+
+  it('agrees with the run view on live: recent activity from another process counts, a quiet run does not', async () => {
+    seedRun(srv.store, 'rl');
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() - 180_000);
+    seedRun(srv.store, 'rq');
+    clock.mockRestore();
+    const rows = (await srv.api('GET', '/api/runs')).json as { id: string; live: boolean }[];
+    expect(rows.find((x) => x.id === 'rl')!.live).toBe(true);
+    expect(rows.find((x) => x.id === 'rq')!.live).toBe(false);
+    expect((await srv.api('GET', '/api/runs/rl')).json.live).toBe(true);
+    expect((await srv.api('GET', '/api/runs/rq')).json.live).toBe(false);
   });
 
   it('carries no task text, prompts or outputs beyond the existing row fields', async () => {
