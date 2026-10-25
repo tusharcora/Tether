@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { runTitle, stepLabel } from '../../src/runLabels';
-import { ago, api, describeEvent, fmtDur, fmtUsd, type RunRow, type RunView } from './api';
+import { api, describeEvent, fmtDur, fmtUsd, type RunRow, type RunView } from './api';
 import { Canvas } from './Canvas';
 import { Badge, type BadgeTone } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
@@ -10,26 +10,25 @@ import { Input } from './components/arc/input/input';
 import { JsonViewer } from './components/arc/json-viewer/json-viewer';
 import { Loading } from './components/Loading';
 import { Stepper } from './components/arc/stepper/stepper';
-import { Switch } from './components/arc/switch/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
 import { Timeline, type TimelineEvent } from './components/arc/timeline/timeline';
 import { usePoll } from './hooks';
 import { useRunStream } from './runStream';
 import { TeamPanel } from './Team';
-import { cn } from './ui/cn';
 import { Diff } from './ui/Diff';
 import { useNotify } from './ui/notify';
+import { RunList } from './runs/RunList';
+import './runs/runs.css';
 
 type Pane = 'node' | 'timeline' | 'branch';
 
 const STATUS_TONE: Record<string, BadgeTone> = { running: 'info', done: 'success', error: 'danger', paused: 'warning', stopped: 'neutral' };
 const TONE: Record<string, TimelineEvent['tone']> = { done: 'success', error: 'danger' };
 
-export function Runs(props: { selected?: string; pane?: 'timeline'; onSelect: (id: string) => void }) {
+export function Runs(props: { selected?: string; pane?: 'timeline'; onSelect: (id: string) => void; onStart?: () => void }) {
   const notify = useNotify();
   const [probes, setProbes] = useState(false);
   const list = usePoll<RunRow[]>(probes ? '/api/runs?all=1' : '/api/runs', 2000);
-  const runs = list.data ?? [];
 
   const { run, setRun, events, error } = useRunStream(props.selected);
   const [selNode, setSelNode] = useState<string | undefined>();
@@ -275,52 +274,7 @@ export function Runs(props: { selected?: string; pane?: 'timeline'; onSelect: (i
 
   return (
     <div className="runs">
-      <aside className="run-list">
-        <h4>Runs</h4>
-        <div className="check small pad" title="Evolve probe replays are experiments and are hidden by default; aorch probes --clean deletes finished ones">
-          <Switch label="show probe replays" checked={probes} onCheckedChange={(c) => setProbes(c === true)} />
-        </div>
-        {list.error && !list.data ? (
-          <div className="alert error pad" role="alert">
-            {list.error}{' '}
-            <Button variant="secondary" size="sm" onClick={() => void list.refresh()}>
-              Retry
-            </Button>
-          </div>
-        ) : runs.length === 0 ? (
-          <p className="muted small pad">No runs yet. Build a pipeline and press Run.</p>
-        ) : null}
-        {runs.map((r) => (
-          <button key={r.id} className={cn('run-item', { active: props.selected === r.id })} onClick={() => props.onSelect(r.id)}>
-            <span className={cn(`dot s-${r.status}`, { pulse: r.live && r.status === 'running' })} />
-            <span className="run-main">
-              <b>
-                {runTitle(r)}
-                {r.kind === 'team' ? (
-                  <Badge size="sm" tone="info">
-                    Team
-                  </Badge>
-                ) : null}
-                {r.probe ? (
-                  <Badge size="sm" tone="neutral" title="Evolve probe replay">
-                    probe
-                  </Badge>
-                ) : null}
-                {(r.pending > 0 || r.planReady) && (r.status === 'running' || r.status === 'paused') ? (
-                  <Badge size="sm" tone="warning" title={r.planReady ? 'A plan is waiting for your approval' : 'A question is waiting for you'}>
-                    {r.planReady ? 'plan' : `? ${r.pending}`}
-                  </Badge>
-                ) : null}
-              </b>
-              <small>{r.task.split('\n')[0]!.slice(0, 60)}</small>
-            </span>
-            <span className="run-side">
-              <small>{fmtUsd(r.costUsd)}</small>
-              <small>{ago(r.startedAt)}</small>
-            </span>
-          </button>
-        ))}
-      </aside>
+      <RunList poll={list} probes={probes} onProbes={setProbes} selected={props.selected} onSelect={props.onSelect} onStart={props.onStart} />
 
       <section className="run-detail">
         {run ? (

@@ -107,13 +107,6 @@ main { flex: 1; min-height: 0; }
 
 
 /* ---------- runs ---------- */
-.runs { display: grid; grid-template-columns: 290px 1fr; height: 100%; }
-.run-list { background: var(--panel); border-right: 1px solid var(--border); overflow: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 4px; }
-.run-item { display: flex; gap: 8px; align-items: center; text-align: left; background: none; border: 1px solid transparent; padding: 7px 8px; }
-.run-item.active { background: var(--panel-2); border-color: var(--border); }
-.run-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.run-main small, .run-side small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-side { display: flex; flex-direction: column; align-items: flex-end; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--queued); flex: none; }
 .dot.s-done { background: var(--done); } .dot.s-running { background: var(--run); }
 .dot.s-paused, .dot.s-awaiting { background: var(--wait); }
@@ -169,8 +162,6 @@ main { flex: 1; min-height: 0; }
   .builder-body { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto; overflow: auto; }
   .palette { flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border); }
   .inspector { border-left: none; border-top: 1px solid var(--border); }
-  .runs { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .run-list { max-height: 180px; border-right: none; border-bottom: 1px solid var(--border); }
   .graph-view { grid-template-columns: 1fr; grid-template-rows: 60vh auto; overflow: auto; }
   .note-panel { border-left: none; border-top: 1px solid var(--border); }
 }
