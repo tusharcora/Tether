@@ -6,6 +6,7 @@ import { api } from './api';
 import { Builder } from './Builder';
 import { calls, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
+import { PHONE } from './ui/studio/useMediaQuery';
 
 const pcr = makeRun().pipeline;
 const other = { ...pcr, name: 'other', nodes: pcr.nodes.slice(0, 1), edges: [] };
@@ -221,5 +222,32 @@ describe('Builder', () => {
     expect(screen.getByText('needs a role')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'code' }));
     expect(await screen.findByLabelText('Instructions (blank = default for the role)')).toBeTruthy();
+  });
+
+  it('edits a step with switches and goes back to the pipeline settings', async () => {
+    const { container } = renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
+    fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    expect(screen.getByRole('heading', { level: 2, name: 'coder' })).toBeTruthy();
+    expect(screen.getByText('Agent step')).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Must end with VERDICT: PASS / FAIL' }));
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as typeof pcr;
+      expect(body.nodes.find((n) => n.id === 'code')).toMatchObject({ verdict: true });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Pipeline settings: mode pipeline · 4 parallel read-only · 30 min timeout/ }));
+    expect(screen.getByRole('heading', { level: 2, name: 'Pipeline settings' })).toBeTruthy();
+  });
+
+  it('is view-and-run only at phone width', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === PHONE, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
+    renderApp(<Builder onStarted={() => {}} />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'Steps palette' })).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Step inspector' })).toBeNull();
+    expect(screen.queryByLabelText('Pipeline name')).toBeNull();
+    expect(screen.getByText('Editing needs a wider screen. You can look around and run this workflow.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Run/ })).toBeTruthy();
   });
 });
