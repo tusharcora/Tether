@@ -89,3 +89,21 @@
 .resp .hdrs th { color: var(--mut); font-weight: 500; width: 35%; }
 .resp .hdrs td { color: var(--ink); }
 .resp-empty { margin: auto; }
+
+/* Dialogs (Import, Secrets, Environment). The whole panel carries .studio, so its chrome takes the tokens too. */
+.studio.api-dialog { width: min(calc(100vw - 32px), 600px); }
+.dialog-body { display: flex; flex-direction: column; gap: 12px; }
+.dialog-body h4 { margin: 8px 0 4px; font-size: 12px; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.dialog-body ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.dialog-body .hint { color: var(--mut); font-size: 12px; margin: 0; }
+.dialog-body .hint.warn { color: var(--warn); }
+.dialog-body .spacer { flex: 1; }
+.dialog-body input[type="checkbox"] { accent-color: var(--ink); }
+.import-preview { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--s1); }
+.file-pick { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--mut); }
+.secret-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.secret-list .kv-input { width: 160px; }
+.secret-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.env-rows { display: flex; flex-direction: column; gap: 4px; }
+.env-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.6fr) auto; gap: 6px; align-items: center; }
+.env-secret { display: flex; align-items: center; gap: 4px; }
