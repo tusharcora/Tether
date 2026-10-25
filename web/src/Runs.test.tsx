@@ -58,6 +58,14 @@ describe('Runs', () => {
     expect(await screen.findByText('run started')).toBeTruthy();
   });
 
+  it('opens on the Timeline when the link asks for it', async () => {
+    renderApp(<Runs selected="r1" pane="timeline" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'run.started' } }));
+    expect(await screen.findByRole('tab', { name: /Timeline/, selected: true })).toBeTruthy();
+    expect(await screen.findByText('run started')).toBeTruthy();
+  });
+
   it('approves an awaiting step and shows the returned state', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));

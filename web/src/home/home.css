@@ -13,3 +13,15 @@
 .start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
 .s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
+.run-now { font-size: 12px; color: var(--mut); }
+.elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
+@media (min-width: 1200px) {
+  .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 16px 20px; }
+  .home-grid > .s-needs { grid-column: 1; grid-row: 1; }
+  .home-grid > .s-start { grid-column: 1; grid-row: 2; }
+  .home-grid > .s-running { grid-column: 1; grid-row: 3; }
+  .home-grid > .s-recent { grid-column: 1; grid-row: 4; }
+  .home-grid > .s-activity { grid-column: 2; grid-row: 1 / span 2; }
+  .home-grid > .s-saved { grid-column: 2; grid-row: 3; }
+  .home-grid > .s-crew { grid-column: 2; grid-row: 4; }
+}

@@ -69,14 +69,18 @@ export interface Route {
   id?: string;
   /** Runs: a step of the run, selected in the Inspector. */
   node?: string;
+  /** Runs: open the run on this pane instead of the step pane (a failed run opens on its Timeline). */
+  pane?: 'timeline';
 }
 
 export function parseHash(h: string): Route {
-  const [t, id, node] = h.replace(/^#\/?/, '').split('/');
+  const [path = '', query = ''] = h.replace(/^#\/?/, '').split('?');
+  const [t, id, node] = path.split('/');
   if (!TAB_IDS.includes(t ?? '')) return { tab: 'home' };
   const r: Route = { tab: t as Tab };
   if (id) r.id = safeDecode(id);
   if (id && node && r.tab === 'runs') r.node = safeDecode(node);
+  if (id && r.tab === 'runs' && new URLSearchParams(query).get('pane') === 'timeline') r.pane = 'timeline';
   return r;
 }
 
@@ -90,7 +94,7 @@ function safeDecode(s: string): string {
 }
 
 export const hashFor = (r: Route): string =>
-  `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}` : ''}`;
+  `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}${r.tab === 'runs' && r.pane ? `?pane=${r.pane}` : ''}` : ''}`;
 
 /** Each history entry the app reaches is stamped with its position, so a blocked Back/Forward can step back to it. */
 const POS = 'aorchPos';

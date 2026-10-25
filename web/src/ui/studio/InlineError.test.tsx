@@ -10,4 +10,9 @@ describe('InlineError', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalled();
   });
+
+  it('has a compact form for a failed refresh over data still shown', () => {
+    render(<InlineError compact message="Couldn't refresh" onRetry={() => {}} />);
+    expect(screen.getByRole('alert').className).toContain('compact');
+  });
 });

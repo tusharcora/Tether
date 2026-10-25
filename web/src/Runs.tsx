@@ -25,7 +25,7 @@ type Pane = 'node' | 'timeline' | 'branch';
 const STATUS_TONE: Record<string, BadgeTone> = { running: 'info', done: 'success', error: 'danger', paused: 'warning', stopped: 'neutral' };
 const TONE: Record<string, TimelineEvent['tone']> = { done: 'success', error: 'danger' };
 
-export function Runs(props: { selected?: string; onSelect: (id: string) => void }) {
+export function Runs(props: { selected?: string; pane?: 'timeline'; onSelect: (id: string) => void }) {
   const notify = useNotify();
   const [probes, setProbes] = useState(false);
   const list = usePoll<RunRow[]>(probes ? '/api/runs?all=1' : '/api/runs', 2000);
@@ -34,19 +34,19 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
   const { run, setRun, events, error } = useRunStream(props.selected);
   const [selNode, setSelNode] = useState<string | undefined>();
   const [diff, setDiff] = useState<string | undefined>();
-  const [pane, setPane] = useState<Pane>('node');
+  const [pane, setPane] = useState<Pane>(props.pane ?? 'node');
   // one draft note per step, so a note typed under one step can never be sent with another
   const [fbNotes, setFbNotes] = useState<Record<string, string>>({});
   const fbKey = `${props.selected ?? ''}\0${selNode ?? ''}`;
   const fbNote = fbNotes[fbKey] ?? '';
   const setFbNote = (t: string) => setFbNotes((cur) => ({ ...cur, [fbKey]: t }));
 
-  // a different run starts with no step picked, no diff and the step pane
+  // a different run starts with no step picked, no diff and the step pane (or the pane its link asks for)
   useEffect(() => {
     setSelNode(undefined);
     setDiff(undefined);
-    setPane('node');
-  }, [props.selected]);
+    setPane(props.pane ?? 'node');
+  }, [props.selected, props.pane]);
 
   // diff for the selected node's commit, or the whole branch; refetched only when what picks it changes
   const commit = selNode ? run?.nodes[selNode]?.commit : undefined;

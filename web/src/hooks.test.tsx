@@ -104,6 +104,15 @@ describe('hash routes', () => {
     expect(parseHash(hashFor({ tab: 'builder', id: 'my flow' }))).toEqual({ tab: 'builder', id: 'my flow' });
   });
 
+  it('carries a run pane hint as a query on run links only', () => {
+    expect(hashFor({ tab: 'runs', id: 'r1', pane: 'timeline' })).toBe('#/runs/r1?pane=timeline');
+    expect(parseHash('#/runs/r1?pane=timeline')).toEqual({ tab: 'runs', id: 'r1', pane: 'timeline' });
+    expect(parseHash('#/runs/r1/code?pane=timeline')).toEqual({ tab: 'runs', id: 'r1', node: 'code', pane: 'timeline' });
+    expect(parseHash('#/runs/r1?pane=bogus')).toEqual({ tab: 'runs', id: 'r1' });
+    expect(parseHash('#/crew/quill?pane=timeline')).toEqual({ tab: 'crew', id: 'quill' });
+    expect(hashFor({ tab: 'crew', id: 'quill', pane: 'timeline' })).toBe('#/crew/quill');
+  });
+
   it('lists the screens in rail order', () => {
     expect(SCREENS).toEqual(['home', 'runs', 'builder', 'crew', 'api', 'graph', 'triggers']);
     expect(TAB_LABEL.settings).toBe('Settings');

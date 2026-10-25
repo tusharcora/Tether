@@ -12,6 +12,7 @@
 .sl-panel { min-width: 0; padding: 14px 16px; background: var(--s1); border: 1px solid var(--line); border-radius: var(--radius-panel); }
 .sl-list { list-style: none; margin: 0; padding: 0; }
 .sl-alert { margin: 0; padding: 8px 10px; border-radius: var(--radius-control); background: var(--badBg); color: var(--bad); display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.sl-alert.compact { padding: 0 0 6px; background: none; font-size: 12px; justify-content: flex-start; }
 .sl-note { margin: 0; padding: 8px 10px; border-radius: var(--radius-control); background: var(--warnBg); color: var(--warn); }
 .sl-empty { padding: 8px 0; }
 .sl-kbd { display: inline-block; padding: 0 5px; border: 1px solid var(--line2); border-radius: 4px; background: var(--s1); color: var(--mut); font-family: var(--font-code); font-size: 11px; line-height: 18px; white-space: nowrap; }
