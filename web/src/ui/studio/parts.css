@@ -1,0 +1,17 @@
+/* Shared Studio Live parts. Colours come from the root tokens only. */
+.sl-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.sl-meta { margin: 0; font-family: var(--font-code); font-size: 11px; line-height: 1.5; color: var(--mut); }
+.sl-screen-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding: 20px 24px 12px; }
+.sl-screen-header h1 { margin: 2px 0 0; font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.sl-summary { margin: 4px 0 0; max-width: 70ch; color: var(--mut); }
+.sl-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sl-section-heading { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; min-height: 24px; }
+.sl-section-heading h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.sl-count { font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.sl-heading-action { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.sl-panel { min-width: 0; padding: 14px 16px; background: var(--s1); border: 1px solid var(--line); border-radius: var(--radius-panel); }
+.sl-list { list-style: none; margin: 0; padding: 0; }
+.sl-alert { margin: 0; padding: 8px 10px; border-radius: var(--radius-control); background: var(--badBg); color: var(--bad); display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.sl-note { margin: 0; padding: 8px 10px; border-radius: var(--radius-control); background: var(--warnBg); color: var(--warn); }
+.sl-empty { padding: 8px 0; }
+.sl-kbd { display: inline-block; padding: 0 5px; border: 1px solid var(--line2); border-radius: 4px; background: var(--s1); color: var(--mut); font-family: var(--font-code); font-size: 11px; line-height: 18px; white-space: nowrap; }
