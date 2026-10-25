@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { applyTheme } from './theme';
 
 // Files are read from disk: vitest blanks CSS imports (?raw included), and Vite rewrites a literal
 // `new URL('./x', import.meta.url)` into a served asset URL, so the base goes through a variable.
@@ -44,7 +45,11 @@ beforeAll(() => {
     document.head.appendChild(s);
   }
 });
-afterEach(() => setTheme('light'));
+afterEach(() => {
+  setTheme('light');
+  delete document.documentElement.dataset.accent;
+  document.documentElement.style.colorScheme = '';
+});
 
 describe('Studio Live tokens at the root', () => {
   it.each([['light', LIGHT], ['dark', DARK]] as const)('declares the exact %s values', (theme, want) => {
@@ -66,6 +71,15 @@ describe('Studio Live tokens at the root', () => {
     expect(token('--skip')).toBe(norm(T['--line2']!));
     expect(token('--series-2')).toBe(norm(T['--ok']!));
     expect(token('--arc-gradient')).not.toMatch(/gradient\(/);
+  });
+
+  it('lets the Studio bridge win in dark once applyTheme clears a stale Arc accent', () => {
+    document.documentElement.dataset.accent = 'violet';
+    applyTheme('dark');
+    expect(document.documentElement.dataset.accent).toBeUndefined();
+    expect(token('--accent')).toBe(norm(DARK['--acc']!));
+    expect(token('--accent-strong')).toBe(norm(DARK['--accInk']!));
+    expect(token('--control-on')).toBe(norm(DARK['--ink']!));
   });
 
   it('shares type, motion and radii in both themes', () => {

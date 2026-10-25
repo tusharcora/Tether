@@ -27,7 +27,7 @@ export function App() {
   const [leaving, setLeaving] = useState<Route>();
   const go = (r: Route) => (route.tab === 'api' && r.tab !== 'api' && apiDirty ? setLeaving(r) : goNow(r));
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
-  const [theme, setTheme] = useTheme();
+  const { theme, setChoice } = useTheme();
   const [palette, setPalette] = useState(false);
   /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
   const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
@@ -88,7 +88,7 @@ export function App() {
             <Badge size="sm" tone={online ? 'success' : 'danger'}>
               {online ? 'connected' : 'offline'}
             </Badge>
-            <ThemeSwitch theme={theme} onThemeChange={(t) => setTheme(t)} iconOnly />
+            <ThemeSwitch theme={theme} onThemeChange={(t) => setChoice(t)} iconOnly />
           </div>
         </header>
         <main>
