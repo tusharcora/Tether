@@ -106,6 +106,17 @@ describe('Start a run', () => {
     expect(screen.queryByLabelText('Task')).toBeNull();
   });
 
+  it('offers to copy the register command when no workspace is registered', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    routeApi({ ...routes, 'GET /api/workspaces': [] });
+    setup();
+    await screen.findByText('No workspace yet');
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Copy command' })));
+    expect(writeText).toHaveBeenCalledWith('aorch workspace init');
+    expect(await screen.findByText('Command copied')).toBeTruthy();
+  });
+
   it('fills the task from an example and opens the Builder for workflows', async () => {
     const onGo = vi.fn();
     setup({ onGo });

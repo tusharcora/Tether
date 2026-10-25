@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api } from '../api';
@@ -57,4 +58,41 @@ describe('useRosterPreview', () => {
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(api).not.toHaveBeenCalled();
   });
+
+  it('shows the guess under StrictMode (dev re-mounts the hook once)', async () => {
+    vi.mocked(api).mockResolvedValue({ bots: [{ id: 'b', name: 'B', why: 'w' }], core: [] });
+    const { result } = renderHook(() => useRosterPreview('fix the RAG retriever', 'api'), { wrapper: StrictMode });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(result.current?.bots[0]?.id).toBe('b');
+  });
+
+  it('drops the old guess as soon as the text or the workspace changes', async () => {
+    vi.mocked(api).mockResolvedValue({ bots: [], core: ['planner'] });
+    const { result, rerender } = renderHook(({ t, ws }) => useRosterPreview(t, ws), { initialProps: { t: 'first long task', ws: 'api' } });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(result.current).toBeDefined();
+    rerender({ t: 'second long task', ws: 'api' });
+    expect(result.current).toBeUndefined();
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(result.current).toBeDefined();
+    rerender({ t: 'second long task', ws: 'web' });
+    expect(result.current).toBeUndefined();
+  });
+
+  it('sends nothing queued after unmount', async () => {
+    let release!: (v: unknown) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise((r) => (release = r)));
+    const { rerender, unmount } = hook('first long task');
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    rerender({ t: 'second long task' });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    unmount();
+    await act(async () => release({ bots: [], core: [] }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });

@@ -11,3 +11,5 @@
 .start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
 .start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+.s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }

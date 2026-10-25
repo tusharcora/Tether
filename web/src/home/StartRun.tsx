@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { api, type RosterPreview } from '../api';
 import { Button } from '../components/arc/button/button';
+import { CopyButton } from '../components/arc/copy-button/copy-button';
 import SegmentedControl from '../components/arc/segmented-control/segmented-control';
 import { Select } from '../components/arc/select/select';
 import { Textarea } from '../components/arc/textarea/textarea';
@@ -8,6 +9,7 @@ import { Loading } from '../components/Loading';
 import { Face } from '../Face';
 import { usePoll, type Poll, type Route } from '../hooks';
 import { EmptyState } from '../ui/studio/EmptyState';
+import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { Kbd } from '../ui/studio/Kbd';
 import { Panel } from '../ui/studio/Panel';
@@ -15,6 +17,7 @@ import { useRosterPreview } from './useRosterPreview';
 import { pickWorkspace, WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
 
 type Mode = 'live' | 'autonomous';
+const INIT_COMMAND = 'aorch workspace init';
 const EXAMPLES = ['Add rate limiting to the public API', 'Fix the flaky login test', 'Write a README section for the CLI'];
 
 function PreviewRow({ preview }: { preview: RosterPreview }) {
@@ -49,6 +52,7 @@ function PreviewRow({ preview }: { preview: RosterPreview }) {
 export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: string) => void; workspaces?: Poll<WorkspaceRow[]> }) {
   const own = usePoll<WorkspaceRow[]>(props.workspaces ? null : WORKSPACES_PATH, WORKSPACES_MS);
   const workspaces = props.workspaces ?? own;
+  const notify = useNotify();
   const [picked, setPicked] = useState<string>();
   const ws = pickWorkspace(workspaces.data ?? [], picked);
   const [task, setTask] = useState('');
@@ -85,7 +89,11 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
         {workspaces.error && !list ? (
           <InlineError message={workspaces.error} onRetry={() => void workspaces.refresh()} />
         ) : !list?.length ? (
-          <EmptyState title="No workspace yet" description="Register the project the team should work on: run aorch workspace init in its folder." />
+          <EmptyState
+            title="No workspace yet"
+            description={`Register the project the team should work on: run ${INIT_COMMAND} in its folder.`}
+            action={<CopyButton value={INIT_COMMAND} label="Copy command" onCopied={() => notify.ok('Command copied', INIT_COMMAND)} />}
+          />
         ) : (
           <div className="start-form">
             <Textarea label="Task" rows={3} value={task} onChange={(e) => setTask(e.target.value)} onKeyDown={onKeyDown} placeholder="What should the team do?" />

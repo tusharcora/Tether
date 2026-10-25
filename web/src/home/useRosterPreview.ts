@@ -16,12 +16,13 @@ export function useRosterPreview(task: string, ws: string | undefined): RosterPr
   const latest = useRef({ task: task.trim(), ws });
   latest.current = { task: task.trim(), ws };
   const alive = useRef(true);
-  useEffect(
-    () => () => {
+  // set on every mount: StrictMode's dev re-mount runs the cleanup once, and the flag must come back
+  useEffect(() => {
+    alive.current = true;
+    return () => {
       alive.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const ask = useRef(async (q: { task: string; ws?: string }): Promise<void> => {
     if (inFlight.current) {
@@ -39,16 +40,15 @@ export function useRosterPreview(task: string, ws: string | undefined): RosterPr
       inFlight.current = false;
       const next = queued.current;
       queued.current = null;
-      if (next) void ask.current(next);
+      if (next && alive.current) void ask.current(next);
     }
   });
 
   useEffect(() => {
+    // the guess belongs to the text it was made for: drop it as soon as the text or workspace changes
+    setPreview(undefined);
     const t = task.trim();
-    if (t.length < PREVIEW_MIN || t.length > PREVIEW_MAX) {
-      setPreview(undefined);
-      return;
-    }
+    if (t.length < PREVIEW_MIN || t.length > PREVIEW_MAX) return;
     const timer = setTimeout(() => void ask.current({ task: t, ws }), PREVIEW_DELAY_MS);
     return () => clearTimeout(timer);
   }, [task, ws]);
