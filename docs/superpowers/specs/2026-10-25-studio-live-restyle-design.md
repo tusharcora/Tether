@@ -355,6 +355,21 @@ Under 900 px, a stack: the list, then the run page with Graph / Inspector tabs; 
      legend and counts; search (hits highlighted, others dimmed); selecting a note dims everything but its neighbours
      and opens it (title, type, body up to 6000 characters, linked-from and links-to lists that open those notes); stats
      line (notes, links, unresolved); Reload; error state; deep link `#/graph/<note path>`.
+     *Amendment 2026-10-25 (owner approved the Graph board only after a v2 rework he asked to be "more interactive,
+     animated, and dynamic"):* the Graph is a live board. A small hand-written force layout settles on load and springs
+     when a note is dragged (one rAF loop that stops when settled; under reduced motion, and for vaults over 1,500
+     notes, the layout is computed to rest up front and nothing loops). Hover highlights neighbours at 1–3 hops (hop
+     control) and dims the rest; click selects; double-click or Enter glides the camera to a note; search pulses its
+     matches (three pulses, then a still ring) with an "n found" count and flies to the first; type filters fade notes
+     out and the layout re-settles; wheel and buttons zoom, background drag pans, Fit and Re-run layout. Type is shown
+     by shape, not hue (run square, pipeline hexagon, role triangle, file filled circle, lesson diamond, other notes
+     hollow circle; `lesson`/`lesson-retired` join the type list). A keyboard-accessible "All notes" list mirrors the
+     board. The reader adds tags (click = search) and a Connected list (hover highlights, click navigates). "Used by a
+     run" is the smallest honest signal the system records: runs do not log which notes they *read*, but they log every
+     note they *write* (`vault.note` events). A new read-only route `GET /api/vault/activity?since=<cursor>&limit=<n>`
+     (same cursor, settle and probe rules as `/api/activity`; items `{ id, ts, runId, run, path }`, `run` = run label)
+     feeds it: a note a run just wrote pings green for 12 s and a ticker line says "<run label> recorded <note>"; the
+     reader shows "last written by <run label> · <age>". The ticker hides on error (like the roster preview).
    - **Crew.** + New bot; Import ECC… / Update ECC… (dialog with the version change) and Remove ECC (confirm); filter
      tabs All / Built-in / Custom / ECC with counts; bot cards: face (opens the editor), name, title, ECC badge, harness
      version badge, open-proposal mark, when-to-use or persona line, agent select (marked when not available) and model
