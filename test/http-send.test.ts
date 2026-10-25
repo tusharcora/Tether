@@ -88,6 +88,15 @@ describe('send', () => {
     expect(r.body).toHaveLength(1000);
   });
 
+  it('reports a caller abort as cancelled, not as a timeout, without waiting for the timeout', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 50);
+    const t0 = Date.now();
+    const r = await send({ method: 'GET', url: `${A}/hang`, headers: [] }, { signal: ac.signal });
+    expect(r).toMatchObject({ status: 0, error: { kind: 'other', message: 'cancelled' } });
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+
   it('maps timeouts, refused connections and DNS failures to error kinds', async () => {
     expect(await send({ method: 'GET', url: `${A}/hang`, headers: [] }, { timeoutMs: 200 })).toMatchObject({ status: 0, error: { kind: 'timeout', message: 'no response within 200 ms' } });
     const closed = createServer();

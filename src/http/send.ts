@@ -89,6 +89,7 @@ export async function send(req: ResolvedRequest, o: SendOptions = {}): Promise<S
       return { status: res.status, statusText: res.statusText, url, headers: [...res.headers.entries()], body: text, size, truncated, ms, timing: { ttfb, download: ms - ttfb }, redirects };
     }
   } catch (e) {
+    if (o.signal?.aborted && !timeout.aborted) return failed('other', 'cancelled');
     const kind = timeout.aborted ? 'timeout' : netErrorKind(e);
     const cause = (e as { cause?: { message?: string } }).cause?.message;
     return failed(kind, kind === 'timeout' ? `no response within ${timeoutMs} ms` : String(cause ?? (e as Error).message));
