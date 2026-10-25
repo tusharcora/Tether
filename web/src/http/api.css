@@ -53,7 +53,7 @@
 .tab-line { position: absolute; left: 0; top: 0; z-index: 1; height: 2px; border-radius: 1px; background: var(--ink); pointer-events: none; transition: transform var(--t-med) var(--ease), width var(--t-med) var(--ease); }
 .kv-input[aria-invalid="true"] { border-color: var(--bad); }
 
-/* Response. Pill colours by role: 2xx ok, 3xx/4xx warn, 5xx and network errors bad. The body arrives redacted and is shown as-is. */
+/* Response. Pill colours by role: 2xx ok, 3xx warn, 4xx/5xx and network errors bad. The body arrives redacted and is shown as-is. */
 .resp { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px; overflow: auto; }
 .resp .resp-load { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; }
 .resp .hint { color: var(--mut); font-size: 12px; margin: 0; }
@@ -79,6 +79,10 @@
 .resp-body { flex: 1; min-height: 160px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: var(--s1); overflow: auto; }
 /* Arc's JSON viewer, bridged: Studio Live mono, and its chevron turns on the Studio curve instead of a spring. */
 .resp-body > div { flex: 1; min-height: 0; border: 0; --mono: var(--font-code); --duration-spring: var(--t-med); --ease-spring: var(--ease); }
+/* Its row actions sit on a fade to the row colour (resting and on hover); Studio Live has none, so they get flat tokens. */
+.studio .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }
+.studio .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }
+.studio .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }
 .resp .raw { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .resp .hdrs { width: 100%; border-collapse: collapse; font-size: 12px; }
 .resp .hdrs th, .resp .hdrs td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }

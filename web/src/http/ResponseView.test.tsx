@@ -16,8 +16,8 @@ describe('ResponseView', () => {
     expect(fmtBytes(512)).toBe('512 B');
     expect(fmtBytes(2048)).toBe('2.0 KB');
     expect(fmtBytes(5 * 1024 * 1024)).toBe('5.0 MB');
-    // 2xx ok; 3xx and 4xx warn; 5xx and status 0 (network error) bad.
-    expect([statusTone(204), statusTone(302), statusTone(404), statusTone(500), statusTone(0)]).toEqual(['ok', 'warn', 'warn', 'bad', 'bad']);
+    // 2xx ok; 3xx warn; 4xx, 5xx and status 0 (network error) bad.
+    expect([statusTone(204), statusTone(302), statusTone(404), statusTone(500), statusTone(0)]).toEqual(['ok', 'warn', 'bad', 'bad', 'bad']);
   });
 
   it('shows the status pill, time, size and a JSON tree', () => {
@@ -32,9 +32,11 @@ describe('ResponseView', () => {
     expect(screen.getByText('TTFB 90 ms')).toBeTruthy();
   });
 
-  it('colours a client error amber and a server error red', () => {
-    const { rerender } = render(<ResponseView output={out({ status: 404, statusText: 'Not Found' })} sending={false} />);
-    expect(screen.getByText('404 Not Found').getAttribute('data-tone')).toBe('warn');
+  it('colours a redirect amber and client and server errors red', () => {
+    const { rerender } = render(<ResponseView output={out({ status: 304, statusText: 'Not Modified' })} sending={false} />);
+    expect(screen.getByText('304 Not Modified').getAttribute('data-tone')).toBe('warn');
+    rerender(<ResponseView output={out({ status: 404, statusText: 'Not Found' })} sending={false} />);
+    expect(screen.getByText('404 Not Found').getAttribute('data-tone')).toBe('bad');
     rerender(<ResponseView output={out({ status: 503, statusText: 'Service Unavailable' })} sending={false} />);
     expect(screen.getByText('503 Service Unavailable').getAttribute('data-tone')).toBe('bad');
   });
@@ -122,6 +124,14 @@ describe('response styles', () => {
     expect(section).toContain('.resp .pill[data-tone="bad"] { background: var(--badBg); color: var(--bad); }');
     expect(section).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
     expect(section).not.toMatch(/purple|violet|gradient\(|box-shadow/i);
+  });
+
+  it("flattens the JSON viewer's gradient row actions to token backgrounds inside the studio response", () => {
+    // Arc's module paints .actions with linear-gradient (resting and on row hover); these rules outrank both.
+    expect(section).toContain('.studio .resp-body [role="treeitem"] [class*="actions"] { background: var(--s1); }');
+    expect(section).toContain('.studio .resp-body [role="treeitem"]:hover [class*="actions"] { background: var(--s2); }');
+    expect(section).toContain('.studio .resp-body [role="treeitem"]:not([data-active]):hover { --row-hover: var(--s2); }');
+    expect(section).not.toMatch(/linear-gradient/);
   });
 
   it('moves on the Studio Live curve and durations', () => {

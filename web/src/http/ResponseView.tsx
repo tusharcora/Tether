@@ -7,8 +7,8 @@ import { Loading } from '../components/Loading';
 import type { SendOutput } from './client';
 
 export const fmtBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
-/** 2xx ok; 3xx and 4xx warn; 5xx, 1xx and status 0 (network error) bad. */
-export const statusTone = (s: number): 'ok' | 'warn' | 'bad' => (s >= 200 && s < 300 ? 'ok' : s >= 300 && s < 500 ? 'warn' : 'bad');
+/** 2xx ok; 3xx warn; 4xx, 5xx, 1xx and status 0 (network error) bad. */
+export const statusTone = (s: number): 'ok' | 'warn' | 'bad' => (s >= 200 && s < 300 ? 'ok' : s >= 300 && s < 400 ? 'warn' : 'bad');
 
 /** Past this many characters the JSON tree opens only its root: a 5 MB body would otherwise unfold thousands of rows. */
 const FOLD_PAST = 1024 * 1024;
