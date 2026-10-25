@@ -41,8 +41,9 @@ describe('Home', () => {
   it('lays out the sections in the one-column order', async () => {
     renderApp(<Home onGo={() => {}} />);
     await act(async () => {});
-    const names = screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby') && document.getElementById(r.getAttribute('aria-labelledby')!)!.textContent);
-    expect(names.slice(0, 4)).toEqual(['Needs you', 'Start a run', 'Running', 'Recent']);
+    // the toast stack's region (from renderApp) sits outside the Home grid
+    const names = screen.getAllByRole('region').filter((r) => r.closest('.home-grid')).map((r) => r.getAttribute('aria-labelledby') && document.getElementById(r.getAttribute('aria-labelledby')!)!.textContent);
+    expect(names).toEqual(['Needs you', 'Start a run', 'Running', 'Live activity', 'Recent', 'Saved requests', 'Crew']);
     expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toBeTruthy();
   });
 

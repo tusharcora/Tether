@@ -12,6 +12,24 @@ export interface Poll<T> {
   refresh: () => Promise<void>;
 }
 
+/**
+ * Runs `tick` now and again every `ms`; after three failures in a row (`fails()`) it waits 15 s between tries.
+ * Returns the stop function (an effect cleanup). Shared by usePoll and Home's activity feed.
+ */
+export function pollLoop(tick: () => Promise<void>, ms: number, fails: () => number): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const loop = async () => {
+    await tick();
+    if (!stopped) timer = setTimeout(loop, fails() >= BACKOFF_AFTER ? BACKOFF_MS : ms);
+  };
+  void loop();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+}
+
 /** GET `path` now and every `ms`. Keeps the last good value; after three failures in a row waits 15 s between tries. `null` pauses. */
 export function usePoll<T>(path: string | null, ms: number): Poll<T> {
   const [data, setData] = useState<T>();
@@ -39,20 +57,7 @@ export function usePoll<T>(path: string | null, ms: number): Poll<T> {
     }
   }, []);
 
-  useEffect(() => {
-    if (!path) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const loop = async () => {
-      await tick();
-      if (!stopped) timer = setTimeout(loop, fails.current >= BACKOFF_AFTER ? BACKOFF_MS : ms);
-    };
-    void loop();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [path, ms, tick]);
+  useEffect(() => (path ? pollLoop(tick, ms, () => fails.current) : undefined), [path, ms, tick]);
 
   return { data, error, fails: failCount, refresh: tick };
 }

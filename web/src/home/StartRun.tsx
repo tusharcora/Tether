@@ -14,10 +14,9 @@ import { InlineError } from '../ui/studio/InlineError';
 import { Kbd } from '../ui/studio/Kbd';
 import { Panel } from '../ui/studio/Panel';
 import { useRosterPreview } from './useRosterPreview';
-import { pickWorkspace, WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
+import { INIT_COMMAND, pickWorkspace, WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
 
 type Mode = 'live' | 'autonomous';
-const INIT_COMMAND = 'aorch workspace init';
 const EXAMPLES = ['Add rate limiting to the public API', 'Fix the flaky login test', 'Write a README section for the CLI'];
 
 function PreviewRow({ preview }: { preview: RosterPreview }) {

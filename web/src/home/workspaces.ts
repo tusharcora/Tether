@@ -20,3 +20,6 @@ export function pickWorkspace(list: WorkspaceRow[], picked?: string): WorkspaceR
   const byId = (id?: string) => (id ? list.find((w) => w.id === id) : undefined);
   return byId(picked) ?? byId(storedWorkspace()) ?? list.find((w) => w.isDefault) ?? list[0];
 }
+
+/** The command that registers a workspace (shown and copied by Home's no-workspace states). */
+export const INIT_COMMAND = 'aorch workspace init';
