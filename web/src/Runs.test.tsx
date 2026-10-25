@@ -14,6 +14,8 @@ const awaitingRun = makeRun({
 });
 
 beforeEach(() => {
+  // a layout case stubs matchMedia; the next case starts wide again
+  vi.unstubAllGlobals();
   vi.mocked(api).mockReset();
   FakeEventSource.all = [];
   vi.stubGlobal('EventSource', FakeEventSource);
@@ -165,5 +167,50 @@ describe('Runs', () => {
     renderApp(<Runs onSelect={onSelect} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open latest run' }));
     expect(onSelect).toHaveBeenCalledWith('r1');
+  });
+  it('says so when the route names a step that is not in the run', async () => {
+    renderApp(<Runs selected="r1" node="ghost" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect((await screen.findByRole('note')).textContent).toContain('This step is not in this run');
+  });
+
+  it('keeps three panes from 1200 px: the Inspector is its own column', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect(await screen.findByRole('complementary', { name: 'Inspector' })).toBeTruthy();
+  });
+
+  it('moves the Inspector into a drawer between 900 and 1199 px', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    await screen.findByRole('heading', { name: /plan-code-review/ });
+    expect(screen.queryByRole('tab', { name: 'Branch diff' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspector' }));
+    expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Branch diff' })).toBeTruthy();
+  });
+
+  it('stacks the list and the run page under 900 px', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 899px)' || q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
+    const onSelect = vi.fn();
+    const { rerender } = renderApp(<Runs onSelect={onSelect} />);
+    expect(await screen.findByText('Second task')).toBeTruthy();
+    rerender(<Runs selected="r1" onSelect={onSelect} />);
+    act(() => FakeEventSource.all.at(-1)!.emit('state', makeRun()));
+    await screen.findByRole('heading', { name: /plan-code-review/ });
+    expect(screen.queryByText('Second task')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspector' }));
+    expect(screen.getByRole('tab', { name: 'Step' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Runs/ }));
+    expect(onSelect).toHaveBeenCalledWith(undefined);
+  });
+
+  it('opens the Inspector drawer on the Timeline when a link asks for it between 900 and 1199 px (F24)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
+    renderApp(<Runs selected="r1" pane="timeline" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+    expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Timeline/, selected: true })).toBeTruthy();
   });
 });
