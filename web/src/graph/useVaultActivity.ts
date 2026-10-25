@@ -27,7 +27,8 @@ export function useVaultActivity(): VaultActivity {
     let primed = false;
     let cursor: string | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const expiries: ReturnType<typeof setTimeout>[] = [];
+    // live-window timers; each removes itself when it fires, the rest are cleared on unmount
+    const expiries = new Set<ReturnType<typeof setTimeout>>();
 
     const record = (items: VaultActivityItem[], isNew: boolean) => {
       if (!items.length) return;
@@ -41,15 +42,15 @@ export function useVaultActivity(): VaultActivity {
       setLatest(items[0]);
       const paths = items.map((i) => i.path);
       setFresh((cur) => new Set([...cur, ...paths]));
-      expiries.push(
-        setTimeout(() => {
-          setFresh((cur) => {
-            const next = new Set(cur);
-            for (const p of paths) next.delete(p);
-            return next;
-          });
-        }, PING_MS),
-      );
+      const h = setTimeout(() => {
+        expiries.delete(h);
+        setFresh((cur) => {
+          const next = new Set(cur);
+          for (const p of paths) next.delete(p);
+          return next;
+        });
+      }, PING_MS);
+      expiries.add(h);
     };
 
     const poll = async () => {
@@ -72,6 +73,7 @@ export function useVaultActivity(): VaultActivity {
       stopped = true;
       clearTimeout(timer);
       expiries.forEach(clearTimeout);
+      expiries.clear();
     };
   }, []);
 

@@ -52,6 +52,24 @@ describe('useVaultActivity', () => {
     expect(result.current.fresh.has('a.md')).toBe(true);
   });
 
+  it('leaves no timers behind on unmount, live-window ones included', async () => {
+    let first = true;
+    routeApi({
+      'GET /api/vault/activity': () => {
+        if (!first) return { items: [item('a.md', 5, 2)], cursor: '5:r1:2' };
+        first = false;
+        return { items: [], cursor: null };
+      },
+    });
+    const { result, unmount } = renderHook(() => useVaultActivity());
+    await act(async () => {});
+    await act(() => vi.advanceTimersByTimeAsync(VAULT_POLL_MS));
+    expect(result.current.fresh.has('a.md')).toBe(true);
+    expect(vi.getTimerCount()).toBeGreaterThan(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('keeps polling quietly after an error', async () => {
     let fail = true;
     routeApi({

@@ -209,7 +209,7 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
           Full-text search failed; showing title and tag matches.
         </p>
       ) : null}
-      <Loading loading={!g && !err} lines={8} label="Loading the vault">
+      <Loading className="gv-load" loading={!g && !err} lines={8} label="Loading the vault">
         {g && g.nodes.length === 0 ? (
           <EmptyState title="The vault is empty" description="Finish a run and its notes appear here, linked to the pipeline, roles and files it touched." />
         ) : g ? (

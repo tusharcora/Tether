@@ -6,6 +6,7 @@ import { api, ApiError } from './api';
 import { GraphView, VAULT_SCAN_MS } from './Graph';
 import { VAULT_POLL_MS } from './graph/useVaultActivity';
 import { calls, routeApi } from './test/fixtures';
+import { cssRule } from './test/css';
 import { renderApp } from './test/render';
 
 const graph = {
@@ -54,6 +55,16 @@ describe('Graph', () => {
     expect(within(reader).getByRole('heading', { name: 'Run r1' })).toBeTruthy();
     expect(within(reader).getByRole('button', { name: /links to Coder/ })).toBeTruthy();
     expect(within(reader).getByRole('button', { name: /linked from Loose note/ })).toBeTruthy();
+  });
+
+  it('lets the board fill the page height beside the reader', async () => {
+    const { container } = renderApp(<GraphView onNote={() => {}} />);
+    await screen.findByText('vault · 3 notes · 2 links · 1 unresolved');
+    // every box between the page and the board body flexes, so the board isn't stuck at its min-height
+    const body = container.querySelector('.gv-body')!;
+    expect(body.closest('.gv-load')?.parentElement?.className).toBe('gv-page');
+    expect(cssRule('graph/graph.css', '.gv-load')).toContain('flex: 1');
+    expect(cssRule('graph/graph.css', '.gb')).not.toContain('min-height: 520px');
   });
 
   it('navigates by a connected note and searches by a tag', async () => {
