@@ -14,7 +14,8 @@ const MAX_DEPTH = 4;
 const REQ_EXT = '.req.json';
 const COLL_FILE = '_collection.json';
 const ENV_DIR = 'environments';
-const MAX_FILE = 1_000_000;
+/** One cap for every file under .aorch/http, on read and on write. */
+export const MAX_FILE = 1_000_000;
 
 export const httpRoot = (dir: string): string => join(dir, '.aorch', 'http');
 
@@ -55,6 +56,18 @@ export function safeHttpFile(dir: string, rel: string): string {
     if (real !== realRoot && !real.startsWith(realRoot + sep)) throw invalid('invalid request id');
   }
   if (existsSync(target) && lstatSync(target).isSymbolicLink()) throw invalid('invalid request id');
+  return target;
+}
+
+/**
+ * The absolute path for a file directly in <project>/.aorch (workspace.json, project.md), refusing a symlinked `.aorch`
+ * and a file that is itself a symlink (dangling or not), so a write can never land outside the project.
+ */
+export function safeAorchFile(dir: string, name: string): string {
+  if (!SEG_RE.test(name)) throw invalid(`invalid file name "${name}"`);
+  if (isLink(join(dir, '.aorch'))) throw invalid('symlinked .aorch');
+  const target = join(dir, '.aorch', name);
+  if (isLink(target)) throw invalid(`refusing .aorch/${name}: it is a symlink`);
   return target;
 }
 
@@ -306,7 +319,7 @@ export function collectionChain(dir: string, id: string): { path: string; file: 
 
 // ---------- environments ----------
 /** Refuses a symlinked .aorch or .aorch/http outright, so a listing reports it instead of showing an empty tree. */
-const refuseLinkedRoot = (dir: string): void => {
+export const refuseLinkedRoot = (dir: string): void => {
   if (rootIsLinked(dir)) throw invalid('symlinked .aorch');
 };
 

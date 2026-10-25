@@ -210,6 +210,32 @@ describe('ApiTab', () => {
     expect(dirty).toHaveBeenLastCalledWith(false);
   });
 
+  it('exports the workspace as a download named like the CLI, without secrets, and says what was left out', async () => {
+    routeApi({ ...routes, 'GET /api/workspaces/api/export': { fileName: 'api-server.aorch.json', bundle: { v: 1, workspace: { name: 'API' }, notes: '', http: { files: {} } }, skipped: [{ path: '.aorch/http/stray.txt', reason: 'not a .json file with an allowed name' }] } });
+    const created: Blob[] = [];
+    const names: string[] = [];
+    // jsdom has no object URLs and does not download on click; give it just enough to capture the download
+    Object.assign(URL, { createObjectURL: (b: Blob) => (created.push(b), 'blob:x'), revokeObjectURL: () => {} });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Export' })));
+    expect(calls('GET', '/api/workspaces/api/export')).toHaveLength(1);
+    expect(JSON.parse(await created[0]!.text())).toEqual({ v: 1, workspace: { name: 'API' }, notes: '', http: { files: {} } });
+    expect(names).toEqual(['api-server.aorch.json']);
+    expect(await screen.findByText(/stray\.txt/)).toBeTruthy();
+    click.mockRestore();
+  });
+
+  it('opens the workspace import dialog from the workspace bar', async () => {
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    fireEvent.click(screen.getByRole('button', { name: 'Import workspace' }));
+    expect(await screen.findByText('Import a workspace')).toBeTruthy();
+  });
+
   it('a send from the old workspace that lands after a switch leaves the new workspace\'s history alone', async () => {
     let finish!: (v: unknown) => void;
     routeApi({

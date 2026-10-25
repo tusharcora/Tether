@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
 import type { Engine } from './engine.js';
@@ -12,6 +12,7 @@ import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { getWorkspace, listWorkspaces } from './workspace.js';
+import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
@@ -28,6 +29,7 @@ import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
 import { HttpError, readJson, reqObject, send } from './serverkit.js';
 import { httpRoute } from './http/routes.js';
+import { HttpClientError, statusFor } from './http/errors.js';
 
 export interface ServerOptions {
   engine: Engine;
@@ -113,6 +115,16 @@ function evolveError(e: unknown, home: string): HttpError {
 
 const MAX_ANSWERS = 20;
 /** Map an engine refusal on a team route to an HTTP status by its code. Anything the engine did not mean to refuse is a 500. */
+/**
+ * Workspace export/import failures: a refused path or a missing folder is the caller's (400), a secrets file that is too
+ * open keeps its 500 with the chmod fix, and a file-system error (EACCES, ENOSPC…) is ours (500).
+ */
+function bundleError(e: unknown): HttpError {
+  if (e instanceof HttpClientError) return new HttpError(statusFor(e.code), e.message);
+  const msg = e instanceof Error ? e.message : String(e);
+  return new HttpError(typeof (e as NodeJS.ErrnoException).code === 'string' ? 500 : 400, msg);
+}
+
 function teamError(e: unknown): HttpError {
   if (e instanceof HttpError) return e;
   const msg = (e as Error).message;
@@ -516,6 +528,35 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     // ---- workspaces (for pickers) ----
     if (p === '/api/workspaces' && m === 'GET') {
       return send(res, 200, listWorkspaces(cfg.home).map((w) => ({ id: w.id, name: w.name, path: w.path, isDefault: !!w.isDefault, exists: w.exists, repos: w.repos }))), true;
+    }
+    if ((g = p.match(/^\/api\/workspaces\/([a-z][a-z0-9_-]{0,31})\/export$/)) && m === 'GET') {
+      const w = getWorkspace(cfg.home, g[1]!);
+      if (!w) throw new HttpError(404, `unknown workspace "${g[1]}"`);
+      // never with secrets: secret values must not reach the browser (only the CLI has --with-secrets)
+      let r: ReturnType<typeof exportWorkspace>;
+      try {
+        r = exportWorkspace(cfg.home, w);
+      } catch (e) {
+        throw bundleError(e);
+      }
+      return send(res, 200, { fileName: bundleFileName(w), bundle: r.bundle, skipped: r.skipped }), true;
+    }
+    if (p === '/api/workspaces/import' && m === 'POST') {
+      const b = reqObject(await readJson(req, 6_000_000));
+      let bundle: Bundle;
+      try {
+        bundle = parseBundle(b.bundle);
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      if (typeof b.into !== 'string' || !isAbsolute(b.into)) throw new HttpError(400, '"into" must be an absolute folder path');
+      try {
+        if (b.confirm !== true) return send(res, 200, planBundleImport(bundle, b.into)), true;
+        const r = applyBundle(cfg.home, bundle, b.into);
+        return send(res, 200, { workspace: r.workspace.id, written: r.written }), true;
+      } catch (e) {
+        throw bundleError(e);
+      }
     }
 
     // ---- triggers: PR rules with ids, status and a delivery log. The webhook secret is only ever returned by POST /api/triggers/setup/secret. ----

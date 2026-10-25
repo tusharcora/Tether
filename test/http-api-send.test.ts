@@ -150,6 +150,8 @@ describe('/api/http send, history, import', () => {
       [200, 'POST', '/api/http/import/apply', { kind: 'curl', text: curl, into: 'leakimp', confirm: true }],
       [200, 'GET', `/api/http/requests/${enc('leakimp/post-z')}`],
       [200, 'GET', '/api/http/tree'],
+      // the web export never includes secrets (only the CLI has --with-secrets)
+      [200, 'GET', '/api/workspaces/api/export'],
     ];
     for (const [status, m, path, body] of calls) {
       const r = await t.api(m, path, body);

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Bundle, Skipped } from '../../../src/wsexport';
+import { api } from '../api';
 import { Button } from '../components/arc/button/button';
 import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
 import { EmptyState } from '../components/arc/empty-state/empty-state';
@@ -14,6 +16,7 @@ import { ResponseView } from './ResponseView';
 import { SecretsDialog } from './SecretsDialog';
 import { SendToAgent } from './SendToAgent';
 import { Tree } from './Tree';
+import { WorkspaceDialog } from './WorkspaceDialog';
 import './api.css';
 
 const WS_KEY = 'aorch.api.ws';
@@ -33,7 +36,7 @@ const countRequests = (t?: HttpTree) => {
   return n;
 };
 
-type DialogName = null | 'import' | 'secrets' | 'env';
+type DialogName = null | 'import' | 'secrets' | 'env' | 'workspace';
 
 export interface ApiTabProps {
   onStarted: (runId: string) => void;
@@ -225,6 +228,23 @@ export function ApiTab(props: ApiTabProps) {
       if (e === envSeq.current) notify.fail(err);
     }
   };
+  /** Download the workspace as <name>.aorch.json (never with secrets: the server leaves them out), and say what could not travel. */
+  const exportWs = async () => {
+    const id = ws ?? tree?.workspace;
+    if (!id) return;
+    try {
+      const r = await api<{ fileName: string; bundle: Bundle; skipped: Skipped[] }>('GET', `/api/workspaces/${encodeURIComponent(id)}/export`);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(r.bundle, null, 2) + '\n'], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify.ok(`Exported ${r.fileName}`, r.skipped.length ? `Left out ${r.skipped.map((k) => `${k.path} (${k.reason})`).join(', ')}` : undefined);
+    } catch (e) {
+      notify.fail(e);
+    }
+  };
   const showHistory = (h: HistoryRow) => {
     if (!h.data?.response) return notify.fail(new Error(`history entry ${h.id} has no stored exchange`));
     sendSeq.current++; // a send still on its way no longer replaces what is shown
@@ -239,6 +259,14 @@ export function ApiTab(props: ApiTabProps) {
       {workspaces.data?.length ? (
         <Select label="Workspace" options={workspaces.data.map((w) => ({ value: w.id, label: w.name }))} value={ws ?? tree?.workspace ?? workspaces.data.find((w) => w.isDefault)?.id ?? workspaces.data[0]!.id} onValueChange={setWs} />
       ) : null}
+      <div className="row">
+        <Button size="sm" variant="ghost" onClick={exportWs} disabled={!tree}>
+          Export
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setDialog('workspace')}>
+          Import workspace
+        </Button>
+      </div>
     </div>
   );
 
@@ -300,6 +328,7 @@ export function ApiTab(props: ApiTabProps) {
 
       <ImportDialog ws={ws} open={dialog === 'import'} onOpenChange={(o) => setDialog(o ? 'import' : null)} onImported={() => (setDialog(null), void refresh())} />
       <SecretsDialog ws={ws} open={dialog === 'secrets'} onOpenChange={(o) => setDialog(o ? 'secrets' : null)} />
+      <WorkspaceDialog open={dialog === 'workspace'} onOpenChange={(o) => setDialog(o ? 'workspace' : null)} onImported={(id) => (setDialog(null), workspaces.refresh(), setWs(id))} />
       <EnvDialog ws={ws} open={dialog === 'env'} name={envName} onOpenChange={(o) => setDialog(o ? 'env' : null)} onSaved={() => (setDialog(null), void refresh())} />
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         {pending ? (
