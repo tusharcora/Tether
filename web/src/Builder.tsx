@@ -1,13 +1,12 @@
+import { Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Edge, Pipeline, PipelineNode } from '../../src/types';
 import { api, type Issue } from './api';
 import { Canvas } from './Canvas';
-import { Badge } from './components/arc/badge/badge';
 import { Button } from './components/arc/button/button';
 import { Checkbox } from './components/arc/checkbox/checkbox';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { Input } from './components/arc/input/input';
-import { SearchField } from './components/arc/search-field/search-field';
 import SegmentedControl from './components/arc/segmented-control/segmented-control';
 import { Select } from './components/arc/select/select';
 import { Textarea } from './components/arc/textarea/textarea';
@@ -16,15 +15,10 @@ import { RequestGateFields } from './RequestGateFields';
 import { ModeToggle } from './Team';
 import { NONE, fromNone } from './ui/cn';
 import { useNotify } from './ui/notify';
-
-const PALETTE: { label: string; hint: string; make: () => Partial<PipelineNode> }[] = [
-  { label: 'Planner', hint: 'read-only: plans the change', make: () => ({ kind: 'agent', role: 'planner', readOnly: true }) },
-  { label: 'Architect', hint: 'read-only: reviews the plan', make: () => ({ kind: 'agent', role: 'architect', readOnly: true }) },
-  { label: 'Coder', hint: 'edits files; each attempt is committed', make: () => ({ kind: 'agent', role: 'coder' }) },
-  { label: 'Reviewer', hint: 'sees the diff; ends with VERDICT', make: () => ({ kind: 'agent', role: 'reviewer', readOnly: true, verdict: true, includeDiff: true }) },
-  { label: 'Gate', hint: 'a shell command that must exit 0', make: () => ({ kind: 'gate', title: 'tests', command: 'npm test', maxLoops: 2 }) },
-  { label: 'Approval', hint: 'pauses the run until a human signs off', make: () => ({ kind: 'approval', title: 'approve' }) },
-];
+import { Palette, type EccSkill } from './builder/Palette';
+import { ScreenHeader } from './ui/studio/ScreenHeader';
+import { StatusChip } from './ui/studio/StatusChip';
+import './builder/builder.css';
 
 const BLANK: Pipeline = {
   name: 'untitled',
@@ -49,8 +43,6 @@ function wouldCycle(edges: Edge[], from: string, to: string): boolean {
   }
   return false;
 }
-
-type EccSkill = { name: string; description: string; source: string; kind?: string };
 
 const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kind === 'approval' ? 'approve' : (n.role ?? 'step').slice(0, 6));
 
@@ -175,14 +167,12 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
 
   // ECC skills and commands, offered as ready-made steps (an empty list hides the section)
   const [skills, setSkills] = useState<EccSkill[]>([]);
-  const [skillQ, setSkillQ] = useState('');
   useEffect(() => {
     api<EccSkill[]>('GET', '/api/skills?source=ecc')
       .then(setSkills)
       .catch(() => setSkills([]));
   }, []);
-  const shownSkills = skills.filter((s) => !skillQ || `${s.name} ${s.description}`.toLowerCase().includes(skillQ.toLowerCase())).slice(0, 30);
-  async function addSkill(s: { name: string }) {
+  async function addSkill(s: EccSkill) {
     try {
       const r = await api<{ name: string; prompt: string }>('GET', `/api/skills/ecc/${encodeURIComponent(s.name)}`);
       addNode(() => ({ kind: 'agent', role: 'coder', title: r.name.slice(0, 24), prompt: r.prompt }));
@@ -279,6 +269,11 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const agentIds = Object.keys(adapters);
   const fixCandidates = pl.nodes.filter((n) => n.kind === 'agent' && n.id !== selected);
   const saved = names.some((n) => n.name === pl.name);
+  const loops = pl.nodes.filter((n) => n.fixNode).length;
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const issueTone = errors.length ? 'failed' : issues.length ? 'needs' : 'done';
+  const issueLabel = errors.length ? plural(errors.length, 'error') : issues.length ? plural(issues.length, 'warning') : 'valid';
+  const validName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(pl.name);
 
   const settingsForm = (
     <div className="form">
@@ -395,69 +390,58 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   };
 
   return (
-    <div className="builder">
-      <div className="toolbar">
-        <Select
-          label="Workflow"
-          options={[{ value: NONE, label: '— unsaved —' }, ...names.map((n) => ({ value: n.name, label: n.name }))]}
-          value={saved ? pl.name : NONE}
-          onValueChange={(v) => v !== NONE && pick(v)}
-        />
-        <Button variant="secondary" onClick={fresh}>
-          New
-        </Button>
-        <Input className="name" label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />
-        <span className="spacer" />
-        <Button variant="ghost" size="sm" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
-          <Badge tone={errors.length ? 'danger' : issues.length ? 'warning' : 'success'}>
-            {errors.length ? `${errors.length} error${errors.length > 1 ? 's' : ''}` : issues.length ? `${issues.length} warning${issues.length > 1 ? 's' : ''}` : 'valid'}
-          </Badge>
-        </Button>
-        <Button variant="secondary" onClick={save} disabled={!dirty || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(pl.name)}>
-          {dirty ? 'Save' : 'Saved'}
-        </Button>
-        <Button variant="primary" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => setRunOpen(true)}>
-          Run ▸
-        </Button>
-      </div>
+    <div className="bl-page">
+      <ScreenHeader
+        meta={`workflows / ${pl.name || 'untitled'} · ${plural(pl.nodes.length, 'step')} · ${plural(loops, 'fix loop')}`}
+        title={pl.name || 'untitled'}
+        actions={
+          <>
+            <Select
+              label="Workflow"
+              options={[{ value: NONE, label: '— unsaved —' }, ...names.map((n) => ({ value: n.name, label: n.name }))]}
+              value={saved ? pl.name : NONE}
+              onValueChange={(v) => v !== NONE && pick(v)}
+            />
+            <Input className="bl-name" label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />
+            <button type="button" className="bl-issues-toggle" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
+              <StatusChip tone={issueTone} label={issueLabel} />
+            </button>
+            <span className="bl-saved">{dirty ? 'Unsaved changes' : 'Saved'}</span>
+            <Button variant="secondary" onClick={fresh}>
+              New
+            </Button>
+            <Button variant="secondary" onClick={save} disabled={!dirty || !validName}>
+              Save
+            </Button>
+            <Button variant="primary" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => setRunOpen(true)}>
+              Run <Play size={12} aria-hidden="true" />
+            </Button>
+          </>
+        }
+      />
 
       {showIssues && issues.length ? (
-        <ul className="issues">
+        <ul className="bl-issues" aria-label="Preflight issues">
           {issues.map((i, k) => (
-            <li key={k} className={i.level}>
-              <b>{i.level}</b> {i.node ? <code>{i.node}</code> : null} {i.message}
+            <li key={k}>
+              <StatusChip tone={i.level === 'error' ? 'failed' : 'needs'} label={i.level} />
+              {i.node ? (
+                <button type="button" className="bl-issue-node" onClick={() => setSelected(i.node)}>
+                  {i.node}
+                </button>
+              ) : null}
+              <span>{i.message}</span>
             </li>
           ))}
         </ul>
       ) : null}
 
-      <div className="builder-body">
-        <aside className="palette">
-          <h4>Steps</h4>
-          {PALETTE.map((p) => (
-            <button key={p.label} className="palette-item" title={p.hint} onClick={() => addNode(p.make)}>
-              <span>{p.label}</span>
-              <small>{p.hint}</small>
-            </button>
-          ))}
-          {skills.length ? (
-            <>
-              <h4>Skills</h4>
-              <SearchField label="Find a skill" value={skillQ} onValueChange={setSkillQ} placeholder="ECC skills and commands" />
-              {shownSkills.map((s) => (
-                <button key={s.name} className="palette-item" title={s.description} onClick={() => void addSkill(s)}>
-                  <span>{s.name}</span>
-                  <small>
-                    {s.kind === 'command' ? 'ECC command' : 'ECC skill'} · {s.description}
-                  </small>
-                </button>
-              ))}
-            </>
-          ) : null}
-        </aside>
+      <div className="bl-body">
+        <Palette onAdd={addNode} skills={skills} onSkill={(s) => void addSkill(s)} />
 
         <Canvas
           editable
+          hint="Click a palette step to add it · drag a right port to a left port to connect · Delete removes"
           nodes={pl.nodes}
           edges={pl.edges}
           selected={selected}
@@ -469,7 +453,9 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
           onDeleteNode={removeNode}
         />
 
-        <aside className="inspector">{sel ? nodeForm(sel) : settingsForm}</aside>
+        <aside className="bl-inspector" aria-label="Step inspector">
+          {sel ? nodeForm(sel) : settingsForm}
+        </aside>
       </div>
 
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>

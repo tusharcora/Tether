@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
@@ -195,5 +195,31 @@ describe('Builder', () => {
       expect(g).toMatchObject({ kind: 'gate', title: 'list', http: { run: 'runs/list', env: 'local' } });
     });
     expect(used).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the workflow, step and loop counts in the header and adds steps from the palette', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
+    expect(screen.getByText('workflows / plan-code-review · 3 steps · 1 fix loop')).toBeTruthy();
+    expect(screen.getByText('Saved')).toBeTruthy();
+    const palette = screen.getByRole('complementary', { name: 'Steps palette' });
+    expect([...palette.querySelectorAll('.bl-item:not(.bl-skill) .bl-item-name')].map((e) => e.textContent)).toEqual(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'Approval']);
+    fireEvent.click(within(palette).getByRole('button', { name: /Approval/ }));
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+  });
+
+  it('selects the step an issue names', async () => {
+    routeApi({
+      'GET /api/doctor': {},
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [{ level: 'error', node: 'code', message: 'needs a role' }] },
+    });
+    renderApp(<Builder onStarted={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '1 error' }));
+    expect(screen.getByText('needs a role')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'code' }));
+    expect(await screen.findByLabelText('Instructions (blank = default for the role)')).toBeTruthy();
   });
 });

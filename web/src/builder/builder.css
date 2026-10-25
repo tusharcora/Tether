@@ -1,0 +1,31 @@
+/* Builder (Studio Live board): header, palette, canvas, inspector. Tokens only. */
+.bl-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.bl-page > .sl-screen-header { border-bottom: 1px solid var(--line); }
+.bl-name { width: 200px; font-family: var(--font-code); }
+.bl-issues-toggle { padding: 0; border: 0; background: none; border-radius: 6px; cursor: pointer; }
+.bl-saved { font-size: 12.5px; color: var(--mut); white-space: nowrap; }
+.bl-issues {
+  list-style: none; margin: 0; padding: 8px 24px; display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow: auto;
+  border-bottom: 1px solid var(--line); background: var(--s1); font-size: 13px;
+}
+.bl-issues li { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.bl-issue-node { padding: 0 6px; border: 1px solid var(--line2); border-radius: 5px; background: var(--s2); color: var(--ink); font-family: var(--font-code); font-size: 11px; cursor: pointer; }
+.bl-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr) 320px; }
+.bl-body > .canvas { min-height: 420px; }
+.bl-palette { border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 16px; overflow: auto; }
+.bl-palette .sl-section-heading { padding: 0 6px; }
+.bl-item {
+  width: 100%; display: flex; gap: 10px; align-items: center; padding: 8px 6px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+}
+.bl-item:hover { background: var(--s2); }
+.bl-glyph { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--s2); color: var(--ink); font-family: var(--font-code); font-size: 12px; }
+.bl-item-text { display: flex; flex-direction: column; min-width: 0; }
+.bl-item-name { font-size: 13px; font-weight: 500; }
+.bl-item-hint { font-size: 11.5px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-inspector { border-left: 1px solid var(--line); background: var(--s1); padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 1199px) { .bl-body { grid-template-columns: 200px minmax(0, 1fr) 280px; } }
+@media (max-width: 899px) {
+  .bl-body { grid-template-columns: minmax(0, 1fr); }
+  .bl-body > .canvas { min-height: 60vh; }
+}
