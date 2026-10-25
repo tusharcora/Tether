@@ -105,10 +105,12 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
             </div>
             <div className="start-row">
               <Select label="Workspace" value={ws?.id} onValueChange={setPicked} options={list.map((w) => ({ value: w.id, label: w.exists ? w.name : `${w.name} (folder missing)` }))} />
-              <SegmentedControl label="Run as" options={[{ value: 'live', label: 'Team · live' }, { value: 'autonomous', label: 'Team · autonomous' }]} value={mode} onValueChange={(v) => setMode(v as Mode)} />
-              <button type="button" className="link" onClick={() => props.onGo({ tab: 'builder' })}>
-                Workflow…
-              </button>
+              <div className="start-mode">
+                <SegmentedControl label="Run as" options={[{ value: 'live', label: 'Team · live' }, { value: 'autonomous', label: 'Team · autonomous' }]} value={mode} onValueChange={(v) => setMode(v as Mode)} />
+                <button type="button" className="link" onClick={() => props.onGo({ tab: 'builder' })}>
+                  Workflow…
+                </button>
+              </div>
             </div>
             {preview ? <PreviewRow preview={preview} /> : null}
             {ws && !ws.exists ? (

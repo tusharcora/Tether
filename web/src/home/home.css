@@ -1,5 +1,7 @@
 .home { min-height: 100%; padding-bottom: 32px; }
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
+/* below 1200 px the two columns dissolve into the one stack */
+.home-col { display: contents; }
 @media (max-width: 899px) { .home-grid { padding: 0 12px; } }
 .start-form { display: flex; flex-direction: column; gap: 12px; }
 .start-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -7,6 +9,8 @@
 .start-chip:hover { color: var(--ink); background: var(--s2); }
 .start-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .start-row > :first-child { flex: 1 1 200px; min-width: 0; }
+/* the mode switch and the Workflow… link share one centred line */
+.start-mode { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
 .start-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; }
 .start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
@@ -16,14 +20,9 @@
 .run-now { font-size: 12px; color: var(--mut); }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
 @media (min-width: 1200px) {
-  .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 16px 20px; }
-  .home-grid > .s-needs { grid-column: 1; grid-row: 1; }
-  .home-grid > .s-start { grid-column: 1; grid-row: 2; }
-  .home-grid > .s-running { grid-column: 1; grid-row: 3; }
-  .home-grid > .s-recent { grid-column: 1; grid-row: 4; }
-  .home-grid > .s-activity { grid-column: 2; grid-row: 1 / span 2; }
-  .home-grid > .s-saved { grid-column: 2; grid-row: 3; }
-  .home-grid > .s-crew { grid-column: 2; grid-row: 4; }
+  /* two independent stacks: a short Live activity leaves no row gap beside the left column */
+  .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 20px; }
+  .home-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 }
 .act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 420px; overflow: auto; }
 .act-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 2px; border-top: 1px solid var(--line); }

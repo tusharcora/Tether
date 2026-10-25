@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api, type RunRow } from '../api';
 import { calls, FakeEventSource, makeRow, routeApi } from '../test/fixtures';
+import { cssRule } from '../test/css';
 import { renderApp } from '../test/render';
 import { Home } from './Home';
 
@@ -43,7 +44,15 @@ describe('Home', () => {
     await act(async () => {});
     // the toast stack's region (from renderApp) sits outside the Home grid
     const names = screen.getAllByRole('region').filter((r) => r.closest('.home-grid')).map((r) => r.getAttribute('aria-labelledby') && document.getElementById(r.getAttribute('aria-labelledby')!)!.textContent);
-    expect(names).toEqual(['Needs you', 'Start a run', 'Running', 'Live activity', 'Recent', 'Saved requests', 'Crew']);
+    // DOM (and one-column) order is the main column, then the side column
+    expect(names).toEqual(['Needs you', 'Start a run', 'Running', 'Recent', 'Live activity', 'Saved requests', 'Crew']);
+    const col = (name: string) => screen.getByRole('region', { name }).closest('.home-col')!.className;
+    for (const n of ['Needs you', 'Start a run', 'Running', 'Recent']) expect(col(n)).toContain('home-main');
+    for (const n of ['Live activity', 'Saved requests', 'Crew']) expect(col(n)).toContain('home-side');
+    // two independent stacks at 1200 px; one stack below
+    expect(cssRule('home/home.css', '.home-col')).toContain('display: contents');
+    expect(cssRule('home/home.css', '.home-col', '@media (min-width: 1200px)')).toContain('flex-direction: column');
+    expect(cssRule('home/home.css', '.start-mode')).toContain('align-items: center');
     expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toBeTruthy();
   });
 

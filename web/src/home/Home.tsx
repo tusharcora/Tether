@@ -20,8 +20,9 @@ export const IDLE_MS = 10_000;
 /**
  * Home: what needs you, what is running, and where to start the next run. It polls (no EventSource): runs and attention
  * every 2 s while any run is live (the server's `live` flag), every 10 s otherwise; the activity feed every 3 s while the
- * tab is visible and not paused. It owns the one /api/workspaces poll its sections share. Sections are in the one-column
- * order; CSS places them in two columns at 1200 px.
+ * tab is visible and not paused. It owns the one /api/workspaces poll its sections share. Sections sit in two independent
+ * columns (each stacks on its own, so a short one leaves no gap) at 1200 px; below that the columns dissolve into one stack
+ * in the same DOM order.
  */
 export function Home(props: { onGo: (r: Route) => void }) {
   const notify = useNotify();
@@ -66,20 +67,24 @@ export function Home(props: { onGo: (r: Route) => void }) {
         }
       />
       <div className="home-grid">
-        <NeedsYou poll={attention} refreshing={refreshing} onGo={props.onGo} onChanged={refetch} />
-        <StartRun
-          workspaces={workspaces}
-          onGo={props.onGo}
-          onStarted={(id) => {
-            notify.ok('Run started', id);
-            void refetch();
-          }}
-        />
-        <Running poll={runs} refreshing={refreshing} onGo={props.onGo} />
-        <ActivityFeed feed={feed} paused={paused} onPause={setPaused} refreshing={refreshing} onGo={props.onGo} />
-        <Recent poll={runs} refreshing={refreshing} onGo={props.onGo} />
-        <SavedRequests workspaces={workspaces} onGo={props.onGo} refreshKey={savedKey} />
-        <CrewStrip runs={runs.data} />
+        <div className="home-col home-main">
+          <NeedsYou poll={attention} refreshing={refreshing} onGo={props.onGo} onChanged={refetch} />
+          <StartRun
+            workspaces={workspaces}
+            onGo={props.onGo}
+            onStarted={(id) => {
+              notify.ok('Run started', id);
+              void refetch();
+            }}
+          />
+          <Running poll={runs} refreshing={refreshing} onGo={props.onGo} />
+          <Recent poll={runs} refreshing={refreshing} onGo={props.onGo} />
+        </div>
+        <div className="home-col home-side">
+          <ActivityFeed feed={feed} paused={paused} onPause={setPaused} refreshing={refreshing} onGo={props.onGo} />
+          <SavedRequests workspaces={workspaces} onGo={props.onGo} refreshKey={savedKey} />
+          <CrewStrip runs={runs.data} />
+        </div>
       </div>
     </div>
   );
