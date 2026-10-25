@@ -21,6 +21,7 @@ import { ACTIVITY_LIMIT, ACTIVITY_MAX, activityFeed, parseCursor } from './activ
 import { attentionReader } from './attention.js';
 import { PREVIEW_TASK_MAX, rosterPreview } from './rosterPreview.js';
 import { rowLive } from './runLabels.js';
+import { VAULT_ACTIVITY_LIMIT, VAULT_ACTIVITY_MAX, vaultActivity } from './vaultActivity.js';
 import { rowExtras } from './runRows.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
@@ -886,6 +887,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
 
     // ---- vault ----
+    if (p === '/api/vault/activity' && m === 'GET') {
+      const raw = url.searchParams.get('since');
+      const since = raw ? parseCursor(raw) : undefined;
+      if (raw && !since) throw new HttpError(400, 'malformed "since" cursor');
+      const n = Number(url.searchParams.get('limit') ?? VAULT_ACTIVITY_LIMIT);
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, VAULT_ACTIVITY_MAX) : VAULT_ACTIVITY_LIMIT;
+      return send(res, 200, vaultActivity(store, { since, limit })), true;
+    }
     if (p === '/api/vault/graph' && m === 'GET') return send(res, 200, await vault.graph()), true;
     if (p === '/api/vault/note' && m === 'GET') {
       const path = url.searchParams.get('path') ?? '';

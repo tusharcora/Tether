@@ -733,6 +733,14 @@ export interface ActivityLine {
   /** The bot whose face goes with the line. */
   bot?: string;
 }
+/** A note a run wrote to the vault: the Graph's "used by a run" signal. `run` is the run's label, never task text. */
+export interface VaultActivityItem {
+  id: string;
+  ts: number;
+  runId: string;
+  run: string;
+  path: string;
+}
 export interface RosterPreview {
   bots: { id: string; name: string; why: string }[];
   core: string[];
