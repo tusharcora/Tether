@@ -8,7 +8,7 @@
 .run-list-probes { padding: 0 4px; font-size: 12px; color: var(--mut); }
 .run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 4px; }
 .run-rows { display: flex; flex-direction: column; gap: 2px; }
-.run-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.run-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px; border: 1px solid transparent; border-radius: var(--radius-panel); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
 .run-row:hover { background: var(--s2); }
 .run-row.selected { background: var(--s2); border-color: var(--line2); }
 .run-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -17,7 +17,8 @@
 .run-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 /* a live selected run's border marches (static under reduced motion: the root rule stops the loop) */
 .run-live-border { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.run-live-border rect { width: calc(100% - 1px); height: calc(100% - 1px); fill: none; stroke: var(--acc); stroke-width: 1; stroke-dasharray: 6 4; animation: run-march 1s linear infinite; }
+/* rx follows the row's radius, less the half-pixel inset (RunList keeps rx="9.5" as the fallback where CSS rx isn't supported) */
+.run-live-border rect { rx: calc(var(--radius-panel) - .5px); width: calc(100% - 1px); height: calc(100% - 1px); fill: none; stroke: var(--acc); stroke-width: 1; stroke-dasharray: 6 4; animation: run-march 1s linear infinite; }
 @keyframes run-march { to { stroke-dashoffset: -10; } }
 .ring-track { fill: none; stroke: var(--s3); stroke-width: 2.5; }
 .ring-fill { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; }

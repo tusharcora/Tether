@@ -75,7 +75,7 @@ export function App() {
     <ToastStackProvider>
       <div ref={shellRef} className={cn('shell', { phone })}>
         {phone ? null : <Rail active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSearch={() => setPalette(true)} onSettings={openSettings} />}
-        <main className="shell-main">
+        <main className="shell-main" tabIndex={-1}>
           {screen.tab === 'home' ? <Home onGo={go} /> : null}
           {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
           {screen.tab === 'runs' ? (

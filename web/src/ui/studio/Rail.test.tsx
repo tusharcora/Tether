@@ -66,5 +66,22 @@ describe('Rail', () => {
     fireEvent.focus(screen.getByRole('button', { name: 'Graph' }));
     act(() => vi.advanceTimersByTime(300));
     expect(document.querySelector('.sl-rail-tip')!.textContent).toBe('Graph');
+    vi.useRealTimers();
+  });
+
+  it('dismisses the tooltip with Escape without moving focus or pointer, and drops its timer on unmount', () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<Rail active="home" onGo={vi.fn()} onSearch={vi.fn()} onSettings={vi.fn()} />);
+    const crew = screen.getByRole('button', { name: 'Crew' });
+    fireEvent.pointerEnter(crew);
+    act(() => vi.advanceTimersByTime(300));
+    expect(document.querySelector('.sl-rail-tip')).toBeTruthy();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(document.querySelector('.sl-rail-tip')).toBeNull();
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Graph' }));
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });

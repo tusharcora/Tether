@@ -54,12 +54,13 @@ export function BottomBar(p: Omit<RailProps, 'onSearch'>) {
       {open ? (
         <div ref={menuRef} className="sl-bottom-menu" role="menu" aria-label="More" onKeyDown={onMenuKey}>
           {MORE.map((n) => (
-            <button key={n.id} type="button" role="menuitem" onClick={() => (setOpen(false), p.onGo(n.id))}>
+            // close() puts focus back on More, so it doesn't drop to the body when the picked item unmounts
+            <button key={n.id} type="button" role="menuitem" onClick={() => (close(), p.onGo(n.id))}>
               <n.Icon size={16} aria-hidden="true" />
               {n.label}
             </button>
           ))}
-          <button type="button" role="menuitem" onClick={() => (setOpen(false), p.onSettings())}>
+          <button type="button" role="menuitem" onClick={() => (close(), p.onSettings())}>
             <Settings size={16} aria-hidden="true" />
             Settings
           </button>

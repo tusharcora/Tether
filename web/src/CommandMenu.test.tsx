@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
@@ -31,6 +31,18 @@ describe('CommandMenu', () => {
     fireEvent.click(screen.getByText('Go to Home'));
     expect(p.onGo).toHaveBeenCalledWith({ tab: 'home' });
     expect(p.onOpenChange).toHaveBeenCalledWith(false);
+  });
+  it('lands focus on the screen, not the body, when it closes with no opener left', async () => {
+    const main = document.createElement('main');
+    main.className = 'shell-main';
+    main.tabIndex = -1;
+    document.body.append(main);
+    const p = handlers();
+    const { rerender } = render(<CommandMenu open {...p} />);
+    fireEvent.click(screen.getByText('Go to Home'));
+    rerender(<CommandMenu open={false} {...p} />);
+    await waitFor(() => expect(document.activeElement).toBe(main));
+    main.remove();
   });
   it('opens Settings', () => {
     const p = open();

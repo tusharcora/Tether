@@ -51,3 +51,18 @@ it('follows state, ignores chunks, closes on switch and ignores the old stream',
   act(() => first.emit('state', makeRun({ id: 'r1' })));
   expect(result.current.run).toBeUndefined();
 });
+
+it('retry re-reads the snapshot and re-subscribes, keeping what is shown', async () => {
+  let fail = true;
+  routeApi({ 'GET /api/runs/r1/events': () => (fail ? Promise.reject(new Error('stream down')) : Promise.resolve([ev(1)])) });
+  const { result } = renderHook(() => useRunStream('r1'));
+  act(() => FakeEventSource.all[0]!.emit('state', makeRun({ id: 'r1' })));
+  await waitFor(() => expect(result.current.error).toBe('stream down'));
+  fail = false;
+  act(() => result.current.retry());
+  await waitFor(() => expect(result.current.error).toBeUndefined());
+  expect(FakeEventSource.all).toHaveLength(2);
+  expect(FakeEventSource.all[0]!.closed).toBe(true);
+  expect(result.current.run?.id).toBe('r1');
+  await waitFor(() => expect(result.current.events.map((e) => e.seq)).toEqual([1]));
+});

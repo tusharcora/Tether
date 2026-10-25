@@ -9,8 +9,9 @@ describe('Kbd', () => {
   it('shows ⌘ on Apple platforms', () => {
     setPlatform('MacIntel');
     expect(isApple()).toBe(true);
-    render(<Kbd mod>K</Kbd>);
-    expect(screen.getByText('⌘K').tagName).toBe('KBD');
+    const { container } = render(<Kbd mod>K</Kbd>);
+    expect(container.querySelector('kbd')!.textContent).toBe('⌘K');
+    expect(screen.getByRole('img', { name: 'Command' }).textContent).toBe('⌘');
   });
   it('shows Ctrl elsewhere', () => {
     setPlatform('Win32');

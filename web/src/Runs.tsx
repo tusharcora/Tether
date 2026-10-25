@@ -15,6 +15,7 @@ import { RunList } from './runs/RunList';
 import { cn } from './ui/cn';
 import { useNotify } from './ui/notify';
 import { EmptyState } from './ui/studio/EmptyState';
+import { InlineError } from './ui/studio/InlineError';
 import { BELOW_WIDE, PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './runs/runs.css';
 
@@ -40,7 +41,7 @@ export function Runs(props: RunsProps) {
   const notify = useNotify();
   const [probes, setProbes] = useState(false);
   const list = usePoll<RunRow[]>(probes ? '/api/runs?all=1' : '/api/runs', 2000);
-  const { run, setRun, events, error } = useRunStream(props.selected);
+  const { run, setRun, events, error, retry } = useRunStream(props.selected);
   const [selNode, setSelNode] = useState<string | undefined>(props.node);
   const belowWide = useMediaQuery(BELOW_WIDE);
   const phone = useMediaQuery(PHONE);
@@ -87,9 +88,7 @@ export function Runs(props: RunsProps) {
   const listPane = <RunList poll={list} probes={probes} onProbes={setProbes} selected={props.selected} onSelect={props.onSelect} onStart={props.onStart} />;
   const placeholder =
     props.selected && error ? (
-      <div className="alert error" role="alert">
-        {error}
-      </div>
+      <InlineError message={error} onRetry={retry} />
     ) : props.selected ? (
       <Loading loading lines={4} label="Loading run" />
     ) : (
@@ -121,7 +120,7 @@ export function Runs(props: RunsProps) {
           {run ? (
             <>
               <RunHeader run={run} onAct={act} />
-              <RunBanners run={run} streamError={error} onAct={act} />
+              <RunBanners run={run} streamError={error} onRetryStream={retry} onAct={act} />
               <div className="run-phone-switch">
                 <SegmentedControl
                   label="Run view"
@@ -160,7 +159,7 @@ export function Runs(props: RunsProps) {
                 ) : null
               }
             />
-            <RunBanners run={run} streamError={error} onAct={act} />
+            <RunBanners run={run} streamError={error} onRetryStream={retry} onAct={act} />
             {centre}
           </>
         ) : (

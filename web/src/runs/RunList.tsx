@@ -25,6 +25,7 @@ function RunListRow({ r, selected, onSelect }: { r: RunRow; selected: boolean; o
       <button type="button" className={cn('run-row', { selected })} aria-current={selected ? 'true' : undefined} onClick={() => onSelect(r.id)}>
         {selected && r.live ? (
           <svg className="run-live-border" aria-hidden="true">
+            {/* rx: fallback only; runs.css sets it from var(--radius-panel) (an SVG attribute can't take a var) */}
             <rect x="0.5" y="0.5" rx="9.5" />
           </svg>
         ) : null}

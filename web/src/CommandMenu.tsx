@@ -28,6 +28,11 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
     ],
     [runs.data, flows.data],
   );
+  // focus goes back to the opener; when there was none (⌘K from the page) or it is gone, to the screen, never the body
+  const refocus = () =>
+    setTimeout(() => {
+      if (!document.activeElement || document.activeElement === document.body) document.querySelector<HTMLElement>('.shell-main')?.focus({ preventScroll: true });
+    });
   const pick = (item: CommandItem) => {
     const i = item.id.indexOf(':');
     const kind = item.id.slice(0, i);
@@ -42,7 +47,7 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       {props.open ? (
-        <DialogContent title="Jump to" description="Screens, settings, recent runs and saved workflows">
+        <DialogContent title="Jump to" description="Screens, settings, recent runs and saved workflows" onCloseAutoFocus={refocus}>
           <CommandPalette items={items} autoFocus label="Jump to" placeholder="Search screens, runs, workflows" onSelect={pick} onClose={() => props.onOpenChange(false)} />
         </DialogContent>
       ) : null}

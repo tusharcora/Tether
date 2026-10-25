@@ -30,3 +30,5 @@
 .shell { display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; background: var(--bg); color: var(--ink); }
 .shell.phone { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
 .shell-main { min-width: 0; min-height: 0; overflow: auto; }
+/* main takes focus only as a landing spot (after the command menu closes with no opener left), so no ring */
+.shell-main:focus { outline: none; }

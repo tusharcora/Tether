@@ -18,6 +18,8 @@ describe('BottomBar', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     expect(onGo).toHaveBeenCalledWith('graph');
     expect(screen.queryByRole('menu')).toBeNull();
+    // the picked item is gone, so focus returns to More rather than dropping to the body
+    expect(document.activeElement).toBe(more);
     fireEvent.click(more);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Settings' }));
     expect(onSettings).toHaveBeenCalled();

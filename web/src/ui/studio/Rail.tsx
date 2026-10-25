@@ -1,5 +1,5 @@
 import { Search, Settings, type LucideIcon } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Screen } from '../../hooks';
 import { cn } from '../cn';
 import { Kbd } from './Kbd';
@@ -40,6 +40,14 @@ export function Rail(p: RailProps) {
     clearTimeout(timer.current);
     setTip(undefined);
   };
+  // the tip can be dismissed with Escape wherever focus and pointer are (WCAG 1.4.13); its timer dies with the rail
+  useEffect(() => {
+    if (!tip) return;
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && hideTip();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [tip]);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const move = (i: number) => {
     const n = (i + items.length) % items.length;
     setFocus(n);
