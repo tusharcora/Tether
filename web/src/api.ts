@@ -128,6 +128,8 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       return { text: `coach: ${e.findings.length} finding(s)`, tone: 'wait' };
     case 'run.finished':
       return { text: `run ${e.status}${e.error ? ` — ${e.error.split('\n')[0]}` : ''}`, tone: e.status === 'done' ? 'done' : e.status === 'paused' ? 'wait' : 'error' };
+    case 'http.attached':
+      return { text: `API exchange #${e.historyId} attached`, tone: 'info' };
     default:
       return undefined;
   }

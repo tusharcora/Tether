@@ -107,3 +107,15 @@
 .env-rows { display: flex; flex-direction: column; gap: 4px; }
 .env-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.6fr) auto; gap: 6px; align-items: center; }
 .env-secret { display: flex; align-items: center; gap: 4px; }
+
+/* Send to agent: the right panel. Bot picker by face, note, the exchange as chips, then the hand-off buttons. */
+.send-agent { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid var(--line); background: var(--s1); overflow: auto; }
+.send-agent h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.send-agent .hint { color: var(--mut); font-size: 12px; margin: 0; }
+.bot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.bot-pick { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--mut); font-size: 11px; cursor: pointer; transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease); }
+.bot-pick:hover { border-color: var(--line2); color: var(--ink); }
+.bot-pick:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.bot-pick[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--s2); }
+.attach { display: flex; flex-wrap: wrap; gap: 6px; }
+.attach-chip { padding: 1px 7px; font-size: 11px; line-height: 18px; white-space: nowrap; background: var(--s2); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; }

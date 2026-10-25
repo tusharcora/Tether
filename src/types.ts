@@ -293,6 +293,8 @@ export type RunEvent =
   | { type: 'supervisor.action'; round: number; action: 'retry' | 'escalate' | 'stop'; node?: string; detail: string }
   | { type: 'run.coach'; findings: CoachFinding[] }
   | { type: 'vault.note'; path: string }
+  /** An API exchange (a history row) was handed to this run from the API client. */
+  | { type: 'http.attached'; historyId: number }
   | { type: 'run.finished'; status: RunStatus; error?: string; /** The run ended because its spend cap was reached. */ budget?: true };
 
 export interface StoredEvent {

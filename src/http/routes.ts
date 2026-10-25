@@ -1,10 +1,14 @@
 /** /api/http/*: the API client over the existing loopback server (Host and Origin are checked by server.ts first). */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Engine } from '../engine.js';
+import { rosterOf } from '../handoff.js';
+import { normalizePipeline } from '../pipeline.js';
 import { HttpError, readJson, reqObject, send as reply } from '../serverkit.js';
 import type { Store } from '../store.js';
+import { TeamError } from '../team.js';
+import { agentTask } from './agent.js';
 import { HttpClientError, statusFor } from './errors.js';
-import { HISTORY_LIST_MAX, listHistory } from './history.js';
+import { getHistory, HISTORY_LIST_MAX, listHistory } from './history.js';
 import { applyImport, previewImport, type ImportKind } from './import.js';
 import { activeEnv, runRequest, setActiveEnv } from './index.js';
 import { describeVars } from './resolve.js';
@@ -172,5 +176,51 @@ async function handle(c: HttpRouteCtx, req: IncomingMessage, res: ServerResponse
     return reply(res, 200, { created: applyImport(pr.dir, preview) }), true;
   }
 
+  if (p === '/api/http/send-to-agent' && m === 'POST') {
+    const pr = proj();
+    const b = await body();
+    if (!Number.isInteger(b.historyId)) throw new HttpError(400, '"historyId" must be a history id');
+    if (b.note !== undefined && typeof b.note !== 'string') throw new HttpError(400, '"note" must be a string');
+    const target = parseAgentTarget(b.target);
+    const row = getHistory(c.store.raw(), pr.scope, b.historyId as number);
+    if (!row) throw new HttpError(404, 'no such history entry');
+    const task = agentTask(typeof b.note === 'string' ? b.note.slice(0, NOTE_MAX) : '', row);
+    let runId: string;
+    try {
+      if (target.kind === 'maestro') runId = await c.engine.startTeam({ task, repo: pr.dir, mode: 'live', workspace: pr.workspaceId, background: true });
+      else if (target.mode === 'team') runId = await c.engine.startTeam({ task, repo: pr.dir, mode: 'live', roster: [target.bot], workspace: pr.workspaceId, background: true });
+      else {
+        const pipeline = normalizePipeline({ name: 'api-exchange', nodes: [{ id: 'look', kind: 'agent', role: target.bot, title: 'Look into this API exchange' }], edges: [] });
+        runId = await c.engine.start({ pipeline, task, repo: pr.dir, workspace: pr.workspaceId });
+      }
+    } catch (e) {
+      if (e instanceof TeamError && e.code === 'invalid') throw new HttpError(400, e.message);
+      if (e instanceof TeamError && e.code === 'conflict') throw new HttpError(409, e.message);
+      throw new HttpError(500, (e as Error).message);
+    }
+    // The engine has no hook to record an event before its first step starts, so this lands right after run.started and may
+    // follow the first node.started (solo) or planning event (team). It can never follow run.finished: no step finishes in this tick.
+    c.store.append(runId, { type: 'http.attached', historyId: row.id });
+    return reply(res, 201, { runId }), true;
+  }
+
   return false;
+}
+
+const NOTE_MAX = 4000;
+const BOT_ID = /^[a-z][a-z0-9_-]{0,23}$/;
+type AgentTarget = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'maestro' };
+
+/** `{ kind: "run", bot, mode: "solo" | "team" }` with a crew bot, or `{ kind: "maestro" }`; anything else is a 400. */
+function parseAgentTarget(v: unknown): AgentTarget {
+  const shape = '"target" must be { kind: "run", bot, mode: "solo" | "team" } or { kind: "maestro" }';
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HttpError(400, shape);
+  const t = v as { kind?: unknown; bot?: unknown; mode?: unknown };
+  if (t.kind === 'maestro') return { kind: 'maestro' };
+  if (t.kind !== 'run') throw new HttpError(400, shape);
+  if (t.mode !== 'solo' && t.mode !== 'team') throw new HttpError(400, '"target.mode" must be "solo" or "team"');
+  if (typeof t.bot !== 'string' || !BOT_ID.test(t.bot)) throw new HttpError(400, '"target.bot" must be a bot id');
+  const crew = rosterOf({} as Parameters<typeof rosterOf>[0]);
+  if (!crew.includes(t.bot)) throw new HttpError(400, `unknown bot "${t.bot}" (crew: ${crew.join(', ')})`);
+  return { kind: 'run', bot: t.bot, mode: t.mode };
 }

@@ -158,4 +158,18 @@ describe('/api/http send, history, import', () => {
       expect(r.text, `${m} ${path}`).not.toContain(encodeURIComponent(SECRET));
     }
   });
+
+  it('send-to-agent never puts the secret value in the route response, the prompt or the run events', async () => {
+    const sent = await t.api('POST', '/api/http/send', { id: 'echo/all' });
+    expect(sent.status).toBe(200);
+    const r = await t.api('POST', '/api/http/send-to-agent', { historyId: sent.json.historyId, target: { kind: 'run', bot: 'coder', mode: 'solo' }, note: 'look' });
+    expect(r.status, r.text).toBe(201);
+    expect(r.text).not.toContain(SECRET);
+    await t.engine.wait(r.json.runId);
+    const prompt = t.mock.calls.find((c) => c.nodeId === 'look')!.prompt;
+    expect(prompt).toContain('<http-exchange>');
+    expect(prompt).toContain('{{secret:aorch_token}}');
+    expect(prompt).not.toContain(SECRET);
+    expect(JSON.stringify(t.store.events(r.json.runId))).not.toContain(SECRET);
+  });
 });
