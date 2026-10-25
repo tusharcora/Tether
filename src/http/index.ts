@@ -60,7 +60,10 @@ function savedOrigin(dir: string, id: string, envName: string | null, secrets: R
   }
 }
 
-export const activeEnv = (home: string, scope: string): string | null => loadPrefs(home).httpActiveEnv?.[scope] ?? null;
+export const activeEnv = (home: string, scope: string): string | null => {
+  const m = loadPrefs(home).httpActiveEnv;
+  return m && Object.hasOwn(m, scope) ? (m[scope] ?? null) : null;
+};
 
 export function setActiveEnv(home: string, scope: string, name: string | null): void {
   const cur = { ...(loadPrefs(home).httpActiveEnv ?? {}) };

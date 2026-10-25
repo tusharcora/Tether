@@ -102,6 +102,14 @@ describe('runRequest', () => {
     }
   });
 
+  it('an active environment lookup never reads an inherited property (scope "constructor")', () => {
+    const home = tmp('home-');
+    expect(activeEnv(home, 'constructor')).toBeNull();
+    setActiveEnv(home, 'api', 'local');
+    expect(activeEnv(home, 'constructor')).toBeNull();
+    expect(activeEnv(home, 'toString')).toBeNull();
+  });
+
   it('keeps the active environment per workspace in ui.json, and clears it', () => {
     const home = tmp('home-');
     setActiveEnv(home, 'api', 'local');

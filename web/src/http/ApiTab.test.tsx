@@ -215,7 +215,8 @@ describe('ApiTab', () => {
     const created: Blob[] = [];
     const names: string[] = [];
     // jsdom has no object URLs and does not download on click; give it just enough to capture the download
-    Object.assign(URL, { createObjectURL: (b: Blob) => (created.push(b), 'blob:x'), revokeObjectURL: () => {} });
+    const revoked: string[] = [];
+    Object.assign(URL, { createObjectURL: (b: Blob) => (created.push(b), 'blob:x'), revokeObjectURL: (u: string) => void revoked.push(u) });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       names.push(this.download);
     });
@@ -225,6 +226,9 @@ describe('ApiTab', () => {
     expect(calls('GET', '/api/workspaces/api/export')).toHaveLength(1);
     expect(JSON.parse(await created[0]!.text())).toEqual({ v: 1, workspace: { name: 'API' }, notes: '', http: { files: {} } });
     expect(names).toEqual(['api-server.aorch.json']);
+    // the object URL lives on after the click (a browser may start the download later), then is released
+    expect(revoked).toEqual([]);
+    await waitFor(() => expect(revoked).toEqual(['blob:x']), { timeout: 3000 });
     expect(await screen.findByText(/stray\.txt/)).toBeTruthy();
     click.mockRestore();
   });

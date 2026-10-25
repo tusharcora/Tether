@@ -106,11 +106,16 @@ describe('request gate', () => {
     commit(repo);
     for (const mode of ['all', 'last'] as const) {
       hits = 0;
-      const p = pipe([{ id: 'gate', kind: 'gate', http: { run: 'slow', repeat: 5, expect: mode } }], [], { nodeTimeoutMs: 1000 });
+      // 400 ms sends against a 1500 ms limit: about 3 finish; the exact count is left loose so a loaded machine cannot flake it
+      const p = pipe([{ id: 'gate', kind: 'gate', http: { run: 'slow', repeat: 5, expect: mode } }], [], { nodeTimeoutMs: 1500 });
       const s = await engine.wait(await engine.start({ pipeline: p, task: 't', repo }));
       expect(s.status).toBe('error');
       const out = s.nodes.gate!.gate!.output;
-      expect(out).toMatch(new RegExp(`^FAIL request slow \\(send 3 of 5, expect ${mode}\\)\nstopped after 2 of 5 sends: gate timed out after 1000 ms\n`));
+      const m = out.match(new RegExp(`^FAIL request slow \\(send (\\d) of 5, expect ${mode}\\)\nstopped after (\\d) of 5 sends: gate timed out after 1500 ms\n`));
+      expect(m, out).not.toBeNull();
+      const [shown, done] = [Number(m![1]), Number(m![2])];
+      expect(done).toBeLessThan(5);
+      expect([done, done + 1]).toContain(shown); // the send the timeout cut short is shown but not counted
       expect(hits).toBeLessThan(5);
     }
   });

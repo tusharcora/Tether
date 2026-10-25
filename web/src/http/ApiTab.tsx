@@ -239,7 +239,8 @@ export function ApiTab(props: ApiTabProps) {
       a.href = url;
       a.download = r.fileName;
       a.click();
-      URL.revokeObjectURL(url);
+      // released later: a browser may start the download after click() returns
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       notify.ok(`Exported ${r.fileName}`, r.skipped.length ? `Left out ${r.skipped.map((k) => `${k.path} (${k.reason})`).join(', ')}` : undefined);
     } catch (e) {
       notify.fail(e);

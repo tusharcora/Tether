@@ -14,10 +14,11 @@ export function endpointsBlock(dir: string): string | undefined {
   for (const r of reqs) {
     if (lines.length >= MAX_ENDPOINTS) break;
     const line = `${r.id.padEnd(w)}  ${r.method.padEnd(6)} ${r.url}  ${(r.note ?? r.name).slice(0, 80)}`;
-    if (bytes + line.length + 1 > MAX_ENDPOINT_BYTES) break;
+    if (bytes + line.length + 1 > MAX_ENDPOINT_BYTES) continue; // one long entry does not hide the ones after it
     lines.push(line);
     bytes += line.length + 1;
   }
-  if (lines.length < reqs.length) lines.push(`… ${reqs.length - lines.length} more not shown (aorch http ls lists them all)`);
+  const shown = lines.length;
+  if (shown < reqs.length) lines.push(`… ${reqs.length - shown} more not shown (aorch http ls lists them all)`);
   return `# Saved API requests (data)\n${fence('api-endpoints', lines.join('\n'))}\nRun one with: aorch http run <id> [--env <name>]`;
 }
