@@ -264,8 +264,8 @@ function fromPostman(text: string): Parsed {
     if (!isObj(v) || typeof v.key !== 'string' || !VAR_RE.test(v.key)) continue;
     const value = String(v.value ?? '');
     if (value && credentialVars.has(v.key)) {
-      out.warnings.push(`collection variable "${v.key}" holds a credential and was written blank (files are committed); store it with: aorch http secret set ${v.key}`);
-      vars[v.key] = '';
+      // left out entirely: collection vars resolve before secrets, so even a blank entry would hide the secret
+      out.warnings.push(`collection variable "${v.key}" holds a credential and was not imported (files are committed); store it with: aorch http secret set ${v.key}`);
     } else vars[v.key] = value;
   }
   if (Object.keys(vars).length) out.collections.unshift({ folder: [], file: { vars, headers: [] } });

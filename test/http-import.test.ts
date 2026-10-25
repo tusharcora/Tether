@@ -88,7 +88,7 @@ describe('Postman import', () => {
   it('folders, requests, collection variables, bearer auth kept as a var, basic auth left out, unsupported skipped', () => {
     const p = previewImport('postman', fx('postman-2.1.json'));
     expect(p.error).toBeUndefined();
-    expect(p.collections).toEqual([{ path: '', file: { vars: { base: 'https://shop.example', token: '' }, headers: [] } }]);
+    expect(p.collections).toEqual([{ path: '', file: { vars: { base: 'https://shop.example' }, headers: [] } }]);
     const byId = Object.fromEntries(p.create.map((c) => [c.id, c.file]));
     expect(Object.keys(byId)).toEqual(['orders/list-orders', 'orders/create-order', 'login']);
     expect(byId['orders/list-orders']).toMatchObject({ url: '{{base}}/orders?limit=5', headers: [{ key: 'Accept', value: 'application/json', on: true }, { key: 'Authorization', value: 'Bearer {{token}}', on: true }] });
@@ -102,7 +102,7 @@ describe('Postman import', () => {
     ]);
   });
 
-  it('a collection variable used by auth is written blank, with a warning, and its value lands in no file', () => {
+  it('a collection variable used by auth is left out, with a warning, and its value lands in no file', () => {
     const p = previewImport('postman', fx('postman-2.1.json'));
     expect(p.warnings.join('\n')).toMatch(/variable "token".*aorch http secret set token/);
     expect(p.warnings.join('\n')).not.toMatch(/variable "base"/);
@@ -115,7 +115,8 @@ describe('Postman import', () => {
       expect(text).not.toContain('hunter2');
       expect(text).not.toContain(Buffer.from('me:hunter2').toString('base64'));
     }
-    expect(readCollection(dir, '').vars).toEqual({ base: 'https://shop.example', token: '' });
+    expect(readCollection(dir, '').vars).toEqual({ base: 'https://shop.example' });
+    expect(JSON.parse(readFileSync(join(httpRoot(dir), '_collection.json'), 'utf8')).vars).not.toHaveProperty('token');
   });
 
   it('refuses a document that is not Postman v2.1', () => {
