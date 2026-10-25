@@ -3,7 +3,7 @@ import { Button } from '../components/arc/button/button';
 import type { KV } from './client';
 
 /** Rows of name → value (params, headers, form fields, variables). Existing rows edit in place; new rows come from the add line. */
-export function KvTable(props: { rows: KV[]; onChange: (rows: KV[]) => void; noun: string; toggles?: boolean }) {
+export function KvTable(props: { rows: KV[]; onChange: (rows: KV[]) => void; noun: string; toggles?: boolean; invalid?: (i: number) => boolean }) {
   const { rows, noun } = props;
   const Noun = noun[0]!.toUpperCase() + noun.slice(1);
   const [k, setK] = useState('');
@@ -19,7 +19,7 @@ export function KvTable(props: { rows: KV[]; onChange: (rows: KV[]) => void; nou
       {rows.map((r, i) => (
         <div className="kv-row" key={i} data-off={r.on ? undefined : ''}>
           {props.toggles !== false ? <input type="checkbox" aria-label={`Use ${noun} ${r.key || i + 1}`} checked={r.on} onChange={(e) => set(i, { on: e.target.checked })} /> : <span />}
-          <input className="kv-input mono" aria-label={`${Noun} name ${i + 1}`} value={r.key} spellCheck={false} onChange={(e) => set(i, { key: e.target.value })} />
+          <input className="kv-input mono" aria-label={`${Noun} name ${i + 1}`} aria-invalid={props.invalid?.(i) || undefined} value={r.key} spellCheck={false} onChange={(e) => set(i, { key: e.target.value })} />
           <input className="kv-input mono" aria-label={`${Noun} value ${i + 1}`} value={r.value} spellCheck={false} onChange={(e) => set(i, { value: e.target.value })} />
           <button type="button" className="kv-x" aria-label={`Remove ${noun} ${r.key || i + 1}`} onClick={() => props.onChange(rows.filter((_, j) => j !== i))}>
             ×

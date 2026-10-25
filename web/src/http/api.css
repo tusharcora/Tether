@@ -11,7 +11,7 @@
 .req-name:hover, .req-name:focus { border-color: var(--line2); background: var(--s1); }
 .dirty { font-size: 11px; color: var(--warn); }
 
-.urlbar { display: flex; align-items: stretch; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); transition: border-color var(--t-fast) var(--ease); }
+.urlbar { position: relative; display: flex; align-items: stretch; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); transition: border-color var(--t-fast) var(--ease); }
 .urlbar:focus-within { border-color: var(--acc); }
 .method-select { appearance: none; border: 0; border-right: 1px solid var(--line); background: transparent; padding: 0 12px; font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; }
 .method-select[data-method="GET"] { color: var(--ok); }
@@ -20,13 +20,15 @@
 .method-select[data-method="DELETE"] { color: var(--bad); }
 .url-view, .url-input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px; color: var(--ink); background: transparent; border: 0; outline: none; cursor: text; white-space: nowrap; overflow-x: auto; }
 
-.var-chip { position: relative; display: inline-flex; align-items: center; margin: 0 1px; padding: 0 6px; border-radius: 5px; background: var(--accBg); color: var(--accInk); font-size: 12px; line-height: 20px; outline: none; }
+.var-chip { display: inline-flex; align-items: center; margin: 0 1px; padding: 0 6px; border-radius: 5px; background: var(--accBg); color: var(--accInk); font-size: 12px; line-height: 20px; outline: none; }
 .var-chip[data-state="secret"] { background: var(--s3); color: var(--ink); }
 .var-chip[data-state="secret"] .var-name::before { content: '● '; color: var(--warn); }
 .var-chip[data-state="missing"] { background: var(--badBg); color: var(--bad); }
 .var-chip:focus-visible { box-shadow: 0 0 0 2px var(--acc); }
+/* Popovers sit outside .url-view (it scrolls, so it would clip them), positioned against .urlbar under their chip. */
+.var-pops { position: absolute; inset: 0; pointer-events: none; }
 .var-pop { position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; white-space: nowrap; padding: 5px 8px; border-radius: 6px; background: var(--s2); border: 1px solid var(--line2); color: var(--ink); font-size: 11px; opacity: 0; transform: translateY(-2px); pointer-events: none; transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
-.var-chip:hover .var-pop, .var-chip:focus .var-pop { opacity: 1; transform: none; }
+.var-pop[data-open] { opacity: 1; transform: none; }
 
 .kv { display: flex; flex-direction: column; gap: 4px; }
 .kv-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; align-items: center; }
@@ -44,4 +46,9 @@
 .req-tabs [role="tablist"] { padding: 0; gap: 2px; }
 .req-tabs [role="tab"] { min-width: 0; border-radius: 0; padding: 0 10px; color: var(--mut); }
 .req-tabs [role="tab"][data-state="active"] { color: var(--ink); }
-.req-tabs [role="tab"] > span[aria-hidden="true"] { inset: auto 0 0 0; height: 2px; border: 0; border-radius: 1px; background: var(--ink); }
+/* Arc's highlight glides on a spring; Studio Live motion is a 200 ms curve, so it is hidden and .tab-line (placed under the
+   active tab by RequestEditor) slides instead. Reduced motion: studio.css zeroes the transition. */
+.req-tabs [role="tab"] > span[aria-hidden="true"] { display: none; }
+.req-tabs-wrap { position: relative; }
+.tab-line { position: absolute; left: 0; top: 0; z-index: 1; height: 2px; border-radius: 1px; background: var(--ink); pointer-events: none; transition: transform var(--t-med) var(--ease), width var(--t-med) var(--ease); }
+.kv-input[aria-invalid="true"] { border-color: var(--bad); }

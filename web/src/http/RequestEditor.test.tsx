@@ -6,7 +6,7 @@ import type { HttpRequestFile, VarInfo } from './client';
 import { RequestEditor, urlTokens } from './RequestEditor';
 
 const base: HttpRequestFile = { v: 1, name: 'List runs', method: 'GET', url: '{{base}}/api/runs/{{tok}}?x={{nope}}', query: [], headers: [], body: { kind: 'none' }, vars: { own: 'mine' }, checks: [] };
-const vars: Record<string, VarInfo | null> = { base: { source: { from: 'env', env: 'local' }, value: 'http://127.0.0.1:4177' }, tok: { source: { from: 'secret', key: 'aorch_token' } }, nope: null };
+const vars: Record<string, VarInfo | null> = { base: { source: { from: 'env', env: 'local' }, value: 'http://127.0.0.1:4177' }, tok: { source: { from: 'secret', key: 'aorch_token' }, value: 'SECRET' }, nope: null };
 
 function Harness(p: { onChange?: (f: HttpRequestFile) => void; onSend?: () => void; onSave?: () => void; file?: HttpRequestFile }) {
   const [file, setFile] = useState(p.file ?? base);
@@ -42,6 +42,25 @@ describe('RequestEditor', () => {
     expect(pop('nope')).toBe('not defined');
     expect(chip('nope').getAttribute('data-state')).toBe('missing');
     expect(chip('base').tabIndex).toBe(0);
+    expect(document.body.textContent).not.toContain('SECRET');
+  });
+
+  it('floats the popover outside the scrolling URL box and opens it on hover and on focus', () => {
+    render(<Harness />);
+    const chip = screen.getByText('base', { selector: '.var-chip > .var-name' }).parentElement!;
+    const pop = document.getElementById(chip.getAttribute('aria-describedby')!)!;
+    expect(pop.getAttribute('role')).toBe('tooltip');
+    expect(chip.closest('.url-view')!.contains(pop)).toBe(false);
+    expect(pop.closest('.urlbar')).toBeTruthy();
+    expect(pop.hasAttribute('data-open')).toBe(false);
+    fireEvent.mouseEnter(chip);
+    expect(pop.hasAttribute('data-open')).toBe(true);
+    fireEvent.mouseLeave(chip);
+    expect(pop.hasAttribute('data-open')).toBe(false);
+    fireEvent.focus(chip);
+    expect(pop.hasAttribute('data-open')).toBe(true);
+    fireEvent.blur(chip);
+    expect(pop.hasAttribute('data-open')).toBe(false);
   });
 
   it('edits the URL in place', () => {
@@ -131,6 +150,36 @@ describe('RequestEditor', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it('keeps a variable while its name is cleared and retyped', () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    tab(/Vars/);
+    fireEvent.change(screen.getByLabelText('Variable name 1'), { target: { value: '' } });
+    expect((screen.getByLabelText('Variable value 1') as HTMLInputElement).value).toBe('mine');
+    fireEvent.change(screen.getByLabelText('Variable name 1'), { target: { value: 'own2' } });
+    expect(onChange.mock.calls.at(-1)![0].vars).toEqual({ own2: 'mine' });
+  });
+
+  it('flags a duplicate variable name and keeps both values until it is resolved', () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    tab(/Vars/);
+    fireEvent.change(screen.getByLabelText('New variable name'), { target: { value: 'own' } });
+    fireEvent.change(screen.getByLabelText('New variable value'), { target: { value: 'theirs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add variable' }));
+    expect(screen.getByRole('alert').textContent).toContain('own');
+    expect(screen.getByLabelText('Variable name 2').getAttribute('aria-invalid')).toBe('true');
+    expect((screen.getByLabelText('Variable value 1') as HTMLInputElement).value).toBe('mine');
+    expect((screen.getByLabelText('Variable value 2') as HTMLInputElement).value).toBe('theirs');
+    expect(onChange.mock.calls.at(-1)?.[0].vars ?? base.vars).toEqual({ own: 'mine' });
+    tab(/Params/);
+    tab(/Vars/);
+    expect((screen.getByLabelText('Variable value 2') as HTMLInputElement).value).toBe('theirs');
+    fireEvent.change(screen.getByLabelText('Variable name 2'), { target: { value: 'other' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(onChange.mock.calls.at(-1)![0].vars).toEqual({ own: 'mine', other: 'theirs' });
+  });
+
   it('edits request vars', () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
@@ -164,6 +213,15 @@ describe('API tab styles', () => {
     expect(css).not.toMatch(/purple|violet|#7747ff|#a78bff|#9333ea/i);
     expect(css).not.toMatch(/(linear|radial|conic)-gradient\(/);
     expect(css).not.toMatch(/box-shadow:\s*0 0 \d+px/);
+  });
+
+  it('slides the tab underline on the Studio Live curve instead of Arc\'s spring', () => {
+    const css = read('./api.css');
+    expect(css).toMatch(/\.req-tabs \[role="tab"\] > span\[aria-hidden="true"\] \{ display: none; \}/);
+    const line = css.slice(css.indexOf('.tab-line {'), css.indexOf('}', css.indexOf('.tab-line {')));
+    expect(line).toContain('var(--t-med) var(--ease)');
+    render(<Harness />);
+    expect(document.querySelector('.req-tabs-wrap .tab-line')).toBeTruthy();
   });
 
   it('bridges every accent and control colour the Arc parts used here read, so the root violet accent never shows', () => {
