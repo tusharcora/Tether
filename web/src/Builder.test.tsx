@@ -21,6 +21,7 @@ beforeEach(() => {
     'POST /api/runs': { id: 'r42' },
     'GET /api/skills': [{ name: 'tdd-workflow', description: 'TDD', source: 'ecc', kind: 'skill' }],
     'GET /api/skills/ecc/tdd-workflow': { name: 'tdd-workflow', prompt: 'PROMPT' },
+    'GET /api/http/tree': { workspace: 'api', activeEnv: null, environments: ['local', 'stage'], root: { path: '', name: '', requests: [{ id: 'health', name: 'Health', method: 'GET', url: '{{base}}/h' }], collections: [{ path: 'runs', name: 'runs', collections: [], requests: [{ id: 'runs/list', name: 'List runs', method: 'GET', url: '{{base}}/api/runs' }] }] } },
   });
 });
 
@@ -118,5 +119,70 @@ describe('Builder', () => {
       const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { title?: string; prompt?: string }[] } | undefined;
       expect(body?.nodes.at(-1)).toMatchObject({ title: 'tdd-workflow', prompt: 'PROMPT' });
     });
+  });
+  it('switches a gate between a command and a saved request', async () => {
+    const { container } = renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
+    fireEvent.pointerDown(container.querySelector('[data-id="gate"] .node-body')!, { pointerId: 1 });
+    fireEvent.change(screen.getByLabelText('Command (exit 0 = pass)'), { target: { value: 'npm run check' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Request' }));
+    expect(await screen.findByText(/Saved request/)).toBeTruthy();
+    expect(screen.queryByLabelText('Command (exit 0 = pass)')).toBeNull();
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { id: string; command?: string; http?: unknown }[] };
+      const g = body.nodes.find((n) => n.id === 'gate')!;
+      expect(g.command).toBeUndefined();
+      expect(g.http).toEqual({ run: 'health' });
+    });
+    fireEvent.change(screen.getByLabelText('Repeat'), { target: { value: '130' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Last send' }));
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { id: string; http?: unknown }[] };
+      expect(body.nodes.find((n) => n.id === 'gate')!.http).toEqual({ run: 'health', repeat: 130, expect: 'last' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Command' }));
+    expect((screen.getByLabelText('Command (exit 0 = pass)') as HTMLInputElement).value).toBe('npm run check');
+    // exactly one of the two is ever kept: back on Command, the request settings are gone
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { id: string; command?: string; http?: unknown }[] };
+      const g = body.nodes.find((n) => n.id === 'gate')!;
+      expect(g.http).toBeUndefined();
+      expect(g.command).toBe('npm run check');
+    });
+  });
+
+  it('keeps a request gate half-filled while there is no saved request to pick', async () => {
+    routeApi({
+      'GET /api/doctor': {},
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [] },
+      'GET /api/http/tree': { workspace: 'api', activeEnv: null, environments: [], root: { path: '', name: '', requests: [], collections: [] } },
+    });
+    const { container } = renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
+    fireEvent.pointerDown(container.querySelector('[data-id="gate"] .node-body')!, { pointerId: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Request' }));
+    expect((await screen.findAllByText('no saved requests yet')).length).toBeGreaterThan(0);
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { id: string; command?: string; http?: unknown }[] };
+      const g = body.nodes.find((n) => n.id === 'gate')!;
+      expect(g.command).toBeUndefined();
+      expect(g.http).toEqual({ run: '' });
+    });
+  });
+
+  it('adds a prefilled request gate handed over from the API tab, once', async () => {
+    const used = vi.fn();
+    renderApp(<Builder onStarted={() => {}} gate={{ run: 'runs/list', env: 'local' }} onGateUsed={used} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    await waitFor(() => {
+      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { id: string; kind: string; http?: unknown; title?: string }[]; edges: { from: string; to: string }[] } | undefined;
+      const g = body?.nodes.at(-1);
+      expect(g).toMatchObject({ kind: 'gate', title: 'list', http: { run: 'runs/list', env: 'local' } });
+    });
+    expect(used).toHaveBeenCalledTimes(1);
   });
 });
