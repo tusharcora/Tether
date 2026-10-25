@@ -7,7 +7,7 @@ import { CodeBlock } from './components/arc/code-block/code-block';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import { Input } from './components/arc/input/input';
 import { JsonViewer } from './components/arc/json-viewer/json-viewer';
-import { Skeleton } from './components/arc/skeleton/skeleton';
+import { Loading } from './components/Loading';
 import { Stepper } from './components/arc/stepper/stepper';
 import { Switch } from './components/arc/switch/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
@@ -330,7 +330,7 @@ export function Runs(props: { selected?: string; onSelect: (id: string) => void 
         ) : props.selected && error ? (
           <div className="alert error" role="alert">{error}</div>
         ) : props.selected ? (
-          <Skeleton lines={4} label="Loading run" />
+          <Loading loading lines={4} label="Loading run" />
         ) : (
           <EmptyState title="No run selected" description="Select a run to follow it live." />
         )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
@@ -173,10 +173,7 @@ export function Canvas(props: CanvasProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onKeyDown={onKeyDown}
-      style={{
-        backgroundPosition: `${view.x}px ${view.y}px`,
-        backgroundSize: `${24 * view.k}px ${24 * view.k}px`,
-      }}
+      style={{ '--grid-x': `${view.x}px`, '--grid-y': `${view.y}px`, '--grid-size': `${24 * view.k}px` } as CSSProperties}
     >
       <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <svg className="edges" width="1" height="1" style={{ overflow: 'visible' }}>

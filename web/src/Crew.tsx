@@ -11,6 +11,7 @@ import { Select } from './components/arc/select/select';
 import { Slider } from './components/arc/slider/slider';
 import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
 import { Textarea } from './components/arc/textarea/textarea';
+import { Loading } from './components/Loading';
 import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
 import { EvolvePanel } from './Evolve';
 import { Face } from './Face';
@@ -235,9 +236,7 @@ export function Crew() {
           <Button variant="secondary" size="sm" onClick={() => void load()}>Retry</Button>
         </div>
       ) : null}
-      {loading ? (
-        <p className="muted">Checking which agents are installed…</p>
-      ) : (
+      <Loading loading={loading} lines={6} label="Checking which agents are installed">
         <>
           <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
             <TabsList aria-label="Bot source">
@@ -421,7 +420,7 @@ export function Crew() {
           </div>
           <p className="muted small">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
         </>
-      )}
+      </Loading>
     </div>
   );
 }

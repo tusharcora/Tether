@@ -30,6 +30,12 @@ beforeEach(() => {
 });
 
 describe('Triggers', () => {
+  it('shows the ascii skeleton while triggers load', () => {
+    routeApi({ 'GET /api/triggers': new Promise(() => {}), 'GET /api/triggers/deliveries': [], 'GET /api/triggers/setup': setup(true), 'GET /api/workspaces': [], 'GET /api/pipelines': [], 'GET /api/bots': { agents: {} } });
+    const { container } = renderApp(<Triggers />);
+    expect(screen.getByRole('status', { name: 'Loading triggers' })).toBeTruthy();
+    expect(container.querySelector('[data-ascii-skeleton]')).toBeTruthy();
+  });
   it('pauses and deletes a trigger', async () => {
     renderApp(<Triggers />);
     fireEvent.click(await screen.findByRole('switch', { name: /Pause acme-full-review/ }));

@@ -7,6 +7,7 @@ import { Input } from './components/arc/input/input';
 import { Select } from './components/arc/select/select';
 import { SortableDataTable, type DataColumn } from './components/arc/sortable-data-table/sortable-data-table';
 import { Switch } from './components/arc/switch/switch';
+import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { NONE, cn, fromNone } from './ui/cn';
@@ -198,9 +199,7 @@ export function Triggers() {
         <Button variant="primary" onClick={() => openForm()}>+ New trigger</Button>
       </div>
 
-      {loading ? (
-        <p className="muted">Loading triggers…</p>
-      ) : (
+      <Loading loading={loading} lines={6} label="Loading triggers">
         <>
           {list.error && !list.data ? (
             <div className="alert error" role="alert">
@@ -369,7 +368,7 @@ export function Triggers() {
             )}
           </section>
         </>
-      )}
+      </Loading>
     </div>
   );
 }

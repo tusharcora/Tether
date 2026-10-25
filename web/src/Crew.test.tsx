@@ -30,6 +30,13 @@ beforeEach(() => {
 });
 
 describe('Crew', () => {
+  it('shows the ascii skeleton while the crew loads', () => {
+    routeApi({ ...routes, 'GET /api/crew': new Promise(() => {}) });
+    const { container } = renderApp(<Crew />);
+    expect(screen.getByRole('status', { name: 'Checking which agents are installed' })).toBeTruthy();
+    expect(container.querySelector('[data-ascii-skeleton]')).toBeTruthy();
+    expect(screen.queryByText('Checking which agents are installed…')).toBeNull();
+  });
   it('saves a link only when changed; the default agent unlinks (as in the Solid UI)', async () => {
     renderApp(<Crew />);
     expect(await screen.findByText('Bolt')).toBeTruthy();
