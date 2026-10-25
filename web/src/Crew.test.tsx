@@ -153,6 +153,18 @@ describe('Crew', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
+  it('asks before a deep link (e.g. Back) replaces a bot with unsaved edits', async () => {
+    twoBots();
+    const { rerender } = renderApp(<Crew bot="go-reviewer" onBot={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Go Reviewer'));
+    rerender(<Crew bot="coder" onBot={() => {}} />);
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt'));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'changed' } });
+    rerender(<Crew bot="go-reviewer" onBot={() => {}} />);
+    expect(await screen.findByText('Discard your changes to Bolt?')).toBeTruthy();
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('changed');
+  });
+
   it('clears the selection when the hash goes back to plain #/crew', async () => {
     const { rerender } = renderApp(<Crew bot="coder" onBot={() => {}} />);
     await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt'));

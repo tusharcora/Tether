@@ -48,7 +48,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
       setRefreshing(false);
     }
   }, [refreshRuns, refreshAttention, refreshFeed]);
-  const refetch = useCallback(() => void Promise.all([refreshAttention(), refreshRuns()]), [refreshAttention, refreshRuns]);
+  const refetch = useCallback(() => Promise.all([refreshAttention(), refreshRuns()]), [refreshAttention, refreshRuns]);
 
   const liveCount = runs.data?.filter((r) => r.live).length ?? 0;
   const needs = attention.data?.items.length ?? 0;
@@ -72,7 +72,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
           onGo={props.onGo}
           onStarted={(id) => {
             notify.ok('Run started', id);
-            refetch();
+            void refetch();
           }}
         />
         <Running poll={runs} refreshing={refreshing} onGo={props.onGo} />

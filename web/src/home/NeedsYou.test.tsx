@@ -45,6 +45,20 @@ describe('Needs you', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it('keeps the row busy until the re-fetch lands, so it cannot be approved twice', async () => {
+    let done!: () => void;
+    const onChanged = vi.fn(() => new Promise<void>((r) => (done = r)));
+    renderApp(<NeedsYou poll={poll({ items })} refreshing={false} onGo={vi.fn()} onChanged={onChanged} />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })));
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true);
+    // another row stays usable while r1 is in flight
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => done());
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(calls('POST', '/api/runs/r1/approve')).toHaveLength(1);
+  });
+
   it('retries a failed run through resume', async () => {
     setup(poll({ items }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));

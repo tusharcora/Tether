@@ -24,21 +24,30 @@ export function linkFor(item: AttentionItem, a: AttentionAction): Route {
   return { tab: 'runs', id: item.runId };
 }
 
-export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refreshing: boolean; onGo: (r: Route) => void; onChanged: () => void }) {
+export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refreshing: boolean; onGo: (r: Route) => void; onChanged: () => Promise<unknown> | void }) {
   const notify = useNotify();
-  const [busy, setBusy] = useState<string>();
+  // ids with an action in flight; an id stays busy until the re-fetch lands, so its row can't be approved twice
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
+  const mark = (id: string, on: boolean) =>
+    setBusy((b) => {
+      const n = new Set(b);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
   const { data, error, refresh } = props.poll;
   const items = data?.items ?? [];
 
   async function post(item: AttentionItem, path: 'approve' | 'resume', body: unknown) {
-    setBusy(item.id);
+    if (busy.has(item.id)) return;
+    mark(item.id, true);
     try {
       await api('POST', `/api/runs/${encodeURIComponent(item.runId)}/${path}`, body);
-      props.onChanged();
+      await props.onChanged();
     } catch (e) {
       notify.fail(e);
     } finally {
-      setBusy(undefined);
+      mark(item.id, false);
     }
   }
   const act = (item: AttentionItem, a: AttentionAction) => {
@@ -75,7 +84,7 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refres
                     meta={it.meta}
                     age={ago(it.ts)}
                     actions={it.actions.map((a) => (
-                      <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy === it.id} onClick={() => act(it, a)}>
+                      <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy.has(it.id)} onClick={() => act(it, a)}>
                         {ACTION_LABEL[a]}
                       </Button>
                     ))}

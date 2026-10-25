@@ -158,14 +158,15 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
       props.onBot?.(undefined);
     });
 
-  // the deep link (#/crew/<bot>) opens that bot once the crew has loaded
+  // the deep link (#/crew/<bot>) opens that bot once the crew has loaded; with unsaved edits (e.g. Back from another bot) it asks first
   useEffect(() => {
     if (!props.bot || loading || props.bot === sel) return;
     const d = defs.find((x) => x.id === props.bot);
-    if (d) {
-      setSel(d.id);
-      open(d);
-    }
+    if (d)
+      guard(() => {
+        setSel(d.id);
+        open(d);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.bot, loading]);
   // Back/Forward to plain #/crew clears the selection (unless there are unsaved edits, or a new bot is open: newBot clears the hash itself)
