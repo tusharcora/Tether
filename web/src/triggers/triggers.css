@@ -1,0 +1,34 @@
+/* Triggers (Studio Live board): trigger rows, a test panel, webhook setup and a delivery log. Tokens only. */
+.tg-page { height: 100%; overflow: auto; }
+.tg-wrap { max-width: 1240px; margin: 0 auto; padding: 0 0 40px; display: flex; flex-direction: column; gap: 20px; }
+.tg-body { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; padding: 0 24px; }
+.tg-main-col { flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.tg-side { flex: 1 1 320px; min-width: 0; }
+.tg-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.tg-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 8px; margin: 0 -8px; border-bottom: 1px solid var(--line); border-radius: 8px;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.tg-row:hover { background: var(--s2); }
+.tg-row.paused .tg-main, .tg-row.paused .tg-last { opacity: .6; }
+.tg-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--edge); }
+.tg-dot[data-status='active'] { background: var(--ok); }
+.tg-dot[data-status='error'] { background: var(--bad); }
+.tg-dot[data-status='paused'] { background: transparent; box-shadow: inset 0 0 0 2px var(--edge); }
+.tg-main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tg-id { font-family: var(--font-code); font-weight: 500; color: var(--ink); }
+.tg-status { font-size: 12px; color: var(--mut); }
+.tg-chip { font-family: var(--font-code); font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 6px; background: var(--s2); color: var(--mut); margin-left: 6px; }
+.tg-line .tg-chip { margin-left: 0; }
+.tg-target { font-size: 13px; color: var(--mut); overflow-wrap: anywhere; }
+.tg-meta { font-size: 12px; color: var(--mut); overflow-wrap: anywhere; }
+.tg-last { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+.tg-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tg-form { display: flex; flex-direction: column; gap: 12px; }
+.tg-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+@media (max-width: 899px) {
+  .tg-body { padding: 0 16px; }
+  .tg-pair { grid-template-columns: 1fr; }
+}
