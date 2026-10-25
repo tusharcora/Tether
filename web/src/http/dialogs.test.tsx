@@ -149,15 +149,40 @@ describe('dialog errors are shown, never swallowed', () => {
     expect(screen.queryByText('No secrets yet.')).toBeNull();
   });
 
-  it('secrets: a failed save keeps nothing on screen but the error', async () => {
-    renderApp(<SecretsDialog open onOpenChange={() => {}} />);
+  it('secrets: a typed value never reaches the DOM — while typing, after a failed save, or after close and reopen', async () => {
+    const { rerender } = renderApp(<SecretsDialog open onOpenChange={() => {}} />);
     await screen.findByText('aorch_token');
-    routeApi({ 'GET /api/http/secrets': { keys }, 'PUT /api/http/secrets/k2': new Error('invalid secret key') });
+    routeApi({ 'GET /api/http/secrets': () => ({ keys }), 'PUT /api/http/secrets/k2': new Error('invalid secret key'), 'PUT /api/http/secrets/aorch_token': new Error('write failed') });
     fireEvent.change(screen.getByLabelText('Key'), { target: { value: 'k2' } });
     fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'HIDDEN-9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Replace aorch_token' }));
+    fireEvent.change(screen.getByLabelText('New value for aorch_token'), { target: { value: 'ROTATED-7' } });
+    expect(document.body.innerHTML).not.toContain('HIDDEN-9');
+    expect(document.body.innerHTML).not.toContain('ROTATED-7');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save secret' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save new value' })));
     expect(await screen.findByText('invalid secret key')).toBeTruthy();
+    expect(await screen.findByText('write failed')).toBeTruthy();
     expect(screen.queryByText('k2')).toBeNull();
+    expect(document.body.innerHTML).not.toContain('HIDDEN-9');
+    expect(document.body.innerHTML).not.toContain('ROTATED-7');
+    rerender(<SecretsDialog open={false} onOpenChange={() => {}} />);
+    rerender(<SecretsDialog open onOpenChange={() => {}} />);
+    await screen.findByText('aorch_token');
+    expect((screen.getByLabelText('Value') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByLabelText('New value for aorch_token')).toBeNull();
+    expect(document.body.innerHTML).not.toContain('HIDDEN-9');
+    expect(document.body.innerHTML).not.toContain('ROTATED-7');
+  });
+
+  it('secrets: Cancel on the replace form never saves', async () => {
+    renderApp(<SecretsDialog open onOpenChange={() => {}} />);
+    await screen.findByText('aorch_token');
+    fireEvent.click(screen.getByRole('button', { name: 'Replace aorch_token' }));
+    fireEvent.change(screen.getByLabelText('New value for aorch_token'), { target: { value: 'nope' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' })));
+    expect(calls('PUT', '/api/http/secrets/aorch_token')).toHaveLength(0);
+    expect(screen.queryByLabelText('New value for aorch_token')).toBeNull();
   });
 
   it('env: failed loads of the environment or of the secret keys are shown', async () => {

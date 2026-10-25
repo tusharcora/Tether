@@ -1,5 +1,5 @@
 import './api.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/arc/button/button';
 import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
 import { Input } from '../components/arc/input/input';
@@ -10,7 +10,9 @@ import { httpApi } from './client';
 
 /**
  * Secret keys for this workspace. Values go in and never come back: the server only ever returns key names, inputs are
- * password fields that clear after saving, and nothing here fetches, shows or pre-fills a value.
+ * password fields that clear after saving, and nothing here fetches, shows or pre-fills a value. The secret inputs are
+ * uncontrolled: a controlled input makes React mirror the value into the DOM `value` attribute, so the typed secret is
+ * read from the element on submit and never kept in React state (only whether the field has text).
  */
 export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o: boolean) => void }) {
   const notify = useNotify();
@@ -18,12 +20,28 @@ export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o:
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState<string>();
   const [key, setKey] = useState('');
-  const [value, setValue] = useState('');
+  const valueRef = useRef<HTMLInputElement>(null);
+  const nextRef = useRef<HTMLInputElement>(null);
+  const [hasValue, setHasValue] = useState(false);
   const [replacing, setReplacing] = useState<string>();
-  const [next, setNext] = useState('');
+  const [hasNext, setHasNext] = useState(false);
   const [busy, setBusy] = useState(false);
+  const clear = (el: HTMLInputElement | null) => {
+    if (el) el.value = '';
+  };
+  const stopReplacing = () => {
+    clear(nextRef.current);
+    setHasNext(false);
+    setReplacing(undefined);
+  };
   useEffect(() => {
-    if (!p.open) return;
+    if (!p.open) {
+      // The inputs unmount with the content; reset what said they had text so a reopened dialog starts empty.
+      setHasValue(false);
+      setHasNext(false);
+      setReplacing(undefined);
+      return;
+    }
     let live = true;
     setLoading(true);
     setLoadErr(undefined);
@@ -35,7 +53,9 @@ export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o:
       live = false;
     };
   }, [p.open, p.ws]);
-  const save = async (k: string, v: string, done: () => void) => {
+  const save = async (k: string, el: HTMLInputElement | null, done: () => void) => {
+    const v = el?.value ?? '';
+    if (!k || !v) return;
     setBusy(true);
     try {
       setKeys((await httpApi.setSecret(p.ws, k, v)).keys);
@@ -72,17 +92,17 @@ export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o:
                       <span className="mono">{k}</span>
                       <span className="spacer" />
                       {replacing === k ? (
-                        <form className="row" onSubmit={(e) => (e.preventDefault(), void save(k, next, () => (setNext(''), setReplacing(undefined))))}>
-                          <input className="kv-input mono" type="password" autoComplete="off" aria-label={`New value for ${k}`} value={next} onChange={(e) => setNext(e.target.value)} />
-                          <Button type="submit" size="sm" variant="primary" disabled={!next || busy}>
+                        <form className="row" onSubmit={(e) => (e.preventDefault(), void save(k, nextRef.current, stopReplacing))}>
+                          <input ref={nextRef} className="kv-input mono" type="password" autoComplete="off" aria-label={`New value for ${k}`} onChange={(e) => setHasNext(!!e.target.value)} />
+                          <Button type="submit" size="sm" variant="primary" disabled={!hasNext || busy}>
                             Save new value
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => (setNext(''), setReplacing(undefined))}>
+                          <Button type="button" size="sm" variant="ghost" onClick={stopReplacing}>
                             Cancel
                           </Button>
                         </form>
                       ) : (
-                        <Button size="sm" variant="ghost" aria-label={`Replace ${k}`} onClick={() => (setReplacing(k), setNext(''))}>
+                        <Button size="sm" variant="ghost" aria-label={`Replace ${k}`} onClick={() => (clear(nextRef.current), setHasNext(false), setReplacing(k))}>
                           Replace
                         </Button>
                       )}
@@ -93,10 +113,10 @@ export function SecretsDialog(p: { ws?: string; open: boolean; onOpenChange: (o:
                 </ul>
               </Loading>
             )}
-            <form className="secret-add" onSubmit={(e) => (e.preventDefault(), void save(key.trim(), value, () => (setKey(''), setValue(''))))}>
+            <form className="secret-add" onSubmit={(e) => (e.preventDefault(), void save(key.trim(), valueRef.current, () => (setKey(''), clear(valueRef.current), setHasValue(false))))}>
               <Input label="Key" placeholder="aorch_token" value={key} spellCheck={false} autoComplete="off" onChange={(e) => setKey(e.target.value)} />
-              <Input label="Value" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
-              <Button type="submit" variant="primary" disabled={!key.trim() || !value || busy}>
+              <Input ref={valueRef} label="Value" type="password" autoComplete="off" onChange={(e) => setHasValue(!!e.target.value)} />
+              <Button type="submit" variant="primary" disabled={!key.trim() || !hasValue || busy}>
                 Save secret
               </Button>
             </form>
