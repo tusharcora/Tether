@@ -1,3 +1,13 @@
 .home { min-height: 100%; padding-bottom: 32px; }
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
 @media (max-width: 899px) { .home-grid { padding: 0 12px; } }
+.start-form { display: flex; flex-direction: column; gap: 12px; }
+.start-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.start-chip { padding: 2px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
+.start-chip:hover { color: var(--ink); background: var(--s2); }
+.start-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.start-row > :first-child { flex: 1 1 200px; min-width: 0; }
+.start-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; }
+.start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
+.start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }

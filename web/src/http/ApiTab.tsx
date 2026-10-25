@@ -17,16 +17,9 @@ import { SecretsDialog } from './SecretsDialog';
 import { SendToAgent } from './SendToAgent';
 import { Tree } from './Tree';
 import { WorkspaceDialog } from './WorkspaceDialog';
+import { storedWorkspace as readWs, WS_KEY } from '../home/workspaces';
 import './api.css';
 
-const WS_KEY = 'aorch.api.ws';
-const readWs = () => {
-  try {
-    return localStorage.getItem(WS_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-};
 /** A stored (redacted) exchange, shaped like a send's output so the response view and the agent panel can show it. */
 const fromHistory = (h: HistoryRow): SendOutput => ({ historyId: h.id, request: h.data.request, result: h.data.response, checks: h.data.checks ?? [] });
 const countRequests = (t?: HttpTree) => {

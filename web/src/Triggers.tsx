@@ -8,6 +8,7 @@ import { Select } from './components/arc/select/select';
 import { SortableDataTable, type DataColumn } from './components/arc/sortable-data-table/sortable-data-table';
 import { Switch } from './components/arc/switch/switch';
 import { Loading } from './components/Loading';
+import type { WorkspaceRow } from './home/workspaces';
 import { usePoll } from './hooks';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { NONE, cn, fromNone } from './ui/cn';
@@ -19,7 +20,7 @@ interface Trigger {
   id: string; repo: string; workflow: string; workspace?: string; agent?: string; model?: string; events?: string[]; labels?: string[];
   comment?: boolean; drafts?: boolean; forks?: boolean; enabled?: boolean; status: Status; last: Delivery | null; warnings?: string[];
 }
-interface Workspace { id: string; name: string; path: string; isDefault: boolean; exists: boolean; repos: string[] }
+type Workspace = WorkspaceRow;
 interface Setup { payloadPath: string; hasSecret: boolean; secretHint: string | null; secretSource: 'env' | 'file' | null; eventsToSelect: string[]; contentType: string }
 interface Form { id: string; repo: string; workflow: string; workspace: string; agent: string; model: string; events: string; labels: string; comment: boolean; drafts: boolean; forks: boolean }
 interface TestResult { matches: boolean; why: string; fired: boolean; runId?: string; pr: { repo: string; number: number; title: string; url: string }; note?: string }
