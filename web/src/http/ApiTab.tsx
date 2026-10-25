@@ -73,6 +73,9 @@ export function ApiTab(props: ApiTabProps) {
   const histSeq = useRef(0);
   const envSeq = useRef(0);
   const sendSeq = useRef(0);
+  /** The workspace on screen now: a history load for any other one is dropped. */
+  const wsNow = useRef(ws);
+  wsNow.current = ws;
 
   const onDirty = useRef(props.onDirtyChange);
   onDirty.current = props.onDirtyChange;
@@ -89,10 +92,12 @@ export function ApiTab(props: ApiTabProps) {
   }, [dirty]);
 
   const loadHistory = useCallback(() => {
+    if (ws !== wsNow.current) return Promise.resolve(); // a closure from an earlier workspace: never cancel the current load
     const t = ++histSeq.current;
+    const live = () => t === histSeq.current && ws === wsNow.current;
     return httpApi.history(ws, undefined, 20).then(
-      (h) => t === histSeq.current && (setHistory(h), setHistoryError(undefined)),
-      (e: Error) => t === histSeq.current && setHistoryError(e.message),
+      (h) => live() && (setHistory(h), setHistoryError(undefined)),
+      (e: Error) => live() && setHistoryError(e.message),
     );
   }, [ws]);
   const refresh = useCallback(async () => {
@@ -199,7 +204,8 @@ export function ApiTab(props: ApiTabProps) {
       setSendError((e as Error).message);
     } finally {
       if (isLive()) setSending(false);
-      void loadHistory();
+      // a send for a view (and workspace) no longer on screen must not reload, and so take over, the new one's history
+      if (v === view.current) void loadHistory();
     }
   };
   const setEnv = async (name: string | null) => {

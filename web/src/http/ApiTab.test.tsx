@@ -25,6 +25,7 @@ const hist = (ms: number, status: number, id: number) => ({ id, ts: id, workspac
 let routes: Record<string, unknown>;
 beforeEach(() => {
   vi.mocked(api).mockReset();
+  localStorage.clear();
   routes = {
     'GET /api/workspaces': [{ id: 'api', name: 'API', path: '/code/api', isDefault: true, exists: true, repos: [] }],
     'GET /api/http/tree': tree,
@@ -207,5 +208,28 @@ describe('ApiTab', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Save/ })));
     expect(unload()).toBe(false);
     expect(dirty).toHaveBeenLastCalledWith(false);
+  });
+
+  it('a send from the old workspace that lands after a switch leaves the new workspace\'s history alone', async () => {
+    let finish!: (v: unknown) => void;
+    routeApi({
+      ...routes,
+      'GET /api/workspaces': [{ id: 'api', name: 'API', path: '/code/api', isDefault: true, exists: true, repos: [] }, { id: 'b', name: 'B', path: '/code/b', isDefault: false, exists: true, repos: [] }],
+      'GET /api/http/history?ws=b&limit=20': [hist(40, 200, 9)],
+      'POST /api/http/send': () => new Promise((r) => (finish = r)),
+    });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const list = await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(list));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Workspace' }));
+    await act(async () => fireEvent.click(await screen.findByRole('option', { name: 'B' })));
+    await waitFor(() => expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(1));
+    const oldHistory = () => calls('GET', '/api/http/history?limit=20').length;
+    const before = oldHistory();
+    await act(async () => finish(structuredClone(out)));
+    expect(oldHistory()).toBe(before);
+    expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'GET 200 · 40 ms' })).toBeTruthy();
   });
 });
