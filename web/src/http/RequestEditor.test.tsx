@@ -218,15 +218,20 @@ describe('API tab styles', () => {
   it('slides the tab underline on the Studio Live curve instead of Arc\'s spring', () => {
     const css = read('./api.css');
     expect(css).toMatch(/\.req-tabs \[role="tab"\] > span\[aria-hidden="true"\] \{ display: none; \}/);
-    const line = css.slice(css.indexOf('.tab-line {'), css.indexOf('}', css.indexOf('.tab-line {')));
+    const line = css.slice(css.indexOf('.tab-line[data-slides] {'), css.indexOf('}', css.indexOf('.tab-line[data-slides] {')));
     expect(line).toContain('var(--t-med) var(--ease)');
     render(<Harness />);
-    expect(document.querySelector('.req-tabs-wrap .tab-line')).toBeTruthy();
+    const el = document.querySelector('.req-tabs-wrap .tab-line')!;
+    // the first placement (the editor remounts per request) does not slide in from the corner; a tab switch does
+    expect(el.hasAttribute('data-slides')).toBe(false);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Headers/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Headers/ }));
+    expect(el.hasAttribute('data-slides')).toBe(true);
   });
 
   it('bridges every accent and control colour the Arc parts used here read, so the root violet accent never shows', () => {
     const studio = read('../studio.css');
-    for (const part of ['button/button', 'segmented-control/segmented-control', 'tabs/tabs', 'textarea/textarea']) {
+    for (const part of ['button/button', 'segmented-control/segmented-control', 'tabs/tabs', 'textarea/textarea', 'search-field/search-field', 'select/select', 'empty-state/empty-state', 'dialog/dialog']) {
       const used = new Set([...read(`../components/arc/${part}.module.css`).matchAll(/var\((--(?:accent|control-(?!height))[a-z-]*)/g)].map((m) => m[1]!));
       for (const v of used) expect(studio, `${part} reads ${v}`).toContain(`${v}: var(`);
     }

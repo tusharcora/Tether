@@ -10,6 +10,7 @@ import { Tooltip } from './components/arc/tooltip/tooltip';
 import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
+import { ApiTab } from './http/ApiTab';
 import { TAB_LABEL, TABS, useHashRoute, usePoll, type Tab } from './hooks';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
@@ -23,6 +24,8 @@ export function App() {
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
   const [theme, setTheme] = useTheme();
   const [palette, setPalette] = useState(false);
+  /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
+  const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
   const health = usePoll<{ ok: boolean; vault?: string }>('/api/health', 5000);
 
   useEffect(() => void loadCrewDefs(), []);
@@ -84,8 +87,9 @@ export function App() {
           </div>
         </header>
         <main>
-          {route.tab === 'builder' ? <Builder pipeline={route.id} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
+          {route.tab === 'builder' ? <Builder pipeline={route.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
           {route.tab === 'runs' ? <Runs selected={route.id} onSelect={(id) => go({ tab: 'runs', id })} /> : null}
+          {route.tab === 'api' ? <ApiTab onStarted={(id) => go({ tab: 'runs', id })} onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))} /> : null}
           {route.tab === 'graph' ? <GraphView /> : null}
           {route.tab === 'crew' ? <Crew /> : null}
           {route.tab === 'triggers' ? <Triggers /> : null}

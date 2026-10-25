@@ -52,9 +52,9 @@ export function usePoll<T>(path: string | null, ms: number): Poll<T> {
   return { data, error, refresh: tick };
 }
 
-export type Tab = 'builder' | 'runs' | 'graph' | 'crew' | 'triggers';
-export const TABS: Tab[] = ['builder', 'runs', 'graph', 'crew', 'triggers'];
-export const TAB_LABEL: Record<Tab, string> = { builder: 'Builder', runs: 'Runs', graph: 'Graph', crew: 'Crew', triggers: 'Triggers' };
+export type Tab = 'builder' | 'runs' | 'api' | 'graph' | 'crew' | 'triggers';
+export const TABS: Tab[] = ['builder', 'runs', 'api', 'graph', 'crew', 'triggers'];
+export const TAB_LABEL: Record<Tab, string> = { builder: 'Builder', runs: 'Runs', api: 'API', graph: 'Graph', crew: 'Crew', triggers: 'Triggers' };
 
 export interface Route {
   tab: Tab;

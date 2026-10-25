@@ -125,11 +125,15 @@ function duplicateNames(rows: KV[]): Set<string> {
   return dupes;
 }
 
-/** A sliding underline under the active tab, on the Studio Live curve (Arc's own highlight glides on a spring). */
+/** A sliding underline under the active tab, on the Studio Live curve (Arc's own highlight glides on a spring).
+ * It slides only once the person switches tabs: the editor remounts per request, and the first placement is not a move. */
 function useTabLine(tab: string) {
   const root = useRef<HTMLDivElement>(null);
   const [line, setLine] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [slides, setSlides] = useState(false);
+  const firstTab = useRef(tab);
   useLayoutEffect(() => {
+    if (tab !== firstTab.current) setSlides(true);
     const place = () => {
       const r = root.current;
       const t = r?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
@@ -142,7 +146,7 @@ function useTabLine(tab: string) {
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
   }, [tab]);
-  return { root, line };
+  return { root, line, slides };
 }
 
 export interface RequestEditorProps {
@@ -225,7 +229,7 @@ export function RequestEditor(p: RequestEditorProps) {
         <UrlBar url={file.url} info={info} onChange={(url) => set({ url })} />
       </div>
       <div className="req-tabs-wrap" ref={tabLine.root}>
-      <span className="tab-line" aria-hidden="true" style={tabLine.line ? { transform: `translate(${tabLine.line.left}px, ${tabLine.line.top}px)`, width: tabLine.line.width } : { opacity: 0 }} />
+      <span className="tab-line" aria-hidden="true" data-slides={tabLine.slides ? '' : undefined} style={tabLine.line ? { transform: `translate(${tabLine.line.left}px, ${tabLine.line.top}px)`, width: tabLine.line.width } : { opacity: 0 }} />
       <Tabs value={tab} onValueChange={setTab} className="req-tabs">
         <TabsList aria-label="Request parts">
           <TabsTrigger value="params">Params{count(file.query.length)}</TabsTrigger>
