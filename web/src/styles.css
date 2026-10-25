@@ -120,20 +120,6 @@ main { flex: 1; min-height: 0; }
 .assign-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 @media (max-width: 640px) { .team-bar, .qpanel, .dialogue { margin-left: 8px; margin-right: 8px; } }
 
-/* Evolve (Crew tab) */
-.evolve-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 14px 0; display: flex; flex-direction: column; gap: 10px; }
-.evolve-panel h3, .evolve-panel h4 { margin: 0; }
-/* inside a Drawer the drawer is the frame */
-.bot-editor.in-drawer, .evolve-panel.in-drawer { border: 0; margin: 0; padding: 0; background: none; border-radius: 0; }
-.evolve-panel .proposal { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.evolve-panel .edit { padding-left: 8px; }
-.evolve-panel pre.diff { margin: 4px 0; white-space: pre-wrap; word-break: break-word; }
-.evolve-panel pre.diff .del { color: var(--err); }
-.evolve-panel pre.diff .add { color: var(--done); }
-.evolve-panel .versions li { margin: 3px 0; }
-.chip.probe-dropped { color: var(--err); }
-.chip.probe-unprobed { color: var(--wait); }
-.chip.probe-kept { color: var(--done); }
 .face { display: inline-block; line-height: 0; }
 span.face > svg { width: 100%; height: 100%; }
 /* animate="hover" wakes the face anywhere over its tile, not only over the drawn blob (mirrors blobatar/motion.css .mo-root:hover) */
