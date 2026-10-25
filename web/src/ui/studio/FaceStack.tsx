@@ -6,9 +6,12 @@ import './parts.css';
 export function FaceStack(props: { bots: string[]; working?: string; size?: number; max?: number }) {
   const max = props.max ?? 4;
   const size = props.size ?? 24;
-  if (!props.bots.length) return null;
-  const shown = props.bots.slice(0, max);
-  const more = props.bots.length - shown.length;
+  const bots = [...new Set(props.bots)];
+  if (!bots.length) return null;
+  const shown = bots.slice(0, max);
+  // the working bot always shows: it takes the last visible place when it would otherwise fold into the count
+  if (shown.length && props.working && bots.includes(props.working) && !shown.includes(props.working)) shown[shown.length - 1] = props.working;
+  const more = bots.length - shown.length;
   return (
     <span className="sl-facestack" style={{ '--face': `${size}px` } as CSSProperties}>
       {shown.map((b) =>

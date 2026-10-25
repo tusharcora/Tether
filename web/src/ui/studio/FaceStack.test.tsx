@@ -16,6 +16,17 @@ describe('FaceStack', () => {
     expect(screen.getByText('+2')).toBeTruthy();
     expect(screen.getByLabelText('and 2 more')).toBeTruthy();
   });
+  it('keeps the working bot visible when it sits past the maximum', () => {
+    const { container } = render(<FaceStack bots={['planner', 'architect', 'reviewer', 'coder']} working="coder" max={2} />);
+    expect(screen.getByRole('img', { name: 'Bolt' }).getAttribute('data-mood')).toBe('working');
+    expect(screen.getByRole('img', { name: 'Scout' })).toBeTruthy();
+    expect(container.querySelectorAll('.face')).toHaveLength(2);
+    expect(screen.getByLabelText('and 2 more')).toBeTruthy();
+  });
+  it('draws a bot listed twice once', () => {
+    const { container } = render(<FaceStack bots={['coder', 'coder', 'planner']} />);
+    expect(container.querySelectorAll('.face')).toHaveLength(2);
+  });
   it('draws nothing for no bots', () => {
     const { container } = render(<FaceStack bots={[]} />);
     expect(container.firstChild).toBeNull();

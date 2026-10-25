@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { norm } from './test/css';
 import { applyTheme } from './theme';
 
 // Files are read from disk: vitest blanks CSS imports (?raw included), and Vite rewrites a literal
@@ -23,8 +24,6 @@ const DARK: Record<string, string> = {
   '--acc': '#2563eb', '--accInk': '#93c5fd', '--accBg': 'rgba(59, 130, 246, .15)',
   '--ok': '#34d399', '--okBg': 'rgba(52, 211, 153, .12)', '--warn': '#fbbf24', '--warnBg': 'rgba(251, 191, 36, .12)', '--bad': '#f87171', '--badBg': 'rgba(248, 113, 113, .12)',
 };
-// jsdom's CSSOM serialises values compactly (no space after commas, double quotes), so both sides are normalised.
-const norm = (s: string) => s.trim().replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').replace(/"/g, "'");
 
 /** A root custom property with var() chains resolved (jsdom cascades by specificity but leaves var() as written). */
 function token(name: string, depth = 0): string {
