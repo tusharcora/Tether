@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { VaultGraph } from '../api';
 import { cssRule, cssText } from '../test/css';
@@ -112,6 +112,66 @@ describe('GraphBoard', () => {
     fireEvent.click(coder);
     expect(p.onSelect).not.toHaveBeenCalled();
     expect(coder.getAttribute('transform')).not.toBe(before);
+  });
+
+  it('selects on a press and release under the drag threshold, with real pointer events and no click', async () => {
+    const p = props();
+    const { container } = render(<GraphBoard {...p} />);
+    const coder = await screen.findByRole('button', { name: /^Coder,/ });
+    const svg = container.querySelector('.gb-svg')!;
+    fireEvent.pointerDown(coder, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 12, clientY: 12 });
+    fireEvent.pointerUp(coder, { pointerId: 1, clientX: 12, clientY: 12 });
+    expect(p.onSelect).toHaveBeenCalledTimes(1);
+    expect(p.onSelect).toHaveBeenLastCalledWith('roles/coder.md');
+    // the click a browser may still send afterwards does not select twice
+    fireEvent.click(coder);
+    expect(p.onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a dragged note when the pointer is cancelled, so the layout loop stops', async () => {
+    const q: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => q.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const flush = (max = 3000) => {
+      let n = 0;
+      while (q.length && n++ < max) q.shift()!(performance.now() + 10_000);
+      return q.length;
+    };
+    try {
+      const p = props({ reduced: false });
+      const { container } = render(<GraphBoard {...p} />);
+      act(() => void flush());
+      const coder = screen.getByRole('button', { name: /^Coder,/ });
+      const svg = container.querySelector('.gb-svg')!;
+      fireEvent.pointerDown(coder, { pointerId: 1, clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(svg, { pointerId: 1, clientX: 80, clientY: 60 });
+      // a second finger does not take the drag over
+      fireEvent.pointerDown(svg, { pointerId: 2, clientX: 200, clientY: 200 });
+      fireEvent.pointerUp(svg, { pointerId: 2, clientX: 200, clientY: 200 });
+      act(() => void flush(50));
+      expect(q.length).toBe(1);
+      fireEvent.pointerCancel(svg, { pointerId: 1 });
+      let left = -1;
+      act(() => void (left = flush()));
+      expect(left).toBe(0);
+      expect(p.onSelect).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('ends a drag when pointer capture is lost', async () => {
+    const p = props();
+    const { container } = render(<GraphBoard {...p} />);
+    const coder = await screen.findByRole('button', { name: /^Coder,/ });
+    const svg = container.querySelector('.gb-svg')!;
+    fireEvent.pointerDown(coder, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 80, clientY: 60 });
+    fireEvent.lostPointerCapture(svg, { pointerId: 1 });
+    const at = coder.getAttribute('transform');
+    fireEvent.pointerMove(svg, { pointerId: 1, clientX: 200, clientY: 160 });
+    expect(coder.getAttribute('transform')).toBe(at);
   });
 
   it('says so when every type is hidden', async () => {

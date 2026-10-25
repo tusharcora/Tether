@@ -53,6 +53,8 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
   const near = useMemo(() => neighbourhood(adj, focus && ids.has(focus) ? focus : undefined, depth), [adj, focus, ids, depth]);
   const local = useMemo(() => matchLocal(g?.nodes ?? [], q), [g, q]);
   const hits = useMemo(() => new Set([...local, ...[...serverHits].filter((h) => ids.has(h))]), [local, serverHits, ids]);
+  /** While searching, the All notes list shows only the matches (by title, as the list sorts). */
+  const matched = useMemo(() => (q.trim() ? (g?.nodes ?? []).filter((n) => hits.has(n.id)).sort((a, b) => a.title.localeCompare(b.title)) : undefined), [g, q, hits]);
   const fresh = useMemo(() => new Set([...activity.fresh].filter((p) => ids.has(p))), [activity.fresh, ids]);
   const counts = useMemo(() => {
     const c: Partial<Record<GraphType, number>> = {};
@@ -143,12 +145,13 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
 
   // a run wrote a note this graph does not have yet: look again once the server's scan cache has expired
   const latest = activity.latest;
+  // (every fresh path counts, not only the newest: one poll can bring several writes)
+  const unknown = g ? [...activity.fresh].filter((path) => !ids.has(path)).sort().join('\n') : '';
   useEffect(() => {
-    if (!g || !latest || ids.has(latest.path)) return;
+    if (!unknown) return;
     const h = setTimeout(() => void load(), VAULT_SCAN_MS);
     return () => clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latest]);
+  }, [unknown, load]);
 
   const links: ReaderLink[] =
     g && sel
@@ -172,8 +175,8 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
                 onValueChange={setQ}
                 placeholder="Titles, tags and text"
                 onKeyDown={(e) => {
-                  const first = [...hits][0];
-                  if (e.key === 'Enter' && first) board.current?.focus(first);
+                  const first = matched?.[0];
+                  if (e.key === 'Enter' && first) go(first.id);
                 }}
               />
               {q.trim() ? (
@@ -260,7 +263,7 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
                 onHover={setHover}
                 onRetry={() => sel && void open(sel)}
               />
-              <NoteList nodes={g.nodes} selected={sel} hiddenTypes={hidden} onGo={go} />
+              <NoteList nodes={matched ?? g.nodes} selected={sel} hiddenTypes={hidden} onGo={go} />
             </aside>
           </div>
         ) : null}

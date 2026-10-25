@@ -134,6 +134,44 @@ describe('Graph', () => {
     expect(screen.getByText(/ship recorded New run/)).toBeTruthy();
   });
 
+  it('selects a note pressed on the board with real pointer events, and hands its path to the hash', async () => {
+    const onNote = vi.fn();
+    const { container } = renderApp(<GraphView onNote={onNote} />);
+    const r1 = await screen.findByRole('button', { name: /^Run r1, run/ });
+    fireEvent.pointerDown(r1, { pointerId: 1, clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(r1, { pointerId: 1, clientX: 41, clientY: 41 });
+    expect(onNote).toHaveBeenLastCalledWith('runs/r1.md');
+    expect(await screen.findByText('body of Run r1')).toBeTruthy();
+    expect(container.querySelector('[data-gn="runs/r1.md"]')!.classList.contains('sel')).toBe(true);
+  });
+
+  it('narrows the All notes list to the search matches and opens the first on Enter', async () => {
+    renderApp(<GraphView />);
+    await screen.findByRole('button', { name: /^Run r1,/ });
+    const search = screen.getByLabelText('Search the vault');
+    fireEvent.change(search, { target: { value: 'e' } });
+    const list = screen.getByRole('navigation', { name: 'All notes' });
+    expect(within(list).getAllByRole('button').map((b) => b.textContent)).toEqual(['Coder', 'Loose note']);
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByText('body of Coder')).toBeTruthy();
+  });
+
+  it('reloads when any note in a poll is new, not only the newest', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let polls = 0;
+    const known = { id: 'r9:5', ts: Date.now(), runId: 'r9', run: 'ship', path: 'roles/coder.md' };
+    const unknown = { id: 'r9:4', ts: Date.now(), runId: 'r9', run: 'ship', path: 'Runs/new.md' };
+    routeApi({
+      ...routes,
+      'GET /api/vault/activity': () => (polls++ === 1 ? { items: [known, unknown], cursor: `${known.ts}:r9:5` } : { items: [], cursor: polls > 1 ? `${known.ts}:r9:5` : null }),
+    });
+    renderApp(<GraphView />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(VAULT_POLL_MS));
+    await act(() => vi.advanceTimersByTimeAsync(VAULT_SCAN_MS));
+    expect(calls('GET', '/api/vault/graph')).toHaveLength(2);
+  });
+
   it('shows a load failure inline and retries', async () => {
     let down = true;
     routeApi({ ...routes, 'GET /api/vault/graph': () => (down ? new Error('vault gone') : graph) });

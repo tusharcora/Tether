@@ -43,7 +43,9 @@ const FALLBACK = { w: 800, h: 560 };
 const at = (p: { x: number; y: number }) => `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`;
 const short = (t: string) => (t.length > 28 ? `${t.slice(0, 27)}…` : t);
 
-type Drag = { kind: 'node'; id: string; moved: boolean; sx: number; sy: number } | { kind: 'pan'; moved: boolean; sx: number; sy: number; vx: number; vy: number };
+/** A press moves less than this (CSS px) and still counts as a click. */
+const TAP_PX = 4;
+type Drag = { pointerId: number; moved: boolean; sx: number; sy: number } & ({ kind: 'node'; id: string } | { kind: 'pan'; vx: number; vy: number });
 
 export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function GraphBoard(p, ref) {
   const svg = useRef<SVGSVGElement>(null);
@@ -54,8 +56,8 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
   viewRef.current = view;
   const glide = useRef<number | null>(null);
   const drag = useRef<Drag | undefined>(undefined);
-  /** The last pointer gesture on a note moved it: the click that follows is not a selection. */
-  const dragged = useRef(false);
+  /** The last pointer gesture on a note already acted (moved it or selected it): the click that follows is consumed. */
+  const consumed = useRef(false);
   const fitted = useRef(false);
   /** The note under the pointer: its links run flowing dashes until the pointer leaves (interaction feedback, not a resting loop). */
   const [hovered, setHovered] = useState<string>();
@@ -149,21 +151,28 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
     const r = svg.current!.getBoundingClientRect();
     return { sx: e.clientX - r.left, sy: e.clientY - r.top };
   };
+  // A note press does not capture the pointer until it moves past TAP_PX: a captured pointer sends the click to the
+  // svg instead of the note. The press-and-release itself selects (onUp), so selection never depends on the click.
   const onNodeDown = (e: ReactPointerEvent, id: string) => {
     e.stopPropagation();
-    svg.current?.setPointerCapture(e.pointerId);
-    drag.current = { kind: 'node', id, moved: false, ...local(e) };
+    if (drag.current) return; // a second finger never replaces a drag in progress
+    consumed.current = false;
+    drag.current = { kind: 'node', id, pointerId: e.pointerId, moved: false, ...local(e) };
   };
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (drag.current) return;
     svg.current?.setPointerCapture(e.pointerId);
     stopGlide();
-    drag.current = { kind: 'pan', moved: false, ...local(e), vx: viewRef.current.x, vy: viewRef.current.y };
+    drag.current = { kind: 'pan', pointerId: e.pointerId, moved: false, ...local(e), vx: viewRef.current.x, vy: viewRef.current.y };
   };
   const onMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d || e.pointerId !== d.pointerId) return;
     const { sx, sy } = local(e);
-    if (Math.abs(sx - d.sx) + Math.abs(sy - d.sy) > 3) d.moved = true;
+    if (!d.moved && Math.hypot(sx - d.sx, sy - d.sy) > TAP_PX) {
+      d.moved = true;
+      if (d.kind === 'node') svg.current?.setPointerCapture(e.pointerId);
+    }
     if (!d.moved) return;
     if (d.kind === 'pan') setView((v) => ({ ...v, x: d.vx + sx - d.sx, y: d.vy + sy - d.sy }));
     else {
@@ -171,15 +180,17 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
       layout.drag(d.id, w.x, w.y);
     }
   };
-  const onUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+  /** Pointer up ends a gesture; a cancel or a lost capture ends it too, but never as a click. */
+  const end = (e: ReactPointerEvent<SVGSVGElement>, cancelled: boolean) => {
     const d = drag.current;
+    if (!d || e.pointerId !== d.pointerId) return;
     drag.current = undefined;
     if (svg.current?.hasPointerCapture(e.pointerId)) svg.current.releasePointerCapture(e.pointerId);
-    if (!d) return;
     if (d.kind === 'node') {
-      dragged.current = d.moved;
+      consumed.current = true;
       if (d.moved) layout.release(d.id);
-    } else if (!d.moved) p.onSelect(undefined);
+      else if (!cancelled) p.onSelect(d.id);
+    } else if (!d.moved && !cancelled) p.onSelect(undefined);
   };
 
   const pos = (id: string) => layout.position(id);
@@ -188,7 +199,12 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
 
   return (
     <div className="gb">
-      <svg ref={svg} className="gb-svg" role="group" aria-label="Note graph. The All notes list moves between notes with the keyboard." onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
+      <svg ref={svg} className="gb-svg" role="group" aria-label="Note graph. The All notes list moves between notes with the keyboard." onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={(e) => end(e, false)}
+        onPointerCancel={(e) => end(e, true)}
+        onLostPointerCapture={(e) => end(e, true)}
+      >
         <defs>
           <pattern id="gb-dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="1" className="gb-dot" />
@@ -254,8 +270,8 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
                       p.onHover(undefined);
                     }}
                     onClick={() => {
-                      if (dragged.current) {
-                        dragged.current = false;
+                      if (consumed.current) {
+                        consumed.current = false;
                         return;
                       }
                       p.onSelect(n.id);
