@@ -249,5 +249,20 @@ describe('Builder', () => {
     expect(screen.queryByLabelText('Pipeline name')).toBeNull();
     expect(screen.getByText('Editing needs a wider screen. You can look around and run this workflow.')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Run/ })).toBeTruthy();
+    expect(screen.getByText('Drag to pan · use + / − to zoom')).toBeTruthy();
+  });
+
+  it('shows issues without their step buttons at phone width (there is no inspector to open)', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === PHONE, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
+    routeApi({
+      'GET /api/doctor': { claude: { ok: true } },
+      'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }],
+      'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+      'POST /api/preflight': { issues: [{ level: 'warn', node: 'plan', message: 'no gate after plan' }] },
+    });
+    renderApp(<Builder onStarted={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '1 warning' }));
+    expect(screen.getByText('no gate after plan')).toBeTruthy();
+    expect(document.querySelector('.bl-issue-node')).toBeNull();
   });
 });

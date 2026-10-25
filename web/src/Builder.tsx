@@ -103,12 +103,15 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       return [];
     }
   }
+  // bumped whenever a workflow opens, so the canvas fits it to the view (the last step isn't left off-screen)
+  const [opened, setOpened] = useState(0);
   async function load(name: string) {
     try {
       const r = await api<{ pipeline: Pipeline }>('GET', `/api/pipelines/${encodeURIComponent(name)}`);
       setPl(r.pipeline);
       setSavedJson(JSON.stringify(r.pipeline));
       setSelected(undefined);
+      setOpened((n) => n + 1);
     } catch (e) {
       notify.fail(e);
     }
@@ -120,6 +123,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       setPl(p);
       setSavedJson(JSON.stringify(p));
       setSelected(undefined);
+      setOpened((n) => n + 1);
     });
 
   useEffect(() => {
@@ -309,7 +313,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
           {issues.map((i, k) => (
             <li key={k}>
               <StatusChip tone={i.level === 'error' ? 'failed' : 'needs'} label={i.level} />
-              {i.node ? (
+              {i.node && !phone ? (
                 <button type="button" className="bl-issue-node" onClick={() => setSelected(i.node)}>
                   {i.node}
                 </button>
@@ -326,7 +330,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
 
         <Canvas
           editable={!phone}
-          hint={phone ? 'Drag to pan · scroll or pinch to zoom' : 'Click a palette step to add it · drag a right port to a left port to connect · Delete removes'}
+          fitKey={opened}
+          hint={phone ? 'Drag to pan · use + / − to zoom' : 'Click a palette step to add it · drag a right port to a left port to connect · Delete removes'}
           nodes={pl.nodes}
           edges={pl.edges}
           selected={selected}

@@ -17,6 +17,21 @@ describe('Canvas', () => {
     expect(container.textContent).toContain('$ npm test');
   });
 
+  it('hovering a step tints its border without moving it off its ports', () => {
+    expect(cssRule('canvas.css', '.node:hover')).toContain('border-color: var(--edge)');
+    expect(cssRule('canvas.css', '.node:hover')).not.toContain('transform');
+  });
+
+  it('fits again when fitKey changes (another workflow opened)', async () => {
+    const world = (c: HTMLElement) => (c.querySelector('.world') as HTMLElement).style.transform;
+    const { container, rerender } = render(<Canvas nodes={[]} edges={[]} fitKey={0} />);
+    await new Promise((r) => requestAnimationFrame(r));
+    const before = world(container);
+    rerender(<Canvas nodes={nodes} edges={edges} fitKey={1} />);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    expect(world(container)).not.toBe(before);
+  });
+
   it('selects a node on click and clears on empty canvas click', () => {
     const onSelect = vi.fn();
     const { container } = render(<Canvas nodes={nodes} edges={edges} onSelect={onSelect} />);

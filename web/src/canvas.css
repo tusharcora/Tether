@@ -28,9 +28,10 @@
 /* Step cards: face, title and mono chips on a surface; selection is a 3px tint ring (no blur, so not a glow). */
 .node {
   position: absolute; display: flex; flex-direction: column; background: var(--s1); border: 1px solid var(--line2); border-radius: 12px;
-  transition: transform var(--t-med) var(--ease), border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
+  transition: border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
 }
-.node:hover { transform: translateY(-2px); }
+/* hover tints the border only: a transform would lift the card off its edges' ports */
+.node:hover { border-color: var(--edge); }
 .node.selected { border-color: var(--acc); box-shadow: 0 0 0 3px var(--accBg); }
 .node.issue { border-color: var(--bad); }
 .node.k-gate { border-left: 3px solid var(--warn); }

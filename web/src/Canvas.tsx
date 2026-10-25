@@ -20,6 +20,8 @@ export interface CanvasProps {
   editable?: boolean;
   /** A short how-to line in the bottom-left corner while the canvas has steps. */
   hint?: string;
+  /** Change it to fit the steps to the view again (e.g. when another workflow opens); the canvas also fits once on mount. */
+  fitKey?: unknown;
   onSelect?: (id?: string) => void;
   onMove?: (id: string, x: number, y: number) => void;
   onConnect?: (from: string, to: string) => void;
@@ -66,7 +68,8 @@ export function Canvas(props: CanvasProps) {
   useEffect(() => {
     const raf = requestAnimationFrame(fit);
     return () => cancelAnimationFrame(raf);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.fitKey]);
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     const t = e.target as HTMLElement;
