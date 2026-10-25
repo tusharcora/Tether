@@ -3,10 +3,10 @@
  * to resolve a request; everything else gets key names only.
  */
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpClientError } from './errors.js';
-import { SECRET_KEY_RE } from './types.js';
+import { SECRET_KEY_RE, isObj } from './types.js';
 
 export const SCOPE_RE = /^(default|[a-z][a-z0-9_-]{0,31})$/;
 interface SecretsFile {
@@ -35,9 +35,14 @@ function save(home: string, s: SecretsFile): void {
   mkdirSync(home, { recursive: true });
   const f = secretsPath(home);
   const tmp = `${f}.${randomBytes(4).toString('hex')}.tmp`;
-  writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 });
-  chmodSync(tmp, 0o600); // the mode option is filtered by the umask
-  renameSync(tmp, f);
+  try {
+    writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n', { mode: 0o600 });
+    chmodSync(tmp, 0o600); // the mode option is filtered by the umask
+    renameSync(tmp, f);
+  } catch (e) {
+    rmSync(tmp, { force: true }); // never leave a stray copy of the secrets behind
+    throw e;
+  }
 }
 
 const scopeOk = (scope: string) => {
@@ -69,8 +74,9 @@ export function deleteSecret(home: string, scope: string, key: string): boolean 
   scopeOk(scope);
   keyOk(key);
   const s = load(home);
-  if (!s.scopes[scope] || !(key in s.scopes[scope]!)) return false;
-  const { [key]: _gone, ...rest } = s.scopes[scope]!;
+  const cur = Object.hasOwn(s.scopes, scope) ? s.scopes[scope] : undefined;
+  if (!isObj(cur) || !Object.hasOwn(cur, key)) return false;
+  const { [key]: _gone, ...rest } = cur;
   void _gone;
   s.scopes[scope] = rest;
   save(home, s);

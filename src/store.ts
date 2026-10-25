@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { ensureHistory, type Db as HistoryDb } from './http/history.js';
 import { foldRun, planWaiting, type RunEvent, type RunState, type StoredEvent } from './types.js';
 
 // node:sqlite is still flagged experimental on Node 22; silence only that warning.
@@ -57,6 +58,7 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS events_type ON events(type, ts);
     `);
+    ensureHistory(db);
     return new Store(db);
   }
 
@@ -174,5 +176,10 @@ export class Store {
 
   close(): void {
     this.db.close();
+  }
+
+  /** The database itself, for modules that keep their own tables in it (API client history). */
+  raw(): HistoryDb {
+    return this.db;
   }
 }

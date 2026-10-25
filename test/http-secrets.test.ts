@@ -1,8 +1,14 @@
-import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { chmodSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
 import { HttpClientError } from '../src/http/errors.js';
 import { deleteSecret, loadSecrets, secretKeys, secretsPath, setSecret } from '../src/http/secrets.js';
 import { tmp } from './helpers.js';
+
+// pass-through, so one test can make the atomic rename fail
+vi.mock('node:fs', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs')>();
+  return { ...m, renameSync: vi.fn(m.renameSync) };
+});
 
 describe('secrets', () => {
   it('stores values per scope in a 0600 file and lists keys only', () => {
@@ -39,6 +45,28 @@ describe('secrets', () => {
     expect(() => setSecret(home, 'api', 'k', '')).toThrow(/1–8192/);
     writeFileSync(secretsPath(home), '{ nope', { mode: 0o600 });
     expect(() => loadSecrets(home, 'api')).toThrow(/not a valid secrets file/);
+  });
+
+  it('does not treat Object.prototype members as stored keys, and does not rewrite the file for them', () => {
+    const home = tmp('home-');
+    setSecret(home, 'api', 'k', 'v');
+    const before = statSync(secretsPath(home)).ino;
+    expect(deleteSecret(home, 'api', 'constructor')).toBe(false);
+    expect(deleteSecret(home, 'api', 'toString')).toBe(false);
+    expect(deleteSecret(home, 'constructor', 'k')).toBe(false);
+    expect(statSync(secretsPath(home)).ino).toBe(before);
+    expect(loadSecrets(home, 'api')).toEqual({ k: 'v' });
+  });
+
+  it('removes its temp file when the atomic write fails', () => {
+    const home = tmp('home-');
+    setSecret(home, 'api', 'k', 'v');
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw new Error('disk on fire');
+    });
+    expect(() => setSecret(home, 'api', 'k2', 'v2')).toThrow('disk on fire');
+    expect(readdirSync(home).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    expect(loadSecrets(home, 'api')).toEqual({ k: 'v' });
   });
 
   it('never quotes the file contents (which hold secret values) when it is corrupt', () => {

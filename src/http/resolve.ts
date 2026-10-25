@@ -29,7 +29,7 @@ function lookup(req: Pick<HttpRequestFile, 'vars'>, ctx: Omit<ResolveContext, 'a
   const ev = ctx.env && Object.hasOwn(ctx.env.file.vars, name) ? ctx.env.file.vars[name] : undefined;
   if (ev !== undefined) {
     if (typeof ev === 'string') return { source: { from: 'env', env: ctx.env!.name }, value: ev };
-    const s = ctx.secrets[ev.secret];
+    const s = Object.hasOwn(ctx.secrets, ev.secret) ? ctx.secrets[ev.secret] : undefined;
     return s === undefined ? undefined : { source: { from: 'secret', key: ev.secret }, value: s, secret: ev.secret };
   }
   if (Object.hasOwn(ctx.secrets, name)) return { source: { from: 'secret', key: name }, value: ctx.secrets[name]!, secret: name };

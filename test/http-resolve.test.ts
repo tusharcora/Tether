@@ -74,6 +74,13 @@ describe('resolve', () => {
     expect(m).not.toContain('s3cr3t');
   });
 
+  it('never takes an Object.prototype member for a secret', () => {
+    const env = { name: 'local', file: { v: 1 as const, vars: { a: { secret: 'constructor' }, b: { secret: 'toString' } } } };
+    const r = err(() => resolveRequest(file({ url: 'http://h/{{a}}/{{b}}' }), ctx({ env, secrets: {} })));
+    expect(r).toBe('unknown_vars: unknown variables: a, b');
+    expect(describeVars(file({ url: 'http://h/{{a}}' }), ctx({ env, secrets: {} }))).toEqual({ a: null });
+  });
+
   it('describes vars for the UI without secret values', () => {
     const d = describeVars(file({ url: '{{base}}/{{tok}}/{{missing}}', vars: { own: 'x' } }), ctx());
     expect(d).toEqual({ base: { source: { from: 'collection', path: '' }, value: 'http://root' }, tok: { source: { from: 'secret', key: 'aorch_token' } }, missing: null });
