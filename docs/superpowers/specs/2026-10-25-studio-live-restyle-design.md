@@ -28,10 +28,9 @@ ascii-reveal loading everywhere. People should enjoy using and looking at it; no
 - The branch `feature/studio-live-restyle` stacks on PR #3 because it reuses that PR's Studio Live foundation
   (`web/src/studio.css`, `web/src/components/Loading.tsx`, the API tab). PR #3 is treated as frozen: fixes to it are
   made on PR #3 first and merged up into this branch.
-- Bot faces fall under the no-purple rule (default chosen here; the owner may exempt faces as identity art instead,
-  which only removes the face items in §1 "No purple"). Under this default no rendered face has a hue in the
-  255–320° band: a face whose seed or saved hue lands in the band is shifted out of it when rendered, and the face
-  editor's hue slider and swatches skip the band.
+- Bot faces are exempt from the no-purple rule (controller ruling, reversible by the owner): faces are generated
+  identity art, not UI accent, and shifting their hues would change every bot's look, including hues set in the face
+  editor. Seeded and saved face colours render unchanged.
 
 ## Non-goals
 
@@ -114,11 +113,10 @@ The rule covers UI chrome, code highlighting, charts and faces:
   colours (series 2 is purple in `foundation.css`) are re-declared from the Studio palette in the Studio override file.
 - `web/src/styles.css`: `.t-pipeline { --c: #a77bf3 }` and the `#6d5bd0` fallback on `.badge.s-team` are replaced with
   tokens.
-- Faces (per the assumption above): `Face.tsx` shifts hues in 255–320° out of the band; the face editor in `Crew.tsx`
-  drops the `#b58bff` swatch and its hue slider skips the band; the built-in looks in `src/crew.ts` (Maestro `#9b7bff`,
-  Gate accent `#6d4aff`) get non-purple colours.
+- Faces are exempt (see Assumptions): `Face.tsx`, the face editor swatches/slider in `Crew.tsx` and the built-in looks
+  in `src/crew.ts` keep their colours.
 - A test scans `web/src/**/*.css`, `web/src/**/*.tsx` and `foundation.css` for violet hex values and oklch/hsl hues in
-  260–320 and fails on any hit outside an explicit allow-list (empty unless the owner exempts faces).
+  260–320 and fails on any hit outside an explicit allow-list, which holds only the face colour sources above.
 
 ### Gradients and motion
 
