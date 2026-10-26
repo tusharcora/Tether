@@ -15,8 +15,9 @@ export interface Config {
   endpoints: Record<string, EndpointConfig>;
 }
 
+/** The home folder: `--home`, else $TETHER_HOME, else $AORCH_HOME (from before the rename), else ~/.aorch (never moved). */
 export function resolveHome(override?: string): string {
-  return override ?? process.env.AORCH_HOME ?? join(homedir(), '.aorch');
+  return override || process.env.TETHER_HOME || process.env.AORCH_HOME || join(homedir(), '.aorch');
 }
 
 /** `<home>/aorch.config.json` — { "vault": "/path/to/obsidian/vault", "adapters": { "name": { "command": "...", "args": ["{prompt}"] } } } */

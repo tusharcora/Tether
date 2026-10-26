@@ -1,5 +1,5 @@
 /**
- * Interactive full-screen terminal app. `aorch` with no arguments opens it.
+ * Interactive full-screen terminal app. `tether` (or `aorch`) with no arguments opens it.
  *
  *   dashboard  (all runs · all workflows · the crew)
  *     └─ run view      (the crew working through a run; approve, stop, resume)
@@ -442,7 +442,7 @@ export class Tui {
     process.stdin.off('data', this.onData);
     this.leave();
     process.stdin.pause();
-    this.out.write(`${dim(`── ${cmd} ${args.join(' ')}  ·  exit to return to aorch ──`)}\n`);
+    this.out.write(`${dim(`── ${cmd} ${args.join(' ')}  ·  exit to return to Tether ──`)}\n`);
     const code = await new Promise<number>((res) => {
       const c = spawn(cmd, args, { cwd, stdio: 'inherit' });
       c.on('error', (e) => {
@@ -2646,7 +2646,7 @@ export class Tui {
       } else this.hit(1, x, x + 8, () => this.pop());
     }
     const right = w >= 40 ? dim(new Date().toTimeString().slice(0, 8)) : '';
-    const l0 = `${gradient('aorch', BRAND)}${w >= 50 ? `  ${faint(themeName)}` : ''}${crumbs ? `  ${dim('›')} ${crumbs}` : ''}`;
+    const l0 = `${gradient('Tether', BRAND)}${w >= 50 ? `  ${faint(themeName)}` : ''}${crumbs ? `  ${dim('›')} ${crumbs}` : ''}`;
     const room = Math.max(0, w - f.width - vlen(right) - (right ? 1 : 0));
     const say = fm === 'asleep' ? 'Asleep. Press any key to wake me.' : m.text;
     const avail = Math.max(0, w - f.width - 1);

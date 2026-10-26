@@ -159,7 +159,7 @@ describe('header', () => {
     expect(lines).toHaveLength(4);
     for (const l of lines) expect(vlen(l)).toBeLessThanOrEqual(100);
     const p = lines.map(strip);
-    expect(p[0]!.startsWith('▐  ●  ●  ▌  aorch')).toBe(true);
+    expect(p[0]!.startsWith('▐  ●  ●  ▌  Tether')).toBe(true);
     expect(p[1]!.startsWith(' '.repeat(12) + '1 chat   2 runs')).toBe(true);
     expect(p[2]!.startsWith(' '.repeat(12))).toBe(true);
     expect(p[2]!.trim().length).toBeGreaterThan(5);

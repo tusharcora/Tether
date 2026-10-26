@@ -913,7 +913,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const root = o.webDir ? resolve(o.webDir) : undefined;
     if (!root || !existsSync(root)) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-      return res.end('aorch API is running. The dashboard is not built yet: run `npm run build:web`.\n');
+      return res.end('Tether API is running. The dashboard is not built yet: run `npm run build:web`.\n');
     }
     let rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
     let file = resolve(root, rel);

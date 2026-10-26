@@ -1,17 +1,19 @@
 {
-  "name": "agent-orchestrator",
+  "name": "tether",
   "version": "0.1.0",
-  "description": "Durable SDLC orchestrator for CLI coding agents (Claude Code, Codex, OpenCode) with a visual pipeline builder and an Obsidian knowledge graph",
+  "description": "Tether: durable SDLC orchestrator for CLI coding agents (Claude Code, Codex, OpenCode) with a visual pipeline builder and an Obsidian knowledge graph",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=22.12"
   },
   "bin": {
+    "tether": "dist/cli.js",
     "aorch": "dist/cli.js"
   },
   "scripts": {
     "dev": "tsx src/cli.ts serve",
+    "tether": "tsx src/cli.ts",
     "aorch": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
