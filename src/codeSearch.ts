@@ -4,14 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { gitFiles, gitInfo, isSecretPath, looksBinary, MAX_TEXT, resolveInWorkspace } from './code.js';
 import { rgVersion } from './tools.js';
-
-export interface TextHit {
-  path: string;
-  line: number;
-  /** Where the match starts in `text` (0-based characters). */
-  col: number;
-  text: string;
-}
+import type { TextHit } from './types.js';
 
 export const MAX_HITS = 200;
 const MAX_NAMES = 50;

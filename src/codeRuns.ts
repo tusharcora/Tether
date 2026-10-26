@@ -8,7 +8,7 @@ import { CREW } from './bots.js';
 import { git } from './git.js';
 import { rowLive, runTitle, type LiveProbe } from './runLabels.js';
 import type { Store } from './store.js';
-import type { RunState, RunStatus } from './types.js';
+import type { RunLock, RunState, RunTouch } from './types.js';
 
 const MAX_RUNS = 20;
 const PATCH_LINES = 80;
@@ -23,24 +23,6 @@ const real = (p: string) => {
   }
 };
 const within = (p: string, base: string) => p === base || p.startsWith(base.endsWith(sep) ? base : base + sep);
-
-export interface RunTouch {
-  runId: string;
-  /** The task's first line. */
-  title: string;
-  /** The run's label: its workflow, or "Team run". */
-  label: string;
-  status: RunStatus;
-  live: boolean;
-  /** When it finished, else its newest event. */
-  at: number;
-  add: number;
-  del: number;
-  /** Changed lines in the run's version of the file. */
-  hunks: { start: number; lines: number }[];
-  /** The file's diff in this run, from the first hunk, cut to 80 lines (the lens's mini diff). */
-  patch: string;
-}
 
 type Row = ReturnType<Store['listRows']>[number];
 
@@ -131,13 +113,6 @@ export async function changedByRuns(store: Store, root: string, days = 30): Prom
     for (const p of (await numstatOf(root, state.baseSha, last)).keys()) paths.add(p);
   }
   return [...paths].sort();
-}
-
-export interface RunLock {
-  runId: string;
-  node: string;
-  /** The bot doing the step, by name ("Bolt"). */
-  bot: string;
 }
 
 /**

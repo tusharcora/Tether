@@ -755,3 +755,63 @@ export interface Pin {
   /** Requests: the workspace the request is saved in. */
   ws?: string;
 }
+
+// ---- the Code screen (/api/code/*) ----
+export type CodeLang = 'typescript' | 'tsx' | 'javascript' | 'jsx' | 'json' | 'markdown' | 'css' | 'html' | 'python' | 'text';
+export type GitBadge = 'M' | 'A' | 'D' | '?' | 'R';
+
+export interface TreeEntry {
+  name: string;
+  path: string;
+  kind: 'dir' | 'file';
+  git?: GitBadge;
+}
+
+/** A live run writing in the project's own checkout: saving waits for its step (423). */
+export interface RunLock {
+  runId: string;
+  node: string;
+  /** The bot doing the step, by name ("Bolt"). */
+  bot: string;
+}
+
+export interface CodeFile {
+  path: string;
+  /** Empty when the file is too large or binary. */
+  text: string;
+  size: number;
+  mtimeMs: number;
+  lang: CodeLang;
+  binary?: true;
+  tooLarge?: true;
+  secret?: true;
+  readOnly?: true;
+  lock?: RunLock;
+}
+
+export interface TextHit {
+  path: string;
+  line: number;
+  /** Where the match starts in `text` (0-based characters). */
+  col: number;
+  text: string;
+}
+
+/** A run whose recorded commits changed a file. */
+export interface RunTouch {
+  runId: string;
+  /** The task's first line. */
+  title: string;
+  /** The run's label: its workflow, or "Team run". */
+  label: string;
+  status: RunStatus;
+  live: boolean;
+  /** When it finished, else its newest event. */
+  at: number;
+  add: number;
+  del: number;
+  /** Changed lines in the run's version of the file. */
+  hunks: { start: number; lines: number }[];
+  /** The file's diff in this run, from the first hunk, cut to 80 lines. */
+  patch: string;
+}

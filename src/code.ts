@@ -6,28 +6,7 @@ import { accessSync, chmodSync, closeSync, constants, openSync, readdirSync, rea
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { git } from './git.js';
 import { HttpError } from './serverkit.js';
-
-export type CodeLang = 'typescript' | 'tsx' | 'javascript' | 'jsx' | 'json' | 'markdown' | 'css' | 'html' | 'python' | 'text';
-export type GitBadge = 'M' | 'A' | 'D' | '?' | 'R';
-
-export interface TreeEntry {
-  name: string;
-  path: string;
-  kind: 'dir' | 'file';
-  git?: GitBadge;
-}
-
-export interface CodeFile {
-  path: string;
-  text: string;
-  size: number;
-  mtimeMs: number;
-  lang: CodeLang;
-  binary?: true;
-  tooLarge?: true;
-  secret?: true;
-  readOnly?: true;
-}
+import type { CodeFile, CodeLang, GitBadge, TreeEntry } from './types.js';
 
 /** Text files up to this size open in the editor; bigger ones get a panel instead. */
 export const MAX_TEXT = 2 * 1024 * 1024;
