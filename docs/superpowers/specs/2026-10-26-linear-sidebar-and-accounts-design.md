@@ -104,44 +104,66 @@ registry entry plus the feature that uses it.
   never logs `gh` out).
 - All behind the existing loopback/Host/Origin guards; tokens never serialised to clients or logs; redaction applied.
 
-## 4. Code Mode for Tether-run agents
+## 4. Code Mode for every agent
 
-Owner request (2026-10-26): make agents use Cloudflare's **Code Mode** instead of MCP for tool calls, for fewer tokens and
-better agent efficiency.
+Owner request (2026-10-26): all agents in Tether — Claude Code, Codex, OpenCode, Gemini and the OpenAI-compatible
+models — use Cloudflare's **Code Mode** pattern for tool calls instead of many individual tools, for fewer tokens and
+better efficiency. Code Mode (developers.cloudflare.com/agents/tools/codemode): the model gets **one code-execution
+tool**; tools are exposed as **typed methods**; the model writes a short script that composes calls, loops, filters and
+returns only what it needs; large catalogs are found on demand with **`codemode.search()`** and **`codemode.describe()`**
+instead of loading every definition into context.
 
-**Where it applies.** Tether has no MCP surface. Vendor CLIs (Claude Code, Codex, OpenCode, Gemini — `claude.ts`,
-`cli.ts`) run their own tool loops with their own built-in tools; Tether cannot change those and they are already
-code-first (shell). The one loop Tether owns is **`src/adapters/openai.ts`** (Ollama, LM Studio, llama.cpp, OpenRouter),
-which today offers JSON tools (`list_files`, `read_file`, `search`, `write_file`) one call per round-trip. Code Mode is
-built there.
+### 4.1 The Tether Code Mode runtime (one, shared)
+- **Connectors** exposed as typed methods inside the sandbox:
+  - `repo` — `list`, `read(path,{from,to})`, `search(pattern,{path,max})`, `diff()`, `write(path,text)` (write only on
+    writable steps) — through the Code screen's `resolveInWorkspace` gate and secrets rule.
+  - `tether` — `ask(question)` (Inbox; ends the step waiting, as asks do today), `note(text)`, `handoff(...)` (the existing
+    handoff feature, where the step allows it), `vault.search/read/write`, `runs.list/get`.
+  - `github` — via the connected account (§3): repos, PRs, issues, comments, checks.
+  - `http` — run a saved API-client request by name (the API tab's collections, env + secrets resolved server-side).
+  - **`mcp.<server>`** — every MCP server the owner configures in Settings → Tools (stdio or HTTP) becomes a connector;
+    its tools become typed methods (JSON Schema → TypeScript). This is Cloudflare's MCP integration: agents never see
+    those servers' tool lists, only the methods they discover and call.
+- **Discovery**: `codemode.search(query)` returns matching connectors/methods (name + one line); `codemode.describe(target)`
+  returns the TypeScript signature + docs. The tool description carries only the connector names and these two
+  functions, so context stays small however many tools exist.
+- **Sandbox**: generated JS/TS (types stripped, not checked) runs **locally** in a QuickJS WebAssembly sandbox
+  (`quickjs-emscripten`, async host bridge): no filesystem, network, process or timers except through connectors;
+  **10 s wall / 64 MB / 200 connector calls per run**; result (return value + `console.log`) capped at 16 KB with a
+  truncation note; errors return a short stack. Never runs on Cloudflare — repos and secrets stay on this Mac.
+- **Library**: use `@cloudflare/codemode` (0.5.x) for the tool → TypeScript generation, the `search`/`describe` shape and
+  MCP-connector wiring **if** it accepts a custom (non-Workers) executor; its default executor needs Cloudflare's Worker
+  Loader, so the implementer verifies first and otherwise implements the same shape in-house. Recorded in the plan.
+- **Approvals**: connector methods that change things outside the repo (GitHub comments/merges, HTTP requests marked
+  unsafe, MCP tools flagged destructive) require the step's existing approval gate or an Inbox approval.
 
-**Design.**
-- The model gets **one tool, `run_code`**, whose description embeds a small **TypeScript declaration** of the API it may
-  call (generated from one definition, like Cloudflare's tool→TS conversion):
-  `repo.list(dir?)`, `repo.read(path, {from?, to?})`, `repo.search(pattern, {path?, max?})`, `repo.write(path, text)` (only
-  when the step is writable), `repo.diff()`, `tether.note(text)` (adds to the step output), `tether.ask(question)` (raises
-  an Inbox question — ends the step waiting, as asks do today), and `console.log` for returning results.
-- The model writes a short async JS/TS snippet (TS is stripped with a type-erasing transform; no type-checking); Tether
-  runs it in a **local QuickJS sandbox (WebAssembly, `quickjs-emscripten`)**: no filesystem, network, process, timers
-  beyond the API; **5 s CPU / 64 MB / 200 API calls per snippet**; API calls are bridged to the host, which applies the same
-  `resolveInWorkspace` path gate as the Code screen, the secrets rule (no `.env*`/keys reads) and the step's write
-  permission. Code runs on this Mac only — never on Cloudflare (repos are private; the app is local).
-- The snippet's return value + logs (capped at 16 KB, truncated with a note) are the tool result. Errors come back as a
-  short stack the model can fix on the next turn.
-- A per-workflow/bot option `toolStyle: 'code' | 'json'` (default `code`; `json` keeps today's tools as a fallback for
-  models that can't write code well), shown in the Builder inspector and the Crew "Runs on" section.
-- Metrics: the run timeline records tool round-trips and tokens per step, so the saving is visible (compare `json` vs
-  `code` on the same task).
-
-**Later (not now)**: offer Tether's own abilities (Inbox ask, vault notes, handoffs) to vendor CLIs through a single
-code-mode tool — that needs an MCP server and is a separate spec.
+### 4.2 How each agent gets it
+- **Claude Code** (`claude.ts`): Tether writes a per-run MCP config and starts the agent with `--mcp-config <file>
+  --strict-mcp-config`. The config points at **Tether's Code Mode MCP server** (stdio, `tether codemode-mcp --run <id>`),
+  which exposes exactly **one tool, `run_code`**. `--strict-mcp-config` means the owner's own MCP servers reach Claude only
+  as `mcp.*` connectors inside Code Mode, not as dozens of direct tools. Claude's built-in Read/Edit/Bash stay (they are its
+  native editing loop); a per-bot option **"Code Mode only for reading"** also passes `--disallowedTools Grep Glob` so
+  repository exploration goes through `repo.search`/`repo.read` in one script.
+- **Codex, OpenCode, Gemini** (`cli.ts`): the same MCP server, registered through each CLI's MCP config mechanism (a
+  per-run config file / flag, never editing the user's global config). CLIs without MCP support fall back to plain runs
+  and the Crew card says so.
+- **OpenAI-compatible models** (`openai.ts` — Ollama, LM Studio, llama.cpp, OpenRouter): `run_code` is offered natively in
+  the adapter's own loop (no MCP hop) and replaces today's `list_files`/`read_file`/`search`/`write_file`.
+- **Prompting**: every agent's system prompt gains a short Code Mode note (use `run_code` to compose several reads,
+  searches and connector calls in one script; return only what is needed).
+- **Option** per workflow step and per bot: `toolStyle: 'code' | 'direct'` (default `code`; `direct` = today's behaviour) in
+  the Builder inspector and Crew "Runs on".
+- **Metrics**: the run timeline records, per step, tool round-trips, `run_code` executions, connector calls and tokens, so
+  the saving is visible (`direct` vs `code` on the same task).
 
 ## 5. Testing (Code Mode)
-- **Node**: TS-declaration generation from the API definition; sandbox limits (CPU timeout, memory, call cap) and escapes
-  (no `require`, `process`, `fetch`, filesystem); path gate and secrets refusals via the bridge; write refused on a
-  read-only step; `tether.ask` ends the step as a question; output truncation; `json` fallback unchanged; an end-to-end
-  adapter test with a fake OpenAI-compatible server that answers with a `run_code` call and checks one round-trip
-  replaces several.
+- **Node**: JSON Schema → TypeScript generation; `codemode.search`/`describe`; sandbox limits (timeout, memory, call cap)
+  and escapes (no `require`, `process`, `fetch`, filesystem); path gate and secrets refusals via the bridge; write refused
+  on a read-only step; `tether.ask` ends the step as a question; approvals required for outside-world connector calls;
+  output truncation; an MCP connector against a fake stdio MCP server; the Code Mode MCP server lists exactly one tool and
+  runs a script end to end; `claude.ts`/`cli.ts` build the per-run `--mcp-config` (+ `--strict-mcp-config`,
+  `--disallowedTools` when chosen) without touching global config; `openai.ts` with a fake OpenAI-compatible server
+  answering one `run_code` call in place of several direct calls; `direct` toolStyle unchanged.
 
 ## 6. Testing
 - **Web**: sidebar layout and order (top items, Workspace, Runs glyphs by status, Favorites, Settings at bottom), G-key
@@ -155,4 +177,4 @@ code-mode tool — that needs an MCP server and is a separate spec.
 
 ## 7. Out of scope
 Hosted/multi-user accounts, a login screen, Clerk; Google/GitLab/Linear connections (registry only); per-project
-accounts; GitHub App installation flow; changing vendor CLIs' tool use; an MCP server; running code on Cloudflare.
+accounts; GitHub App installation flow; removing vendor CLIs' built-in edit/shell tools; running code on Cloudflare.
