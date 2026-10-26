@@ -267,7 +267,7 @@ export function ApiTab(props: ApiTabProps) {
   if (treeError === 'no workspace')
     return (
       <div className="api-tab api-empty">
-        <EmptyState title="No workspace yet" description="Saved requests live next to the code, in the project's .aorch/http folder. Register the project folder first: run `aorch workspace init` in it, then come back here." />
+        <EmptyState title="No workspace yet" description="Saved requests live next to the code, in the project's .aorch/http folder. Register the project folder first: run `tether workspace init` in it, then come back here." />
       </div>
     );
 

@@ -15,7 +15,7 @@ export function RequestGateFields(props: { http: HttpGate; onChange: (h: HttpGat
   useEffect(() => {
     api<HttpTree>('GET', '/api/http/tree')
       .then(setTree)
-      .catch((e: Error) => setError(e.message === 'no workspace' ? 'Register this folder as a workspace (aorch workspace init) to pick saved requests.' : e.message));
+      .catch((e: Error) => setError(e.message === 'no workspace' ? 'Register this folder as a workspace (tether workspace init) to pick saved requests.' : e.message));
   }, []);
   const reqs = tree ? flattenTree(tree.root).filter((r) => !r.invalid) : [];
   const h = props.http;

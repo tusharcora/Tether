@@ -116,7 +116,7 @@ export function Triggers() {
                   </ul>
                 ) : (
                   <p className="sl-meta">
-                    No triggers yet. Add one, then set up the webhook below (or run <code>aorch pr watch</code> to poll instead).
+                    No triggers yet. Add one, then set up the webhook below (or run <code>tether pr watch</code> to poll instead).
                   </p>
                 )}
               </section>

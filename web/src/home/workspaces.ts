@@ -22,4 +22,4 @@ export function pickWorkspace(list: WorkspaceRow[], picked?: string): WorkspaceR
 }
 
 /** The command that registers a workspace (shown and copied by Home's no-workspace states). */
-export const INIT_COMMAND = 'aorch workspace init';
+export const INIT_COMMAND = 'tether workspace init';

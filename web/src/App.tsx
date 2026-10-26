@@ -44,7 +44,7 @@ export function App() {
   const [palette, setPalette] = useState(false);
   /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
   const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
-  const health = usePoll<{ ok: boolean; vault?: string }>('/api/health', 5000);
+  const health = usePoll<{ ok: boolean; vault?: string; home?: string }>('/api/health', 5000);
   const connection = useConnection(health);
   const phone = useMediaQuery(PHONE);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -95,7 +95,7 @@ export function App() {
         </main>
         {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
       </div>
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} connection={connection} returnFocus={settingsHome} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} />
       <LeaveDialog
         to={leaving}

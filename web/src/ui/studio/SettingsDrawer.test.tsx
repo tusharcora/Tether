@@ -16,6 +16,17 @@ describe('SettingsDrawer', () => {
     expect(screen.getByText('connected')).toBeTruthy();
   });
 
+  it('says what Tether is, that aorch still works and where the data stays', () => {
+    const { rerender } = render(<SettingsDrawer {...base} home="/Users/me/.aorch" />);
+    const about = screen.getByRole('region', { name: 'About' });
+    expect(about.textContent).toMatch(/Tether/);
+    expect(about.textContent).toMatch(/aorch still works/);
+    expect(about.textContent).toContain('/Users/me/.aorch');
+    expect(about.querySelectorAll('img')).toHaveLength(2);
+    rerender(<SettingsDrawer {...base} />);
+    expect(screen.getByRole('region', { name: 'About' }).textContent).toContain('~/.aorch');
+  });
+
   it('picks a theme', () => {
     const onChoice = vi.fn();
     render(<SettingsDrawer {...base} onChoice={onChoice} />);

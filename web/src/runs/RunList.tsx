@@ -85,7 +85,7 @@ export function RunList(props: {
           onValueChange={(v) => setFilter(v as RunFilter)}
         />
       </div>
-      <div className="run-list-probes" title="Evolve probe replays are experiments and are hidden by default; aorch probes --clean deletes finished ones">
+      <div className="run-list-probes" title="Evolve probe replays are experiments and are hidden by default; tether probes --clean deletes finished ones">
         <Switch label="show probe replays" checked={props.probes} onCheckedChange={(c) => props.onProbes(c === true)} />
       </div>
       <Loading loading={data === undefined && !error} lines={6} label="Loading runs">

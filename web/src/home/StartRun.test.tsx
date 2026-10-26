@@ -102,7 +102,7 @@ describe('Start a run', () => {
     routeApi({ ...routes, 'GET /api/workspaces': [] });
     setup();
     expect(await screen.findByText('No workspace yet')).toBeTruthy();
-    expect(screen.getByText(/aorch workspace init/)).toBeTruthy();
+    expect(screen.getByText(/tether workspace init/)).toBeTruthy();
     expect(screen.queryByLabelText('Task')).toBeNull();
   });
 
@@ -113,7 +113,7 @@ describe('Start a run', () => {
     setup();
     await screen.findByText('No workspace yet');
     await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Copy command' })));
-    expect(writeText).toHaveBeenCalledWith('aorch workspace init');
+    expect(writeText).toHaveBeenCalledWith('tether workspace init');
     expect(await screen.findByText('Command copied')).toBeTruthy();
   });
 

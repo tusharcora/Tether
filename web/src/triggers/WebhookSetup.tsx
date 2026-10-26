@@ -40,7 +40,7 @@ export function WebhookSetup() {
     <Panel title="Webhook setup" className="tg-setup">
       <p className="sl-summary">
         GitHub → repo → Settings → Webhooks → Add webhook. This server only listens on this machine, so expose just the webhook path with a tunnel (<code>cloudflared tunnel --url http://127.0.0.1:4177</code>, ngrok or tailscale
-        funnel). No tunnel? <code>aorch pr watch</code> polls instead.
+        funnel). No tunnel? <code>tether pr watch</code> polls instead.
       </p>
       {err ? <InlineError message={err} onRetry={() => void load()} /> : null}
       <dl className="tg-dl">

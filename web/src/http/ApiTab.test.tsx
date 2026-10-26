@@ -56,7 +56,7 @@ describe('ApiTab', () => {
     routeApi({ ...routes, 'GET /api/http/tree': new Error('no workspace'), 'GET /api/workspaces': [] });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     expect(await screen.findByText('No workspace yet')).toBeTruthy();
-    expect(screen.getByText(/aorch workspace init/)).toBeTruthy();
+    expect(screen.getByText(/tether workspace init/)).toBeTruthy();
   });
 
   it('offers Import or New when there are no requests', async () => {

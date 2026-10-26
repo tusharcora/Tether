@@ -25,6 +25,8 @@
 .sl-settings-group p { margin: 0; color: var(--mut); }
 .sl-settings-path { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sl-settings-path code { overflow-wrap: anywhere; user-select: all; }
+.sl-settings-about { display: flex; gap: 10px; align-items: center; }
+.sl-settings-about b { color: var(--ink); font-weight: 600; }
 
 /* App layout: rail + screen (900 px and wider); screen + bottom bar below */
 .shell { display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; background: var(--bg); color: var(--ink); }
