@@ -27,7 +27,7 @@ working exactly as today; the TUI is unchanged apart from its name.
 
 The Code screen is useful in the browser too, so it ships first; the Electron shell wraps a finished web app.
 
-- **Plan 1 — Rename + Code screen** (works in `tether serve` and later inside the app): the rename (§3), the server
+- **Plan 1 — Rename, sidebar + Code screen** (works in `tether serve` and later inside the app): the rename (§3), the sidebar (§6.1), the server
   code routes (§5), the Code screen (§6), the first-launch screen inside the web app (§7.1).
 - **Plan 2 — Tether.app**: the Electron shell (§4), Mac integration (§7), packaging (§8).
 
@@ -79,8 +79,9 @@ The first-launch screen and Settings show which agent CLIs were found (`claude`,
 
 - **File → Open Folder… (⌘O)**, dragging a folder onto the window or the Dock icon, and `open -a Tether <dir>` all
   register the folder as a workspace through the existing registry (`addWorkspace`) and switch to it.
-- The **project switcher** (rail top, the approved popover): recent projects, a blue dot where a run is live, Open
-  folder… at the bottom. The current project drives Home, Code, Runs filters and the API tab's workspace.
+- The **Projects section of the sidebar** (§6.1) is the project switcher — it replaces the popover drawn in AppCode:
+  recent projects as folders, a blue dot where a run is live, **+** = Open folder…, **⋯** = remove from Tether / reveal in
+  Finder. The current project drives Home, Code, Runs filters and the API tab's workspace.
 - File → Open Recent mirrors the switcher.
 
 ## 5. Server: code routes
@@ -104,6 +105,26 @@ cover each refusal.
 **Secrets**: files matching `.env`, `.env.*`, `*.pem`, `*.key`, `id_*` open read-only with a banner, are skipped by
 search, and are never attached to an agent prompt automatically (the existing "send to agent" paths gain the same
 filter).
+
+## 6.1 The sidebar (replaces the icon rail)
+
+Owner request 2026-10-25, from a reference image (collapsed rail ↔ expanded panel); mockup **AppSidebar** on the canvas.
+Built in Plan 1, for the browser and the app alike.
+
+- **Expanded (300 px)**: Triad glyph + "Tether" wordmark and a collapse button; a **Search** field that opens ⌘K
+  (with the ⌘K hint); the eight tabs with labels — Home, Runs, Code, Builder, Crew, API client, Graph, Triggers — the
+  current one as a white card (Studio Live `--s1` + card shadow); counts on the right (Home = needs-you count in amber,
+  Runs = live count in blue); then collapsible sections **Projects** (§4.3) and **Pinned** (pinned runs and saved
+  requests; **+** pins the current run/request, ⋯ = manage), each with a chevron; **Settings** (⌘,) at the bottom.
+- **Collapsed (76 px)**: the glyph, an expand button, icons only, a dot instead of a count, project folders and pins as
+  icons; hovering or focusing any icon shows its label in a tooltip (dark chip in light theme, light chip in dark).
+- **Toggle**: the button by the logo or **⌘\\**; the width animates over 260 ms (instant under reduced motion); the choice
+  is remembered per device. Below 1200 px it starts collapsed; below 900 px the existing bottom bar replaces it.
+- **Keyboard and a11y**: it is a `nav` landmark; the current tab has `aria-current="page"`; sections are disclosure
+  buttons with `aria-expanded`; tooltips are `role="tooltip"` linked by `aria-describedby`, dismissable with Escape.
+- **Inside Tether.app** the traffic lights sit over the sidebar's top-left; the logo row leaves room for them.
+- Replaces Plan A's `Rail` component; `BottomBar`, the routes and ⌘K are unchanged. Pinned items are stored in
+  `~/.aorch/pins.json` through a small `GET/PUT /api/pins` route.
 
 ## 6. The Code screen (web app)
 
