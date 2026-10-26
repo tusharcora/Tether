@@ -11,15 +11,19 @@ server in-process on a random loopback port and opens one window. Everything els
 - Electron 34.5.8 bundles Node 20.19.1: `node:sqlite` is missing (`ERR_UNKNOWN_BUILTIN_MODULE`).
 - Electron 35.7.5 bundles Node 22.16.0: `node:sqlite` runs without a flag (ExperimentalWarning only), and `Store.open()`
   on a file database works.
-- **Pin: `electron@35.7.5`**, the lowest qualifying release. No sidecar is needed.
-- Note: 35 is past Electron's support window (45 is current). The window only loads Tether's own loopback page, so
-  bumping it later is a one-line change.
+- Plan 2 first pinned `electron@35.7.5`, the lowest qualifying release. No sidecar is needed.
+- **Pin now: `electron@45.0.0`, the current stable release** (bumped after review: 35 is out of support and gets no
+  security patches). The same spike on 45.0.0 shows Node 24.22.0 with `node:sqlite` unflagged and `Store.open()`
+  working; the boot test and the packaged app's smoke launch pass.
+- Every major from 35 up bundles Node 22+ with `node:sqlite`, so later bumps need only the spike, the boot test and
+  `npm run app` again.
+- Electron 45 downloads its binary on first use (`npx install-electron`), not at `npm install`.
 
 ## Global Constraints
 
 - Plan 1's rules all hold: no data moves (`~/.aorch`), one path gate, the Studio Live rules, and `rules.test.ts` stays
   green.
-- New dependencies: `electron` (pinned 35.7.5) and `@electron/packager`, both dev dependencies. Nothing else.
+- New dependencies: `electron` (pinned 45.0.0) and `@electron/packager`, both dev dependencies. Nothing else.
 - The window runs with context isolation on, node integration off and the sandbox on. The preload exposes only
   `window.tether`. Navigation outside the server's origin is refused (http(s) links open in the browser).
 - Tests never touch the real `~/.aorch`: the boot test sets `TETHER_HOME` to a temp folder. The owner's server on 4177

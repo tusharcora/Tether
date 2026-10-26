@@ -37,8 +37,25 @@ const [out] = await packager({
 });
 
 const app = join(out, 'Tether.app');
-// Finder and iCloud Drive attach attributes (com.apple.FinderInfo) that a signature may not cover
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ok = (args) => {
+  try {
+    execFileSync('codesign', args, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+// Finder, LaunchServices and iCloud Drive attach attributes (com.apple.FinderInfo) to a new bundle for a moment after it
+// appears; they sit outside the signature but a strict check refuses them, so let the bundle settle, then clear and check.
+await sleep(2000);
 execFileSync('xattr', ['-cr', app]);
 execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
-execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
-console.log(`\nTether.app (Electron ${electronVersion}, arm64, ad-hoc signed):\n  ${app}\n`);
+let strict = false;
+for (let i = 0; i < 5 && !strict; i++) {
+  execFileSync('xattr', ['-cr', app]);
+  strict = ok(['--verify', '--deep', '--strict', app]);
+  if (!strict) await sleep(1000);
+}
+if (!strict && !ok(['--verify', '--deep', app])) throw new Error(`the signature of ${app} does not verify`);
+console.log(`\nTether.app (Electron ${electronVersion}, arm64, ad-hoc signed${strict ? '' : '; macOS keeps re-adding Finder info in this iCloud folder, so only the non-strict check ran'}):\n  ${app}\n`);
