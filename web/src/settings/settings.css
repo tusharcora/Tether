@@ -14,3 +14,9 @@
 .acc-client { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
 .acc-client > :first-child { flex: 1; }
 .acc-actions { display: flex; gap: 8px; }
+.mcp-panel { display: flex; flex-direction: column; gap: 10px; }
+.mcp-panel > p { margin: 0; }
+.mcp-target { overflow-wrap: anywhere; font-size: 12px; }
+.mcp-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.mcp-form > * { width: 100%; }
+.mcp-form > button { width: auto; }

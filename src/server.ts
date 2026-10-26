@@ -12,6 +12,7 @@ import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { GithubAccount, ghExec } from './accounts/github.js';
 import { accountsRoute } from './accounts/routes.js';
+import { codemodeRoute } from './codemode/routes.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -315,6 +316,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github }, req, res, url);
+    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {

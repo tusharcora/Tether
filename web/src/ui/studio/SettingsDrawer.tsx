@@ -6,6 +6,7 @@ import { Switch } from '../../components/arc/switch/switch';
 import type { Poll } from '../../hooks';
 import { Accounts } from '../../settings/Accounts';
 import type { AccountsView } from '../../settings/accountsApi';
+import { McpServers, type McpServerView } from '../../settings/McpServers';
 import { THEME_LABEL, type ThemeChoice } from '../../theme';
 import { ToolsStrip, type Tools } from '../../welcome/ToolsStrip';
 import { CONNECTION_LABEL, type Connection } from './connection';
@@ -19,7 +20,7 @@ const CHOICES: ThemeChoice[] = ['light', 'dark', 'system'];
 const focusable = (el: HTMLElement) => el.isConnected && el.checkVisibility?.() !== false;
 
 /** Settings, opened over the current screen (which stays mounted): accounts, theme, vault, why loopback, connection, tools, about. `section` scrolls one into view (the sidebar's account row opens Accounts). */
-export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; home?: string; connection: Connection; /** The agent tools found on the server's PATH (shown when given). */ tools?: Poll<Tools>; /** Connected accounts (shown when given). */ accounts?: Poll<AccountsView>; section?: string; /** Tether.app's notifications switch (shown when given). */ notifications?: { on: boolean; onChange: (on: boolean) => void }; returnFocus?: () => HTMLElement | null | undefined }) {
+export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; home?: string; connection: Connection; /** The agent tools found on the server's PATH (shown when given). */ tools?: Poll<Tools>; /** Connected accounts (shown when given). */ accounts?: Poll<AccountsView>; /** Code Mode's MCP servers (shown when given). */ mcp?: Poll<{ servers: McpServerView[] }>; section?: string; /** Tether.app's notifications switch (shown when given). */ notifications?: { on: boolean; onChange: (on: boolean) => void }; returnFocus?: () => HTMLElement | null | undefined }) {
   // Radix only hands focus back to a DialogTrigger; Settings opens from the rail, the bottom bar, a key or a link, so the drawer remembers its opener.
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -88,6 +89,12 @@ export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: 
           <section className="sl-settings-group" aria-labelledby="set-tools">
             <h3 id="set-tools">Agent tools</h3>
             <ToolsStrip poll={p.tools} />
+          </section>
+        ) : null}
+        {p.mcp ? (
+          <section className="sl-settings-group" aria-labelledby="set-mcp">
+            <h3 id="set-mcp">MCP servers</h3>
+            <McpServers poll={p.mcp} />
           </section>
         ) : null}
         <section className="sl-settings-group" aria-labelledby="set-about">

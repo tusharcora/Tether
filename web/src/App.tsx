@@ -28,6 +28,7 @@ import { useNotify } from './ui/notify';
 import { useAppSignals, useNotifyPref } from './useAppSignals';
 import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
+import { MCP_PATH, type McpServerView } from './settings/McpServers';
 import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
@@ -95,6 +96,7 @@ function Shell() {
   const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
   /** Connected accounts: the sidebar's account row, and Settings → Accounts. */
   const accounts = usePoll<AccountsView>(ACCOUNTS_PATH, ACCOUNTS_MS);
+  const mcp = usePoll<{ servers: McpServerView[] }>(route.tab === 'settings' ? MCP_PATH : null, 60_000);
   /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -291,7 +293,7 @@ function Shell() {
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog
