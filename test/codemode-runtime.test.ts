@@ -122,9 +122,28 @@ describe('sandbox', () => {
 
   it('stops a CPU loop at the wall limit and a stuck await too', async () => {
     const t0 = Date.now();
-    expect((await run('while (true) {}', { ...LIMITS, wallMs: 300 })).error).toMatch(/interrupted/);
+    expect((await run('while (true) {}', { ...LIMITS, wallMs: 300 })).error).toBe('timed out after 0.3 s');
     expect((await run('await new Promise(() => {}); return 1', { ...LIMITS, wallMs: 300 })).error).toBe('timed out after 0.3 s');
     expect(Date.now() - t0).toBeLessThan(3000);
+  });
+
+  it('never blocks the server: /api/runs keeps answering while a busy loop runs out its wall time in its worker', async () => {
+    const s = await startHttpTestServer();
+    try {
+      const looping = session({ workdir: s.dir }, { exec: fakeGh().exec, limits: { ...LIMITS, wallMs: 1500 } }).runCode('while (true) {}');
+      const waits: number[] = [];
+      const t0 = Date.now();
+      while (Date.now() - t0 < 1200) {
+        const t = Date.now();
+        expect((await s.api('GET', '/api/runs')).status).toBe(200);
+        waits.push(Date.now() - t);
+      }
+      expect((await looping).text).toBe('Error: timed out after 1.5 s');
+      expect(waits.length).toBeGreaterThan(5);
+      expect(Math.max(...waits)).toBeLessThan(500);
+    } finally {
+      await s.close();
+    }
   });
 
   it('refuses memory past the limit and connector calls past the cap', async () => {

@@ -3,11 +3,14 @@
  * network, process or timers; its only way out is `__host(path, json)`, which the connector namespaces wrap. Host calls
  * return QuickJS promises, so `await`, loops and `Promise.all` over connector calls work.
  *
- * Limits: wall time (a CPU loop is interrupted, a stuck await is abandoned), memory, and connector calls per run. Each
- * run gets a fresh WASM module, so an abandoned run is simply dropped, never half-disposed.
+ * Each run gets its own worker thread (sandboxWorker), which owns the VM: a busy loop never blocks the server, and the
+ * wall limit is worker.terminate(). Connector calls come back here over the worker's message port. Memory and the call
+ * cap are enforced in the worker, the result cap by the session.
  */
 import { stripTypeScriptTypes } from 'node:module';
-import { newQuickJSWASMModuleFromVariant, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten-core';
+import { extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 
 export interface Limits {
   wallMs: number;
@@ -58,120 +61,50 @@ export function normalizeCode(code: string): string {
   }
 }
 
-const PRELUDE = (roots: string[]) => `
-const __call = async (path, args) => {
-  const r = JSON.parse(await __host(path, JSON.stringify(args)));
-  if (r.error !== undefined) throw new Error(r.error);
-  return r.value;
-};
-const __ns = (path) => new Proxy(function () {}, {
-  get(_t, k) { return typeof k !== 'string' || k === 'then' ? undefined : __ns(path + '.' + k); },
-  apply(_t, _self, args) { return __call(path, args); },
-});
-${roots.map((r) => `globalThis.${r} = __ns(${JSON.stringify(r)});`).join('\n')}
-const __fmt = (v) => { if (typeof v === 'string') return v; try { return JSON.stringify(v) ?? String(v); } catch { return String(v); } };
-globalThis.console = { log: (...a) => __log(a.map(__fmt).join(' ')) };
-console.error = console.warn = console.info = console.debug = console.log;
-`;
+/** The worker's file: a sibling built (.js) or, under the tests, from source (.ts on Node's type stripping). */
+const WORKER = new URL(`./sandboxWorker${extname(fileURLToPath(import.meta.url))}`, import.meta.url);
+/** The worker's own JS heap (QuickJS's memory is its WASM heap, capped by the memory limit). */
+const WORKER_HEAP_MB = 96;
 
-const errorText = (ctx: QuickJSContext, h: QuickJSHandle): string => {
-  const e = ctx.dump(h) as { name?: string; message?: string; stack?: string } | string;
-  if (typeof e !== 'object' || e === null) return String(e);
-  const stack = (e.stack ?? '').split('\n').filter((l) => l.trim()).slice(0, 4).join('\n');
-  return `${e.name ?? 'Error'}: ${e.message ?? ''}${stack ? `\n${stack}` : ''}`;
-};
+type FromWorker = { t: 'call'; id: number; path: string; json: string } | { t: 'done'; result?: string; error?: string; logs: string[]; calls: number };
 
 /** Run `code` with the connector namespaces `roots` (plus `codemode`) bound to `call`. Never throws. */
-export async function execute(code: string, roots: string[], call: HostCall, limits: Limits = LIMITS): Promise<ExecResult> {
-  const logs: string[] = [];
-  let calls = 0;
-  let logBytes = 0;
-  let alive = true;
-  // the release build of QuickJS with a separate .wasm file (the only variant Tether ships)
-  const mod = await newQuickJSWASMModuleFromVariant(import('@jitl/quickjs-wasmfile-release-sync'));
-  const rt = mod.newRuntime();
-  rt.setMemoryLimit(limits.memoryBytes);
-  rt.setMaxStackSize(1024 * 1024);
-  rt.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + limits.wallMs));
-  const ctx = rt.newContext();
-  const pump = () => alive && rt.executePendingJobs();
-
-  const host = ctx.newFunction('__host', (pathH, argsH) => {
-    const path = ctx.getString(pathH);
-    const json = ctx.getString(argsH);
-    const p = ctx.newPromise();
-    const settle = (body: unknown) => {
-      if (!alive) return;
-      const h = ctx.newString(JSON.stringify(body));
-      // returned to the guest as the function's value: resolving is the only clean-up it needs
-      p.resolve(h);
-      h.dispose();
-      pump();
+export function execute(code: string, roots: string[], call: HostCall, limits: Limits = LIMITS): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    let calls = 0;
+    let finished = false;
+    const worker = new Worker(WORKER, { workerData: { code: normalizeCode(code), roots: [...new Set([...roots, 'codemode'])], limits }, resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } });
+    const finish = (r: ExecResult) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      void worker.terminate();
+      resolve(r);
     };
-    if (++calls > limits.maxCalls) settle({ error: `connector call limit reached (${limits.maxCalls} per run): do more in fewer calls, or return what you have` });
-    else
+    // past the wall time the thread is stopped, whatever it is doing (a CPU loop, a stuck await)
+    const timer = setTimeout(() => finish({ error: `timed out after ${limits.wallMs / 1000} s`, logs: [], calls }), limits.wallMs);
+    worker.on('message', (m: FromWorker) => {
+      if (m.t === 'done') {
+        let result: unknown;
+        if (m.result !== undefined) {
+          try {
+            result = JSON.parse(m.result);
+          } catch {
+            result = m.result;
+          }
+        }
+        return finish({ ...(m.error !== undefined ? { error: m.error } : { result }), logs: m.logs, calls: m.calls });
+      }
+      calls++;
       Promise.resolve()
-        .then(() => call(path, JSON.parse(json) as unknown[]))
+        .then(() => call(m.path, JSON.parse(m.json) as unknown[]))
         .then(
-          (value) => settle({ value: value === undefined ? null : value }),
-          (e: unknown) => settle({ error: e instanceof Error ? e.message : String(e) }),
-        );
-    return p.handle;
+          (value) => JSON.stringify({ value: value === undefined ? null : value }),
+          (e: unknown) => JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+        )
+        .then((json) => !finished && worker.postMessage({ t: 'reply', id: m.id, json }));
+    });
+    worker.on('error', (e) => finish({ error: /heap|memory/i.test(e.message) ? 'out of memory' : `the sandbox failed: ${e.message}`, logs: [], calls }));
+    worker.on('exit', () => finish({ error: 'the sandbox stopped unexpectedly', logs: [], calls }));
   });
-  ctx.setProp(ctx.global, '__host', host);
-  host.dispose();
-  const log = ctx.newFunction('__log', (h) => {
-    const line = ctx.getString(h);
-    logBytes += line.length;
-    if (logBytes <= limits.maxResultBytes * 4) logs.push(line);
-  });
-  ctx.setProp(ctx.global, '__log', log);
-  log.dispose();
-
-  const rootsAll = [...new Set([...roots, 'codemode'])];
-  const prelude = ctx.evalCode(PRELUDE(rootsAll), 'prelude.js');
-  if (prelude.error) prelude.error.dispose();
-  else prelude.value.dispose();
-
-  const done = (r: ExecResult): ExecResult => {
-    alive = false;
-    try {
-      ctx.dispose();
-      rt.dispose();
-    } catch {
-      /* a run cut short can hold handles: the module is dropped with it */
-    }
-    return r;
-  };
-  const evaluated = ctx.evalCode(`(async () => {\n${normalizeCode(code)}\n})().then((v) => JSON.stringify(v === undefined ? null : v) ?? 'null')`, 'run_code.js');
-  if (evaluated.error) {
-    const error = errorText(ctx, evaluated.error);
-    evaluated.error.dispose();
-    return done({ error, logs, calls });
-  }
-  const settled = ctx.resolvePromise(evaluated.value);
-  evaluated.value.dispose();
-  pump();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<'timeout'>((r) => (timer = setTimeout(() => r('timeout'), limits.wallMs)));
-  const out = await Promise.race([settled, timeout]);
-  clearTimeout(timer);
-  if (out === 'timeout') {
-    alive = false; // abandoned with its pending host calls: the module is dropped, not disposed
-    return { error: `timed out after ${limits.wallMs / 1000} s`, logs, calls };
-  }
-  if (out.error) {
-    const error = errorText(ctx, out.error);
-    out.error.dispose();
-    return done({ error, logs, calls });
-  }
-  const text = ctx.getString(out.value);
-  out.value.dispose();
-  let result: unknown;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    result = text;
-  }
-  return done({ result, logs, calls });
 }
