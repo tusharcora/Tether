@@ -1,9 +1,11 @@
 /** /api/code/*: the Code screen over the existing loopback server (Host and Origin are checked by server.ts first). */
 import { realpathSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { listDir, readCode } from './code.js';
+import { listDir, readCode, saveCode } from './code.js';
+import { writingRun } from './codeRuns.js';
+import { searchNames, searchText } from './codeSearch.js';
 import type { Engine } from './engine.js';
-import { HttpError, send } from './serverkit.js';
+import { HttpError, readJson, reqObject, send } from './serverkit.js';
 import type { Store } from './store.js';
 import { aorchHomeMessage, getWorkspace, isAorchHome } from './workspace.js';
 
@@ -23,6 +25,10 @@ export function projectRoot(home: string, id: unknown): string {
   return realpathSync(w.path);
 }
 
+/** A saved file can be 2 MB of text, which JSON escaping can more than double. */
+const MAX_SAVE_BODY = 6_000_000;
+const MAX_QUERY = 200;
+
 export async function codeRoute(c: CodeRouteCtx, req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
   const p = url.pathname;
   const m = req.method ?? 'GET';
@@ -30,6 +36,28 @@ export async function codeRoute(c: CodeRouteCtx, req: IncomingMessage, res: Serv
   const root = () => projectRoot(c.home, url.searchParams.get('ws'));
 
   if (p === '/api/code/tree' && m === 'GET') return send(res, 200, await listDir(root(), q('dir'))), true;
-  if (p === '/api/code/file' && m === 'GET') return send(res, 200, readCode(root(), q('path'))), true;
+  if (p === '/api/code/file' && m === 'GET') {
+    const r = root();
+    const lock = writingRun(c.store, c.engine, r);
+    return send(res, 200, { ...readCode(r, q('path')), ...(lock ? { lock } : {}) }), true;
+  }
+  if (p === '/api/code/file' && m === 'PUT') {
+    const b = reqObject(await readJson(req, MAX_SAVE_BODY));
+    const r = projectRoot(c.home, b.ws);
+    if (typeof b.path !== 'string' || typeof b.text !== 'string') throw new HttpError(400, '"path" and "text" are required');
+    if (b.baseMtimeMs !== undefined && typeof b.baseMtimeMs !== 'number') throw new HttpError(400, '"baseMtimeMs" must be a number');
+    const lock = writingRun(c.store, c.engine, r);
+    if (lock) throw new HttpError(423, 'run-writing', { ...lock });
+    return send(res, 200, { path: b.path, ...saveCode(r, b.path, b.text, b.baseMtimeMs as number | undefined) }), true;
+  }
+  if (p === '/api/code/search' && m === 'GET') {
+    const mode = q('mode') || 'text';
+    if (mode !== 'name' && mode !== 'text') throw new HttpError(400, '"mode" must be "name" or "text"');
+    const text = q('q').trim();
+    if (text.length > MAX_QUERY) throw new HttpError(400, `"q" is too long (max ${MAX_QUERY})`);
+    const r = root();
+    if (!text) return send(res, 200, mode === 'name' ? { hits: [] } : { hits: [], truncated: false }), true;
+    return send(res, 200, mode === 'name' ? await searchNames(r, text) : await searchText(r, text)), true;
+  }
   return false;
 }

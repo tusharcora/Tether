@@ -2,7 +2,7 @@
  * The Code screen's file access: one path gate for every route (resolveInWorkspace), a lazy tree that follows git, and
  * file reads and atomic saves with their limits. Every path here is relative to a registered project's folder.
  */
-import { accessSync, closeSync, constants, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, closeSync, constants, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { git } from './git.js';
 import { HttpError } from './serverkit.js';
@@ -33,6 +33,7 @@ export interface CodeFile {
 export const MAX_TEXT = 2 * 1024 * 1024;
 /** A NUL byte in this much of the start marks a file as binary. */
 const SNIFF = 8192;
+export const looksBinary = (buf: Buffer): boolean => buf.subarray(0, SNIFF).includes(0);
 
 const within = (p: string, base: string) => p === base || p.startsWith(base.endsWith(sep) ? base : base + sep);
 /** The real path of `p`, or, when it does not exist (yet), its nearest existing parent's real path plus the rest. */
@@ -157,8 +158,7 @@ function sniffBinary(abs: string): boolean {
   const fd = openSync(abs, 'r');
   try {
     const buf = Buffer.alloc(SNIFF);
-    const n = readSync(fd, buf, 0, SNIFF, 0);
-    return buf.subarray(0, n).includes(0);
+    return looksBinary(buf.subarray(0, readSync(fd, buf, 0, SNIFF, 0)));
   } finally {
     closeSync(fd);
   }
@@ -193,4 +193,33 @@ export function readCode(root: string, rel: string): CodeFile {
   if (st.size > MAX_TEXT) return { ...head, text: '', tooLarge: true };
   if (sniffBinary(abs)) return { ...head, text: '', binary: true };
   return { ...head, text: readFileSync(abs, 'utf8') };
+}
+
+/**
+ * Save the editor's text: a temp file in the same folder renamed over the original (same mode), so a reader never sees half
+ * a file. `baseMtimeMs` is the mtime the text was read at: if the file has changed since, 409 changed-on-disk (leave it out
+ * to overwrite). Secrets and unwritable files are 403; only existing text files up to 2 MB are saved.
+ */
+export function saveCode(root: string, rel: string, text: string, baseMtimeMs?: number): { mtimeMs: number; size: number } {
+  const { abs, rel: path, st } = fileAt(root, rel);
+  if (isSecretPath(path)) throw new HttpError(403, 'secrets files are read-only here');
+  if (!writable(abs)) throw new HttpError(403, `${path} is read-only`);
+  if (st.size > MAX_TEXT || Buffer.byteLength(text) > MAX_TEXT) throw new HttpError(413, 'files over 2 MB are not edited here');
+  if (sniffBinary(abs)) throw new HttpError(400, `${path} is a binary file`);
+  if (baseMtimeMs !== undefined && st.mtimeMs !== baseMtimeMs) throw new HttpError(409, 'changed-on-disk', { mtimeMs: st.mtimeMs });
+  const tmp = join(dirname(abs), `.${basename(abs)}.${process.pid}-${Date.now().toString(36)}.tether-tmp`);
+  try {
+    writeFileSync(tmp, text);
+    chmodSync(tmp, st.mode & 0o7777);
+    renameSync(tmp, abs);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* never written */
+    }
+    throw e;
+  }
+  const now = statSync(abs);
+  return { mtimeMs: now.mtimeMs, size: now.size };
 }
