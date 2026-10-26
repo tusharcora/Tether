@@ -1,14 +1,15 @@
 /**
  * Chat sessions. The main chat and every run each have their own conversation, saved to
  * `<home>/chats/<id>.json`, so closing aorch and coming back (or a run failing while you are away)
- * loses nothing: the transcript, what Maestro proposed, and what you answered are all still there.
+ * loses nothing: the transcript, what Tether proposed, and what you answered are all still there.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Pipeline, TeamMode } from './types.js';
 
 export interface Turn {
-  who: 'you' | 'maestro';
+  /** `maestro` in chats saved before the rename. */
+  who: 'you' | 'tether' | 'maestro';
   text: string;
 }
 
@@ -18,7 +19,7 @@ export type Proposal =
   | { kind: 'run'; workflow: string; task: string }
   | { kind: 'team'; task: string; mode?: TeamMode };
 
-/** What Maestro can do about a run, validated before it is ever shown. Never a shell command. */
+/** What Tether can do about a run, validated before it is ever shown. Never a shell command. */
 export type RunAction =
   | { type: 'retry' }
   | { type: 'resume' }
@@ -37,7 +38,8 @@ export interface Choice {
 
 export type Entry =
   | { k: 'you'; text: string }
-  | { k: 'maestro'; text: string }
+  | { k: 'tether'; text: string }
+  | { k: 'maestro'; text: string } // saved before the rename
   | { k: 'note'; text: string }
   | { k: 'offer'; r: { text: string; warnings: string[]; proposal?: Proposal }; st: 'pending' | 'done' | 'skipped' | 'failed'; note?: string }
   | { k: 'run'; runId: string; workflow: string }
@@ -52,7 +54,7 @@ export interface Session {
   workflow?: string;
   log: Entry[];
   history: Turn[];
-  /** Failures Maestro has already explained, so he does not repeat himself. */
+  /** Failures Tether has already explained, so he does not repeat himself. */
   diagnosed: string[];
   /** Progress already reported to this conversation, so each step is announced once. */
   reported?: string[];

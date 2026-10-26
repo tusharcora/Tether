@@ -8,9 +8,9 @@ A durable orchestrator for CLI coding agents. It runs workflows of agents (Claud
 
 - **Terminal UI** (`aorch tui`): dashboard of runs and workflows, a run view with live activity lines and metrics, step sessions you can attach to, a diff viewer, a workflow editor, settings and a theme editor.
 - **Web dashboard** (`aorch serve`): visual workflow builder, run timeline, knowledge graph of your Obsidian-style vault, and a Crew tab for linking bots to models.
-- **Crew**: Maestro (orchestrator), Scout, Brick, Bolt, Probe, Lens and Gate. Link any bot to any agent and model, local ones included.
-- **Maestro supervisor**: on failure, retries, then escalates the failing step to a stronger model, then stops and explains.
-- **Team runs** (`aorch team "<goal>"`): a manager (Maestro) plans with you first, asking short questions with a recommended option, then a team of agents hands work around and can ask you things as they go. Live or autonomous. See [Team runs](#team-runs).
+- **Crew**: Tether (orchestrator and assistant; it was called Maestro, and `maestro` still works as its name), Scout, Brick, Bolt, Probe, Lens and Gate. Link any bot to any agent and model, local ones included.
+- **Tether supervisor**: on failure, retries, then escalates the failing step to a stronger model, then stops and explains.
+- **Team runs** (`aorch team "<goal>"`): a manager (Tether) plans with you first, asking short questions with a recommended option, then a team of agents hands work around and can ask you things as they go. Live or autonomous. See [Team runs](#team-runs).
 - **Evolve** (`aorch evolve <bot>`): bots get better with use. Your thumbs-up/down and run outcomes become lessons; Evolve proposes small, versioned edits to a bot's harness that you review, optionally probe within a budget, and accept or reject. Nothing is applied automatically. See [Evolve](#evolve-bots-that-improve-with-use).
 
 ## Terminal UI tips
@@ -20,7 +20,7 @@ A durable orchestrator for CLI coding agents. It runs workflows of agents (Claud
 - **Mouse**: click tabs, rows and steps (click a selected row again to open it), wheel to scroll, right-click to go back. Turn it off in Settings if you prefer to select text (or hold shift while dragging).
 - **Skills**: `aorch skills` lists them; `aorch skills run <name> --task "…"` runs one. Two kinds: built-in or custom aorch workflows (JSON in `<home>/skills/`, e.g. `{"name":"my-skill","description":"…","steps":[{"role":"coder","prompt":"…"},{"role":"tester"}]}`), and Claude Code skills found in `~/.claude/skills` and `<repo>/.claude/skills`. A Claude Code skill runs inside a Claude agent step that is told to invoke it by name. In the workflow editor press `k` to add either kind.
 - **The face**: one small face band sits at the top-left of the header (`▐  ●  ●  ▌`). Its eyes, colour and a glyph beside it show what is going on: idle (blinks now and then), working (`◉◉` and a spinner), waiting for you (`◔◔` amber `?`), done (`^^` green `✓`, for a few seconds after a run you started finishes), failed (`╥╥` red `!`) and asleep (`––` grey `z`, after ten idle minutes with nothing running; any key wakes it). It follows your colour theme, and shrinks to `▐●●▌` under 40 columns.
-- **Reactions**: a step sparkles when it passes, shudders when one fails, and a baton slides along the arrow when work is handed on. Maestro shows ↻ or ⇧ on a step it retries or escalates. Turn it off in Settings.
+- **Reactions**: a step sparkles when it passes, shudders when one fails, and a baton slides along the arrow when work is handed on. Tether shows ↻ or ⇧ on a step it retries or escalates. Turn it off in Settings.
 - **Side pane and charts** (run view): on terminals 100+ columns wide a pane beside the live output shows the selected step's diff or events (`|` cycles diff / events / off, `J`/`K` or the wheel scroll it). With colour and 34+ rows, `g` toggles a timeline and cost chart drawn with half-block pixels.
 
 ## Requirements
@@ -37,7 +37,7 @@ node dist/cli.js tui        # interactive terminal UI
 node dist/cli.js serve      # web dashboard on a loopback port
 ```
 
-`aorch team "<goal>" --repo <dir>` starts a team run: Maestro asks planning questions, you approve the plan, then the team works. `aorch orchestrate "<task>" --repo <dir>` asks Maestro to design a workflow for a task. `aorch run <pipeline.json> --repo <dir> --task "<task>"` runs a saved one. `aorch --help` lists everything.
+`aorch team "<goal>" --repo <dir>` starts a team run: Tether asks planning questions, you approve the plan, then the team works. `aorch orchestrate "<task>" --repo <dir>` asks Tether to design a workflow for a task. `aorch run <pipeline.json> --repo <dir> --task "<task>"` runs a saved one. `aorch --help` lists everything.
 
 ## Tether.app (macOS, Apple Silicon)
 
@@ -145,7 +145,7 @@ A step can ask a step that already finished: why it did something, or about a bu
 
 ## Teams: a manager hands out work
 
-A `manager` step plans the work and hands pieces to other bots at run time, then reviews what comes back. It is read-only: it coordinates and never edits files. The `team` workflow (`manager → tests → review → approve`, tests only when the repo has a test command) is the quickest way to try it; you can also add a manager step to any workflow by hand. Maestro does not propose manager steps in a workflow (open-ended work goes to a team run, below).
+A `manager` step plans the work and hands pieces to other bots at run time, then reviews what comes back. It is read-only: it coordinates and never edits files. The `team` workflow (`manager → tests → review → approve`, tests only when the repo has a test command) is the quickest way to try it; you can also add a manager step to any workflow by hand. Tether does not propose manager steps in a workflow (open-ended work goes to a team run, below).
 
 The manager replies with a plan, `{"tasks":[…]}`. Each task is a hand-off contract:
 
@@ -185,11 +185,11 @@ A worker (any agent step, including one a manager spawned) can pass a sub-task t
 
 ## Team runs
 
-A run is either a **workflow** (a fixed pipeline of steps, everything above) or a **team** run: you give a goal, Maestro asks you a few questions, writes a plan, and once you approve it a manager (Boss) hands the work to bots from the crew. Use a workflow when you know the steps; use a team when the work is open-ended. Maestro proposes a team run when you describe open-ended work or ask for "a team".
+A run is either a **workflow** (a fixed pipeline of steps, everything above) or a **team** run: you give a goal, Tether asks you a few questions, writes a plan, and once you approve it a manager (Boss) hands the work to bots from the crew. Use a workflow when you know the steps; use a team when the work is open-ended. Tether proposes a team run when you describe open-ended work or ask for "a team".
 
-**Planning cards.** Before any plan, Maestro asks in rounds. Each round has up to 4 questions (cards) with at most 6 options each; every card has a recommended option (marked with a star), and most carry a one-line reason for asking. Some cards also accept your own words (free text, up to 2000 characters). The "writes" card is always worded by aorch itself ("May agents change files in the worktree?"), whatever the model wrote, so its yes means yes. Press enter or run with `--yes` to take the recommended answers. After at most 3 rounds (`--rounds n`, 1 to 6) Maestro has to write the plan, which lists the goal, success criteria, who does what (read or write) and the limits. Nothing starts until you approve it. Boss's first batch of work needs no second approval only when it stays inside the plan (the bots it names, writes only where the plan says write); anything beyond it, and every later batch, asks you again.
+**Planning cards.** Before any plan, Tether asks in rounds. Each round has up to 4 questions (cards) with at most 6 options each; every card has a recommended option (marked with a star), and most carry a one-line reason for asking. Some cards also accept your own words (free text, up to 2000 characters). The "writes" card is always worded by aorch itself ("May agents change files in the worktree?"), whatever the model wrote, so its yes means yes. Press enter or run with `--yes` to take the recommended answers. After at most 3 rounds (`--rounds n`, 1 to 6) Tether has to write the plan, which lists the goal, success criteria, who does what (read or write) and the limits. Nothing starts until you approve it. Boss's first batch of work needs no second approval only when it stays inside the plan (the bots it names, writes only where the plan says write); anything beyond it, and every later batch, asks you again.
 
-**Modes.** `live` (default) keeps you in the loop: progress reports in the run's chat and questions from workers wait for you. `autonomous` goes quiet: Maestro answers workers' questions with the recommended option (logged as answered by Maestro) and reports only once, at the end. Planning questions always come to you in both modes (unless `--yes`). Switch any time: `/mode live|autonomous` in the run's chat, `aorch mode <runId> live|autonomous`, or the toggle in the dashboard. A card that is already waiting stays waiting.
+**Modes.** `live` (default) keeps you in the loop: progress reports in the run's chat and questions from workers wait for you. `autonomous` goes quiet: Tether answers workers' questions with the recommended option (logged as answered by Tether) and reports only once, at the end. Planning questions always come to you in both modes (unless `--yes`). Switch any time: `/mode live|autonomous` in the run's chat, `aorch mode <runId> live|autonomous`, or the toggle in the dashboard. A card that is already waiting stays waiting.
 
 **Workers can ask you: `@ASK user:`.** A worker that needs a decision ends its answer with a line in column 0:
 
@@ -197,7 +197,7 @@ A run is either a **workflow** (a fixed pipeline of steps, everything above) or 
 @ASK user: Which database? | options: postgres; sqlite | recommended: sqlite | why: the repo has no server
 ```
 
-`options:` (at most 6, separated by `;`), `recommended:` (a label or number; the first option if missing) and `why:` are optional; without options you get a "proceed with your best judgement" card. The step pauses, the run waits, and when you answer the step runs again with your answer in its prompt. Files it had changed before pausing are reverted while it waits, and it is told to redo them. At most 4 questions per reply; at most 2 cards wait at once, and beyond that, or when the step cannot wait (a `@HAND` child), Maestro answers with the recommended option and says so. `@ASK <step-id>:` still consults a finished step as described above.
+`options:` (at most 6, separated by `;`), `recommended:` (a label or number; the first option if missing) and `why:` are optional; without options you get a "proceed with your best judgement" card. The step pauses, the run waits, and when you answer the step runs again with your answer in its prompt. Files it had changed before pausing are reverted while it waits, and it is told to redo them. At most 4 questions per reply; at most 2 cards wait at once, and beyond that, or when the step cannot wait (a `@HAND` child), Tether answers with the recommended option and says so. `@ASK <step-id>:` still consults a finished step as described above.
 
 **Limits.**
 
@@ -251,7 +251,7 @@ Editing a bot's description in the Crew tab (or resetting a built-in one) does n
 
 **Lessons.** When a run finishes (done or failed), aorch reflects on it without any model call and keeps per-bot lessons in `<home>/harness/<bot>/lessons.json`: work sent back for rework twice or more, two or more refused handoffs, a thumbs-down note, or a thumbs-up on a step that needed no rework and was quick and cheap. Each lesson carries its evidence (run, step and signal ids) and its provenance: `metrics` (wording made by aorch), `feedback` (your note) or `check` (a reviewer's or gate's words: lowest trust, never cited unless a person's feedback backs it). A lesson stays **tentative** until at least 3 distinct runs support it with no conflicting lesson (for example the same step both sent back and liked); then it is **confident**. Only confident lessons are ever proposed. Confident lessons are also written to the vault under `lessons/<bot>/`, as a record; vault retrieval never puts `lessons/` notes (or lesson and harness notes by type) into any prompt, so a lesson reaches a bot only through guidance you accepted. See them with `aorch lessons [bot]`, in the terminal's evolve view, or in the dashboard. Lesson and feedback text is data: it is fenced whenever it goes into a prompt (the editor's prompt and the guidance block), and every vault note retrieved as context is a fenced `<vault-note>` data section.
 
-**Proposals.** `aorch evolve <bot>` makes one model call (the editor: Maestro's binding unless you pass `--agent`/`--model`, with a $0.50 cost cap where the adapter enforces one, and a 3-minute timeout) that suggests a small diff to the harness from the confident lessons. With no confident lessons it says "not enough evidence" and makes no call. A proposal has at most 5 edits, each citing at least one lesson; edits outside the editable fields, over the size limits, citing anything but a confident lesson of this bot, or matching an edit you rejected before are dropped with a reason. Nothing is applied: a proposal is a file under `<home>/harness/<bot>/proposals/` until you decide. At most 10 proposals can be open per bot. An open proposal written for an older version is closed as **superseded** the next time `aorch evolve` runs for that bot with confident lessons (shown apart from proposals you rejected); it cannot be accepted anyway, because accepting checks that the harness is still at the version the proposal was written for.
+**Proposals.** `aorch evolve <bot>` makes one model call (the editor: Tether's binding unless you pass `--agent`/`--model`, with a $0.50 cost cap where the adapter enforces one, and a 3-minute timeout) that suggests a small diff to the harness from the confident lessons. With no confident lessons it says "not enough evidence" and makes no call. A proposal has at most 5 edits, each citing at least one lesson; edits outside the editable fields, over the size limits, citing anything but a confident lesson of this bot, or matching an edit you rejected before are dropped with a reason. Nothing is applied: a proposal is a file under `<home>/harness/<bot>/proposals/` until you decide. At most 10 proposals can be open per bot. An open proposal written for an older version is closed as **superseded** the next time `aorch evolve` runs for that bot with confident lessons (shown apart from proposals you rejected); it cannot be accepted anyway, because accepting checks that the harness is still at the version the proposal was written for.
 
 **Probes (optional, they cost money).** `aorch evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--allow-commands]` replays up to `n` (default 3, at most 8) recent read-only runs of that bot once with the current harness and once per proposed edit, and keeps an edit only when it did better in most of the tasks it was compared on. There is no probe without `--budget`, and the spend stops at it. Replays run read-only agent steps in a throwaway clone (pushing from it is blocked), never teach lessons, and only use adapters that can cap a call's cost. Runs whose workflow has a gate or setup command are skipped unless you pass `--allow-commands`: those commands then re-run in the clone with your shell's full rights, so they can reach anything a command can (only pass it for commands you trust). The result is saved on the proposal: the dashboard, the evolve view and `aorch evolve --show <id>` show each edit as kept, dropped or not probed. Probe replays are hidden from run lists (`aorch runs --all`, `P` on the terminal's Runs tab, or "show probe replays" in the dashboard shows them; `GET /api/runs?all=1`), `aorch probes --clean` deletes the finished ones, and each probe first deletes finished replays older than 7 days or beyond the newest 100 (their scores are already saved on the proposal). The probe's search for runs to replay never counts probe replays.
 
@@ -267,7 +267,7 @@ Editing a bot's description in the Crew tab (or resetting a built-in one) does n
 
 **Dashboard.** On the Crew tab each agent or reviewer bot shows its harness version and a `● proposal` badge; Evolve opens its harness (with versions and roll back), proposals (tick edits, Accept, Pick the kept edits, Reject with an inline confirm) and lessons. Like the terminal, it reviews proposals and never makes them.
 
-**Maestro.** When recent runs show a bot sent back again and again, Maestro may offer to run `aorch evolve <bot>`; it never runs it on its own. Any `aorch evolve …` or `aorch harness … rollback` command Maestro proposes asks you every time, even when Maestro commands are set to "always", and "always allow" is not remembered for them.
+**Tether.** When recent runs show a bot sent back again and again, Tether may offer to run `aorch evolve <bot>`; it never runs it on its own. Any `aorch evolve …` or `aorch harness … rollback` command Tether proposes asks you every time, even when Tether commands are set to "always", and "always allow" is not remembered for them.
 
 **API** (loopback only, like the rest):
 
@@ -293,11 +293,11 @@ The web dashboard draws the crew five ways; pick one with the picker at the top 
 
 The mark styles (`sigil`, `tile`, `ticker`, `orbit`) are derived from the bot, so custom bots work with no extra setup: the glyph comes from the bot's id, the symbol and initials from its name, the colour from its look. The bot editor still edits the pixel look, which `pebble` uses.
 
-## Talking to Maestro
+## Talking to Tether
 
-The first tab, **chat**, is a conversation with Maestro like the one in Claude Code: just start typing, enter sends, and the transcript scrolls (↑↓, PgUp/PgDn). Maestro's replies, the workflows he proposes, and the runs he starts all appear in the transcript, and the live crew board sits under it while a run is going, so you watch the orchestration without leaving the chat. Click a run card to open the full run view.
+The first tab, **chat**, is a conversation with Tether like the one in Claude Code: just start typing, enter sends, and the transcript scrolls (↑↓, PgUp/PgDn). Tether's replies, the workflows it proposes, and the runs it starts all appear in the transcript, and the live crew board sits under it while a run is going, so you watch the orchestration without leaving the chat. Click a run card to open the full run view.
 
-Maestro can:
+Tether can:
 
 - **plan and save** a workflow from what you need ("a careful flow for payment code, with a human sign-off"),
 - **optimize** a saved one ("make full-review cheaper"),
@@ -309,18 +309,18 @@ When the input is empty, a greyed-out suggestion for the next step is shown, bas
 
 ### Every run has its own conversation
 
-Starting a run opens a conversation just for it (switch with `/sessions`, go back with `/main`; `/` on a run's screen jumps to its chat). It is saved to `<home>/chats/`, so closing aorch and coming back puts you exactly where you were: the transcript, what Maestro proposed, and what you chose.
+Starting a run opens a conversation just for it (switch with `/sessions`, go back with `/main`; `/` on a run's screen jumps to its chat). It is saved to `<home>/chats/`, so closing aorch and coming back puts you exactly where you were: the transcript, what Tether proposed, and what you chose.
 
-- **Progress reports.** Maestro reports as steps finish ("Scout finished: PASS · 3 of 5 steps · $0.12"), when a step needs your approval, and when the run is done. `/status` gives the picture any time. Reports for a run you are not looking at appear as a notice.
-- **When a run fails**, Maestro reads the failure and tells you in plain words what went wrong, then offers numbered options with a ★ recommended one: retry the failed step, move a step to a stronger model, give a step new instructions ("guidance", added to its prompt), do it by hand, or open the run. Pick with `enter` or `1`–`9`. Options are a fixed set of actions checked against the real run, never shell commands, and nothing happens until you pick one. Without a model to ask, rule-based options are offered.
+- **Progress reports.** Tether reports as steps finish ("Scout finished: PASS · 3 of 5 steps · $0.12"), when a step needs your approval, and when the run is done. `/status` gives the picture any time. Reports for a run you are not looking at appear as a notice.
+- **When a run fails**, Tether reads the failure and tells you in plain words what went wrong, then offers numbered options with a ★ recommended one: retry the failed step, move a step to a stronger model, give a step new instructions ("guidance", added to its prompt), do it by hand, or open the run. Pick with `enter` or `1`–`9`. Options are a fixed set of actions checked against the real run, never shell commands, and nothing happens until you pick one. Without a model to ask, rule-based options are offered.
 - **Pick up where it stopped.** Retrying or resuming continues from the first unfinished step; nothing already done is repeated. If aorch was closed mid-run, the conversation offers to resume it when you return.
-- **Change things any time.** Tell Maestro in the run's conversation ("use a stronger model for the coder", "keep the change small") and he offers the matching option.
+- **Change things any time.** Tell Tether in the run's conversation ("use a stronger model for the coder", "keep the change small") and it offers the matching option.
 
-### Commands Maestro can run
+### Commands Tether can run
 
-Maestro can ask to run a shell command (check `git status`, run the tests, look at a file) in the run's worktree, or in your folder from the main chat. A card shows the command, where it runs and why, with three choices: **1 allow once**, **2 always allow** that exact command, **3 deny**. The output comes back into the conversation and Maestro reads it and carries on (up to three commands in a row per message).
+Tether can ask to run a shell command (check `git status`, run the tests, look at a file) in the run's worktree, or in your folder from the main chat. A card shows the command, where it runs and why, with three choices: **1 allow once**, **2 always allow** that exact command, **3 deny**. The output comes back into the conversation and Tether reads it and carries on (up to three commands in a row per message).
 
-Settings → **Maestro commands** has three modes: *ask first* (default), *always run* (no prompt), and *off*. Even in *always run*, plainly destructive commands (`sudo`, `rm -rf /` or `~`, piping a download into a shell, force-pushing main, writing to disk devices) are refused. Commands run with a 2-minute limit and without environment variables that look like secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`). `/allowed` lists what you always allow and `/allowed clear` forgets it. Approvals are stored in `<home>/permissions.json`.
+Settings → **Tether commands** has three modes: *ask first* (default), *always run* (no prompt), and *off*. Even in *always run*, plainly destructive commands (`sudo`, `rm -rf /` or `~`, piping a download into a shell, force-pushing main, writing to disk devices) are refused. Commands run with a 2-minute limit and without environment variables that look like secrets (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`). `/allowed` lists what you always allow and `/allowed clear` forgets it. Approvals are stored in `<home>/permissions.json`.
 
 Slash commands: `/status`, `/approve` `/reject` `/retry` `/resume`, `/open` `/chat [run]`, `/sessions` `/main`, `/runs` `/workflows` `/crew` `/triggers` `/settings` to switch screen, `/run <workflow> <task>`, `/providers`, `/clear`, `/help`, `/quit`. Every other question aorch asks (names, paths, colours) is also typed on the line at the bottom of the screen.
 

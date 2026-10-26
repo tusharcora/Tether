@@ -29,9 +29,9 @@ describe('Running', () => {
   });
 
   it('describes planning, plans and waiting steps', () => {
-    expect(nowLine(makeRow({ kind: 'team', steps: [] }))).toBe('Maestro is planning');
+    expect(nowLine(makeRow({ kind: 'team', steps: [] }))).toBe('Tether is planning');
     expect(nowLine(makeRow({ kind: 'team', steps: [], planReady: true }))).toBe('The plan waits for your approval');
-    expect(nowLine(makeRow({ kind: 'team', steps: [], pending: 2 }))).toBe('Maestro has a question for you');
+    expect(nowLine(makeRow({ kind: 'team', steps: [], pending: 2 }))).toBe('Tether has a question for you');
     expect(nowLine(makeRow({ steps: [{ id: 'ok', status: 'awaiting', bot: 'approval' }], current: { node: 'ok', bot: 'Gate', title: 'Ship it' } }))).toBe('Ship it waits for you');
     expect(nowLine(makeRow({ steps: [{ id: 'a', status: 'done', bot: 'coder' }] }))).toBe('Between steps');
   });

@@ -148,7 +148,7 @@ describe('Runs', () => {
     const team = makeRun({ kind: 'team', planning: true, pipeline: { ...makeRun().pipeline, name: 'team', nodes: [], edges: [] }, nodes: {} });
     const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', team));
-    expect(await screen.findByText('Maestro is planning…')).toBeTruthy();
+    expect(await screen.findByText('Tether is planning…')).toBeTruthy();
     expect(container.querySelector('.run-graph')).toBeNull();
     expect(screen.getByRole('group', { name: 'Team mode' })).toBeTruthy();
   });

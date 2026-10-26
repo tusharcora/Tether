@@ -1,5 +1,6 @@
 /** /api/http/*: the API client over the existing loopback server (Host and Origin are checked by server.ts first). */
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { canonicalBotId } from '../crew.js';
 import type { Engine } from '../engine.js';
 import { rosterOf } from '../handoff.js';
 import { normalizePipeline } from '../pipeline.js';
@@ -187,7 +188,7 @@ async function handle(c: HttpRouteCtx, req: IncomingMessage, res: ServerResponse
     const task = agentTask(typeof b.note === 'string' ? b.note.slice(0, NOTE_MAX) : '', row);
     let runId: string;
     try {
-      if (target.kind === 'maestro') runId = await c.engine.startTeam({ task, repo: pr.dir, mode: 'live', workspace: pr.workspaceId, background: true });
+      if (target.kind === 'tether') runId =await c.engine.startTeam({ task, repo: pr.dir, mode: 'live', workspace: pr.workspaceId, background: true });
       else if (target.mode === 'team') runId = await c.engine.startTeam({ task, repo: pr.dir, mode: 'live', roster: [target.bot], workspace: pr.workspaceId, background: true });
       else {
         const pipeline = normalizePipeline({ name: 'api-exchange', nodes: [{ id: 'look', kind: 'agent', role: target.bot, title: 'Look into this API exchange' }], edges: [] });
@@ -209,18 +210,19 @@ async function handle(c: HttpRouteCtx, req: IncomingMessage, res: ServerResponse
 
 const NOTE_MAX = 4000;
 const BOT_ID = /^[a-z][a-z0-9_-]{0,23}$/;
-type AgentTarget = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'maestro' };
+type AgentTarget = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'tether' };
 
-/** `{ kind: "run", bot, mode: "solo" | "team" }` with a crew bot, or `{ kind: "maestro" }`; anything else is a 400. */
+/** `{ kind: "run", bot, mode: "solo" | "team" }` with a crew bot, or `{ kind: "tether" }` (`"maestro"`, its old name, too); anything else is a 400. */
 function parseAgentTarget(v: unknown): AgentTarget {
-  const shape = '"target" must be { kind: "run", bot, mode: "solo" | "team" } or { kind: "maestro" }';
+  const shape = '"target" must be { kind: "run", bot, mode: "solo" | "team" } or { kind: "tether" }';
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HttpError(400, shape);
   const t = v as { kind?: unknown; bot?: unknown; mode?: unknown };
-  if (t.kind === 'maestro') return { kind: 'maestro' };
+  if (t.kind === 'tether' || t.kind === 'maestro') return { kind: 'tether' };
   if (t.kind !== 'run') throw new HttpError(400, shape);
   if (t.mode !== 'solo' && t.mode !== 'team') throw new HttpError(400, '"target.mode" must be "solo" or "team"');
-  if (typeof t.bot !== 'string' || !BOT_ID.test(t.bot)) throw new HttpError(400, '"target.bot" must be a bot id');
+  if (typeof t.bot !== 'string' || !BOT_ID.test(canonicalBotId(t.bot))) throw new HttpError(400, '"target.bot" must be a bot id');
+  const bot = canonicalBotId(t.bot);
   const crew = rosterOf({} as Parameters<typeof rosterOf>[0]);
-  if (!crew.includes(t.bot)) throw new HttpError(400, `unknown bot "${t.bot}" (crew: ${crew.join(', ')})`);
-  return { kind: 'run', bot: t.bot, mode: t.mode };
+  if (!crew.includes(bot)) throw new HttpError(400, `unknown bot "${t.bot}" (crew: ${crew.join(', ')})`);
+  return { kind: 'run', bot, mode: t.mode };
 }

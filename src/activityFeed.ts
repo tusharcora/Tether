@@ -85,9 +85,9 @@ export function activityLine(e: StoredEvent, names: Names): ActivityLine | undef
     case 'approval.resolved':
       return step(ev.node, ev.approved ? 'approved' : 'rejected', ev.approved ? 'done' : 'failed');
     case 'plan.question':
-      return line('Maestro', `the team asks ${ev.questions.length} question${ev.questions.length === 1 ? '' : 's'}`, 'needs', 'orchestrator');
+      return line('Tether', `the team asks ${ev.questions.length} question${ev.questions.length === 1 ? '' : 's'}`, 'needs', 'orchestrator');
     case 'plan.ready':
-      return line('Maestro', 'plan ready for approval', 'needs', 'orchestrator');
+      return line('Tether', 'plan ready for approval', 'needs', 'orchestrator');
     case 'user.ask':
       return step(ev.node, 'has a question', 'needs');
     case 'user.answer':

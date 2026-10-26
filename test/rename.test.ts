@@ -2,7 +2,20 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CREW } from '../src/bots.js';
+import { BUILTIN_BOTS, canonicalBotId } from '../src/crew.js';
 import { resolveHome } from '../src/config.js';
+
+describe('Maestro is now Tether (spec §4)', () => {
+  it('names the orchestrator bot Tether in the crew', () => {
+    expect(BUILTIN_BOTS.find((b) => b.id === 'orchestrator')!.name).toBe('Tether');
+    expect(CREW.orchestrator!.name).toBe('Tether');
+  });
+  it('resolves "tether" and the old "maestro" to the orchestrator, any case, and leaves other ids alone', () => {
+    for (const id of ['tether', 'maestro', 'Maestro', ' TETHER ']) expect(canonicalBotId(id), id).toBe('orchestrator');
+    for (const id of ['coder', 'orchestrator', 'my-bot']) expect(canonicalBotId(id)).toBe(id);
+  });
+});
 
 describe('the Tether rename', () => {
   it('ships `tether` and keeps `aorch` as an alias of the same entry', () => {

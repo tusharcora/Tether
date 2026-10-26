@@ -61,9 +61,9 @@ export const FAIL_MS = 10_000;
 
 /** Everything the face needs, all global: none of it depends on which screen is showing. */
 export interface FaceInput {
-  /** A run awaits approval, or Maestro asks a plan question / permission in the chat. */
+  /** A run awaits approval, or Tether asks a plan question / permission in the chat. */
   waiting: boolean;
-  /** A run is going, or Maestro is replying. */
+  /** A run is going, or Tether is replying. */
   working: boolean;
   /** Something is running or waiting for you (blocks sleep). */
   live: boolean;

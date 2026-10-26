@@ -433,10 +433,10 @@ describe('evolveSummary', () => {
   });
 });
 
-// ---------------------------------------------------------------- Maestro
+// ---------------------------------------------------------------- Tether
 
-describe('Maestro hint', () => {
-  it('the chat prompt says Maestro may offer evolve and never runs it itself', async () => {
+describe('Tether hint', () => {
+  it('the chat prompt says Tether may offer evolve and never runs it itself', async () => {
     const mock = new MockAdapter();
     await chat('bolt keeps getting sent back', { home: tmp('evs-m-'), repo: makeRepo(), registry: new AdapterRegistry().register(mock), agent: 'mock' });
     const prompt = mock.calls[0]!.prompt;

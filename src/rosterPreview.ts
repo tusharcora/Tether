@@ -1,4 +1,4 @@
-/** Up to three specialists Maestro would likely pick for a task, from the roster heuristic alone (no model call). */
+/** Up to three specialists Tether would likely pick for a task, from the roster heuristic alone (no model call). */
 import { loadCrew } from './crew.js';
 import type { Routing } from './ecc.js';
 import { DOMAIN, baseName, botLanguage, buildRoster, detectLanguages, loadRouting, type RosterEntry } from './roster.js';

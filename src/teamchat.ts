@@ -1,5 +1,5 @@
 /**
- * Team runs in the chat: question cards, their keys, and the lines Maestro says about a team run.
+ * Team runs in the chat: question cards, their keys, and the lines Tether says about a team run.
  * Everything here is pure (state in, lines out) so the terminal and its tests share it.
  */
 import { CREW, crewFor } from './bots.js';
@@ -7,7 +7,7 @@ import type { Engine } from './engine.js';
 import { planWaiting, type Answer, type PipelineNode, type Question, type RunState, type TeamMode } from './types.js';
 import { bold, cyan, dim, renderQuestion, usd } from './ui.js';
 
-export const MODE_HELP = 'live: Maestro reports as the team works. autonomous: Maestro answers for you and only reports at the end.';
+export const MODE_HELP = 'live: Tether reports as the team works. autonomous: Tether answers for you and only reports at the end.';
 
 export function parseModeArg(v: string | undefined): TeamMode | undefined {
   const t = v?.trim().toLowerCase();
@@ -27,7 +27,7 @@ export function cardLines(pending: Question[], width: number, focus = true): str
   const w = Math.max(20, width);
   const out: string[] = [];
   const first = pending[0]!;
-  out.push(bold(pending.length > 1 ? `Maestro has ${pending.length} questions (question 1 of ${pending.length})` : 'Maestro has a question'));
+  out.push(bold(pending.length > 1 ? `Tether has ${pending.length} questions (question 1 of ${pending.length})` : 'Tether has a question'));
   out.push(...renderQuestion(first, w - 2));
   if (!focus) out.push(`${cyan('enter')} ${dim('answer it, or type to chat')}`);
   else {

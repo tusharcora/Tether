@@ -133,7 +133,7 @@ export interface TeamStartInput {
   yes?: boolean;
   /** Spend cap in USD; replaces the plan's own cap. */
   budgetUsd?: number;
-  /** Planning rounds before Maestro must plan (default 3, 1..6). */
+  /** Planning rounds before Tether must plan (default 3, 1..6). */
   maxRounds?: number;
   workspace?: string | false;
   /** Scripted planning replies for the mock adapter (tests). */
@@ -150,7 +150,7 @@ interface TeamMeta {
 }
 
 const MAX_OUTPUT = 200_000;
-/** Worker questions waiting for the person at once, per run; later ones are answered by Maestro. */
+/** Worker questions waiting for the person at once, per run; later ones are answered by Tether. */
 const MAX_OPEN_ASKS = 2;
 /** Questions one step may put to the person over its life. */
 const MAX_ASKS_PER_STEP = 4;
@@ -497,7 +497,7 @@ export class Engine {
     for (const a of answers) {
       const q = s.pending.find((x) => x.id === a.question);
       if (!q || seen.has(a.question)) throw q || s.answers.some((x) => x.question === a.question) ? new TeamError('already_answered', `already answered: ${a.question}`) : new TeamError('unknown_question', `unknown question: ${a.question}`);
-      // 'maestro' answers are made inside the engine only; a caller may record its own choice or accept the recommendation
+      // Tether's answers ('tether', 'maestro' before the rename) are made inside the engine only; a caller may record its own choice or accept the recommendation
       if (a.by !== 'user' && a.by !== 'default') throw new TeamError('invalid', `invalid answer: by must be "user" or "default"`);
       if (a.by === 'default' && a.option !== q.recommended) throw new TeamError('invalid', `invalid answer: a default answer must be the recommended option of ${q.id}`);
       const text = cleanAnswerText(a.text);
@@ -557,7 +557,7 @@ export class Engine {
     // Nothing below awaits, so two racing approvals cannot both get through.
     const roster = s.team?.roster?.length ? s.team.roster : [...new Set(s.plan.assignments.map((a) => a.bot))];
     let pipeline = this.resolve(teamPipeline(s.plan, roster));
-    // Boss without a binding of its own is Maestro: it follows the orchestrator's agent and model
+    // Boss without a binding of its own is Tether: it follows the orchestrator's agent and model
     const maestro = this.opts.bindings?.().orchestrator;
     if (maestro) pipeline = { ...pipeline, nodes: pipeline.nodes.map((n) => (n.manager && !n.agent ? { ...n, agent: maestro.agent, ...(maestro.model ? { model: maestro.model } : {}) } : n)) };
     const mock = this.teams.get(runId)?.mock;
@@ -775,13 +775,13 @@ export class Engine {
         /* prose */
       }
       const prose = isJson ? '' : stripControl(raw).trim().slice(0, 2000);
-      const ask = prose || `Maestro could not draft usable questions${why ? ` (${why.slice(0, 300)})` : ''}. Go with the default plan?`;
+      const ask = prose || `Tether could not draft usable questions${why ? ` (${why.slice(0, 300)})` : ''}. Go with the default plan?`;
       questions = [{ id, ask, options: [{ id: 'go', label: 'Go with the default plan' }], recommended: 'go' }];
     }
     this.store.append(runId, { type: 'plan.question', round, questions });
   }
 
-  /** One planning call to the Maestro binding. Failures come back as empty text (and are logged) so the caller falls back. */
+  /** One planning call to the Tether binding. Failures come back as empty text (and are logged) so the caller falls back. */
   private async askMaestro(runId: string, round: number, attempt: number, prompt: string, cwd: string, mock: MockScript | undefined, signal: AbortSignal, budgetUsd: number): Promise<{ text: string; costUsd: number; error?: string }> {
     const b = this.opts.bindings?.().orchestrator;
     const agent = b?.agent ?? 'claude';
@@ -1621,7 +1621,7 @@ export class Engine {
   /**
    * Record the `@ASK user:` lines of a team step's output as cards. A question this step already asked (same text) is
    * not asked again. It waits only in live mode, with fewer than 2 cards open and the step under 4 questions; any other
-   * ask is answered at once by Maestro with the recommended option (and says so). Returns what Maestro answered, and
+   * ask is answered at once by Tether with the recommended option (and says so). Returns what Tether answered, and
    * whether the step now waits for the person. Synchronous, so racing steps cannot both take the last open slot.
    */
   private takeUserAsks(runId: string, node: PipelineNode, output: string, canWait: boolean): { answered: { question: string; answer: string; by: string }[]; waiting: boolean } {
@@ -1648,12 +1648,12 @@ export class Engine {
         waiting = true;
         continue;
       }
-      const text = why ? `Maestro used the recommended option: ${why}.` : undefined;
+      const text = why ? `Tether used the recommended option: ${why}.` : undefined;
       this.store.append(runId, { type: 'user.ask', node: node.id, question: q, wait: false });
-      const ans: Answer = { question: q.id, option: q.recommended, ...(text ? { text } : {}), by: 'maestro' };
+      const ans: Answer = { question: q.id, option: q.recommended, ...(text ? { text } : {}), by: 'tether' };
       this.store.append(runId, { type: 'user.answer', question: q.id, answer: ans });
-      if (why) this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[maestro] answered "${a.question.slice(0, 80)}" with the recommended option: ${why}\n` });
-      answered.push({ question: a.question, answer: describeAnswer(ans, [q]), by: 'maestro' });
+      if (why) this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[tether] answered "${a.question.slice(0, 80)}" with the recommended option: ${why}\n` });
+      answered.push({ question: a.question, answer: describeAnswer(ans, [q]), by: 'tether' });
     }
     return { answered, waiting };
   }
@@ -1855,7 +1855,7 @@ export class Engine {
 
     // Team runs: a worker's `@ASK user:` lines, taken from the first reply and from every follow-up (after consults and hand-offs).
     // Live: the step waits for the person (awaiting) and runs again once answered.
-    // Autonomous, over the limit, or a hand-off step nobody can wait for: Maestro answers with the recommended option and the step carries on.
+    // Autonomous, over the limit, or a hand-off step nobody can wait for: Tether answers with the recommended option and the step carries on.
     let extraCost = 0;
     let handCost = 0;
     const teamStep = state.kind === 'team' && node.kind === 'agent' && !node.manager;

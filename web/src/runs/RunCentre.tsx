@@ -19,7 +19,7 @@ export function RunCentre({ run: r, selected, onSelect, onAct }: { run: RunView;
       {planning ? (
         <div className="run-planning">
           <StepTrack steps={[]} planning />
-          <p className="sl-meta">Maestro is planning…</p>
+          <p className="sl-meta">Tether is planning…</p>
         </div>
       ) : null}
       {beforeApproval ? null : (

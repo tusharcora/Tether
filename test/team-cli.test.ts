@@ -10,7 +10,7 @@ import { makeRepo, tmp } from './helpers.js';
 const root = new URL('..', import.meta.url).pathname;
 const tsx = join(root, 'node_modules/.bin/tsx');
 
-/** A fresh home whose Maestro points at an agent that is not installed, so a real model is never called. */
+/** A fresh home whose Tether points at an agent that is not installed, so a real model is never called. */
 function home() {
   const h = tmp('cli-home-');
   mkdirSync(h, { recursive: true });

@@ -27,7 +27,7 @@ import { aorchSkills, claudeSkillPipeline, claudeSkills, eccSkillPipeline, eccSk
 import { supervise } from './supervisor.js';
 import { refreshCrew } from './bots.js';
 import { loadPrefs, savePrefs } from './prefs.js';
-import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, type BotDef } from './crew.js';
+import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, canonicalBotId, type BotDef } from './crew.js';
 import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Prepared } from './eccImport.js';
 import { createInterface } from 'node:readline/promises';
@@ -53,7 +53,7 @@ const HELP = `tether — durable orchestrator for CLI coding agents (aorch still
 
 Usage
   tether run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>] [--no-endpoints]
-  tether run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
+  tether run ... [--supervise [--rounds 2]]   Tether retries, then escalates the failing step to a stronger model
   tether resume <runId> [--retry-failed]
   tether approve <runId> <node> [--reject] [--resume]
   tether feedback <runId> <node> up|down [note…]   thumbs up or down on a step's output (Evolve learns from it)
@@ -66,11 +66,11 @@ Usage
   tether probes [--clean]              Evolve probe replays (hidden from runs lists); --clean deletes the finished ones
   tether lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
   tether                               interactive dashboard (runs, workflows, agent sessions)
-  tether orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
-  tether team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Maestro asks questions, you approve a plan, a team of bots does it
+  tether orchestrate "<task>" --repo <dir> [--yes]   Tether designs a workflow for the task and runs it
+  tether team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Tether asks questions, you approve a plan, a team of bots does it
   tether answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
   tether plan <runId> [--reject]       approve (or reject) a team run's finished plan
-  tether mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
+  tether mode <runId> live|autonomous  live asks you; autonomous lets Tether answer for you
   tether bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
   tether crew list [--source ecc]                                      bots with where they came from
   tether crew import ecc [--ref v2.2.3] [--from <dir>] [--update]      add ECC's agents, skills and commands (github.com/affaan-m/ECC)
@@ -209,7 +209,7 @@ function narrate(store: Store, runId: string, json: boolean): { off: () => void;
         say(e.guidance ? `${ts()}  ${amber('✎')} ${name(e.node)} ${dim('guidance added: ' + e.guidance.split('\n').pop()!.slice(0, 80))}` : `${ts()}  ${amber('⇄')} ${name(e.node)} ${dim('now runs on')} ${cyan(e.agent ?? '')}${e.model ? dim(' · ' + e.model) : ''}`);
         break;
       case 'supervisor.action':
-        say(`${ts()}  ${paint(pal.violet, '◈')} ${bold(paint(pal.violet, 'Maestro'))} ${e.action === 'stop' ? amber('stops: ') : cyan(e.action + ': ')}${e.detail}`);
+        say(`${ts()}  ${paint(pal.violet, '◈')} ${bold(paint(pal.violet, 'Tether'))} ${e.action === 'stop' ? amber('stops: ') : cyan(e.action + ': ')}${e.detail}`);
         break;
       case 'approval.resolved':
         say(`${ts()}  ${e.approved ? green('✔') : red('✘')} ${name(e.node)} ${e.approved ? green('approved') : red('rejected')}${e.by ? dim(` by ${e.by}`) : ''}`);
@@ -307,7 +307,7 @@ function showPlan(s: RunState) {
   console.log(box(lines, { title: 'plan', width: Math.min(caps.cols + 10, process.stdout.columns || 100), border: BRAND }).join('\n'));
 }
 
-/** Answer planning cards until Maestro has a plan (interactive), or stop at the first unanswered card. */
+/** Answer planning cards until Tether has a plan (interactive), or stop at the first unanswered card. */
 async function planDialogue(ctx: Ctx, id: string, interactive: boolean): Promise<RunState> {
   for (let i = 0; i < 30; i++) {
     const s = ctx.store.state(id)!;
@@ -669,7 +669,7 @@ async function main() {
           process.exit(2);
         }
         if (s.pending.length) {
-          console.log(`\n${amber('◉')} Maestro has ${s.pending.length} question${s.pending.length > 1 ? 's' : ''} for you`);
+          console.log(`\n${amber('◉')} Tether has ${s.pending.length} question${s.pending.length > 1 ? 's' : ''} for you`);
           for (const q of s.pending) console.log(renderQuestion(q, Math.min(caps.cols, process.stdout.columns || 80)).join('\n') + '\n');
           console.log(`${dim('$')} ${cyan(`aorch answer ${id} ${s.pending[0]!.id} <option>`)}`);
           process.exit(2);
@@ -849,7 +849,11 @@ async function main() {
       const cfg = loadConfig(v);
       const reg = makeRegistry(cfg);
       refreshCrew(cfg.home);
-      const roleOf = (q: string) => (q.toLowerCase() === 'escalate' ? 'escalate' : undefined) ?? Object.entries(CREW).find(([k, c]) => k === q.toLowerCase() || c.name.toLowerCase() === q.toLowerCase())?.[0];
+      // a bot by id or name; "tether" and "maestro" (its old name) are the orchestrator
+      const roleOf = (raw: string) => {
+        const q = canonicalBotId(raw).toLowerCase();
+        return (q === 'escalate' ? 'escalate' : undefined) ?? Object.entries(CREW).find(([k, c]) => k === q || c.name.toLowerCase() === q)?.[0];
+      };
       if (sub === 'packs') {
         for (const p of PACKS) console.log(`${bold(p.id.padEnd(10))} ${p.name} ${dim('· ' + p.bots.length + ' bots · ' + p.blurb)}\n           ${dim(p.bots.map((b) => b.name).join(', '))}`);
         console.log(dim('\n  aorch bots add-pack <pack> [--yes]   ·   aorch bots import <file> [--yes]'));
@@ -940,7 +944,7 @@ async function main() {
         const agent = pos[2] ?? fail(`usage: aorch bots link ${pos[1]} <agent> [model]   (agents: ${reg.ids().filter((i) => i !== 'mock').join(', ')})`);
         if (!reg.has(agent)) fail(`unknown agent "${agent}" (known: ${reg.ids().join(', ')})`);
         link(cfg.home, role, { agent, model: pos[3] });
-        console.log(`${green('✔')} ${bold(CREW[role]?.name ?? 'escalation')} is now linked to ${cyan(agent)}${pos[3] ? ` · ${pos[3]}` : ''}${role === 'escalate' ? dim('  (what Maestro moves a repeatedly failing step to)') : ''}`);
+        console.log(`${green('✔')} ${bold(CREW[role]?.name ?? 'escalation')} is now linked to ${cyan(agent)}${pos[3] ? ` · ${pos[3]}` : ''}${role === 'escalate' ? dim('  (what Tether moves a repeatedly failing step to)') : ''}`);
         const d = await reg.get(agent).detect();
         if (!d.ok) console.log(`  ${amber('!')} ${dim(`${agent} is not available right now: ${d.detail ?? 'unavailable'}`)}`);
         return;

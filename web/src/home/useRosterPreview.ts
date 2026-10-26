@@ -6,7 +6,7 @@ export const PREVIEW_MIN = 8;
 export const PREVIEW_MAX = 2000;
 
 /**
- * "Maestro would pick": asked 400 ms after typing stops, for tasks of 8 to 2000 characters, with at most one request in
+ * "Tether would pick": asked 400 ms after typing stops, for tasks of 8 to 2000 characters, with at most one request in
  * flight (newer text waits and only the latest is sent). Undefined hides the row: nothing to show yet, or any error.
  */
 export function useRosterPreview(task: string, ws: string | undefined): RosterPreview | undefined {

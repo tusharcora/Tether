@@ -544,14 +544,14 @@ describe('team run execution', () => {
     expect(prompt.match(/<\/answer>/g)).toHaveLength(1);
   });
 
-  it('autonomous: Maestro answers at once with the recommended option and the run never pauses', async () => {
+  it('autonomous: Tether answers at once with the recommended option and the run never pauses', async () => {
     const t = await approved(script({ a: { output: `working\n${ASK1}` } }), { mode: 'autonomous' });
     const s = await t.engine.wait(t.id);
     expect(s.status).toBe('done');
     expect(s.pending).toEqual([]);
     const ans = evs(t.store, t.id, 'user.answer');
     expect(ans).toHaveLength(1);
-    expect(ans[0]!.answer).toMatchObject({ by: 'maestro', option: 'o2' });
+    expect(ans[0]!.answer).toMatchObject({ by: 'tether', option: 'o2' });
     expect(t.store.events(t.id).some((e) => e.event.type === 'run.finished' && e.event.status === 'paused')).toBe(false);
     const calls = t.mock.calls.filter((c) => c.nodeId === 'manager-a');
     expect(calls).toHaveLength(2); // asked, then finished with the answer
@@ -559,7 +559,7 @@ describe('team run execution', () => {
     expect(s.nodes['manager-a']!.output).not.toContain('@ASK user');
   });
 
-  it('a third open ask is answered by Maestro and says so', async () => {
+  it('a third open ask is answered by Tether and says so', async () => {
     const three = `${ASK1}\n@ASK user: Second?\n@ASK user: Third? | options: x; y | recommended: y`;
     const t = await approved(script({ a: { output: three } }));
     let s = await t.engine.wait(t.id);
@@ -567,9 +567,9 @@ describe('team run execution', () => {
     expect(s.pending.map((p) => p.id)).toEqual(['u1', 'u2']);
     const auto = evs(t.store, t.id, 'user.answer');
     expect(auto).toHaveLength(1);
-    expect(auto[0]!.answer).toMatchObject({ question: 'u3', option: 'o2', by: 'maestro' });
+    expect(auto[0]!.answer).toMatchObject({ question: 'u3', option: 'o2', by: 'tether' });
     expect(auto[0]!.answer.text).toMatch(/2 questions are already waiting/);
-    expect(t.store.events(t.id).some((e) => e.event.type === 'node.chunk' && /\[maestro\]/.test(e.event.text))).toBe(true);
+    expect(t.store.events(t.id).some((e) => e.event.type === 'node.chunk' && /\[tether\]/.test(e.event.text))).toBe(true);
     // answering one is not enough: the step waits for both
     await t.engine.answerUser(t.id, 'u1', { option: 'o1' });
     s = t.store.state(t.id)!;
@@ -580,7 +580,7 @@ describe('team run execution', () => {
     expect(s.status).toBe('done');
   });
 
-  it('setMode: a pending card stays pending after switching to autonomous, and the next ask is answered by Maestro', async () => {
+  it('setMode: a pending card stays pending after switching to autonomous, and the next ask is answered by Tether', async () => {
     const t = await approved(script({ a: { output: ASK1 }, b: { output: '@ASK user: Deploy where? | options: aws; gcp | recommended: gcp' } }, [{ id: 'a' }, { id: 'b', after: ['a'] }]));
     let s = await t.engine.wait(t.id);
     expect(s.status).toBe('paused');
@@ -592,18 +592,18 @@ describe('team run execution', () => {
     s = await t.engine.wait(t.id);
     expect(s.status).toBe('done');
     const answers = evs(t.store, t.id, 'user.answer').map((e) => e.answer.by);
-    expect(answers).toEqual(['user', 'maestro']);
+    expect(answers).toEqual(['user', 'tether']);
     expect(() => t.engine.setMode(t.id, 'bogus' as never)).toThrow(/invalid mode/);
     expect(() => t.engine.setMode('nope', 'live')).toThrow(/unknown run/);
   });
 
-  it('a hand-off step cannot wait: its ask is answered by Maestro even in live mode', async () => {
+  it('a hand-off step cannot wait: its ask is answered by Tether even in live mode', async () => {
     const t = await approved(script({ a: { output: '@HAND reviewer: take a look', spawned: { reviewer: { output: ASK1 } } } }));
     const s = await t.engine.wait(t.id);
     expect(s.status).toBe('done');
     const ans = evs(t.store, t.id, 'user.answer');
     expect(ans).toHaveLength(1);
-    expect(ans[0]!.answer).toMatchObject({ by: 'maestro' });
+    expect(ans[0]!.answer).toMatchObject({ by: 'tether' });
     expect(ans[0]!.answer.text).toMatch(/cannot wait/);
   });
 

@@ -6,13 +6,13 @@ export { isFinished, runTitle } from '../../../src/runLabels';
 
 /** "What's happening now" for a live run, from its current step (no free text). */
 export function nowLine(r: RunRow): string {
-  if (r.kind === 'team' && !r.steps.length) return r.planReady ? 'The plan waits for your approval' : r.pending ? 'Maestro has a question for you' : 'Maestro is planning';
+  if (r.kind === 'team' && !r.steps.length) return r.planReady ? 'The plan waits for your approval' : r.pending ? 'Tether has a question for you' : 'Tether is planning';
   if (!r.current) return 'Between steps';
   const status = r.steps.find((s) => s.id === r.current!.node)?.status;
   return status === 'awaiting' ? `${r.current.title} waits for you` : `${r.current.bot} is working on ${r.current.title}`;
 }
 
-/** The face that breathes: the current step's bot, or Maestro while a team plans. */
+/** The face that breathes: the current step's bot, or Tether while a team plans. */
 export function workingBot(r: RunRow): string | undefined {
   if (r.current) return r.steps.find((s) => s.id === r.current!.node)?.bot;
   return r.kind === 'team' && !r.steps.length ? 'orchestrator' : undefined;

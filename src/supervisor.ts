@@ -1,5 +1,5 @@
 /**
- * Maestro as supervisor. When a run ends in error he decides what to do next, with rules that are
+ * Tether as supervisor. When a run ends in error he decides what to do next, with rules that are
  * deterministic and logged, never improvised by a model:
  *
  *   round 1   retry the failed branch once (most failures are transient)

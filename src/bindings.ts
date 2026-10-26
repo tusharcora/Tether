@@ -1,5 +1,5 @@
 /**
- * Bot ↔ model bindings. Each crew member (Maestro, Scout, Brick, Bolt, Probe, Lens, Gate) can be linked to
+ * Bot ↔ model bindings. Each crew member (Tether, Scout, Brick, Bolt, Probe, Lens, Gate) can be linked to
  * any agent adapter and model: Claude Code, Codex, OpenCode, a local model (Ollama, LM Studio, llama.cpp,
  * any OpenAI-compatible server), or a custom CLI. A step that names no agent of its own follows its bot.
  */

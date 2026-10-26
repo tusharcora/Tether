@@ -146,7 +146,7 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
     case 'node.amended':
       return { text: `${nameOf(e.node)} now runs on ${e.agent ?? '?'}${e.model ? ' · ' + e.model : ''}`, tone: 'wait' };
     case 'supervisor.action':
-      return { text: `Maestro ${e.action}: ${e.detail}`, tone: e.action === 'stop' ? 'error' : 'wait' };
+      return { text: `Tether ${e.action}: ${e.detail}`, tone: e.action === 'stop' ? 'error' : 'wait' };
     case 'run.coach':
       return { text: `coach: ${e.findings.length} finding(s)`, tone: 'wait' };
     case 'run.finished':

@@ -21,7 +21,7 @@ const css = sources.filter((s) => s.path.endsWith('.css'));
  */
 const FACE_ALLOW = [
   { path: 'Crew.tsx', value: '#b58bff' }, // face editor swatch
-  { path: 'crewStore.ts', value: '#9b7bff' }, // built-in look: Maestro
+  { path: 'crewStore.ts', value: '#9b7bff' }, // built-in look: Tether
 ];
 
 type RGB = [number, number, number];
