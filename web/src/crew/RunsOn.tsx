@@ -55,6 +55,7 @@ export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: 
         ) : (
           <>
             <p className="sl-meta">One run_code tool: the agent composes reads, searches and connector calls (GitHub, saved requests, your MCP servers) in a short script.</p>
+            {route === 'native' ? <p className="sl-meta cw-hint">Small models may do better with Direct tool calls.</p> : null}
             {runsOn === 'claude' ? <Switch label="Code Mode only for reading (Claude Code loses Grep and Glob, so it explores through run_code)" checked={p.draft.codeReads} onCheckedChange={(c) => p.onChange({ codeReads: c === true })} /> : null}
           </>
         )

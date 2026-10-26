@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RunsOn } from './RunsOn';
 import type { Binding } from './types';
 
-const agents = { claude: { ok: true, models: ['opus'], codeMode: 'mcp' as const }, codex: { ok: false, models: [] }, opencode: { ok: true, models: [], codeMode: null } };
+const agents = { claude: { ok: true, models: ['opus'], codeMode: 'mcp' as const }, codex: { ok: false, models: [] }, opencode: { ok: true, models: [], codeMode: null }, ollama: { ok: true, models: ['qwen'], codeMode: 'native' as const } };
 const b = (agent: string, model = '', o: Partial<Binding> = {}): Binding => ({ agent, model, toolStyle: 'code', codeReads: false, ...o });
 const row = (o = {}) => ({ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null, ...o });
 const h = () => ({ onChange: vi.fn(), onSave: vi.fn(), onUnlink: vi.fn() });
@@ -44,6 +44,14 @@ describe('RunsOn', () => {
     expect(screen.queryByRole('switch', { name: /only for reading/ })).toBeNull();
     rerender(<RunsOn row={row()} agents={agents} draft={b('claude', '', { toolStyle: 'direct' })} dirty={false} {...fns} />);
     expect(screen.queryByText(/One run_code tool/)).toBeNull();
+  });
+
+  it('keeps Code Mode the default on an OpenAI-compatible model, with a hint that small models may do better direct', () => {
+    const { rerender } = render(<RunsOn row={row()} agents={agents} draft={b('ollama', 'qwen')} dirty={false} {...h()} />);
+    expect(screen.getByRole('button', { name: 'Code Mode' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Small models may do better with Direct tool calls.')).toBeTruthy();
+    rerender(<RunsOn row={row()} agents={agents} draft={b('claude')} dirty={false} {...h()} />);
+    expect(screen.queryByText(/Small models may do better/)).toBeNull();
   });
 
   it('has nothing to link for an approval bot', () => {
