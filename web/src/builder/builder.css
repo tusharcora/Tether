@@ -43,3 +43,4 @@
 }
 .bl-settings-line:hover { color: var(--ink); }
 .bl-phone-note { margin: 0; padding: 8px 16px; font-size: 13px; color: var(--mut); border-bottom: 1px solid var(--line); }
+.bl-help { margin: -2px 0 0; font-size: 12px; }

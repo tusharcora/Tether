@@ -1,16 +1,18 @@
 /**
  * Agent adapter for any OpenAI-compatible chat endpoint: Ollama, LM Studio, llama.cpp's server, vLLM, and so on.
  *
- * A bare chat model cannot touch files, so this adapter runs a small tool loop of its own. The tools are
- * deliberately few and confined to the run's worktree: list_files, read_file, search, and (for steps that
- * may modify code) write_file. There is no shell tool; tests run in gate steps, outside the model's control.
+ * A bare chat model cannot touch files, so this adapter runs a small tool loop of its own. With Code Mode (the default)
+ * it offers one tool, run_code, answered in-process by the step's Code Mode session (no MCP hop). Direct, the tools are
+ * deliberately few and confined to the run's worktree: list_files, read_file, search, and (for steps that may modify
+ * code) write_file. There is no shell tool; tests run in gate steps, outside the model's control.
  * Prompts and file contents go to the configured endpoint, so only point it at servers you trust.
  */
 import { toolChunk } from '../activity.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { AgentAdapter, AgentRequest, AgentResult } from '../types.js';
+import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
+import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest } from '../types.js';
 
 export interface EndpointConfig {
   baseUrl: string;
@@ -52,6 +54,8 @@ const TOOLS = (writable: boolean) => [
   fn('search', 'Find lines containing a text snippet (case-insensitive) in the repository.', { pattern: { type: 'string' }, path: { type: 'string', description: 'Limit to this directory' } }, ['pattern']),
   ...(writable ? [fn('write_file', 'Create or overwrite a file with the full new content.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
 ];
+/** Code Mode: the one tool. */
+const CODE_TOOLS = (cm: CodeModeRequest) => [fn('run_code', cm.runner.description(), RUN_CODE_SCHEMA.properties, [...RUN_CODE_SCHEMA.required])];
 function fn(name: string, description: string, properties: Record<string, unknown>, required: string[]) {
   return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } };
 }
@@ -147,6 +151,8 @@ async function runTool(root: string, name: string, args: Record<string, unknown>
 export class OpenAICompatAdapter implements AgentAdapter {
   readonly reportsCost = false;
   readonly supportsResume = false;
+  /** run_code is offered in this adapter's own loop. */
+  readonly codeMode = 'native' as const;
 
   constructor(
     readonly id: string,
@@ -198,7 +204,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
     }
   }
 
-  private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string }> {
+  private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
     const res = await fetch(this.url('/chat/completions'), {
       method: 'POST',
       headers: this.headers(),
@@ -206,10 +212,10 @@ export class OpenAICompatAdapter implements AgentAdapter {
       signal: AbortSignal.any([signal, AbortSignal.timeout(this.cfg.requestTimeoutMs ?? 600_000)]),
     });
     if (!res.ok) return { message: { role: 'assistant', content: null }, status: res.status, errorText: (await res.text()).slice(0, 400) };
-    const j = (await res.json()) as { choices?: { message?: Msg }[] };
+    const j = (await res.json()) as { choices?: { message?: Msg }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
     const message = j.choices?.[0]?.message;
     if (!message) return { message: { role: 'assistant', content: null }, status: 502, errorText: 'empty response from model' };
-    return { message, status: 200 };
+    return { message, status: 200, ...(j.usage ? { usage: j.usage } : {}) };
   }
 
   async run(req: AgentRequest): Promise<AgentResult> {
@@ -222,15 +228,18 @@ export class OpenAICompatAdapter implements AgentAdapter {
         req.onChunk(`[model] ${model}\n`);
       }
       const writable = !req.readOnly;
+      const cm = req.codeMode;
       const messages: Msg[] = [
         {
           role: 'system',
-          content: `You are a coding agent working in a repository. Use the tools to explore${writable ? ' and to write files' : ' (this step is read-only: do not try to change files)'}. Paths are relative to the repository root. Finish with a plain-text answer that follows the task's instructions.`,
+          content: `You are a coding agent working in a repository. Use the tools to explore${writable ? ' and to write files' : ' (this step is read-only: do not try to change files)'}. Paths are relative to the repository root. Finish with a plain-text answer that follows the task's instructions.${cm ? `\n\n${cm.note}` : ''}`,
         },
         { role: 'user', content: req.prompt },
       ];
-      let tools: unknown[] | undefined = TOOLS(writable);
+      let tools: unknown[] | undefined = cm ? CODE_TOOLS(cm) : TOOLS(writable);
       let last = '';
+      const usage = { inputTokens: 0, outputTokens: 0, toolCalls: 0, turns: 0 };
+      const done = (r: AgentResult): AgentResult => ({ ...r, usage });
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (req.signal.aborted) return fail('aborted', last);
         let r = await this.chat(messages, model, tools, req.signal);
@@ -241,20 +250,26 @@ export class OpenAICompatAdapter implements AgentAdapter {
           r = await this.chat(messages, model, tools, req.signal);
         }
         if (r.status !== 200) return fail(`${this.id}: HTTP ${r.status}${r.errorText ? `: ${r.errorText}` : ''}`, last);
+        usage.turns++;
+        usage.inputTokens += r.usage?.prompt_tokens ?? 0;
+        usage.outputTokens += r.usage?.completion_tokens ?? 0;
         const m = r.message;
         if (m.content) {
           last = m.content;
           req.onChunk(m.content + '\n');
         }
         const calls = m.tool_calls ?? [];
-        if (!calls.length) return { output: last.trim(), exitCode: 0 };
+        if (!calls.length) return done({ output: last.trim(), exitCode: 0 });
+        usage.toolCalls += calls.length;
         messages.push({ role: 'assistant', content: m.content ?? '', tool_calls: calls });
         for (const c of calls) {
           let result: string;
           try {
             const args = JSON.parse(c.function.arguments || '{}') as Record<string, unknown>;
             req.onChunk(toolChunk(c.function.name, args));
-            result = await runTool(req.cwd, c.function.name, args, writable);
+            if (cm && c.function.name === 'run_code') result = (await cm.runner.runCode(String(args.code ?? ''))).text;
+            else if (cm) throw new Error(`unknown tool "${c.function.name}": the only tool is run_code`);
+            else result = await runTool(req.cwd, c.function.name, args, writable);
           } catch (e) {
             result = `error: ${(e as Error).message}`;
           }

@@ -1,3 +1,4 @@
+import { codexCodeModeArgs } from '../codemode/delivery.js';
 import { runProcess } from '../proc.js';
 import type { AgentAdapter, AgentRequest, AgentResult } from '../types.js';
 
@@ -11,6 +12,8 @@ export interface CliSpec {
   attach?(sessionId?: string): { cmd: string; args: string[] } | undefined;
   reportsCost?: boolean;
   supportsResume?: boolean;
+  /** Takes Code Mode's MCP server per run: buildArgs adds it from `req.codeMode.mcp`. Absent: the CLI runs direct. */
+  codeMode?: 'mcp';
   /** How the prompt reaches the CLI. argv prompts are length-capped (OS arg limit). */
   promptVia: 'stdin' | 'argv';
   buildArgs(req: AgentRequest, prompt: string): string[];
@@ -38,10 +41,12 @@ export class CliAdapter implements AgentAdapter {
   readonly id: string;
   readonly reportsCost: boolean;
   readonly supportsResume: boolean;
+  readonly codeMode?: 'mcp';
   constructor(private spec: CliSpec) {
     this.id = spec.id;
     this.reportsCost = !!spec.reportsCost;
     this.supportsResume = !!spec.supportsResume;
+    if (spec.codeMode) this.codeMode = spec.codeMode;
   }
 
   detect() {
@@ -60,7 +65,9 @@ export class CliAdapter implements AgentAdapter {
   }
 
   async run(req: AgentRequest): Promise<AgentResult> {
-    const prompt = this.spec.promptVia === 'argv' ? capPrompt(req.prompt) : req.prompt;
+    // a CLI has no system-prompt flag here: the Code Mode note leads the prompt
+    const text = req.codeMode && this.codeMode ? `${req.codeMode.note}\n\n${req.prompt}` : req.prompt;
+    const prompt = this.spec.promptVia === 'argv' ? capPrompt(text) : text;
     const args = this.spec.buildArgs(req, prompt);
     const r = await runProcess({
       cmd: this.spec.bin,
@@ -99,16 +106,21 @@ export const codexSpec: CliSpec = {
   // Not verified against an installed Codex: reopen the most recent session. Every run has its own worktree,
   // so "most recent in this directory" is the step's session. Override with `attach` in aorch.config.json if your version differs.
   attach: () => ({ cmd: 'codex', args: ['resume', '--last'] }),
+  codeMode: 'mcp',
   buildArgs: (req) => [
     'exec',
     '--sandbox',
     req.readOnly ? 'read-only' : 'workspace-write',
     ...(req.model ? ['--model', req.model] : []),
+    ...codexCodeModeArgs(req.codeMode),
     '-',
   ],
 };
 
-/** OpenCode: `opencode run <message>`. Same caveat as Codex: not exercised against a live binary here. */
+/**
+ * OpenCode: `opencode run <message>`. Same caveat as Codex: not exercised against a live binary here. No Code Mode: 2.0's
+ * only per-run MCP route is a project opencode.json, which would have to be written into the shared run worktree.
+ */
 export const opencodeSpec: CliSpec = {
   id: 'opencode',
   bin: 'opencode',

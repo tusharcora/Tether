@@ -341,7 +341,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     // ---- crew: bot <-> agent/model links (read live by the engine at every run start) ----
     if (p === '/api/bots' && m === 'GET') {
       if (!modelsCache || Date.now() - modelsCache.at > 30_000) {
-        const out: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> = {};
+        const out: Record<string, { ok: boolean; version?: string; detail?: string; models: string[]; codeMode: 'mcp' | 'native' | null }> = {};
         await Promise.all(
           registry.ids().map(async (id) => {
             const a = registry.get(id);
@@ -354,7 +354,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
                 /* best effort */
               }
             }
-            out[id] = { ok: d.ok, version: d.version, detail: d.detail, models };
+            out[id] = { ok: d.ok, version: d.version, detail: d.detail, models, codeMode: a.codeMode ?? null };
           }),
         );
         modelsCache = { at: Date.now(), data: out };
@@ -375,7 +375,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (!registry.ids().includes(agent)) throw new HttpError(400, `unknown agent "${agent}"`);
         const model = typeof body.model === 'string' ? body.model.trim() : '';
         if (model.length > 200 || /[\n\r]/.test(model)) throw new HttpError(400, 'invalid model name');
-        link(cfg.home, role, { agent, ...(model ? { model } : {}) });
+        if (body.toolStyle !== undefined && body.toolStyle !== 'code' && body.toolStyle !== 'direct') throw new HttpError(400, '"toolStyle" must be "code" or "direct"');
+        link(cfg.home, role, { agent, ...(model ? { model } : {}), ...(body.toolStyle === 'direct' ? { toolStyle: 'direct' as const } : {}), ...(body.codeReads === true ? { codeReads: true } : {}) });
         return send(res, 200, { ok: true }), true;
       }
       if (m === 'DELETE') {

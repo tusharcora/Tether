@@ -88,7 +88,8 @@ Usage
   tether delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
   tether show <runId>                  node table, cost, coach findings
   tether serve [--port 4177]           API + dashboard (loopback only)
-  tether doctor                        which agent CLIs are installed
+  tether doctor                        which agent CLIs are installed (and which take Code Mode)
+  tether codemode-mcp --session <file> the Code Mode MCP server (run_code) an agent CLI starts for one step
   tether init                          install example pipelines
   tether pipelines                     list saved pipelines
   tether vault search "<query>"        query the knowledge graph
@@ -521,6 +522,15 @@ async function main() {
   if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     await banner('durable orchestrator for CLI coding agents');
     return console.log(prettyHelp());
+  }
+
+  // the Code Mode MCP server an agent CLI starts for one step (stdio): it only needs its session file
+  if (cmd === 'codemode-mcp') {
+    const at = argv.indexOf('--session');
+    const file = at > 0 ? argv[at + 1] : undefined;
+    if (!file) fail('usage: tether codemode-mcp --session <file>');
+    const { serveCodeModeMcp } = await import('./codemode/mcpMain.js');
+    return serveCodeModeMcp(file);
   }
 
   const { values: v, positionals: pos } = parseArgs({
@@ -1541,7 +1551,7 @@ async function main() {
           d.ok ? green('✔') : red('✘'),
           bold(id),
           d.ok ? cyan(d.version ?? '') : dim(d.detail ?? 'unavailable'),
-          d.ok ? dim(`cost ${a.reportsCost ? green('reported') : amber('unknown')}  ·  resume ${a.supportsResume ? green('yes') : dim('no')}`) : '',
+          d.ok ? dim(`cost ${a.reportsCost ? green('reported') : amber('unknown')}  ·  resume ${a.supportsResume ? green('yes') : dim('no')}  ·  code mode ${a.codeMode ? green(a.codeMode) : dim('direct only')}`) : '',
         ]);
       }
       console.log(box(table(rows), { title: 'agents', width: caps.cols, border: BRAND }).join('\n'));

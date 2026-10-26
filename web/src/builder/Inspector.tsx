@@ -114,6 +114,17 @@ export function StepForm(props: {
             <Input label="Model (optional)" value={n.model ?? ''} placeholder="adapter default" spellCheck={false} onChange={(e) => patch(n.id, { model: e.target.value })} />
           </div>
           <Textarea label="Instructions (blank = default for the role)" rows={6} value={n.prompt ?? ''} onChange={(e) => patch(n.id, { prompt: e.target.value })} />
+          <SegmentedControl
+            label="Tool calls"
+            options={[
+              { value: 'follow', label: 'Follow bot' },
+              { value: 'code', label: 'Code Mode' },
+              { value: 'direct', label: 'Direct' },
+            ]}
+            value={n.toolStyle ?? 'follow'}
+            onValueChange={(v) => patch(n.id, { toolStyle: v === 'code' || v === 'direct' ? v : undefined })}
+          />
+          <p className="sl-meta bl-help">Code Mode: one run_code tool that composes reads, searches and connector calls in a short script (fewer round-trips and tokens). Direct: the agent’s own tools only.</p>
           {flag('Read-only (changes are reverted and fail the step)', !!n.readOnly, (c) => patch(n.id, { readOnly: c || undefined }))}
           {flag('Include the current diff in its prompt', !!n.includeDiff, (c) => patch(n.id, { includeDiff: c || undefined }))}
           {flag('Must end with VERDICT: PASS / FAIL', !!n.verdict, (c) => patch(n.id, { verdict: c || undefined }))}

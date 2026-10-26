@@ -26,7 +26,8 @@ import './crew/crew.css';
 const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
 const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
-const NO_BINDING: Binding = { agent: '', model: '' };
+const NO_BINDING: Binding = { agent: '', model: '', toolStyle: 'code', codeReads: false };
+const bindingOf = (b: Row['binding']): Binding => ({ agent: b?.agent ?? '', model: b?.model ?? '', toolStyle: b?.toolStyle ?? 'code', codeReads: !!b?.codeReads });
 
 export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
   const notify = useNotify();
@@ -112,7 +113,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
       const r = await api<{ crew: Row[]; agents: Record<string, AgentInfo> }>('GET', '/api/bots');
       setRows(r.crew);
       setAgents(r.agents);
-      setDraft(Object.fromEntries(r.crew.map((c) => [c.role, { agent: c.binding?.agent ?? '', model: c.binding?.model ?? '' }])));
+      setDraft(Object.fromEntries(r.crew.map((c) => [c.role, bindingOf(c.binding)])));
       setLoadErr('');
       setLoaded(true);
       return bots;
@@ -256,12 +257,15 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
   const setBinding = (role: string, p: Partial<Binding>) => setDraft((all) => ({ ...all, [role]: { ...(all[role] ?? NO_BINDING), ...p } }));
   const bindingDirty = (r: Row) => {
     const d = draft[r.role];
-    return !!d && (d.agent !== (r.binding?.agent ?? '') || d.model !== (r.binding?.model ?? ''));
+    const saved = bindingOf(r.binding);
+    return !!d && (d.agent !== saved.agent || d.model !== saved.model || d.toolStyle !== saved.toolStyle || d.codeReads !== saved.codeReads);
   };
   async function saveBinding(r: Row, d = draft[r.role] ?? NO_BINDING) {
     try {
-      if (!d.agent) await api('DELETE', `/api/bots/${r.role}`);
-      else await api('PUT', `/api/bots/${r.role}`, { agent: d.agent, model: d.model });
+      // a tool style other than the default needs a link: the default agent is claude
+      const custom = d.toolStyle === 'direct' || d.codeReads;
+      if (!d.agent && !custom) await api('DELETE', `/api/bots/${r.role}`);
+      else await api('PUT', `/api/bots/${r.role}`, { agent: d.agent || 'claude', model: d.model, toolStyle: d.toolStyle, ...(d.codeReads ? { codeReads: true } : {}) });
       notify.ok(d.agent ? `${r.name} → ${d.agent}${d.model ? ' · ' + d.model : ''}` : `${r.name} unlinked`);
       await load();
     } catch (e) {
