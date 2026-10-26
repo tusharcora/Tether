@@ -9,6 +9,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, screen,
 import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { codeModeMcpCommand } from '../codemode/launch.js';
 import { serveTether } from '../serve.js';
 import { installMenu, pickFolder } from './menu.js';
 import { shellPath } from './path.js';
@@ -132,7 +133,7 @@ function enforceCsp(): void {
   });
 }
 
-/** The boot test's report: the page loaded, /api/runs answered, the bridge is there. */
+/** The boot test's report: the page loaded, /api/runs answered, the bridge is there, and how Code Mode's MCP server starts here. */
 function smokeCheck(w: BrowserWindow, url: string): void {
   const report = (r: Record<string, unknown>) => {
     console.log(`TETHER_SMOKE ${JSON.stringify({ url, ...r })}`);
@@ -144,7 +145,7 @@ function smokeCheck(w: BrowserWindow, url: string): void {
     const bridge = await w.webContents.executeJavaScript('typeof window.tether === "object" ? window.tether.platform : null');
     // the content policy let the app run: React has drawn into #root
     const rendered = await w.webContents.executeJavaScript('new Promise((r) => setTimeout(() => r(document.getElementById("root")?.childElementCount > 0), 500))');
-    report({ loaded: true, runs, bridge, rendered, title: w.webContents.getTitle() });
+    report({ loaded: true, runs, bridge, rendered, title: w.webContents.getTitle(), mcp: codeModeMcpCommand('<session>') });
   });
 }
 

@@ -8,12 +8,12 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { McpLaunch } from '../types.js';
+import { codeModeMcpCommand } from './launch.js';
 import type { CodeSession } from './session.js';
 
-/** What the session file holds (read by mcpMain). */
+/** What the session file holds (read by `tether codemode-mcp`). */
 export interface SessionFile {
   url: string;
   token: string;
@@ -23,17 +23,6 @@ export interface SessionFile {
 }
 
 const MAX_CODE = 200_000;
-
-/**
- * How to start `mcpMain` as a plain Node process: this file's sibling, built (.js) or from source under tsx (the loader
- * flags this process runs with ride along). Inside Tether.app the Electron binary runs as Node.
- */
-export function mcpCommand(sessionFile: string): Omit<McpLaunch, 'dir'> {
-  const self = fileURLToPath(import.meta.url);
-  const entry = join(dirname(self), `mcpMain${extname(self)}`);
-  const loader = extname(self) === '.ts' ? process.execArgv.filter((a, i, all) => /^--(import|require|loader)/.test(a) || /^--(import|require|loader)$/.test(all[i - 1] ?? '')) : [];
-  return { command: process.execPath, args: [...loader, entry, '--session', sessionFile], ...(process.versions.electron ? { env: { ELECTRON_RUN_AS_NODE: '1' } } : {}) };
-}
 
 export class CodeModeHost {
   private server?: Server;
@@ -80,7 +69,7 @@ export class CodeModeHost {
     writeFileSync(file, JSON.stringify({ url, token, description: session.description(), readOnly: !session.info.writable } satisfies SessionFile), { mode: 0o600 });
     this.sessions.set(token, session);
     return {
-      launch: { ...mcpCommand(file), dir },
+      launch: { ...codeModeMcpCommand(file), dir },
       close: () => {
         this.sessions.delete(token);
         rmSync(dir, { recursive: true, force: true });

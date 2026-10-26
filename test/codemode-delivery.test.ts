@@ -10,6 +10,7 @@ import { CliAdapter, codexSpec, customSpec, opencodeSpec } from '../src/adapters
 import { applyBindings } from '../src/bindings.js';
 import { CLAUDE_TOOL, codexCodeModeArgs } from '../src/codemode/delivery.js';
 import { CodeModeHost } from '../src/codemode/host.js';
+import { codeModeMcpCommand, launchContext } from '../src/codemode/launch.js';
 import { CODE_MODE_NOTE } from '../src/codemode/prompt.js';
 import { CodeSession } from '../src/codemode/session.js';
 import { approvedUpstream, openStepCodeMode } from '../src/codemode/step.js';
@@ -47,10 +48,12 @@ describe("Tether's Code Mode MCP server", () => {
     const token = JSON.parse(readFileSync(file, 'utf8')).token as string;
     expect(JSON.stringify(launch)).not.toContain(token);
 
-    const entry = launch.args[launch.args.indexOf('--session') - 1]!;
-    expect(entry).toMatch(/mcpMain\.ts$/);
+    // the shared command: Tether's own CLI entry, `codemode-mcp --session <file>` (from source here, under tsx)
+    const cli = launch.args[launch.args.indexOf('codemode-mcp') - 1]!;
+    expect(cli).toMatch(/src\/cli\.ts$/);
+    expect(launch.args.slice(-3)).toEqual(['codemode-mcp', '--session', file]);
     const client = new Client({ name: 'test', version: '1.0.0' });
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: ['--import', 'tsx', entry, '--session', file], cwd: ROOT, stderr: 'ignore' }));
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: ['--import', 'tsx', cli, 'codemode-mcp', '--session', file], cwd: ROOT, stderr: 'ignore' }));
     cleanups.push(() => client.close());
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual(['run_code']);
@@ -81,6 +84,23 @@ describe("Tether's Code Mode MCP server", () => {
     expect((await post({ authorization: `Bearer ${s.token}` })).status).toBe(200);
     expect((await post({ authorization: 'Bearer nope' })).status).toBe(401);
     expect((await post({ authorization: `Bearer ${s.token}`, origin: 'https://evil.example' })).status).toBe(403);
+  });
+});
+
+describe('the Code Mode MCP server command (one builder for claude.ts and cli.ts)', () => {
+  it('under `tether serve`: Node on dist/cli.js, no extra environment', () => {
+    expect(codeModeMcpCommand('/t/s.json', { execPath: '/usr/local/bin/node', electron: false, execArgv: ['--no-warnings'], cliPath: '/opt/tether/dist/cli.js' })).toEqual({ command: '/usr/local/bin/node', args: ['/opt/tether/dist/cli.js', 'codemode-mcp', '--session', '/t/s.json'] });
+  });
+
+  it('inside Tether.app: the app binary as Node (ELECTRON_RUN_AS_NODE=1) on the bundled cli.js, since tether is not on PATH', () => {
+    const app = '/Applications/Tether.app/Contents';
+    expect(codeModeMcpCommand('/t/s.json', { execPath: `${app}/MacOS/Tether`, electron: true, execArgv: [], cliPath: `${app}/Resources/app/dist/cli.js` })).toEqual({ command: `${app}/MacOS/Tether`, args: [`${app}/Resources/app/dist/cli.js`, 'codemode-mcp', '--session', '/t/s.json'], env: { ELECTRON_RUN_AS_NODE: '1' } });
+  });
+
+  it('from source: keeps only the module-loader flags (tsx), and resolves the CLI next to the code', () => {
+    expect(codeModeMcpCommand('/t/s.json', { execPath: 'node', electron: false, execArgv: ['--require', '/x/preflight.cjs', '--inspect', '--import', 'file:///x/loader.mjs', '--loader=y'], cliPath: '/r/src/cli.ts' }).args).toEqual(['--require', '/x/preflight.cjs', '--import', 'file:///x/loader.mjs', '--loader=y', '/r/src/cli.ts', 'codemode-mcp', '--session', '/t/s.json']);
+    expect(existsSync(launchContext().cliPath)).toBe(true);
+    expect(launchContext().cliPath).toBe(join(ROOT, 'src', 'cli.ts'));
   });
 });
 

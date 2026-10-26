@@ -1,10 +1,9 @@
 /**
- * Tether's Code Mode MCP server (stdio), started per step by the agent CLI from its per-run MCP config:
- * `node mcpMain.js --session <file>` (also `tether codemode-mcp --session <file>`). It offers exactly one tool, run_code,
- * and forwards each script to the step's session in the Tether process. Small on purpose: it imports only the MCP SDK.
+ * Tether's Code Mode MCP server (stdio), started per step by the agent CLI from its per-run MCP config as
+ * `tether codemode-mcp --session <file>` (the command comes from launch.ts). It offers exactly one tool, run_code, and
+ * forwards each script to the step's session in the Tether process.
  */
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -36,15 +35,4 @@ export async function serveCodeModeMcp(sessionFile: string): Promise<void> {
     }
   });
   await server.connect(new StdioServerTransport());
-}
-
-// run directly: `node mcpMain.js --session <file>`
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const i = process.argv.indexOf('--session');
-  const file = i > 0 ? process.argv[i + 1] : undefined;
-  if (!file) {
-    console.error('usage: mcpMain --session <file>');
-    process.exit(2);
-  }
-  await serveCodeModeMcp(file);
 }

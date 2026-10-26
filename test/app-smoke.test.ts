@@ -1,6 +1,8 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { tmp } from './helpers.js';
@@ -33,5 +35,21 @@ describe.skipIf(process.platform !== 'darwin' || !existsSync(electron))('Tether.
     expect(r.url).not.toBe('http://127.0.0.1:4177');
     // the store opened inside Electron's own Node (node:sqlite) in the given home, never ~/.aorch
     expect(existsSync(join(home, 'runs.db'))).toBe(true);
+
+    // Code Mode's MCP server starts from the app itself (tether is not on PATH there): the app binary as Node on its cli.js
+    const mcp = r.mcp as { command: string; args: string[]; env?: Record<string, string> };
+    expect(mcp.command).toBe(electron);
+    expect(mcp.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' });
+    expect(mcp.args).toEqual([join(root, 'dist/cli.js'), 'codemode-mcp', '--session', '<session>']);
+    const session = join(home, 'session.json');
+    writeFileSync(session, JSON.stringify({ url: 'http://127.0.0.1:9', token: 't', description: 'run code', readOnly: true }), { mode: 0o600 });
+    const client = new Client({ name: 'boot-test', version: '1.0.0' });
+    const env = { ...(process.env as Record<string, string>), ...mcp.env };
+    await client.connect(new StdioClientTransport({ command: mcp.command, args: mcp.args.map((a) => (a === '<session>' ? session : a)), env, cwd: root, stderr: 'ignore' }));
+    try {
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['run_code']);
+    } finally {
+      await client.close();
+    }
   }, 90_000);
 });
