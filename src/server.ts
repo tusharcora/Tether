@@ -37,6 +37,7 @@ import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
 import { HttpError, readJson, reqObject, send } from './serverkit.js';
 import { httpRoute } from './http/routes.js';
+import { codeRoute } from './codeRoutes.js';
 import { HttpClientError, statusFor } from './http/errors.js';
 
 export interface ServerOptions {
@@ -305,6 +306,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
+    if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
