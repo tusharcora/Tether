@@ -1,9 +1,12 @@
 // npm run app: package the built server and dashboard as dist-app/Tether-darwin-arm64/Tether.app (Apple Silicon), then sign
 // it ad hoc for this Mac (no Developer ID: macOS may ask the first time, right-click → Open). Run after `npm run build`.
+// TETHER_APP_OUT picks another output folder — use one outside iCloud-synced folders, where macOS keeps re-adding
+// Finder info to the bundle and a strict signature check fails (e.g. TETHER_APP_OUT=~/dev/tether-app npm run app).
 import { packager } from '@electron/packager';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -17,7 +20,7 @@ const keep = (p) => p === '' || p === '/package.json' || p === '/web' || /^\/(di
 
 const [out] = await packager({
   dir: root,
-  out: join(root, 'dist-app'),
+  out: process.env.TETHER_APP_OUT ? resolve(process.env.TETHER_APP_OUT.replace(/^~(?=\/|$)/, homedir())) : join(root, 'dist-app'),
   overwrite: true,
   platform: 'darwin',
   arch: 'arm64',
