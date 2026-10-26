@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tether — assistant + smooth sidebar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.sl{--page:#e7e7e4;--bg:#ffffff;--side:#f7f7f6;--s1:#ffffff;--s2:#f1f1ef;--s3:#e5e5e2;--ink:#1d1d1f;--ink2:#55555a;--mut:#8e8e93;--hov:rgba(0,0,0,.05);--sel:rgba(0,0,0,.075);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.13);--acc:#2563eb;--accBg:rgba(37,99,235,.1);--accInk:#1d4ed8;--warn:#b45309;--warnBg:#fdf1d8;--ok:#047857;--bad:#b91c1c;--pop:0 0 0 1px rgba(0,0,0,.06),0 18px 50px rgba(0,0,0,.18)}
+.sl.dark{--page:#000;--bg:#121214;--side:#18181b;--s1:#1f1f23;--s2:#232328;--s3:#2e2e34;--ink:#ececee;--ink2:#a6a6ad;--mut:#76767d;--hov:rgba(255,255,255,.05);--sel:rgba(255,255,255,.08);--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.12);--accBg:rgba(59,130,246,.18);--accInk:#93c5fd;--warn:#fbbf24;--warnBg:rgba(251,191,36,.14);--ok:#34d399;--bad:#f87171;--pop:0 0 0 1px rgba(255,255,255,.07),0 18px 50px rgba(0,0,0,.6)}
+.ease{transition-timing-function:cubic-bezier(.2,.8,.2,1)}
+.side{transition:width .24s cubic-bezier(.2,.8,.2,1)}
+.lbl{transition:opacity .16s ease,transform .24s cubic-bezier(.2,.8,.2,1);white-space:nowrap}
+.r{transition:background .1s}
+.r:hover{background:var(--hov)}
+.r:hover .h{opacity:1}
+.h{opacity:0;transition:opacity .1s}
+.launch{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.launch:hover{transform:translateY(-2px) scale(1.04)}
+.panel{transform-origin:bottom right;animation:pop .28s cubic-bezier(.2,.9,.25,1.1) both}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}
+.dock{animation:dk .26s cubic-bezier(.2,.8,.2,1) both}
+@keyframes dk{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.msg{animation:ms .24s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ms{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.dot{animation:bl 1.2s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.ring{animation:rg 2.2s ease-out infinite}
+@keyframes rg{0%{box-shadow:0 0 0 0 rgba(180,83,9,.45)}70%,100%{box-shadow:0 0 0 10px rgba(180,83,9,0)}}
+.tip{animation:tp .14s ease-out both}
+@keyframes tp{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+.m-off *{animation:none !important;transition:none !important}
+@media (prefers-reduced-motion: reduce){.sl *{animation:none !important;transition:none !important}}
+</style>
+</helmet>
+<div class="sl {{themeCls}} {{motionCls}}" style="min-height: 900px; padding: 20px 24px 24px; box-sizing: border-box; background: var(--page); font-family: Geist, -apple-system, system-ui, sans-serif; font-size: 14px; color: var(--ink)">
+  <div style="height: 856px; display: flex; border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: 0 14px 40px rgba(0,0,0,.12); position: relative">
+
+    <!-- ===== sidebar: fixed 56px icon column, labels clip + fade, nothing moves but the edge ===== -->
+    <aside class="side" aria-label="Sidebar" style="width: {{sideW}}px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; position: relative; font-size: 13px">
+      <div style="height: 48px; display: flex; align-items: center; flex: none; position: relative">
+        <button type="button" aria-label="{{glyphLabel}}" title="{{glyphLabel}}" onClick="{{glyphClick}}" onPointerEnter="{{glyphOn}}" onPointerLeave="{{glyphOff}}" style="width: 56px; height: 48px; flex: none; border: none; background: transparent; cursor: {{glyphCursor}}; display: flex; align-items: center; justify-content: center; color: var(--ink2)">
+          <sc-if value="{{showExpandIcon}}" hint-placeholder-val="{{false}}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M13 10l2 2-2 2"></path></svg></sc-if>
+          <sc-if value="{{showGlyph}}" hint-placeholder-val="{{true}}"><img width="20" height="20" src="{{glyph}}" alt=""></sc-if>
+        </button>
+        <span class="lbl" style="opacity: {{lblOp}}; transform: translateX({{lblX}}px); font-weight: 600; flex-grow: 1">orders-api <span style="color: var(--mut); font-size: 10px">⌄</span></span>
+        <span class="lbl" style="opacity: {{lblOp}}; display: flex; gap: 4px; padding-right: 8px">
+          <button type="button" aria-label="New run" title="New run ⌘N" style="width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 7px; background: var(--s1); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.4 2.6a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4z"></path></svg></button>
+          <button type="button" aria-label="Collapse sidebar" title="Collapse ⌘\" onClick="{{toggle}}" style="width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--mut); cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M15 10l-2 2 2 2"></path></svg></button>
+        </span>
+      </div>
+
+      <div style="flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 0">
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+          <div style="height: {{g.headH}}px; display: flex; align-items: center; position: relative">
+            <span class="lbl" style="opacity: {{lblOp}}; padding-left: 18px; font-size: 11.5px; font-weight: 500; color: var(--mut)">{{g.title}}</span>
+            <span style="position: absolute; left: 14px; right: 14px; top: 50%; height: 1px; background: var(--line); opacity: {{divOp}}; transition: opacity .16s"></span>
+          </div>
+          <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+            <div class="r" role="button" tabindex="0" aria-label="{{r.label}}" onClick="{{r.go}}" onPointerEnter="{{r.enter}}" onPointerLeave="{{r.leave}}" style="{{r.style}}">
+              <span style="width: 40px; flex: none; display: flex; align-items: center; justify-content: center; position: relative; color: {{r.iconColor}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.d}}"></path></svg><sc-if value="{{r.dot}}" hint-placeholder-val="{{false}}"><span style="{{r.dotStyle}}"></span></sc-if></span>
+              <span class="lbl" style="opacity: {{lblOp}}; transform: translateX({{lblX}}px); flex-grow: 1; overflow: hidden; text-overflow: ellipsis">{{r.label}}</span>
+              <sc-if value="{{r.n}}" hint-placeholder-val="{{false}}"><span class="lbl" style="opacity: {{lblOp}}; padding-right: 10px; font-size: 11.5px; color: var(--ink2)">{{r.n}}</span></sc-if>
+            </div>
+          </sc-for>
+        </sc-for>
+      </div>
+
+      <div style="flex: none; border-top: 1px solid var(--line); padding: 6px 0">
+        <div class="r" role="button" tabindex="0" aria-label="Settings" onPointerEnter="{{setEnter}}" onPointerLeave="{{tipOff}}" style="{{setStyle}}"><span style="width: 40px; flex: none; display: flex; justify-content: center; color: var(--ink2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span><span class="lbl" style="opacity: {{lblOp}}; transform: translateX({{lblX}}px); flex-grow: 1">Settings</span></div>
+        <div class="r" style="{{accStyle}}"><span style="width: 40px; flex: none; display: flex; justify-content: center"><span style="width: 22px; height: 22px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center">T</span></span><span class="lbl" style="opacity: {{lblOp}}; transform: translateX({{lblX}}px); flex-grow: 1">Tushar</span><span class="lbl" style="opacity: {{lblOp}}; padding-right: 10px; font-size: 11px; color: var(--mut); display: inline-flex; align-items: center; gap: 4px"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok)"></span>GitHub</span></div>
+      </div>
+
+    </aside>
+    <sc-if value="{{tip}}" hint-placeholder-val="{{false}}"><div class="tip" role="tooltip" style="position: absolute; left: 62px; top: {{tipY}}px; transform: translateY(-50%); z-index: 20; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none">{{tip}}</div></sc-if>
+
+    <!-- ===== content ===== -->
+    <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; position: relative">
+      <div style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 24px; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 13px"><span>orders-api</span><span style="color: var(--mut)">/</span><span style="color: var(--ink)">{{cur}}</span></div>
+      <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+        <div style="font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--mut)">2 running · 2 need you</div>
+        <h1 style="margin: -8px 0 0; font-size: 30px; font-weight: 650; letter-spacing: -0.03em">{{cur}}</h1>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 760px">
+          <sc-for list="{{cards}}" as="c" hint-placeholder-count="4"><div style="border-radius: 12px; border: 1px solid var(--line); background: var(--s1); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px"><div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink2)"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{c.dot}}"></span>{{c.k}}</div><div style="font-weight: 500">{{c.t}}</div><div style="height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden"><div style="height: 100%; width: {{c.p}}; background: {{c.dot}}"></div></div></div></sc-for>
+        </div>
+        <p style="margin: 0; max-width: 620px; color: var(--ink2); font-size: 13px; line-height: 1.7">Try it: collapse the sidebar with the panel button (or ⌘\) — icons keep their exact positions, only the edge moves; hover the Triad in the rail to expand. Then open <b style="color: var(--ink)">Tether</b>, the assistant, at the bottom right; ask something, act on a card, dock it as a side panel.</p>
+      </div>
+    </main>
+
+    <!-- ===== docked assistant ===== -->
+    <sc-if value="{{docked}}" hint-placeholder-val="{{false}}">
+      <section class="dock" aria-label="Tether assistant" style="width: 420px; flex: none; border-left: 1px solid var(--line); background: var(--bg); display: flex; flex-direction: column; min-height: 0">
+        <div style="{{headStyle}}"><img width="22" height="22" src="{{glyphTile}}" alt=""><div style="flex-grow: 1; min-width: 0"><div style="font-weight: 600; font-size: 14px">Tether</div><div style="font-size: 11.5px; color: var(--mut)">{{ctxLine}}</div></div><button type="button" aria-label="Pop out" title="Pop out" onClick="{{undock}}" style="{{ib}}">⤡</button><button type="button" aria-label="New chat" title="New chat" onClick="{{newChat}}" style="{{ib}}">＋</button><button type="button" aria-label="Close" title="Close ⎋" onClick="{{close}}" style="{{ib}}">×</button></div>
+        <div style="flex-grow: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px"><sc-for list="{{msgs}}" as="m" hint-placeholder-count="4"><div class="msg" style="{{m.wrap}}"><sc-if value="{{m.bot}}" hint-placeholder-val="{{true}}"><img width="22" height="22" src="{{glyphTile}}" alt="" style="flex: none; margin-top: 2px"></sc-if><div style="{{m.bubble}}"><div style="white-space: pre-wrap">{{m.text}}</div><sc-for list="{{m.cards}}" as="c" hint-placeholder-count="1"><div style="margin-top: 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--bg); padding: 10px 12px"><div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2)"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{c.dot}}"></span>{{c.kind}}</div><div style="font-weight: 500; margin-top: 4px">{{c.title}}</div><div style="font-size: 12px; color: var(--mut); margin-top: 2px">{{c.meta}}</div><div style="display: flex; gap: 6px; margin-top: 8px"><sc-for list="{{c.acts}}" as="a" hint-placeholder-count="2"><button type="button" onClick="{{a.go}}" style="{{a.style}}">{{a.label}}</button></sc-for></div></div></sc-for><sc-if value="{{m.chips}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px"><sc-for list="{{m.chips}}" as="ch" hint-placeholder-count="2"><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--s2); color: var(--ink2)">{{ch}}</span></sc-for></div></sc-if></div></div></sc-for><sc-if value="{{typing}}" hint-placeholder-val="{{false}}"><div style="display: flex; gap: 8px; align-items: center"><img width="22" height="22" src="{{glyphTile}}" alt=""><span style="display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--s2)"><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span></span></div></sc-if></div>
+        <div style="padding: 10px 14px 14px; border-top: 1px solid var(--line)"><div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px"><sc-for list="{{sugg}}" as="s" hint-placeholder-count="3"><button type="button" onClick="{{s.go}}" style="font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line2); background: transparent; color: var(--ink2); cursor: pointer">{{s.t}}</button></sc-for></div><div style="border-radius: 12px; border: 1px solid var(--line2); background: var(--s1); padding: 8px 10px"><div style="display: flex; gap: 6px; margin-bottom: 6px"><span style="font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--s2); color: var(--ink2)">◉ {{cur}} page</span><span style="font-size: 11.5px; color: var(--mut); padding: 2px 0">@ files, runs, bots</span></div><textarea aria-label="Message Tether" placeholder="Ask Tether, or tell it what to run…" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" rows="2" style="width: 100%; box-sizing: border-box; resize: none; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px"></textarea><div style="display: flex; align-items: center; gap: 8px"><span style="font-size: 11.5px; color: var(--mut)">Claude · Code Mode</span><span style="flex-grow: 1"></span><button type="button" onClick="{{send}}" style="height: 28px; padding: 0 12px; border: none; border-radius: 8px; background: var(--ink); color: var(--bg); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Send ⌘↵</button></div></div></div>
+      </section>
+    </sc-if>
+
+    <!-- ===== floating assistant ===== -->
+    <sc-if value="{{floatOpen}}" hint-placeholder-val="{{false}}">
+      <section class="panel" aria-label="Tether assistant" style="position: absolute; right: 20px; bottom: 88px; width: 384px; height: 560px; z-index: 30; border-radius: 16px; background: var(--bg); box-shadow: var(--pop); display: flex; flex-direction: column; overflow: hidden">
+        <div style="{{headStyle}}"><img width="22" height="22" src="{{glyphTile}}" alt=""><div style="flex-grow: 1; min-width: 0"><div style="font-weight: 600; font-size: 14px">Tether</div><div style="font-size: 11.5px; color: var(--mut)">{{ctxLine}}</div></div><button type="button" aria-label="Dock to the side" title="Dock to the side" onClick="{{dock}}" style="{{ib}}">⤢</button><button type="button" aria-label="New chat" title="New chat" onClick="{{newChat}}" style="{{ib}}">＋</button><button type="button" aria-label="Close" title="Close ⎋" onClick="{{close}}" style="{{ib}}">×</button></div>
+        <div style="flex-grow: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px"><sc-for list="{{msgs}}" as="m" hint-placeholder-count="4"><div class="msg" style="{{m.wrap}}"><sc-if value="{{m.bot}}" hint-placeholder-val="{{true}}"><img width="22" height="22" src="{{glyphTile}}" alt="" style="flex: none; margin-top: 2px"></sc-if><div style="{{m.bubble}}"><div style="white-space: pre-wrap">{{m.text}}</div><sc-for list="{{m.cards}}" as="c" hint-placeholder-count="1"><div style="margin-top: 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--bg); padding: 10px 12px"><div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2)"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{c.dot}}"></span>{{c.kind}}</div><div style="font-weight: 500; margin-top: 4px">{{c.title}}</div><div style="font-size: 12px; color: var(--mut); margin-top: 2px">{{c.meta}}</div><div style="display: flex; gap: 6px; margin-top: 8px"><sc-for list="{{c.acts}}" as="a" hint-placeholder-count="2"><button type="button" onClick="{{a.go}}" style="{{a.style}}">{{a.label}}</button></sc-for></div></div></sc-for><sc-if value="{{m.chips}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px"><sc-for list="{{m.chips}}" as="ch" hint-placeholder-count="2"><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--s2); color: var(--ink2)">{{ch}}</span></sc-for></div></sc-if></div></div></sc-for><sc-if value="{{typing}}" hint-placeholder-val="{{false}}"><div style="display: flex; gap: 8px; align-items: center"><img width="22" height="22" src="{{glyphTile}}" alt=""><span style="display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--s2)"><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span><span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--ink2)"></span></span></div></sc-if></div>
+        <div style="padding: 10px 12px 12px; border-top: 1px solid var(--line)"><div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px"><sc-for list="{{sugg}}" as="s" hint-placeholder-count="3"><button type="button" onClick="{{s.go}}" style="font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line2); background: transparent; color: var(--ink2); cursor: pointer">{{s.t}}</button></sc-for></div><div style="display: flex; align-items: flex-end; gap: 8px; border-radius: 12px; border: 1px solid var(--line2); background: var(--s1); padding: 8px 8px 8px 12px"><textarea aria-label="Message Tether" placeholder="Ask Tether…" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" rows="1" style="flex-grow: 1; resize: none; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; padding: 4px 0"></textarea><button type="button" aria-label="Send" onClick="{{send}}" style="width: 30px; height: 30px; flex: none; border: none; border-radius: 8px; background: var(--ink); color: var(--bg); cursor: pointer">↑</button></div></div>
+      </section>
+    </sc-if>
+
+    <!-- launcher -->
+    <sc-if value="{{showLauncher}}" hint-placeholder-val="{{true}}">
+      <button class="launch {{ringCls}}" type="button" aria-label="Ask Tether (⌘J) — 2 need you" title="Ask Tether  ⌘J" onClick="{{toggleChat}}" style="position: absolute; right: 20px; bottom: 20px; z-index: 31; width: 52px; height: 52px; border-radius: 26px; border: none; background: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,.25)">
+        <sc-if value="{{floatOpen}}" hint-placeholder-val="{{false}}"><span style="color: var(--bg); font-size: 20px; line-height: 1">⌄</span></sc-if>
+        <sc-if value="{{launcherGlyph}}" hint-placeholder-val="{{true}}"><img width="24" height="24" src="{{glyphInv}}" alt=""></sc-if>
+        <sc-if value="{{badge}}" hint-placeholder-val="{{true}}"><span style="position: absolute; top: -3px; right: -3px; min-width: 19px; height: 19px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; border: 2px solid var(--bg); background: var(--warn); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">2</span></sc-if>
+      </button>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"motion":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { open: true, glyphHover: false, cur: 'Home', tip: '', tipX: 0, tipY: 0, chat: 'closed', draft: '', typing: false, seen: false,
+      msgs: [
+        { bot: true, text: 'Morning. 2 things need you in orders-api, and Bolt is halfway through "Tune the limit window".', cards: [
+          { kind: 'Needs you · plan', dot: 'var(--warn)', title: 'Approve the plan for rate limiting', meta: 'Tether planned 4 steps · Bolt, Lens', acts: ['Approve', 'Open'] },
+          { kind: 'Needs you · question', dot: 'var(--warn)', title: 'Lens asks: keep the 429 body as JSON?', meta: 'r-0143 · Fix flaky login test', acts: ['Answer', 'Open'] } ] },
+      ] };
+  }
+  componentDidMount() {
+    this.k = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); this.setState({ open: !this.state.open, tip: '' }); }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) { e.preventDefault(); this.setState({ chat: this.state.chat === 'closed' ? 'float' : 'closed', seen: true }); }
+      if (e.key === 'Escape' && this.state.chat === 'float') this.setState({ chat: 'closed' });
+    };
+    window.addEventListener('keydown', this.k);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.k); clearTimeout(this.t); }
+  reply(q) {
+    const s = this.state, lower = q.toLowerCase();
+    const msgs = [...s.msgs, { bot: false, text: q, cards: [] }];
+    this.setState({ msgs, draft: '', typing: true });
+    clearTimeout(this.t);
+    this.t = setTimeout(() => {
+      let m;
+      if (/run|start|fix/.test(lower)) m = { bot: true, text: 'Here\'s a run for that — check it and start it, or tweak it first.', cards: [{ kind: 'Proposed run · Team · live', dot: 'var(--acc)', title: 'Fix the flaky login test', meta: 'Scout plans → Bolt codes → Lens reviews · ~$0.40', acts: ['Start run', 'Edit'] }], chips: ['test/login.test.ts', 'src/auth/session.ts'] };
+      else if (/what|running|status/.test(lower)) m = { bot: true, text: 'Running now:\n• Tune the limit window — Bolt, coding, 2:14 in, step 3 of 4\n• Fix flaky login test — Lens, reviewing, 10:11 in\nNothing has failed today.', cards: [] };
+      else if (/summar|last/.test(lower)) m = { bot: true, text: 'Add rate limiting finished 2 h ago: +14 −2 in src/http/limit.ts, a new limit test, all gates passed, $0.38. Lens noted the window is fixed at 60 s.', cards: [], chips: ['src/http/limit.ts', 'test/limit.test.ts'] };
+      else m = { bot: true, text: 'I can start runs, answer from your runs and code, and act on things that need you. Try "what\'s running?" or "fix the flaky login test".', cards: [] };
+      this.setState({ msgs: [...this.state.msgs, m], typing: false });
+    }, 900);
+  }
+  renderVals() {
+    const s = this.state, dark = this.props.dark ?? false, motion = this.props.motion ?? true, open = s.open;
+    const BAND = [[50, 52], [50, 17], [65.2, 25.8], [65.2, 43.2]], FOLD = [[50, 52], [65.2, 43.2], [80.4, 52], [65.2, 60.8]];
+    const rot = ([x, y], d) => { const r = d * Math.PI / 180, dx = x - 50, dy = y - 52; return [50 + dx * Math.cos(r) - dy * Math.sin(r), 52 + dx * Math.sin(r) + dy * Math.cos(r)]; };
+    const tri = (F) => [0, 120, 240].map((d, i) => { const tone = [[F[0], F[1]], [F[1], F[2]], [F[2], F[0]]]; const a = (d - 90) * Math.PI / 180 + Math.PI / 6, push = ([x, y]) => [x + Math.cos(a) * 2.8, y + Math.sin(a) * 2.8]; const pts = (sh) => sh.map((p) => push(rot(p, d)).map((n) => n.toFixed(2)).join(',')).join(' '); return '<polygon points="' + pts(BAND) + '" fill="' + tone[i][0] + '"/><polygon points="' + pts(FOLD) + '" fill="' + tone[i][1] + '"/>'; }).join('');
+    const svg = (inner) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' + inner + '</svg>');
+    const g = (F) => svg('<g transform="translate(50 50) scale(1.12) translate(-49.4 -47.8)">' + tri(F) + '</g>');
+    const glyph = dark ? g(['#fafafa', '#a1a1aa', '#52525b']) : g(['#18181b', '#71717a', '#d4d4d8']);
+    const glyphInv = dark ? g(['#18181b', '#52525b', '#a1a1aa']) : g(['#fafafa', '#a1a1aa', '#52525b']);
+    const glyphTile = svg('<rect x="2" y="2" width="96" height="96" rx="24" fill="#0e0e10"/><g transform="translate(50 50) scale(.78) translate(-49.4 -47.8)">' + tri(['#fafafa', '#a1a1aa', '#52525b']) + '</g>');
+
+    const I = { search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5', home: 'M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z', runs: 'M6 4l14 8-14 8z', code: 'M16 18l6-6-6-6M8 6l-6 6 6 6', builder: 'M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14', crew: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', api: 'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4', graph: 'M6 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 7l8 1M7.5 8.2l1.8 7.4M16.5 10l-4.8 6.3', trig: 'M13 2L3 14h9l-1 8 10-12h-9z', half: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 3v18', check: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6', dash: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', wf: 'M5 6h6v4H5zM13 14h6v4h-6zM8 10v2a2 2 0 0 0 2 2h3', file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5' };
+    const ROW_H = 30;
+    // rows keep the SAME left inset collapsed or open: 8px gutter + a 40px icon cell → the icon centre never moves
+    const rowStyle = (on) => 'display: flex; align-items: center; height: ' + ROW_H + 'px; margin: 1px 8px; border-radius: 6px; cursor: pointer; color: ' + (on ? 'var(--ink)' : 'var(--ink2)') + '; background: ' + (on ? 'var(--sel)' : 'transparent') + '; font-weight: ' + (on ? 500 : 400) + '; overflow: hidden';
+    let y = 48 + 4;
+    const tipAt = (label, yy) => ({ enter: () => { if (!open) this.setState({ tip: label, tipX: 0, tipY: yy }); }, leave: () => this.setState({ tip: '' }) });
+    const G = [
+      { title: '', rows: [['Search', I.search, '⌘K'], ['Home', I.home, ''], ['Inbox', I.inbox, '2', 'warn'], ['Runs', I.runs, '2', 'live']] },
+      { title: 'Workspace', rows: [['Code', I.code], ['Builder', I.builder], ['Crew', I.crew], ['API client', I.api], ['Graph', I.graph], ['Triggers', I.trig]] },
+      { title: 'Runs', rows: [['Tune the limit window', I.half, '', 'run-live'], ['Fix flaky login test', I.half, '', 'run-live'], ['Plan auth flow', I.dash, '', 'run-needs'], ['Add rate limiting', I.check, '', 'run-done']] },
+      { title: 'Favorites', rows: [['plan-code-review', I.wf], ['README.md', I.file]] },
+    ];
+    const groups = G.map((grp) => {
+      const headH = grp.title ? 28 : 4; y += headH;
+      const rows = grp.rows.map(([label, d, n, kind]) => { const yy = y + 1; y += ROW_H + 2; const on = s.cur === label;
+        const iconColor = kind === 'run-live' ? 'var(--acc)' : kind === 'run-needs' ? 'var(--warn)' : kind === 'run-done' ? 'var(--ok)' : 'var(--ink2)';
+        return { label, d, n: n || '', iconColor, go: () => this.setState({ cur: label }), ...tipAt(label + (n && n !== '⌘K' ? ' · ' + n : ''), yy + ROW_H / 2),
+          dot: !open && (kind === 'warn' || kind === 'live'), dotStyle: 'position: absolute; top: 4px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: ' + (kind === 'warn' ? 'var(--warn)' : 'var(--acc)'),
+          style: rowStyle(on) }; });
+      return { title: grp.title, headH, rows };
+    });
+    const chatOpen = s.chat !== 'closed';
+    const act = (label, primary, fn) => ({ label, go: fn, style: 'height: 26px; padding: 0 10px; border-radius: 7px; font: inherit; font-size: 12px; cursor: pointer; ' + (primary ? 'border: none; background: var(--ink); color: var(--bg); font-weight: 500' : 'border: 1px solid var(--line2); background: transparent; color: var(--ink)') });
+    const msgs = s.msgs.map((m) => ({ bot: m.bot, text: m.text, chips: m.chips || '',
+      wrap: 'display: flex; gap: 8px; align-items: flex-start; ' + (m.bot ? '' : 'justify-content: flex-end'),
+      bubble: m.bot ? 'max-width: 86%; font-size: 13.5px; line-height: 1.55; color: var(--ink)' : 'max-width: 80%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--s2); font-size: 13.5px; line-height: 1.5',
+      cards: (m.cards || []).map((c) => ({ ...c, acts: c.acts.map((a, i) => act(a, i === 0, () => this.reply(a === 'Approve' ? 'Approved the rate-limiting plan.' : a === 'Start run' ? 'Start it.' : a))) })) }));
+    return {
+      themeCls: dark ? 'dark' : '', motionCls: motion ? '' : 'm-off', glyph, glyphInv, glyphTile,
+      sideW: open ? 248 : 56, lblOp: open ? 1 : 0, lblX: open ? 0 : -6, divOp: open ? 0 : 1,
+      showGlyph: open || !s.glyphHover, showExpandIcon: !open && s.glyphHover,
+      glyphLabel: open ? 'orders-api' : 'Expand sidebar ⌘\\', glyphCursor: open ? 'default' : 'pointer',
+      glyphClick: () => { if (!open) this.setState({ open: true, glyphHover: false }); }, glyphOn: () => this.setState({ glyphHover: true }), glyphOff: () => this.setState({ glyphHover: false }),
+      toggle: () => this.setState({ open: !open, tip: '' }),
+      groups, tip: s.tip, tipX: 92, tipY: s.tipY,
+      setEnter: () => { if (!open) this.setState({ tip: 'Settings  ⌘,', tipY: 790 }); }, tipOff: () => this.setState({ tip: '' }),
+      setStyle: rowStyle(false), accStyle: rowStyle(false) + '; height: 36px',
+      cur: s.cur,
+      cards: [{ k: 'Needs you', t: 'Approve the plan for rate limiting', dot: 'var(--warn)', p: '100%' }, { k: 'Running · Bolt', t: 'Tune the limit window', dot: 'var(--acc)', p: '58%' }, { k: 'Running · Lens', t: 'Fix flaky login test', dot: 'var(--acc)', p: '82%' }, { k: 'Done', t: 'Add rate limiting', dot: 'var(--ok)', p: '100%' }],
+      floatOpen: s.chat === 'float', docked: s.chat === 'docked', showLauncher: s.chat !== 'docked', launcherGlyph: s.chat !== 'float', badge: !chatOpen && !s.seen, ringCls: !chatOpen && !s.seen ? 'ring' : '',
+      toggleChat: () => this.setState({ chat: s.chat === 'float' ? 'closed' : 'float', seen: true }),
+      dock: () => this.setState({ chat: 'docked' }), undock: () => this.setState({ chat: 'float' }), close: () => this.setState({ chat: 'closed' }),
+      newChat: () => this.setState({ msgs: [{ bot: true, text: 'New chat. What should we do in orders-api?', cards: [] }] }),
+      headStyle: 'display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line)',
+      ib: 'width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--ink2); cursor: pointer; font-size: 15px',
+      ctxLine: 'knows orders-api · sees the ' + s.cur + ' page',
+      msgs, typing: s.typing, draft: s.draft,
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey) && s.draft.trim()) { e.preventDefault(); this.reply(s.draft.trim()); } },
+      send: () => { if (s.draft.trim()) this.reply(s.draft.trim()); },
+      sugg: ["What's running?", 'Summarize the last run', 'Fix the flaky login test'].map((t) => ({ t, go: () => this.reply(t) })),
+    };
+  }
+}
+</script>
+</body>
+</html>
