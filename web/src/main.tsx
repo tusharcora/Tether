@@ -7,6 +7,7 @@ import 'blobatar/motion.css';
 import './styles.css';
 import './studio.css';
 import './studio-arc.css';
+import './tw.css';
 import { applyTheme, initialTheme } from './theme';
 
 applyTheme(initialTheme());

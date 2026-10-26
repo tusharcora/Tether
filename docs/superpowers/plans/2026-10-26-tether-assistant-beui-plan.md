@@ -36,6 +36,10 @@ beui's classes read `--color-*`. They map straight to Studio tokens, at the `--c
 `tw.css` imports `tailwindcss/theme.css` (layer theme) and `tailwindcss/utilities.css` **without a layer**, and never
 `preflight.css`. Our element defaults are unlayered `:where()` rules (specificity 0): a layered utility would lose to them
 whatever its specificity, an unlayered `.bg-foreground` (0,1,0) wins. `tw.css` loads after `studio.css`.
+Scanning is `source(none)` plus `@source` per folder written in Tailwind (beui, bencho, aicss, faces, assistant): scanning
+all of web/src turned plain words into global utilities (`.ring`, `.outline`, `.hidden`), which would restyle our classes of
+the same name. Those three classes are renamed (`prog-ring`, `cw-chip ghost`, `is-hidden`) and rules.test forbids a global
+class named like a bare utility, so Phase 2 can add screen folders safely.
 
 ## Dependencies (dev, bundled into the web build)
 - `tailwindcss` 4.3.x + `@tailwindcss/vite` 4.3.x: beui's components are written in Tailwind v4 classes; the owner picked
@@ -67,8 +71,9 @@ whatever its specificity, an unlayered `.bg-foreground` (0,1,0) wins. `tw.css` l
 
 ### 2. Tailwind v4 foundation (spec §2)
 Files: `package.json`, `web/vite.config.ts` (+`tailwindcss()`), `vitest.config.ts` (unchanged: CSS is blanked),
-`web/src/tw.css`, `web/src/main.tsx` (import after studio.css), `web/src/ui/cn.ts` (clsx + twMerge, `NONE` kept),
-`web/src/components/beui/lib/{utils.ts,ease.ts,highlight.ts}`, `web/src/components/beui/LICENSE`.
+`web/src/tw.css`, `web/src/main.tsx` (import after studio.css),
+`web/src/components/beui/lib/{utils.ts,ease.ts,highlight.ts}`, `web/src/components/beui/LICENSE`; the three renamed
+classes (graph, crew, runs).
 Tests: `web/src/tw.test.ts` — every mapped `--color-*` points at the token in the table, the dark variant is
 `[data-theme="dark"]`, no preflight import, no violet/neon colour; `rules.test.ts` gains a beui block: no
 `bg-gradient|bg-linear|bg-radial|bg-conic`, no zero-offset glow shadow class, no purple/violet/indigo/fuchsia class, no

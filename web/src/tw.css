@@ -1,0 +1,63 @@
+/* Tailwind v4 next to Studio Live (spec §2). No preflight: styles.css and studio.css stay the foundation. The utilities are
+   imported WITHOUT a layer: our element defaults are unlayered :where() rules, and a layered utility would lose to them
+   whatever its specificity. Loaded after studio.css (main.tsx).
+   Only the folders written in Tailwind are scanned: a plain word in older code ("ring", "hidden") would otherwise become a
+   global utility. A folder joins this list when a screen moves to beui (rules.test guards our class names against it). */
+@layer theme;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' source(none);
+@source './components/beui';
+@source './components/bencho';
+@source './components/aicss';
+@source './components/faces';
+@source './assistant';
+@source not './**/*.test.{ts,tsx}';
+
+/* our theme attribute, not beui's .dark class */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* beui's colour names → Studio tokens, at the --color-* level (Tether already uses --muted, --accent and --border with
+   other meanings). `inline`: utilities read the token itself, so they follow data-theme. Blue is live state only. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-card: var(--s1);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--s1);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--s2);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--s2);
+  --color-muted-foreground: var(--mut);
+  --color-accent: var(--s2);
+  --color-accent-foreground: var(--ink);
+  --color-border: var(--line2);
+  --color-border-strong: var(--edge);
+  --color-input: var(--edge);
+  --color-ring: var(--edge);
+  --color-destructive: var(--bad);
+  --color-danger: var(--bad);
+  --color-success: var(--ok);
+  --color-warning: var(--warn);
+  --color-live: var(--acc);
+  --color-live-foreground: var(--accInk);
+  --color-surface-3: var(--s3);
+
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
+
+  /* beui's easing curves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* lezer highlight classes for beui's code surfaces (components/beui/lib/highlight.ts), from Studio tokens like cmTheme.ts */
+.tk-kw { color: var(--ink); font-weight: 600; }
+.tk-str { color: var(--ok); }
+.tk-num { color: var(--warn); }
+.tk-com { color: var(--mut); font-style: italic; }
+.tk-punc { color: var(--mut); }
+.tk-bad { color: var(--bad); }

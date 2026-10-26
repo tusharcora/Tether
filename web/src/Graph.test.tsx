@@ -95,7 +95,7 @@ describe('Graph', () => {
     expect(runs.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(runs);
     expect(runs.getAttribute('aria-pressed')).toBe('false');
-    expect(container.querySelector('[data-gn="runs/r1.md"]')!.classList.contains('hidden')).toBe(true);
+    expect(container.querySelector('[data-gn="runs/r1.md"]')!.classList.contains('is-hidden')).toBe(true);
   });
 
   it('moves through the All notes list with the keyboard', async () => {
