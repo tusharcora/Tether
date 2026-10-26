@@ -23,6 +23,8 @@ import { cn } from './ui/cn';
 import { EmptyState } from './ui/studio/EmptyState';
 import { LeaveDialog } from './ui/LeaveDialog';
 import { useNotify } from './ui/notify';
+import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
+import { Welcome } from './welcome/Welcome';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
 import { SettingsDrawer } from './ui/studio/SettingsDrawer';
@@ -84,6 +86,10 @@ function Shell() {
   const runs = usePoll<RunRow[]>('/api/runs', COUNTS_MS);
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
   const { pins, save: savePins } = usePins();
+  const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
+  /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session). */
+  const [skipWelcome, setSkipWelcome] = useState(false);
+  const welcome = !skipWelcome && projects.list.data?.length === 0;
   /** The saved request open in the API tab, so the sidebar can pin it. */
   const [apiOpen, setApiOpen] = useState<{ id: string; label: string }>();
 
@@ -146,67 +152,71 @@ function Shell() {
 
   return (
     <>
-      <div ref={shellRef} className={cn('shell', { phone })}>
-        {phone ? null : (
-          <Sidebar
-            active={screen.tab}
-            settingsOpen={settingsOpen}
-            onGo={openScreen}
-            onSearch={() => setPalette(true)}
-            onSettings={openSettings}
-            counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
-            projects={{ list, current: projects.current?.id, live: liveProjects(list, runs.data ?? []), onSelect: (id) => switchProject(id), onAdd: () => setOpenFolder(true), onRemove: setRemoving }}
-            pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
-          />
-        )}
-        <main className="shell-main" tabIndex={-1}>
-          {screen.tab === 'home' ? <Home onGo={go} /> : null}
-          {screen.tab === 'code' ? (
-            projects.current ? (
-              <Code
-                key={projects.current.id}
+      {welcome ? (
+        <Welcome recent={list} onAdd={async (path) => (await projects.add(path), goNow({ tab: 'code' }))} onPick={(id) => (projects.select(id), goNow({ tab: 'code' }))} onSkip={() => setSkipWelcome(true)} />
+      ) : (
+        <div ref={shellRef} className={cn('shell', { phone })}>
+          {phone ? null : (
+            <Sidebar
+              active={screen.tab}
+              settingsOpen={settingsOpen}
+              onGo={openScreen}
+              onSearch={() => setPalette(true)}
+              onSettings={openSettings}
+              counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
+              projects={{ list, current: projects.current?.id, live: liveProjects(list, runs.data ?? []), onSelect: (id) => switchProject(id), onAdd: () => setOpenFolder(true), onRemove: setRemoving }}
+              pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
+            />
+          )}
+          <main className="shell-main" tabIndex={-1}>
+            {screen.tab === 'home' ? <Home onGo={go} /> : null}
+            {screen.tab === 'code' ? (
+              projects.current ? (
+                <Code
+                  key={projects.current.id}
+                  project={projects.current}
+                  path={screen.id}
+                  line={screen.line}
+                  onPath={(path, line) => goNow(path ? { tab: 'code', id: path, ...(line ? { line } : {}) } : { tab: 'code' })}
+                  onOpenRun={(id) => go({ tab: 'runs', id })}
+                  onDirtyChange={dirtyFor('code')}
+                />
+              ) : (
+                <NoProject loading={!projects.list.data && !projects.list.error} onOpen={() => setOpenFolder(true)} />
+              )
+            ) : null}
+            {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
+            {screen.tab === 'runs' ? (
+              <Runs
+                selected={screen.id}
+                node={screen.node}
+                pane={screen.pane}
                 project={projects.current}
-                path={screen.id}
-                line={screen.line}
-                onPath={(path, line) => goNow(path ? { tab: 'code', id: path, ...(line ? { line } : {}) } : { tab: 'code' })}
-                onOpenRun={(id) => go({ tab: 'runs', id })}
-                onDirtyChange={dirtyFor('code')}
+                onOpenFile={openFile}
+                onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
+                onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
+                onStart={() => go({ tab: 'home' })}
               />
-            ) : (
-              <NoProject loading={!projects.list.data && !projects.list.error} onOpen={() => setOpenFolder(true)} />
-            )
-          ) : null}
-          {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
-          {screen.tab === 'runs' ? (
-            <Runs
-              selected={screen.id}
-              node={screen.node}
-              pane={screen.pane}
-              project={projects.current}
-              onOpenFile={openFile}
-              onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
-              onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
-              onStart={() => go({ tab: 'home' })}
-            />
-          ) : null}
-          {screen.tab === 'api' ? (
-            <ApiTab
-              workspace={projects.current?.id}
-              onWorkspace={projects.select}
-              request={screen.id}
-              onOpenRequest={setApiOpen}
-              onStarted={(id) => go({ tab: 'runs', id })}
-              onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))}
-              onDirtyChange={dirtyFor('api')}
-            />
-          ) : null}
-          {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
-          {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} /> : null}
-          {screen.tab === 'triggers' ? <Triggers /> : null}
-        </main>
-        {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
-      </div>
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} returnFocus={settingsHome} />
+            ) : null}
+            {screen.tab === 'api' ? (
+              <ApiTab
+                workspace={projects.current?.id}
+                onWorkspace={projects.select}
+                request={screen.id}
+                onOpenRequest={setApiOpen}
+                onStarted={(id) => go({ tab: 'runs', id })}
+                onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))}
+                onDirtyChange={dirtyFor('api')}
+              />
+            ) : null}
+            {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
+            {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} /> : null}
+            {screen.tab === 'triggers' ? <Triggers /> : null}
+          </main>
+          {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
+        </div>
+      )}
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog

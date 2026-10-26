@@ -1,0 +1,28 @@
+/* First launch: one centred column, 640 px wide */
+.welcome { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 32px 16px; box-sizing: border-box; background: var(--bg); color: var(--ink); }
+.welcome-card { display: flex; flex-direction: column; gap: 22px; width: 640px; max-width: 100%; animation: welcome-rise var(--t-slow) var(--ease) both; }
+@keyframes welcome-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.welcome-head { display: flex; align-items: center; gap: 14px; }
+.welcome-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.welcome-head p { margin: 4px 0 0; color: var(--mut); }
+.welcome-open { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px; border: 1.5px dashed var(--edge); border-radius: 14px; background: var(--s1); }
+.welcome-open > svg { color: var(--mut); }
+.welcome-open > p { margin: 0; font-weight: 500; }
+.welcome-open .sl-path-form { width: 100%; }
+.welcome h2 { margin: 0 0 6px; color: var(--mut); font-size: 12px; font-weight: 600; }
+.welcome-recent { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.welcome-recent:hover { background: var(--s2); }
+.welcome-recent b { display: block; font-weight: 500; }
+.welcome-mono { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--s3); font-size: 12px; font-weight: 600; }
+.welcome-path { display: block; color: var(--mut); font-family: var(--font-code); font-size: 11.5px; }
+.welcome-tools { padding-top: 14px; border-top: 1px solid var(--line); }
+.welcome-tools > p { margin: 8px 0 0; color: var(--mut); font-size: 12px; }
+.welcome-skip { align-self: center; padding: 4px 8px; border: 0; background: none; color: var(--mut); font: inherit; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.welcome-skip:hover { color: var(--ink); }
+
+/* The agent tools strip (also in Settings) */
+.tools-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tool-chip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 8px; font-family: var(--font-code); font-size: 12px; }
+.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--edge); }
+.tool-dot.ok { background: var(--ok); }
+.tool-v { color: var(--mut); }

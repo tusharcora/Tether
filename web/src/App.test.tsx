@@ -411,13 +411,39 @@ describe('App shell', () => {
     });
   });
 
-  it('offers Open folder… on Code when there is no project', async () => {
-    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/workspaces': [], 'GET /api/pins': { pins: [] } });
-    startAt('#/code');
-    render(<App />);
-    expect(await screen.findByText('No project open')).toBeTruthy();
-    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Open folder…' }));
-    expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
+  describe('first launch', () => {
+    let added: string[];
+    beforeEach(() => {
+      added = [];
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [],
+        'GET /api/tools': { agents: [], rg: { ok: false } },
+        'GET /api/pins': { pins: [] },
+        'GET /api/workspaces': () => added.map((path) => ({ id: 'shop', name: 'shop', path, isDefault: true, exists: true, repos: [] })),
+        'POST /api/workspaces': (b: { path: string }) => (added.push(b.path), { id: 'shop', name: 'shop', path: b.path, isDefault: true, exists: true, repos: [] }),
+      });
+    });
+
+    it('shows the welcome screen instead of the shell, and opening a folder lands on Code', async () => {
+      render(<App />);
+      fireEvent.change(await screen.findByRole('textbox', { name: 'Folder path' }), { target: { value: '/code/shop' } });
+      expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+      expect(await screen.findByText(/code screen shop/)).toBeTruthy();
+      expect(location.hash).toBe('#/code');
+      expect(added).toEqual(['/code/shop']);
+    });
+
+    it('can be skipped; Code then offers Open folder…', async () => {
+      startAt('#/code');
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue without a project' }));
+      expect(await screen.findByText('No project open')).toBeTruthy();
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Open folder…' }));
+      expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
+    });
   });
 
   it('uses the bottom bar under 900 px', () => {
