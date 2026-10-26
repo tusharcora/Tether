@@ -19,11 +19,12 @@ vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph scre
 vi.mock('./Crew', () => ({ Crew: (p: { bot?: string }) => <div>crew screen {p.bot ?? ''}</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
 vi.mock('./http/ApiTab', () => ({
-  ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void }) => {
+  ApiTab: (p: { workspace?: string; request?: string; onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void; onOpenRequest?: (r?: { id: string; label: string }) => void }) => {
     useState(() => mounts.api++);
     return (
       <div>
-        api screen
+        api screen {p.workspace ?? ''} {p.request ?? ''}
+        <button onClick={() => p.onOpenRequest?.({ id: 'crew/list', label: 'List crew' })}>open request</button>
         <button onClick={() => p.onDirtyChange?.(true)}>edit draft</button>
         <button onClick={() => p.onUseAsGate({ run: 'runs/list', env: 'stage' })}>gate it</button>
         <button onClick={() => p.onStarted('r9')}>started</button>
@@ -44,7 +45,7 @@ const browserGoes = (hash: string) =>
     history.pushState(null, '', hash);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   });
-const railButton = (name: string) => screen.findByRole('button', { name });
+const navButton = (name: string) => screen.findByRole('button', { name });
 const phone = () =>
   vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 899px)', media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
 const dirtyApi = () => {
@@ -67,7 +68,7 @@ describe('App shell', () => {
     expect(screen.getByText(/runs screen r5 code/)).toBeTruthy();
   });
 
-  it('opens on Home with the rail as the main navigation', () => {
+  it('opens on Home with the sidebar as the main navigation', () => {
     startAt('#');
     render(<App />);
     expect(screen.getByText('home screen')).toBeTruthy();
@@ -82,7 +83,7 @@ describe('App shell', () => {
     expect(screen.getByText('home screen')).toBeTruthy();
   });
 
-  it('navigates by the rail and reopens the last viewed run', async () => {
+  it('navigates by the sidebar and reopens the last viewed run', async () => {
     startAt('#/runs/r5');
     render(<App />);
     expect(screen.getByText(/runs screen r5/)).toBeTruthy();
@@ -107,13 +108,13 @@ describe('App shell', () => {
     expect(screen.getByText('graph screen Roles/coder.md')).toBeTruthy();
   });
 
-  it('asks before leaving a dirty API tab by the rail', async () => {
+  it('asks before leaving a dirty API tab by the sidebar', async () => {
     dirtyApi();
     fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
     expect(location.hash).toBe('#/api');
     expect(screen.getByText('api screen')).toBeTruthy();
-    fireEvent.click(await railButton('Crew'));
+    fireEvent.click(await navButton('Crew'));
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     expect(location.hash).toBe('#/crew');
     expect(screen.getByText('crew screen')).toBeTruthy();
@@ -140,7 +141,7 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
     expect(location.hash).toBe('#/api');
-    fireEvent.click(await railButton('More'));
+    fireEvent.click(await navButton('More'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     expect(location.hash).toBe('#/graph');
@@ -223,7 +224,7 @@ describe('App shell', () => {
     expect(await screen.findByText('offline')).toBeTruthy();
   });
 
-  it('returns focus to the rail Settings button when Settings was opened from ⌘K', async () => {
+  it('returns focus to the sidebar Settings button when Settings was opened from ⌘K', async () => {
     render(<App />);
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
     fireEvent.click(await screen.findByText('Open Settings'));
@@ -269,15 +270,92 @@ describe('App shell', () => {
     }
   });
 
-  it('gives the rail the full height and scrolls only the screen', () => {
+  it('gives the sidebar the full height and scrolls only the screen', () => {
     const shell = cssRule('ui/studio/shell.css', '.shell');
     expect(shell).toContain('grid-template-rows: minmax(0,1fr)');
+    expect(shell).toContain('grid-template-columns: auto minmax(0,1fr)');
     expect(shell).toContain('height: 100%');
-    expect(cssRule('ui/studio/shell.css', '.sl-rail')).toContain('height: 100%');
+    expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('height: 100%');
     expect(cssRule('ui/studio/shell.css', '.shell-main')).toContain('overflow: auto');
     expect(cssRule('ui/studio/shell.css', '.shell.phone')).toContain('grid-template-rows: minmax(0,1fr) auto');
     expect(() => cssRule('styles.css', '.topbar')).toThrow();
     expect(() => cssRule('styles.css', '.app')).toThrow();
+  });
+
+  it('opens Settings with ⌘, and Open folder… with ⌘O', async () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+    expect(location.hash).toBe('#/settings');
+    fireEvent.keyDown(window, { key: 'o', metaKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
+  });
+
+  describe('projects and pins', () => {
+    const two = [
+      { id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] },
+      { id: 'blog', name: 'blog', path: '/code/blog', isDefault: false, exists: true, repos: [] },
+    ];
+    let saved: unknown;
+    beforeEach(() => {
+      localStorage.clear();
+      saved = undefined;
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [{ id: 'r5', task: 'Add rate limiting\nmore', repo: '/code/blog/api', live: true, status: 'running', startedAt: 0 }],
+        'GET /api/pipelines': [],
+        'GET /api/attention': { items: [{}, {}] },
+        'GET /api/workspaces': two,
+        'GET /api/pins': () => ({ pins: saved ?? [] }),
+        'PUT /api/pins': (b: { pins: unknown }) => ((saved = b.pins), b),
+      });
+    });
+
+    it('lists projects with a live dot, counts, and switches the API tab to the picked project', async () => {
+      startAt('#/api');
+      render(<App />);
+      expect(await screen.findByText(/api screen shop/)).toBeTruthy();
+      expect(await screen.findByText('2')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      expect(await screen.findByText(/api screen blog/)).toBeTruthy();
+      expect(localStorage.getItem('aorch.api.ws')).toBe('blog');
+      expect(screen.getByRole('button', { name: 'blog' }).querySelector('.sl-side-live')).toBeTruthy();
+    });
+
+    it('asks before switching project under a dirty API tab', async () => {
+      startAt('#/api');
+      render(<App />);
+      await screen.findByText(/api screen shop/);
+      fireEvent.click(screen.getByRole('button', { name: 'edit draft' }));
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByText(/api screen shop/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+      expect(await screen.findByText(/api screen blog/)).toBeTruthy();
+    });
+
+    it('pins the open run and the open request, and opens a pinned request in its project', async () => {
+      startAt('#/runs/r5');
+      render(<App />);
+      await screen.findByRole('button', { name: 'blog' });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Pin this run or request' }).hasAttribute('disabled')).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      await waitFor(() => expect(saved).toEqual([{ kind: 'run', id: 'r5', label: 'Add rate limiting' }]));
+      fireEvent.click(await screen.findByRole('button', { name: 'Add rate limiting' }));
+      expect(location.hash).toBe('#/runs/r5');
+
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(screen.getByRole('button', { name: 'API client' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'open request' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      await waitFor(() => expect(saved).toContainEqual({ kind: 'request', id: 'crew/list', label: 'List crew', ws: 'blog' }));
+      fireEvent.click(screen.getByRole('button', { name: 'shop' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'List crew' }));
+      expect(location.hash).toBe('#/api/crew%2Flist');
+      expect(await screen.findByText(/api screen blog crew\/list/)).toBeTruthy();
+    });
   });
 
   it('uses the bottom bar under 900 px', () => {

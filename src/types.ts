@@ -745,3 +745,13 @@ export interface RosterPreview {
   bots: { id: string; name: string; why: string }[];
   core: string[];
 }
+
+/** A run or a saved API request pinned to the sidebar (<home>/pins.json). */
+export interface Pin {
+  kind: 'run' | 'request';
+  /** A run id, or a saved request id (`collection/name`). */
+  id: string;
+  label: string;
+  /** Requests: the workspace the request is saved in. */
+  ws?: string;
+}

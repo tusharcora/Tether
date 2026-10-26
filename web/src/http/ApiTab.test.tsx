@@ -52,6 +52,17 @@ describe('latency strip', () => {
 });
 
 describe('ApiTab', () => {
+  it('follows the current project, opens a requested request once its workspace is shown, and reports what is open', async () => {
+    const onOpenRequest = vi.fn();
+    const { rerender } = renderApp(<ApiTab workspace="api" request="runs/list" onOpenRequest={onOpenRequest} onStarted={() => {}} onUseAsGate={() => {}} />);
+    await waitFor(() => expect(onOpenRequest).toHaveBeenLastCalledWith({ id: 'runs/list', label: 'List runs' }));
+    expect(calls('GET', '/api/http/tree?ws=api').length).toBeGreaterThan(0);
+    rerender(<ApiTab workspace="blog" request="runs/list" onOpenRequest={onOpenRequest} onStarted={() => {}} onUseAsGate={() => {}} />);
+    await waitFor(() => expect(calls('GET', '/api/http/tree?ws=blog').length).toBeGreaterThan(0));
+    expect(localStorage.getItem('aorch.api.ws')).toBe('blog');
+    await waitFor(() => expect(calls('GET', '/api/http/requests/runs%2Flist?ws=blog')).toHaveLength(1));
+  });
+
   it('asks to register a folder when there is no workspace', async () => {
     routeApi({ ...routes, 'GET /api/http/tree': new Error('no workspace'), 'GET /api/workspaces': [] });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);

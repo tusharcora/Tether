@@ -137,7 +137,7 @@ describe.each([
   const bg = c('--bg');
   const solid = (k: string) => over(c(k), bg);
   it('text: ink and muted on every surface', () => {
-    for (const fg of ['--ink', '--mut']) for (const s of ['--bg', '--s1', '--s2', '--s3']) expect(ratio(c(fg), solid(s)), `${fg} on ${s}`).toBeGreaterThanOrEqual(4.5);
+    for (const fg of ['--ink', '--mut']) for (const s of ['--bg', '--s1', '--s2', '--s3', '--side', '--side-hover', '--side-card']) expect(ratio(c(fg), solid(s)), `${fg} on ${s}`).toBeGreaterThanOrEqual(4.5);
   });
   it('text: status colours on the page, on panels and on their own tint', () => {
     const pairs: [string, string][] = [['--accInk', '--accBg'], ['--ok', '--okBg'], ['--warn', '--warnBg'], ['--bad', '--badBg']];

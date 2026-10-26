@@ -2,15 +2,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpError } from './serverkit.js';
+import type { Pin } from './types.js';
 
-export interface Pin {
-  kind: 'run' | 'request';
-  /** A run id, or a saved request id (`collection/name`). */
-  id: string;
-  label: string;
-  /** Requests: the workspace the request is saved in. */
-  ws?: string;
-}
+export type { Pin };
 
 export const MAX_PINS = 50;
 const MAX_TEXT = 200;

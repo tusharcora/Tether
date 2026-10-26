@@ -17,7 +17,7 @@ import { SecretsDialog } from './SecretsDialog';
 import { SendToAgent } from './SendToAgent';
 import { Tree } from './Tree';
 import { WorkspaceDialog } from './WorkspaceDialog';
-import { storedWorkspace as readWs, WS_KEY } from '../home/workspaces';
+import { storedWorkspace as readWs, storeWorkspace } from '../home/workspaces';
 import './api.css';
 
 /** A stored (redacted) exchange, shaped like a send's output so the response view and the agent panel can show it. */
@@ -36,11 +36,19 @@ export interface ApiTabProps {
   onUseAsGate: (g: { run: string; env?: string }) => void;
   /** Told whenever the open request gains or loses unsaved edits (and false on unmount), so the shell can ask before leaving the tab. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** The current project (the sidebar's). The shell has already asked about unsaved edits before it changes this. */
+  workspace?: string;
+  /** Told when the workspace is changed here, so the sidebar follows. */
+  onWorkspace?: (id: string) => void;
+  /** A saved request to open (a pinned request, `#/api/<id>`). */
+  request?: string;
+  /** Told which saved request is open (for pinning), or undefined. */
+  onOpenRequest?: (r: { id: string; label: string } | undefined) => void;
 }
 
 export function ApiTab(props: ApiTabProps) {
   const notify = useNotify();
-  const [ws, setWsState] = useState<string | undefined>(readWs);
+  const [ws, setWsState] = useState<string | undefined>(() => props.workspace ?? readWs());
   const workspaces = usePoll<{ id: string; name: string; isDefault: boolean }[]>('/api/workspaces', 30_000);
   const [tree, setTree] = useState<HttpTree>();
   const [treeError, setTreeError] = useState<string>();
@@ -111,6 +119,11 @@ export function ApiTab(props: ApiTabProps) {
     void loadHistory();
   }, [ws, loadHistory]);
   useEffect(() => void refresh(), [refresh]);
+  useEffect(() => {
+    if (props.workspace && props.workspace !== wsNow.current) switchWs(props.workspace);
+    // switchWs is rebuilt every render; only a new workspace from the shell matters here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.workspace]);
 
   /** Run `fn` now, or after the person agrees to drop their unsaved edits. */
   const guard = (fn: () => void) => (dirty ? setPending(() => fn) : fn());
@@ -123,19 +136,20 @@ export function ApiTab(props: ApiTabProps) {
     setSendError(undefined);
     setInvalid(undefined);
   };
+  /** Show another workspace, dropping the open request (callers have asked about unsaved edits). */
+  const switchWs = (id: string) => {
+    reset();
+    setOpenId(undefined);
+    setFile(undefined);
+    setSaved('');
+    setVars({});
+    setWsState(id);
+    storeWorkspace(id);
+  };
   const setWs = (id: string) =>
     guard(() => {
-      reset();
-      setOpenId(undefined);
-      setFile(undefined);
-      setSaved('');
-      setVars({});
-      setWsState(id);
-      try {
-        localStorage.setItem(WS_KEY, id);
-      } catch {
-        /* storage unavailable */
-      }
+      switchWs(id);
+      props.onWorkspace?.(id);
     });
   const open = (id: string) =>
     guard(() => {
@@ -159,6 +173,16 @@ export function ApiTab(props: ApiTabProps) {
         }
       })();
     });
+  // a pinned request (or #/api/<id>) opens once its workspace is the one on screen
+  useEffect(() => {
+    if (props.request && props.request !== openId && (!props.workspace || props.workspace === ws)) open(props.request);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.request, ws]);
+  const onOpenRequest = useRef(props.onOpenRequest);
+  onOpenRequest.current = props.onOpenRequest;
+  const openLabel = openId && file ? file.name || openId : undefined;
+  useEffect(() => onOpenRequest.current?.(openId && openLabel ? { id: openId, label: openLabel } : undefined), [openId, openLabel]);
+  useEffect(() => () => onOpenRequest.current?.(undefined), []);
   const fresh = () =>
     guard(() => {
       reset();
