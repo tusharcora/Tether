@@ -1,8 +1,8 @@
 /** /api/code/*: the Code screen over the existing loopback server (Host and Origin are checked by server.ts first). */
 import { realpathSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { listDir, readCode, saveCode } from './code.js';
-import { writingRun } from './codeRuns.js';
+import { gitInfo, listDir, readCode, resolveInWorkspace, saveCode } from './code.js';
+import { changedByRuns, runsForFile, writingRun } from './codeRuns.js';
 import { searchNames, searchText } from './codeSearch.js';
 import type { Engine } from './engine.js';
 import { HttpError, readJson, reqObject, send } from './serverkit.js';
@@ -49,6 +49,15 @@ export async function codeRoute(c: CodeRouteCtx, req: IncomingMessage, res: Serv
     const lock = writingRun(c.store, c.engine, r);
     if (lock) throw new HttpError(423, 'run-writing', { ...lock });
     return send(res, 200, { path: b.path, ...saveCode(r, b.path, b.text, b.baseMtimeMs as number | undefined) }), true;
+  }
+  if (p === '/api/code/runs-for-file' && m === 'GET') {
+    const r = root();
+    const rel = resolveInWorkspace(r, q('path')).rel;
+    return send(res, 200, (await gitInfo(r)).git ? await runsForFile(c.store, c.engine, r, rel) : []), true;
+  }
+  if (p === '/api/code/changed' && m === 'GET') {
+    const r = root();
+    return send(res, 200, { paths: (await gitInfo(r)).git ? await changedByRuns(c.store, r) : [] }), true;
   }
   if (p === '/api/code/search' && m === 'GET') {
     const mode = q('mode') || 'text';
