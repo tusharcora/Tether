@@ -1,6 +1,22 @@
 /** The extra fields Home needs on each GET /api/runs row. Read-only, computed from the folded run state (no queries). */
+import { realpathSync } from 'node:fs';
 import { CREW, crewFor } from './bots.js';
 import type { PipelineNode, RunRowExtras, RunState } from './types.js';
+
+const real = new Map<string, string>();
+/** The folder's real path (symlinks resolved: /tmp → /private/tmp on a Mac), remembered; the path itself when it is gone. */
+export function realRepo(dir: string): string {
+  let r = real.get(dir);
+  if (r === undefined) {
+    try {
+      r = realpathSync(dir);
+      real.set(dir, r);
+    } catch {
+      return dir;
+    }
+  }
+  return r;
+}
 
 export const nodeTitle = (n: PipelineNode): string => n.title ?? n.role ?? n.id;
 
@@ -18,5 +34,6 @@ export function rowExtras(s: RunState, lastTs: number): RunRowExtras {
     steps,
     ...(cur ? { current: { node: cur.id, bot: CREW[crewFor(cur)]?.name ?? crewFor(cur), title: nodeTitle(cur) } } : {}),
     bots,
+    repoReal: realRepo(s.repo),
   };
 }

@@ -13,7 +13,7 @@ import { ApiTab } from './http/ApiTab';
 import { bridge, useBridgeEvents } from './bridge';
 import { useHashRoute, usePoll, type Route, type Screen } from './hooks';
 import { OpenFolderDialog } from './projects/OpenFolderDialog';
-import { liveProjects, projectOf, samePin, usePins, useProjects } from './projects/projects';
+import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
@@ -191,7 +191,7 @@ function Shell() {
   const settingsHome = () => shellRef.current?.querySelector<HTMLElement>(phone ? '.sl-bottombar [aria-haspopup="menu"]' : '.sl-side [aria-label="Settings"]');
   const list = projects.list.data ?? [];
   /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
-  const projectRuns = (runs.data ?? []).filter((r) => !projects.current || projectOf(list, r.repo)?.id === projects.current.id);
+  const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);
 
   return (
     <>

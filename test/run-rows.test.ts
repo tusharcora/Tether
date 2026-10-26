@@ -1,11 +1,28 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FINISHED, isFinished, RECENT_ACTIVITY_MS, rowLive, runMeta, runTitle, stepLabel } from '../src/runLabels.js';
-import { rowExtras } from '../src/runRows.js';
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { realRepo, rowExtras } from '../src/runRows.js';
+import { tmp } from './helpers.js';
 import { Store } from '../src/store.js';
 import { seedRun } from './home-helpers.js';
 import { startHttpTestServer } from './http-helpers.js';
 
 describe('run rows for Home', () => {
+  it('carry the repo folder’s real path, so a run on a symlinked path still matches its project', () => {
+    const base = realpathSync(tmp('real-'));
+    const target = join(base, 'repo');
+    mkdirSync(target);
+    const link = join(base, 'link');
+    symlinkSync(target, link);
+    expect(realRepo(link)).toBe(target);
+    expect(realRepo(join(base, 'gone'))).toBe(join(base, 'gone'));
+    const store = Store.open(':memory:');
+    seedRun(store, 'r9');
+    const s = { ...store.state('r9')!, repo: link };
+    expect(rowExtras(s, 0).repoReal).toBe(target);
+  });
+
   it('lists steps in pipeline order, the first running or awaiting step as current, and the agent bots', () => {
     const store = Store.open(':memory:');
     seedRun(store, 'r1', { nodes: [{ id: 'plan', role: 'planner', title: 'Plan' }, { id: 'code', role: 'coder', title: 'Implement' }, { id: 'gate', kind: 'gate', command: 'npm test' }, { id: 'ok', kind: 'approval' }] });

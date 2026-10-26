@@ -745,6 +745,8 @@ export interface RunCurrent {
 }
 /** What GET /api/runs adds to each run row. */
 export interface RunRowExtras {
+  /** The repo folder's real path, so a run started on a symlinked path (/tmp) still matches its project (/private/tmp). */
+  repoReal: string;
   branch: string;
   lastTs: number;
   steps: RunStep[];
