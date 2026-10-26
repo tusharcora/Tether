@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
 import { Builder } from './Builder';
-import { Code } from './code/Code';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/arc/toast-stack/toast-stack';
 import { Crew } from './Crew';
@@ -33,6 +32,9 @@ import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './ui/studio/shell.css';
 
 type ScreenRoute = Omit<Route, 'tab'> & { tab: Screen };
+
+/** CodeMirror is most of the Code screen's weight: it loads the first time Code opens. */
+const Code = lazy(() => import('./code/Code').then((m) => ({ default: m.Code })));
 
 /** How often the sidebar's counts (needs you, live) and project dots refresh. */
 const COUNTS_MS = 5000;
@@ -172,15 +174,17 @@ function Shell() {
             {screen.tab === 'home' ? <Home onGo={go} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (
-                <Code
-                  key={projects.current.id}
-                  project={projects.current}
-                  path={screen.id}
-                  line={screen.line}
-                  onPath={(path, line) => goNow(path ? { tab: 'code', id: path, ...(line ? { line } : {}) } : { tab: 'code' })}
-                  onOpenRun={(id) => go({ tab: 'runs', id })}
-                  onDirtyChange={dirtyFor('code')}
-                />
+                <Suspense fallback={<Loading loading lines={8} label="Loading Code" />}>
+                  <Code
+                    key={projects.current.id}
+                    project={projects.current}
+                    path={screen.id}
+                    line={screen.line}
+                    onPath={(path, line) => goNow(path ? { tab: 'code', id: path, ...(line ? { line } : {}) } : { tab: 'code' })}
+                    onOpenRun={(id) => go({ tab: 'runs', id })}
+                    onDirtyChange={dirtyFor('code')}
+                  />
+                </Suspense>
               ) : (
                 <NoProject loading={!projects.list.data && !projects.list.error} onOpen={() => setOpenFolder(true)} />
               )
