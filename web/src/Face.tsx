@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { blobatar, type BlobatarOptions } from 'blobatar';
 import * as X from 'blobatar/expression';
 import { Blobatar } from '@blobatar/react';
+import { TetherFace } from './components/faces/TetherFace';
 import { useCrew, type FaceLook } from './crewStore';
 
 export type Mood = 'idle' | 'working' | 'done' | 'failed' | 'waiting' | 'asleep' | 'stopped';
@@ -49,6 +50,9 @@ export function faceSvg(id: string, o: { mood?: Mood; face?: FaceLook; size?: nu
 /** Static faces only: an <img> cannot animate (CSS cannot reach inside it). */
 export const faceUri = (id: string, o?: { mood?: Mood; face?: FaceLook; size?: number }) => `data:image/svg+xml;utf8,${encodeURIComponent(faceSvg(id, o))}`;
 
+/** Tether (the orchestrator bot) has the eye-tracker for a face, not a blob (spec §4). */
+export const TETHER_ID = 'orchestrator';
+
 export function Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook; animate?: Animate }) {
   const { crew } = useCrew();
   const c = crew[props.id];
@@ -57,8 +61,11 @@ export function Face(props: { id: string; mood?: Mood; size?: number; label?: st
   const label = props.label ?? c?.name ?? props.id;
   const mood = props.mood ?? 'idle';
   const faceKey = JSON.stringify(face ?? null);
-  // building the SVG is the costly part; skip it for animated faces and when nothing changed
-  const uri = useMemo(() => (props.animate ? '' : faceUri(props.id, { mood, face, size })), [props.animate, props.id, mood, size, faceKey]);
+  const tether = props.id === TETHER_ID;
+  // building the SVG is the costly part; skip it for animated faces, for Tether's, and when nothing changed
+  const uri = useMemo(() => (props.animate || tether ? '' : faceUri(props.id, { mood, face, size })), [props.animate, tether, props.id, mood, size, faceKey]);
+  // still where faces are static, following the pointer where they come alive
+  if (tether) return <TetherFace size={size} idle={props.animate !== 'always'} label={label} className="face" />;
   if (props.animate)
     return (
       <span
