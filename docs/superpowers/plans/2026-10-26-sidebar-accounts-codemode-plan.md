@@ -126,7 +126,9 @@ event { type: 'node.metrics', node, toolStyle, roundTrips?, runCode, connectorCa
   - Favorites: pins with ⋯ unpin and drag reorder.
   - Bottom: Settings ⌘, and the account row.
   - Sections fold, and the fold state is remembered.
-  - ⌘\ hides the sidebar, the left edge peeks it, and ☰ docks it.
+  - ⌘\ hides the sidebar, the left edge peeks it, and ☰ docks it. **Superseded by the owner's amendment (spec §2,
+    2026-10-26):** the switcher shows the Triad glyph, not a tile. ⌘\ or a hover-shown panel button collapses the
+    sidebar to a 56 px icon rail, with tooltips, dots for counts, and the state remembered.
   - Below 900 px the bottom bar is unchanged.
 - Tests: `Sidebar.test.tsx` (rewritten), `useGoKeys.test.tsx`, `Inbox.test.tsx`, `hooks.test.tsx` (inbox route),
   `CommandMenu.test.tsx` (shortcuts), `App.test.tsx` (hide/peek/dock).
@@ -189,3 +191,15 @@ event { type: 'node.metrics', node, toolStyle, roundTrips?, runCode, connectorCa
 - Scratch-home server on a free port: check the sidebar in a browser.
 - One Claude Code smoke run (model `haiku`) on a throwaway git repo with a scratch home. The read-only task should use
   `run_code`. Confirm from the stream that the tool list holds exactly one Tether tool and that `run_code` ran.
+
+### Findings from the real checks (2026-10-26)
+- **First smoke run:** Claude Code saw exactly one MCP tool, `mcp__tether__run_code`. But `--permission-mode plan`
+  (read-only steps) blocked it, and the agent fell back to Bash `find`/`grep`.
+  - Fix: on a read-only step, run_code is announced with `readOnlyHint: true`. This is true there: repo.write is refused
+    and outside-world calls need approval.
+- **Second run:** run_code ran once (2 connector calls). It took 2 tool round-trips: Claude Code's `ToolSearch` loads the
+  deferred MCP tool first. Cost $0.11.
+- **Browser check** turned up three things, all fixed:
+  - A run paused on an approval showed the grey glyph. It now shows needs-you.
+  - Needs you kind chips overlapped their titles (an existing ListRow lead width).
+  - Long account notes were set in mono.
