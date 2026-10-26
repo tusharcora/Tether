@@ -4,10 +4,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { installExamples, loadConfig, resolveHome, writePipeline, makeRegistry, readPipeline, listPipelines, type Config } from './config.js';
-import { Engine } from './engine.js';
 import { loadPipelineFile, preflight } from './pipeline.js';
-import { startServer } from './server.js';
-import { Store } from './store.js';
+import { openContext, serveTether, type Ctx } from './serve.js';
+import type { Store } from './store.js';
 import { httpCommand } from './http/cli.js';
 import type { Answer, Pipeline, Question, RunState, StoredEvent } from './types.js';
 import { answerFromInput, parseTeamArgs } from './team.js';
@@ -138,21 +137,7 @@ function fail(msg: string, code = 1): never {
 
 const statusGlyph = (st: string) => glyph(st);
 
-interface Ctx {
-  cfg: Config;
-  store: Store;
-  engine: Engine;
-  vault: Vault;
-}
-
-function open(flags: { home?: string; vault?: string }): Ctx {
-  const cfg = loadConfig({ home: flags.home, vault: flags.vault });
-  refreshCrew(cfg.home);
-  const store = Store.open(join(cfg.home, 'runs.db'));
-  const vault = new Vault(cfg.vault);
-  const engine = new Engine(store, { home: cfg.home, registry: makeRegistry(cfg), vault, bindings: () => loadBindings(cfg.home) });
-  return { cfg, store, engine, vault };
-}
+const open = openContext;
 
 /** Print one line per meaningful event while a run executes in this process. */
 function narrate(store: Store, runId: string, json: boolean): { off: () => void; stop: () => void; start: () => void } {
@@ -1853,19 +1838,8 @@ async function main() {
       return fail('usage: aorch vault search "<query>" | aorch vault stats');
     }
     case 'serve': {
-      const ctx = open(v);
-      installExamples(ctx.cfg.home, examplesDir);
-      await ctx.vault.ensure();
-      const { url } = await startServer({
-        engine: ctx.engine,
-        store: ctx.store,
-        vault: ctx.vault,
-        registry: makeRegistry(ctx.cfg),
-        cfg: ctx.cfg,
-        host: v.host,
-        port: v.port ? Number(v.port) : 4177,
-        webDir,
-      });
+      const ctx = await serveTether({ home: v.home, vault: v.vault, host: v.host, port: v.port ? Number(v.port) : 4177, webDir, examplesDir });
+      const { url } = ctx;
       await banner('dashboard + API');
       console.log(
         box(
@@ -1879,7 +1853,7 @@ async function main() {
         ).join('\n'),
       );
       process.on('SIGINT', () => {
-        for (const r of ctx.store.list()) if (ctx.engine.isLive(r.id)) ctx.engine.stop(r.id);
+        ctx.stopLive();
         setTimeout(() => process.exit(0), 1500).unref();
       });
       return;
