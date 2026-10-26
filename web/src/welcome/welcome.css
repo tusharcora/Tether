@@ -5,7 +5,8 @@
 .welcome-head { display: flex; align-items: center; gap: 14px; }
 .welcome-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
 .welcome-head p { margin: 4px 0 0; color: var(--mut); }
-.welcome-open { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px; border: 1.5px dashed var(--edge); border-radius: 14px; background: var(--s1); }
+.welcome-open { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px; border: 1.5px dashed var(--edge); border-radius: 14px; background: var(--s1); transition: border-color var(--t-med) var(--ease), background-color var(--t-med) var(--ease); }
+.welcome-open.over { border-color: var(--ink); background: var(--s2); }
 .welcome-open > svg { color: var(--mut); }
 .welcome-open > p { margin: 0; font-weight: 500; }
 .welcome-open .sl-path-form { width: 100%; }

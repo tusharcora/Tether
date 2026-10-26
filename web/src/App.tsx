@@ -9,6 +9,7 @@ import { GraphView } from './Graph';
 import { Home } from './home/Home';
 import type { WorkspaceRow } from './home/workspaces';
 import { ApiTab } from './http/ApiTab';
+import { bridge, useBridgeEvents } from './bridge';
 import { useHashRoute, usePoll, type Route, type Screen } from './hooks';
 import { OpenFolderDialog } from './projects/OpenFolderDialog';
 import { liveProjects, projectOf, samePin, usePins, useProjects } from './projects/projects';
@@ -22,6 +23,7 @@ import { cn } from './ui/cn';
 import { EmptyState } from './ui/studio/EmptyState';
 import { LeaveDialog } from './ui/LeaveDialog';
 import { useNotify } from './ui/notify';
+import { useAppSignals, useNotifyPref } from './useAppSignals';
 import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
 import { BottomBar } from './ui/studio/BottomBar';
@@ -89,9 +91,13 @@ function Shell() {
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
   const { pins, save: savePins } = usePins();
   const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
-  /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session). */
+  /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
-  const welcome = !skipWelcome && projects.list.data?.length === 0;
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const welcome = welcomeOpen || (!skipWelcome && projects.list.data?.length === 0);
+  const closeWelcome = () => (setSkipWelcome(true), setWelcomeOpen(false));
+  const [notifyOn, setNotifyOn] = useNotifyPref();
+  useAppSignals(runs.data, attention.data?.items, notifyOn);
   /** The saved request open in the API tab, so the sidebar can pin it. */
   const [apiOpen, setApiOpen] = useState<{ id: string; label: string }>();
 
@@ -116,6 +122,23 @@ function Shell() {
     if (!w) return notify.info(`${repo} is not one of your projects: open it as a folder to see its files`);
     switchProject(w.id, () => go({ tab: 'code', id: file }));
   };
+  /** A folder to open as a project (Open folder…, a drop, the app's menu or Dock): registered, made current, shown in Code. */
+  const openProject = async (path: string) => {
+    try {
+      const w = await projects.register(path);
+      if (w.id === projects.current?.id) go({ tab: 'code' });
+      else switchProject(w.id, () => goNow({ tab: 'code' }));
+    } catch (e) {
+      notify.fail(e);
+    }
+  };
+  /** Open folder…: the native picker in Tether.app, the path dialog in a browser. */
+  const pickFolder = () => {
+    const b = bridge();
+    if (!b) return setOpenFolder(true);
+    void b.openFolder().then((path) => void (path && openProject(path)));
+  };
+  useBridgeEvents({ open: (path) => void openProject(path), command: (c) => c === 'welcome' && setWelcomeOpen(true) });
   const openPin = (x: Pin) => {
     const to: Route = x.kind === 'run' ? { tab: 'runs', id: x.id } : { tab: 'api', id: x.id };
     if (x.kind === 'request' && x.ws) switchProject(x.ws, () => goNow(to));
@@ -128,7 +151,7 @@ function Shell() {
     if (route.tab === 'code') setLastFile(route.id);
   }, [route]);
   const keys = useRef({ settings: () => {}, folder: () => {} });
-  keys.current = { settings: () => go({ tab: 'settings' }), folder: () => setOpenFolder(true) };
+  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -155,7 +178,13 @@ function Shell() {
   return (
     <>
       {welcome ? (
-        <Welcome recent={list} onAdd={async (path) => (await projects.add(path), goNow({ tab: 'code' }))} onPick={(id) => (projects.select(id), goNow({ tab: 'code' }))} onSkip={() => setSkipWelcome(true)} />
+        <Welcome
+          recent={list}
+          onAdd={async (path) => (await projects.add(path), setWelcomeOpen(false), goNow({ tab: 'code' }))}
+          onPick={(id) => (projects.select(id), setWelcomeOpen(false), goNow({ tab: 'code' }))}
+          onSkip={closeWelcome}
+          skipLabel={list.length ? 'Back to Tether' : 'Continue without a project'}
+        />
       ) : (
         <div ref={shellRef} className={cn('shell', { phone })}>
           {phone ? null : (
@@ -166,7 +195,7 @@ function Shell() {
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
-              projects={{ list, current: projects.current?.id, live: liveProjects(list, runs.data ?? []), onSelect: (id) => switchProject(id), onAdd: () => setOpenFolder(true), onRemove: setRemoving }}
+              projects={{ list, current: projects.current?.id, live: liveProjects(list, runs.data ?? []), onSelect: (id) => switchProject(id), onAdd: pickFolder, onRemove: setRemoving, onReveal: bridge() && ((w: WorkspaceRow) => bridge()!.revealInFinder(w.path)) }}
               pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
             />
           )}
@@ -186,7 +215,7 @@ function Shell() {
                   />
                 </Suspense>
               ) : (
-                <NoProject loading={!projects.list.data && !projects.list.error} onOpen={() => setOpenFolder(true)} />
+                <NoProject loading={!projects.list.data && !projects.list.error} onOpen={pickFolder} />
               )
             ) : null}
             {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
@@ -220,7 +249,7 @@ function Shell() {
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} returnFocus={settingsHome} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog

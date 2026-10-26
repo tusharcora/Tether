@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api } from '../api';
-import { routeApi } from '../test/fixtures';
+import { dropOf, fakeBridge, routeApi } from '../test/fixtures';
 import { Welcome } from './Welcome';
 
 const tools = { agents: [{ id: 'claude', ok: true, version: '2.4.1' }, { id: 'gemini', ok: false }], rg: { ok: true, version: '14.1' } };
@@ -58,6 +58,37 @@ describe('Welcome', () => {
     expect(screen.getByText('OA')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Continue without a project' }));
     expect(p.onSkip).toHaveBeenCalled();
+  });
+
+  describe('in Tether.app', () => {
+    it('offers the drop zone and the folder picker instead of the path field', async () => {
+      const { b } = fakeBridge();
+      b.openFolder.mockResolvedValue('/code/shop');
+      const p = setup();
+      expect(screen.queryByRole('textbox', { name: 'Folder path' })).toBeNull();
+      const zone = screen.getByRole('region', { name: 'Open a folder' });
+      expect(zone.textContent).toContain('Drag a project folder here');
+      fireEvent.click(within(zone).getByRole('button', { name: /Open folder…/ }));
+      await waitFor(() => expect(p.onAdd).toHaveBeenCalledWith('/code/shop'));
+    });
+
+    it('opens a dropped folder and says so when a file is dropped', async () => {
+      fakeBridge();
+      const p = setup();
+      const zone = screen.getByRole('region', { name: 'Open a folder' });
+      fireEvent.dragOver(zone, { dataTransfer: dropOf({ name: 'shop', dir: true }) });
+      expect(zone.textContent).toContain('Drop to open this folder');
+      fireEvent.drop(zone, { dataTransfer: dropOf({ name: 'notes.txt' }) });
+      expect(await within(zone).findByRole('alert')).toBeTruthy();
+      fireEvent.drop(zone, { dataTransfer: dropOf({ name: 'shop', dir: true }) });
+      await waitFor(() => expect(p.onAdd).toHaveBeenCalledWith('/drop/shop'));
+    });
+
+    it('names the way back when opened from File → Welcome', () => {
+      fakeBridge();
+      setup({ skipLabel: 'Back to Tether' });
+      expect(screen.getByRole('button', { name: 'Back to Tether' })).toBeTruthy();
+    });
   });
 
   it('hides Recent when empty', () => {

@@ -54,7 +54,7 @@ export interface SidebarProps {
   onSettings: () => void;
   /** Home: items that need you (amber). Runs: live runs (blue). */
   counts: { needs: number; live: number };
-  projects: { list: WorkspaceRow[]; current?: string; live: ReadonlySet<string>; onSelect: (id: string) => void; onAdd: () => void; onRemove: (w: WorkspaceRow) => void };
+  projects: { list: WorkspaceRow[]; current?: string; live: ReadonlySet<string>; onSelect: (id: string) => void; onAdd: () => void; onRemove: (w: WorkspaceRow) => void; /** Tether.app: show the folder in the Finder. */ onReveal?: (w: WorkspaceRow) => void };
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void };
 }
 
@@ -157,7 +157,7 @@ export function Sidebar(p: SidebarProps) {
           addLabel="Open folder…"
           onAdd={p.projects.onAdd}
           moreLabel="Project options"
-          menu={current ? [{ label: `Remove ${current.name} from Tether`, onPick: () => p.projects.onRemove(current) }] : [{ label: 'No project open', onPick: () => {}, disabled: true }]}
+          menu={current ? [...(p.projects.onReveal ? [{ label: `Reveal ${current.name} in Finder`, onPick: () => p.projects.onReveal!(current) }] : []), { label: `Remove ${current.name} from Tether`, onPick: () => p.projects.onRemove(current) }] : [{ label: 'No project open', onPick: () => {}, disabled: true }]}
           empty="No projects yet. Open a folder with +."
         >
           {p.projects.list.map((w) => (

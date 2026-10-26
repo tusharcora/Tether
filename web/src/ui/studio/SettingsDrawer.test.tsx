@@ -35,6 +35,17 @@ describe('SettingsDrawer', () => {
     expect(screen.getByRole('region', { name: 'Agent tools' }).textContent).toContain('codex0.48');
   });
 
+  it('has the app’s notification switch when given one', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<SettingsDrawer {...base} />);
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+    rerender(<SettingsDrawer {...base} notifications={{ on: true, onChange }} />);
+    const sw = screen.getByRole('switch', { name: /needs me or finishes/ });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
   it('picks a theme', () => {
     const onChoice = vi.fn();
     render(<SettingsDrawer {...base} onChoice={onChoice} />);

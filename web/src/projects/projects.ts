@@ -8,7 +8,9 @@ export interface Projects {
   /** The project Code, the API tab, Home and the Runs filter work on. */
   current?: WorkspaceRow;
   select: (id: string) => void;
-  /** Register a folder (Open folder…) and make it current. */
+  /** Register a folder (Open folder…); registering one twice gives the same project. */
+  register: (path: string) => Promise<WorkspaceRow>;
+  /** Register a folder and make it current. */
   add: (path: string) => Promise<WorkspaceRow>;
   /** Forget a project (its folder stays). */
   remove: (id: string) => Promise<void>;
@@ -23,14 +25,21 @@ export function useProjects(): Projects {
     storeWorkspace(id);
   }, []);
   const { refresh } = list;
-  const add = useCallback(
+  const register = useCallback(
     async (path: string) => {
       const w = await api<WorkspaceRow>('POST', WORKSPACES_PATH, { path });
       await refresh();
+      return w;
+    },
+    [refresh],
+  );
+  const add = useCallback(
+    async (path: string) => {
+      const w = await register(path);
       select(w.id);
       return w;
     },
-    [refresh, select],
+    [register, select],
   );
   const remove = useCallback(
     async (id: string) => {
@@ -39,7 +48,7 @@ export function useProjects(): Projects {
     },
     [refresh],
   );
-  return { list, current: pickWorkspace(list.data ?? [], picked), select, add, remove };
+  return { list, current: pickWorkspace(list.data ?? [], picked), select, register, add, remove };
 }
 
 const inside = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`);

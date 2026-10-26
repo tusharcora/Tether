@@ -52,7 +52,7 @@ vi.mock('./http/ApiTab', () => ({
 import { api } from './api';
 import { App } from './App';
 import { cssRule } from './test/css';
-import { routeApi } from './test/fixtures';
+import { fakeBridge, routeApi } from './test/fixtures';
 
 /** The app starts on this hash (no hashchange: the page was loaded there). */
 const startAt = (hash: string) => history.replaceState(null, '', hash);
@@ -408,6 +408,58 @@ describe('App shell', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'List crew' }));
       expect(location.hash).toBe('#/api/crew%2Flist');
       expect(await screen.findByText(/api screen blog crew\/list/)).toBeTruthy();
+    });
+  });
+
+  describe('in Tether.app', () => {
+    let list: { id: string; name: string; path: string; isDefault: boolean; exists: boolean; repos: string[] }[];
+    beforeEach(() => {
+      list = [{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }];
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [],
+        'GET /api/attention': { items: [{ id: 'q1', runId: 'r1', title: 'Which db?', kind: 'question', ts: 0, meta: '', actions: [] }] },
+        'GET /api/pins': { pins: [] },
+        'GET /api/workspaces': () => list,
+        'POST /api/workspaces': (b: { path: string }) => {
+          const w = { id: b.path.split('/').pop()!, name: b.path.split('/').pop()!, path: b.path, isDefault: false, exists: true, repos: [] };
+          if (!list.some((x) => x.id === w.id)) list.push(w);
+          return w;
+        },
+      });
+    });
+
+    it('opens a folder from the native picker (+) and from the app (menu, Dock, drop), and lands on Code in it', async () => {
+      const { b, emit } = fakeBridge();
+      b.openFolder.mockResolvedValue('/code/blog');
+      render(<App />);
+      await screen.findByRole('button', { name: 'shop' });
+      expect(b.ready).toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Open folder…' }));
+      expect(await screen.findByText(/code screen blog/)).toBeTruthy();
+      expect(screen.queryByRole('dialog', { name: 'Open a folder' })).toBeNull();
+      act(() => emit.open('/code/docs'));
+      expect(await screen.findByText(/code screen docs/)).toBeTruthy();
+      expect(location.hash).toBe('#/code');
+    });
+
+    it('badges the Dock with what needs you, follows a notification’s route, and reopens Welcome from the menu', async () => {
+      const { b, emit } = fakeBridge();
+      render(<App />);
+      await waitFor(() => expect(b.setBadge).toHaveBeenLastCalledWith(1));
+      act(() => emit.route('#/crew'));
+      expect(await screen.findByText('crew screen')).toBeTruthy();
+      act(() => emit.command('welcome'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to Tether' }));
+      expect(await screen.findByText('crew screen')).toBeTruthy();
+    });
+
+    it('shows the notifications switch in Settings', async () => {
+      fakeBridge();
+      startAt('#/settings');
+      render(<App />);
+      expect(await screen.findByRole('switch', { name: /needs me or finishes/ })).toBeTruthy();
     });
   });
 

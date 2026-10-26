@@ -144,6 +144,15 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('offers Reveal in Finder for the current project when the app can', () => {
+    const onReveal = vi.fn();
+    setup({ projects: { list: [w('shop')], current: 'shop', live: new Set(), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onReveal } });
+    fireEvent.click(screen.getByRole('button', { name: 'Project options' }));
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Reveal shop in Finder', 'Remove shop from Tether']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reveal shop in Finder' }));
+    expect(onReveal).toHaveBeenCalledWith(expect.objectContaining({ id: 'shop' }));
+  });
+
   it('pins the current run or request, opens and unpins pins', () => {
     const p = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
@@ -160,6 +169,11 @@ describe('Sidebar', () => {
     expect(screen.getByText(/No projects yet/)).toBeTruthy();
     expect(screen.getByText(/Pin a run or a saved request/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open a run or a saved request to pin it' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('in Tether.app, leaves the traffic lights their corner and moves the window from the strip under them', () => {
+    expect(cssRule('ui/studio/shell.css', '.tether-app .sl-side,.tether-app .sl-side.collapsed')).toContain('padding-top: 48px');
+    expect(cssRule('ui/studio/shell.css', '.tether-app .sl-side::before,.tether-app .welcome::before')).toContain('-webkit-app-region: drag');
   });
 
   it('animates its width over 260 ms', () => {
