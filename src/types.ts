@@ -747,12 +747,13 @@ export interface RosterPreview {
 }
 
 /** A run or a saved API request pinned to the sidebar (<home>/pins.json). */
+export const PIN_KINDS = ['run', 'request', 'workflow', 'file'] as const;
 export interface Pin {
-  kind: 'run' | 'request';
-  /** A run id, or a saved request id (`collection/name`). */
+  kind: (typeof PIN_KINDS)[number];
+  /** A run id, a saved request id (`collection/name`), a saved workflow name, or a file path in a project. */
   id: string;
   label: string;
-  /** Requests: the workspace the request is saved in. */
+  /** Requests and files: the workspace they belong to. */
   ws?: string;
 }
 

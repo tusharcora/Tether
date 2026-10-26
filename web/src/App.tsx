@@ -1,3 +1,4 @@
+import { Menu } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
 import { Builder } from './Builder';
@@ -7,6 +8,7 @@ import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
 import { Home } from './home/Home';
+import { Inbox } from './home/Inbox';
 import type { WorkspaceRow } from './home/workspaces';
 import { ApiTab } from './http/ApiTab';
 import { bridge, useBridgeEvents } from './bridge';
@@ -29,7 +31,8 @@ import { Welcome } from './welcome/Welcome';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
 import { SettingsDrawer } from './ui/studio/SettingsDrawer';
-import { Sidebar } from './ui/studio/Sidebar';
+import { Sidebar, useSidebarDock } from './ui/studio/Sidebar';
+import { isTyping, useGoKeys } from './ui/studio/useGoKeys';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './ui/studio/shell.css';
 
@@ -43,8 +46,6 @@ const COUNTS_MS = 5000;
 /** What the leave dialog says about a screen's unsaved work. */
 const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.', code: 'Some open files have edits that are not saved.' };
 
-const isTextField = (t: EventTarget | null) =>
-  t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 
 export function App() {
   return (
@@ -114,7 +115,11 @@ function Shell() {
       ? { kind: 'run', id: screen.id, label: runLabel(screen.id) }
       : screen.tab === 'api' && apiOpen
         ? { kind: 'request', id: apiOpen.id, label: apiOpen.label, ...(projects.current ? { ws: projects.current.id } : {}) }
-        : undefined;
+        : screen.tab === 'builder' && screen.id
+          ? { kind: 'workflow', id: screen.id, label: screen.id }
+          : screen.tab === 'code' && screen.id && projects.current
+            ? { kind: 'file', id: screen.id, label: screen.id.split('/').pop()!, ws: projects.current.id }
+            : undefined;
   const savePinsOr = (next: Pin[]) => void savePins(next).catch(notify.fail);
   /** A file a run changed (from its diff) opens in Code, in the project that holds the run's folder. */
   const openFile = (repo: string, file: string) => {
@@ -140,8 +145,8 @@ function Shell() {
   };
   useBridgeEvents({ open: (path) => void openProject(path), command: (c) => c === 'welcome' && setWelcomeOpen(true) });
   const openPin = (x: Pin) => {
-    const to: Route = x.kind === 'run' ? { tab: 'runs', id: x.id } : { tab: 'api', id: x.id };
-    if (x.kind === 'request' && x.ws) switchProject(x.ws, () => goNow(to));
+    const to: Route = { tab: x.kind === 'run' ? 'runs' : x.kind === 'request' ? 'api' : x.kind === 'workflow' ? 'builder' : 'code', id: x.id };
+    if (x.ws) switchProject(x.ws, () => goNow(to));
     else go(to);
   };
 
@@ -150,17 +155,23 @@ function Shell() {
     if (route.tab === 'runs' && route.id) setLastRun(route.id);
     if (route.tab === 'code') setLastFile(route.id);
   }, [route]);
-  const keys = useRef({ settings: () => {}, folder: () => {} });
-  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder };
+  /** New run (the sidebar's compose, ⌘N, C): Home's Start a run, its task field focused. */
+  const compose = () => {
+    go({ tab: 'home' });
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.shell-main .home textarea')?.focus());
+  };
+  const keys = useRef({ settings: () => {}, folder: () => {}, compose: () => {} });
+  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder, compose };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
       if (k === ',') return e.preventDefault(), keys.current.settings();
       if (k === 'o' && !e.shiftKey) return e.preventDefault(), keys.current.folder();
+      if (k === 'n' && !e.shiftKey && !isTyping(e.target)) return e.preventDefault(), keys.current.compose();
       if (k !== 'k') return;
       // Ctrl-K edits text in fields (macOS: delete to end of line); only Meta-K is taken there
-      if (!e.metaKey && isTextField(e.target)) return;
+      if (!e.metaKey && isTyping(e.target)) return;
       e.preventDefault();
       setPalette(true);
     };
@@ -169,11 +180,16 @@ function Shell() {
   }, []);
 
   const openScreen = (s: Screen) => go(s === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : s === 'code' && lastFile ? { tab: 'code', id: lastFile } : { tab: s });
+  useGoKeys(openScreen, compose);
+  const dock = useSidebarDock();
+  const showSide = !phone && (!dock.hidden || dock.peek);
   const openSettings = () => go({ tab: 'settings' });
   const settingsOpen = route.tab === 'settings';
   /** Where focus goes when Settings closes and its opener (a More menu item, the ⌘K field) is gone. */
   const settingsHome = () => shellRef.current?.querySelector<HTMLElement>(phone ? '.sl-bottombar [aria-haspopup="menu"]' : '.sl-side [aria-label="Settings"]');
   const list = projects.list.data ?? [];
+  /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
+  const projectRuns = (runs.data ?? []).filter((r) => !projects.current || projectOf(list, r.repo)?.id === projects.current.id);
 
   return (
     <>
@@ -186,15 +202,27 @@ function Shell() {
           skipLabel={list.length ? 'Back to Tether' : 'Continue without a project'}
         />
       ) : (
-        <div ref={shellRef} className={cn('shell', { phone })}>
-          {phone ? null : (
+        <div ref={shellRef} className={cn('shell', { phone, 'side-hidden': !phone && dock.hidden })}>
+          {!phone && dock.hidden && !dock.peek ? <div className="sl-side-edge" aria-hidden="true" onPointerEnter={dock.peekIn} /> : null}
+          {!phone && dock.hidden ? (
+            <button type="button" className="shell-dock" aria-label="Show sidebar" title={'Show sidebar  ⌘\\'} onClick={dock.toggle}>
+              <Menu size={16} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          ) : null}
+          {showSide ? (
             <Sidebar
               active={screen.tab}
               settingsOpen={settingsOpen}
               onGo={openScreen}
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
+              onCompose={compose}
+              floating={dock.hidden}
+              onPointerEnter={dock.hidden ? dock.peekIn : undefined}
+              onPointerLeave={dock.hidden ? dock.peekOut : undefined}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
+              runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
+              account={{ name: 'You', onOpen: openSettings }}
               projects={{
                 list,
                 current: projects.current?.id,
@@ -206,11 +234,12 @@ function Shell() {
                 onRemove: setRemoving,
                 onReveal: bridge() && ((w: WorkspaceRow) => bridge()!.revealInFinder(w.path)),
               }}
-              pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
+              pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))), onReorder: savePinsOr }}
             />
-          )}
+          ) : null}
           <main className="shell-main" tabIndex={-1}>
             {screen.tab === 'home' ? <Home onGo={go} /> : null}
+            {screen.tab === 'inbox' ? <Inbox onGo={go} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (
                 <Suspense fallback={<Loading loading lines={8} label="Loading Code" className="shell-loading" />}>

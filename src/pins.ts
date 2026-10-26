@@ -1,8 +1,8 @@
-/** Pinned runs and saved API requests, shown in the sidebar's Pinned section: <home>/pins.json. */
+/** Pinned runs, saved API requests, workflows and files, shown in the sidebar's Favorites: <home>/pins.json. */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpError } from './serverkit.js';
-import type { Pin } from './types.js';
+import { PIN_KINDS, type Pin } from './types.js';
 
 export type { Pin };
 
@@ -14,11 +14,11 @@ const file = (home: string) => join(home, 'pins.json');
 function pinOf(v: unknown): Pin | string {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return 'each pin must be an object';
   const o = v as Record<string, unknown>;
-  if (o.kind !== 'run' && o.kind !== 'request') return '"kind" must be "run" or "request"';
+  if (!PIN_KINDS.includes(o.kind as Pin['kind'])) return `"kind" must be one of ${PIN_KINDS.join(', ')}`;
   const text = (k: string) => typeof o[k] === 'string' && !!(o[k] as string).trim() && (o[k] as string).length <= MAX_TEXT && !/[\n\r]/.test(o[k] as string);
   if (!text('id') || !text('label')) return `"id" and "label" must be single lines of 1 to ${MAX_TEXT} characters`;
   if (o.ws !== undefined && !text('ws')) return '"ws" must be a workspace id';
-  return { kind: o.kind, id: o.id as string, label: o.label as string, ...(o.ws !== undefined ? { ws: o.ws as string } : {}) };
+  return { kind: o.kind as Pin['kind'], id: o.id as string, label: o.label as string, ...(o.ws !== undefined ? { ws: o.ws as string } : {}) };
 }
 
 /** The saved pins; a missing or broken file is no pins, and a broken entry is dropped. */

@@ -6,6 +6,7 @@ import { CommandPalette, type CommandItem } from './components/arc/command-palet
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { SCREENS, TAB_LABEL, usePoll, type Route, type Screen } from './hooks';
 import { THEME_LABEL, type ThemeChoice } from './theme';
+import { goHint } from './ui/studio/nav';
 
 const THEMES: ThemeChoice[] = ['light', 'dark', 'system'];
 const FILES_MS = 150;
@@ -39,8 +40,9 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
   const files = useFileHits(props.open ? props.ws : undefined, q);
   const items = useMemo<CommandItem[]>(
     () => [
-      ...SCREENS.map((s) => ({ id: `go:${s}`, label: `Go to ${TAB_LABEL[s]}`, group: 'Go to' })),
-      { id: 'open:settings', label: 'Open Settings', group: 'Go to' },
+      // each screen shows its Linear-style shortcut (G then a letter), so the menu doubles as the shortcut help
+      ...SCREENS.map((s) => ({ id: `go:${s}`, label: `Go to ${TAB_LABEL[s]}`, description: goHint(s), group: 'Go to' })),
+      { id: 'open:settings', label: 'Open Settings', description: '⌘,', group: 'Go to' },
       ...THEMES.map((c) => ({ id: `theme:${c}`, label: `Theme: ${THEME_LABEL[c]}`, group: 'Theme' })),
       ...(runs.data ?? []).slice(0, 10).map((r) => ({
         id: `run:${r.id}`,

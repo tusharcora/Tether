@@ -63,6 +63,13 @@ const browserGoes = (hash: string) =>
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   });
 const navButton = (name: string) => screen.findByRole('button', { name });
+/** The sidebar's project switcher: open its menu and pick a project (or another item). */
+const pickProject = async (name: string | RegExp) => {
+  fireEvent.click(await screen.findByRole('button', { name: /^Project: / }));
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+};
+/** The switcher names the current project once the list has answered. */
+const switcherFor = (name: string) => screen.findByRole('button', { name: `Project: ${name}` });
 const phone = () =>
   vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 899px)', media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
 const dirtyApi = () => {
@@ -92,6 +99,46 @@ describe('App shell', () => {
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
     expect(screen.queryByRole('tab')).toBeNull();
+  });
+
+  it('opens the Inbox route from the sidebar and with G I, and other screens with their G keys', async () => {
+    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/pipelines': [], 'GET /api/attention': { items: [] } });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    expect(location.hash).toBe('#/inbox');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Inbox' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'g' });
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(screen.getByText('crew screen')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'g' });
+    fireEvent.keyDown(window, { key: 'i' });
+    expect(location.hash).toBe('#/inbox');
+  });
+
+  it('composes a new run on Home with the compose button and C', async () => {
+    startAt('#/crew');
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+    expect(location.hash).toBe('#/home');
+    fireEvent.click(screen.getByRole('button', { name: 'crew link' }));
+    fireEvent.keyDown(window, { key: 'c' });
+    expect(location.hash).toBe('#/home');
+  });
+
+  it('hides the sidebar with ⌘\\, peeks it from the left edge, and docks it again with ☰', async () => {
+    localStorage.clear();
+    render(<App />);
+    expect(document.querySelector('.sl-side')).toBeTruthy();
+    fireEvent.keyDown(window, { key: '\\', metaKey: true });
+    expect(document.querySelector('.sl-side')).toBeNull();
+    expect(document.querySelector('.shell.side-hidden')).toBeTruthy();
+    fireEvent.pointerEnter(document.querySelector('.sl-side-edge')!);
+    expect(document.querySelector('.sl-side.floating')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(document.querySelector('.sl-side')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
+    expect(document.querySelector('.sl-side:not(.floating)')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull();
   });
 
   it('sends an unknown hash to Home', () => {
@@ -303,10 +350,11 @@ describe('App shell', () => {
     let answer: (v: unknown) => void = () => {};
     routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/pins': { pins: [] }, 'GET /api/workspaces': new Promise((r) => (answer = r)) });
     render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Project: Loading…' }));
     expect(await screen.findByRole('status', { name: 'Loading projects' })).toBeTruthy();
     expect(screen.queryByText(/No projects yet/)).toBeNull();
     await act(async () => answer([{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }]));
-    expect(await screen.findByRole('button', { name: 'shop' })).toBeTruthy();
+    expect(await switcherFor('shop')).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'Loading projects' })).toBeNull();
   });
 
@@ -344,10 +392,12 @@ describe('App shell', () => {
       render(<App />);
       expect(await screen.findByText(/api screen shop/)).toBeTruthy();
       expect(await screen.findByText('2')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Project: shop' }));
+      expect(within(screen.getByRole('menuitem', { name: /blog/ })).getByRole('img', { name: 'a run is live' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('menuitem', { name: /blog/ }));
       expect(await screen.findByText(/api screen blog/)).toBeTruthy();
       expect(localStorage.getItem('aorch.api.ws')).toBe('blog');
-      expect(screen.getByRole('button', { name: 'blog' }).querySelector('.sl-side-live')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Project: blog' })).toBeTruthy();
     });
 
     it('hands the file and line in the hash to Code, keeps them in the hash and reopens the last file', async () => {
@@ -364,7 +414,7 @@ describe('App shell', () => {
     it('opens a file a run changed in Code, in the project holding the run, and says so when no project holds it', async () => {
       startAt('#/runs/r5');
       render(<App />);
-      await screen.findByRole('button', { name: 'blog' });
+      await switcherFor('shop');
       fireEvent.click(screen.getByRole('button', { name: 'open stray file' }));
       expect(await screen.findByText(/\/elsewhere is not one of your projects/)).toBeTruthy();
       expect(location.hash).toBe('#/runs/r5');
@@ -381,7 +431,7 @@ describe('App shell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
       expect(await screen.findByText('Some open files have edits that are not saved.')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
-      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      await pickProject(/blog/);
       fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
       expect(await screen.findByText(/code screen blog/)).toBeTruthy();
     });
@@ -391,10 +441,10 @@ describe('App shell', () => {
       render(<App />);
       await screen.findByText(/api screen shop/);
       fireEvent.click(screen.getByRole('button', { name: 'edit draft' }));
-      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      await pickProject(/blog/);
       fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
       expect(screen.getByText(/api screen shop/)).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      await pickProject(/blog/);
       fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
       expect(await screen.findByText(/api screen blog/)).toBeTruthy();
     });
@@ -402,19 +452,19 @@ describe('App shell', () => {
     it('pins the open run and the open request, and opens a pinned request in its project', async () => {
       startAt('#/runs/r5');
       render(<App />);
-      await screen.findByRole('button', { name: 'blog' });
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Pin this run or request' }).hasAttribute('disabled')).toBe(false));
-      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      await switcherFor('shop');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Pin what is open' }).hasAttribute('disabled')).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin what is open' }));
       await waitFor(() => expect(saved).toEqual([{ kind: 'run', id: 'r5', label: 'Add rate limiting' }]));
       fireEvent.click(await screen.findByRole('button', { name: 'Add rate limiting' }));
       expect(location.hash).toBe('#/runs/r5');
 
-      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      await pickProject(/blog/);
       fireEvent.click(screen.getByRole('button', { name: 'API client' }));
       fireEvent.click(await screen.findByRole('button', { name: 'open request' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin what is open' }));
       await waitFor(() => expect(saved).toContainEqual({ kind: 'request', id: 'crew/list', label: 'List crew', ws: 'blog' }));
-      fireEvent.click(screen.getByRole('button', { name: 'shop' }));
+      await pickProject(/shop/);
       fireEvent.click(screen.getByRole('button', { name: 'Home' }));
       fireEvent.click(await screen.findByRole('button', { name: 'List crew' }));
       expect(location.hash).toBe('#/api/crew%2Flist');
@@ -445,9 +495,9 @@ describe('App shell', () => {
       const { b, emit } = fakeBridge();
       b.openFolder.mockResolvedValue('/code/blog');
       render(<App />);
-      await screen.findByRole('button', { name: 'shop' });
+      await switcherFor('shop');
       expect(b.ready).toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: 'Open folder…' }));
+      await pickProject(/Open folder/);
       expect(await screen.findByText(/code screen blog/)).toBeTruthy();
       expect(screen.queryByRole('dialog', { name: 'Open a folder' })).toBeNull();
       act(() => emit.open('/code/docs'));
