@@ -160,7 +160,8 @@ describe('the CodeMirror theme', () => {
   it('takes every colour from a Studio token', () => {
     const theme = read('code/cmTheme.ts');
     expect(theme.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|oklch\(/g) ?? []).toEqual([]);
-    for (const token of ['--ink', '--ok', '--warn', '--mut', '--accBg']) expect(theme).toContain(`var(${token})`);
+    for (const token of ['--ink', '--ok', '--warn', '--mut', '--s3']) expect(theme).toContain(`var(${token})`);
+    expect(theme).not.toMatch(/var\(--acc/);
   });
 });
 

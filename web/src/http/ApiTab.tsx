@@ -6,7 +6,7 @@ import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
 import { EmptyState } from '../components/arc/empty-state/empty-state';
 import { Select } from '../components/arc/select/select';
 import { Textarea } from '../components/arc/textarea/textarea';
-import { usePoll } from '../hooks';
+import { usePoll, useUnloadWarning } from '../hooks';
 import { useNotify } from '../ui/notify';
 import { httpApi, newRequest, type HistoryRow, type HttpRequestFile, type HttpTree, type SendOutput, type VarInfo } from './client';
 import { EnvDialog } from './EnvDialog';
@@ -85,15 +85,7 @@ export function ApiTab(props: ApiTabProps) {
   onDirty.current = props.onDirtyChange;
   useEffect(() => onDirty.current?.(dirty), [dirty]);
   useEffect(() => () => onDirty.current?.(false), []);
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  useUnloadWarning(dirty);
 
   const loadHistory = useCallback(() => {
     if (ws !== wsNow.current) return Promise.resolve(); // a closure from an earlier workspace: never cancel the current load

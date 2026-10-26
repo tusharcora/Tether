@@ -29,7 +29,7 @@ describe('Sidebar', () => {
     setup();
     expect(screen.getByText('Tether')).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Home', 'Runs', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
+    expect(within(nav).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Home', 'Runs', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
     expect(screen.getByRole('region', { name: 'Projects' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Pinned' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();

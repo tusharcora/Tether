@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
 import { Builder } from './Builder';
+import { Code } from './code/Code';
 import { CommandMenu } from './CommandMenu';
-import { Button } from './components/arc/button/button';
-import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { ToastStack, ToastStackProvider } from './components/arc/toast-stack/toast-stack';
 import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
@@ -18,7 +17,11 @@ import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
+import { Button } from './components/arc/button/button';
+import { Loading } from './components/Loading';
 import { cn } from './ui/cn';
+import { EmptyState } from './ui/studio/EmptyState';
+import { LeaveDialog } from './ui/LeaveDialog';
 import { useNotify } from './ui/notify';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
@@ -32,7 +35,7 @@ type ScreenRoute = Omit<Route, 'tab'> & { tab: Screen };
 /** How often the sidebar's counts (needs you, live) and project dots refresh. */
 const COUNTS_MS = 5000;
 /** What the leave dialog says about a screen's unsaved work. */
-const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.' };
+const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.', code: 'Some open files have edits that are not saved.' };
 
 const isTextField = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -64,6 +67,8 @@ function Shell() {
   /** Every way out of a screen (sidebar, bottom bar, ⌘K, in-screen links) comes through here; browser moves through the hook's guard. */
   const go = (r: Route) => (leaves(r) ? ask(() => goNow(r)) : goNow(r));
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
+  /** The file last shown in Code, so the sidebar's Code reopens it. */
+  const [lastFile, setLastFile] = useState(route.tab === 'code' ? route.id : undefined);
   const { choice, setChoice } = useTheme();
   const [palette, setPalette] = useState(false);
   const [openFolder, setOpenFolder] = useState(false);
@@ -106,6 +111,7 @@ function Shell() {
   useEffect(() => void loadCrewDefs(), []);
   useEffect(() => {
     if (route.tab === 'runs' && route.id) setLastRun(route.id);
+    if (route.tab === 'code') setLastFile(route.id);
   }, [route]);
   const keys = useRef({ settings: () => {}, folder: () => {} });
   keys.current = { settings: () => go({ tab: 'settings' }), folder: () => setOpenFolder(true) };
@@ -125,7 +131,7 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const openScreen = (s: Screen) => go(s === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : { tab: s });
+  const openScreen = (s: Screen) => go(s === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : s === 'code' && lastFile ? { tab: 'code', id: lastFile } : { tab: s });
   const openSettings = () => go({ tab: 'settings' });
   const settingsOpen = route.tab === 'settings';
   /** Where focus goes when Settings closes and its opener (a More menu item, the ⌘K field) is gone. */
@@ -149,6 +155,21 @@ function Shell() {
         )}
         <main className="shell-main" tabIndex={-1}>
           {screen.tab === 'home' ? <Home onGo={go} /> : null}
+          {screen.tab === 'code' ? (
+            projects.current ? (
+              <Code
+                key={projects.current.id}
+                project={projects.current}
+                path={screen.id}
+                line={screen.line}
+                onPath={(path, line) => goNow(path ? { tab: 'code', id: path, ...(line ? { line } : {}) } : { tab: 'code' })}
+                onOpenRun={(id) => go({ tab: 'runs', id })}
+                onDirtyChange={dirtyFor('code')}
+              />
+            ) : (
+              <NoProject loading={!projects.list.data && !projects.list.error} onOpen={() => setOpenFolder(true)} />
+            )
+          ) : null}
           {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
           {screen.tab === 'runs' ? (
             <Runs
@@ -203,22 +224,19 @@ function Shell() {
   );
 }
 
-/** Asks before unsaved work is dropped by leaving its screen or switching project. */
-function LeaveDialog(p: { text: string | undefined; onKeep: () => void; onDiscard: () => void }) {
+/** Code without a project: open a folder first. */
+function NoProject(p: { loading: boolean; onOpen: () => void }) {
   return (
-    <Dialog open={!!p.text} onOpenChange={(o) => !o && p.onKeep()}>
-      {p.text ? (
-        <DialogContent className="api-dialog" title="Discard unsaved changes?" description={p.text}>
-          <div className="row end">
-            <Button variant="secondary" onClick={p.onKeep}>
-              Keep editing
-            </Button>
-            <Button variant="danger" onClick={p.onDiscard}>
-              Discard
-            </Button>
-          </div>
-        </DialogContent>
-      ) : null}
-    </Dialog>
+    <Loading loading={p.loading} lines={4} label="Loading projects">
+      <EmptyState
+        title="No project open"
+        description="Open a folder to browse its code, see what runs changed and edit files."
+        action={
+          <Button variant="primary" onClick={p.onOpen}>
+            Open folder…
+          </Button>
+        }
+      />
+    </Loading>
   );
 }

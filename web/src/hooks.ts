@@ -62,16 +62,31 @@ export function usePoll<T>(path: string | null, ms: number): Poll<T> {
   return { data, error, fails: failCount, refresh: tick };
 }
 
-export type Screen = 'home' | 'runs' | 'builder' | 'crew' | 'api' | 'graph' | 'triggers';
+/** While `on`, closing or reloading the page asks first (the browser's own prompt). */
+export function useUnloadWarning(on: boolean): void {
+  useEffect(() => {
+    if (!on) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [on]);
+}
+
+export type Screen = 'home' | 'runs' | 'code' | 'builder' | 'crew' | 'api' | 'graph' | 'triggers';
 export type Tab = Screen | 'settings';
-export const SCREENS: Screen[] = ['home', 'runs', 'builder', 'crew', 'api', 'graph', 'triggers'];
+export const SCREENS: Screen[] = ['home', 'runs', 'code', 'builder', 'crew', 'api', 'graph', 'triggers'];
 const TAB_IDS: readonly string[] = [...SCREENS, 'settings'];
-export const TAB_LABEL: Record<Tab, string> = { home: 'Home', runs: 'Runs', builder: 'Builder', crew: 'Crew', api: 'API', graph: 'Graph', triggers: 'Triggers', settings: 'Settings' };
+export const TAB_LABEL: Record<Tab, string> = { home: 'Home', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', api: 'API', graph: 'Graph', triggers: 'Triggers', settings: 'Settings' };
 
 export interface Route {
   tab: Tab;
-  /** Runs: the run id. Builder: a saved workflow. Crew: a bot id. Graph: a note path. */
+  /** Runs: the run id. Builder: a saved workflow. Crew: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. */
   id?: string;
+  /** Code: the line to show (`#/code/<path>:<line>`). */
+  line?: number;
   /** Runs: a step of the run, selected in the Inspector. */
   node?: string;
   /** Runs: open the run on this pane instead of the step pane (a failed run opens on its Timeline). */
@@ -82,6 +97,7 @@ export function parseHash(h: string): Route {
   const [path = '', query = ''] = h.replace(/^#\/?/, '').split('?');
   const [t, id, node] = path.split('/');
   if (!TAB_IDS.includes(t ?? '')) return { tab: 'home' };
+  if (t === 'code') return codeRoute(path.slice('code'.length + 1));
   const r: Route = { tab: t as Tab };
   if (id) r.id = safeDecode(id);
   if (id && node && r.tab === 'runs') r.node = safeDecode(node);
@@ -98,8 +114,16 @@ function safeDecode(s: string): string {
   }
 }
 
+/** `#/code/src/http/limit.ts:12`: the file path keeps its slashes (each segment encoded); a raw `:<n>` at the end is the line. */
+function codeRoute(raw: string): Route {
+  const m = /^(.*):(\d+)$/.exec(raw);
+  const path = (m ? m[1]! : raw).split('/').filter(Boolean).map(safeDecode).join('/');
+  return { tab: 'code', ...(path ? { id: path } : {}), ...(path && m ? { line: Number(m[2]) } : {}) };
+}
+const codeHash = (r: Route) => `#/code${r.id ? `/${r.id.split('/').map(encodeURIComponent).join('/')}${r.line ? `:${r.line}` : ''}` : ''}`;
+
 export const hashFor = (r: Route): string =>
-  `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}${r.tab === 'runs' && r.pane ? `?pane=${r.pane}` : ''}` : ''}`;
+  r.tab === 'code' ? codeHash(r) : `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}${r.tab === 'runs' && r.pane ? `?pane=${r.pane}` : ''}` : ''}`;
 
 /** Each history entry the app reaches is stamped with its position, so a blocked Back/Forward can step back to it. */
 const POS = 'aorchPos';

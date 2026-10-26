@@ -5,7 +5,7 @@ import { tags as t } from '@lezer/highlight';
 /**
  * The editor in Studio Live: every colour is a token, so it follows the theme with no second palette (and no purple).
  * Keywords ink 600, strings green, numbers amber, comments muted italic. Lines a selected run changed get a green tint and
- * a green edge on their number; a line opened from search or a link flashes the accent tint.
+ * a green edge on their number. Selection, search matches and the line opened from search are neutral (blue means live).
  */
 export const tetherTheme = EditorView.theme({
   '&': { height: '100%', color: 'var(--ink)', backgroundColor: 'var(--bg)', fontSize: '12.5px' },
@@ -14,14 +14,14 @@ export const tetherTheme = EditorView.theme({
   '.cm-content': { caretColor: 'var(--ink)', padding: '10px 0' },
   '.cm-line': { paddingRight: '16px', transition: 'background-color var(--t-slow) var(--ease)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--ink)' },
-  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'var(--accBg)' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'var(--s3)' },
   '.cm-gutters': { backgroundColor: 'var(--bg)', color: 'var(--mut)', border: 'none' },
   '.cm-lineNumbers .cm-gutterElement': { minWidth: '32px', padding: '0 12px 0 8px' },
   '.cm-activeLine': { backgroundColor: 'transparent' },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },
   '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--s3)', color: 'inherit' },
-  '.cm-searchMatch': { backgroundColor: 'var(--warnBg)', outline: '1px solid var(--warn)' },
-  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--accBg)', outline: '1px solid var(--acc)' },
+  '.cm-searchMatch': { backgroundColor: 'var(--s2)', outline: '1px solid var(--edge)' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--s3)', outline: '1px solid var(--ink)' },
   '.cm-selectionMatch': { backgroundColor: 'var(--s2)' },
   '.cm-panels': { backgroundColor: 'var(--s1)', color: 'var(--ink)' },
   '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--line)' },
@@ -32,7 +32,7 @@ export const tetherTheme = EditorView.theme({
   '.cm-tooltip': { backgroundColor: 'var(--s1)', color: 'var(--ink)', border: '1px solid var(--line2)' },
   '.cm-run-line': { backgroundColor: 'color-mix(in srgb, var(--ok) 8%, transparent)' },
   '.cm-gutterElement.cm-run-gutter': { color: 'var(--ok)', boxShadow: 'inset -3px 0 0 var(--ok)' },
-  '.cm-flash': { backgroundColor: 'var(--accBg)' },
+  '.cm-flash': { backgroundColor: 'var(--s3)' },
 });
 
 export const tetherHighlight = HighlightStyle.define([

@@ -19,12 +19,12 @@ beforeEach(() => {
 });
 
 describe('CommandMenu', () => {
-  it('lists Go to entries for every screen in rail order', () => {
+  it('lists Go to entries for every screen in sidebar order', () => {
     open();
-    for (const s of ['Home', 'Runs', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
+    for (const s of ['Home', 'Runs', 'Code', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
     expect(screen.getAllByText('Go to').length).toBeGreaterThan(0);
     const labels = screen.getAllByText(/^Go to \w+$/).map((e) => e.textContent);
-    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
+    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Code', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
   });
   it('goes to a screen', () => {
     const p = open();

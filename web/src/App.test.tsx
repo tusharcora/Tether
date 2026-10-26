@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,6 +18,15 @@ vi.mock('./Runs', () => ({ Runs: (p: { selected?: string; node?: string }) => <d
 vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph screen {p.note ?? ''}</div> }));
 vi.mock('./Crew', () => ({ Crew: (p: { bot?: string }) => <div>crew screen {p.bot ?? ''}</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
+vi.mock('./code/Code', () => ({
+  Code: (p: { project: { id: string }; path?: string; line?: number; onPath: (path?: string, line?: number) => void; onDirtyChange?: (d: boolean) => void }) => (
+    <div>
+      code screen {p.project.id} {p.path ?? ''} {p.line ?? ''}
+      <button onClick={() => p.onPath('lib/b.ts', 4)}>open b</button>
+      <button onClick={() => p.onDirtyChange?.(true)}>edit file</button>
+    </div>
+  ),
+}));
 vi.mock('./http/ApiTab', () => ({
   ApiTab: (p: { workspace?: string; request?: string; onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void; onOpenRequest?: (r?: { id: string; label: string }) => void }) => {
     useState(() => mounts.api++);
@@ -322,6 +331,30 @@ describe('App shell', () => {
       expect(screen.getByRole('button', { name: 'blog' }).querySelector('.sl-side-live')).toBeTruthy();
     });
 
+    it('hands the file and line in the hash to Code, keeps them in the hash and reopens the last file', async () => {
+      startAt('#/code/src/a.ts:3');
+      render(<App />);
+      expect(await screen.findByText(/code screen shop src\/a\.ts 3/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'open b' }));
+      expect(location.hash).toBe('#/code/lib/b.ts:4');
+      fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Code' }));
+      expect(location.hash).toBe('#/code/lib/b.ts');
+    });
+
+    it('asks before leaving Code, or switching project, with unsaved files', async () => {
+      startAt('#/code');
+      render(<App />);
+      await screen.findByText(/code screen shop/);
+      fireEvent.click(screen.getByRole('button', { name: 'edit file' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
+      expect(await screen.findByText('Some open files have edits that are not saved.')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+      expect(await screen.findByText(/code screen blog/)).toBeTruthy();
+    });
+
     it('asks before switching project under a dirty API tab', async () => {
       startAt('#/api');
       render(<App />);
@@ -356,6 +389,15 @@ describe('App shell', () => {
       expect(location.hash).toBe('#/api/crew%2Flist');
       expect(await screen.findByText(/api screen blog crew\/list/)).toBeTruthy();
     });
+  });
+
+  it('offers Open folder… on Code when there is no project', async () => {
+    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/workspaces': [], 'GET /api/pins': { pins: [] } });
+    startAt('#/code');
+    render(<App />);
+    expect(await screen.findByText('No project open')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Open folder…' }));
+    expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
   });
 
   it('uses the bottom bar under 900 px', () => {
