@@ -1,6 +1,7 @@
-/* Code screen: header, then tree (250 px) · editor · runs lens (280 px); the lens goes for a folder outside git, both side panels become drawers on a phone */
-.code { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
-.code-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--line); }
+/* Code screen: header, then tree (250 px) · editor · runs lens (280 px); the lens goes for a folder outside git, both side panels become drawers on a phone.
+   The screen is exactly the height of the shell's main area and never scrolls it: the tree pane, CodeMirror's scroller and the lens each scroll inside themselves. */
+.code { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; overflow: hidden; }
+.code-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; border-top: 1px solid var(--line); }
 .code-grid.no-lens { grid-template-columns: 250px minmax(0, 1fr); }
 .code-grid.phone { grid-template-columns: minmax(0, 1fr); }
 
@@ -9,11 +10,13 @@
 .code-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; outline: none; }
 
 /* tree */
-.code-tree { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.code-tree { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); }
+/* the tree's body (files, search results, its error): the one scroller of the tree column */
+.code-pane { flex: 1; min-height: 0; overflow: auto; }
 .code-drawer .code-tree { border-right: 0; }
 .code-filter { padding: 10px 10px 6px; }
 .code-note { margin: 6px 12px; color: var(--mut); font-size: 12.5px; line-height: 1.5; }
-.code-tree-list { flex: 1; min-height: 0; overflow: auto; padding: 2px 6px 10px; }
+.code-tree-list { padding: 2px 6px 10px; }
 .code-row { display: flex; align-items: center; gap: 6px; height: 27px; padding: 0 8px 0 calc(6px + var(--depth, 0) * 14px); border-radius: 7px; color: var(--ink); font-size: 12.5px; cursor: pointer; user-select: none; transition: background-color var(--t-fast) var(--ease); }
 .code-row:hover { background: var(--s2); }
 .code-row.current { background: var(--s3); font-weight: 500; }
@@ -29,7 +32,7 @@
 .code-git.g-del { color: var(--bad); }
 
 /* search results */
-.code-hits { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 10px; }
+.code-hits { padding: 0 6px 10px; }
 .code-hits-count { margin: 4px 6px 6px; color: var(--mut); font-size: 11.5px; }
 .code-hit-group h3 { margin: 8px 8px 2px; font-family: var(--font-code); font-size: 11.5px; font-weight: 500; color: var(--mut); }
 .code-hit { display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 7px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
@@ -39,7 +42,7 @@
 .code-hit mark { padding: 0 1px; border-radius: 3px; background: var(--s3); color: var(--ink); font-weight: 600; }
 
 /* editor */
-.code-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.code-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .code-tabs { display: flex; align-items: stretch; min-height: 38px; border-bottom: 1px solid var(--line); background: var(--s1); }
 .code-tablist { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
 .code-tab { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 12px; border-right: 1px solid var(--line); color: var(--mut); font-size: 12.5px; white-space: nowrap; transition: color var(--t-fast) var(--ease); }
@@ -58,7 +61,8 @@
 .code-filebar > .code-filebar-note { margin-left: auto; }
 .code-filebar > .code-filebar-note::before, .code-filebar > .code-filebar-note:empty { content: none; }
 .code-editor-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-.code-editor { height: 100%; }
+/* pinned to the pane, so CodeMirror's own scroller is height-bounded and scrolls the file */
+.code-editor { position: absolute; inset: 0; }
 .code-pad { padding: 14px; }
 
 /* runs lens */

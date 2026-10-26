@@ -223,9 +223,23 @@ describe('Code screen', () => {
     expect(within(tree).getAllByRole('treeitem').map((t) => t.querySelector('.code-row-name')!.textContent)).toEqual(['src', 'a.ts']);
   });
 
-  it('keeps the header in place: only the panels scroll', () => {
-    expect(cssRule('code/code.css', '.code')).toContain('grid-template-rows: auto minmax(0,1fr)');
-    expect(cssRule('code/code.css', '.code-grid')).toContain('grid-template-rows: minmax(0,1fr)');
+  it('is bounded to the shell’s main area: the header stays, and the tree, the editor and the lens each scroll inside themselves', async () => {
+    const rule = (sel: string) => cssRule('code/code.css', sel);
+    // the screen fills main exactly and never makes main (or the page) scroll
+    for (const p of ['height: 100%', 'grid-template-rows: auto minmax(0,1fr)', 'min-height: 0', 'overflow: hidden']) expect(rule('.code')).toContain(p);
+    for (const p of ['grid-template-rows: minmax(0,1fr)', 'min-height: 0', 'overflow: hidden']) expect(rule('.code-grid')).toContain(p);
+    // columns: clipped flex columns with one scroller each
+    for (const sel of ['.code-tree', '.code-main']) for (const p of ['min-height: 0', 'overflow: hidden']) expect(rule(sel), sel).toContain(p);
+    for (const p of ['flex: 1', 'min-height: 0', 'overflow: auto']) expect(rule('.code-pane')).toContain(p);
+    for (const p of ['flex: 1', 'min-height: 0', 'overflow: hidden']) expect(rule('.code-editor-wrap')).toContain(p);
+    for (const p of ['position: absolute', 'inset: 0']) expect(rule('.code-editor')).toContain(p);
+    for (const p of ['min-height: 0', 'overflow: auto']) expect(rule('.code-lens')).toContain(p);
+    // the scrollers' contents never scroll on their own (a second scroller would grow the column instead)
+    expect(rule('.code-tree-list')).not.toContain('overflow');
+    expect(rule('.code-hits')).not.toContain('overflow');
+    // and the tree really sits in the pane, loading wrapper and all
+    setup();
+    expect((await screen.findByRole('tree')).closest('.code-tree > .code-pane')).toBeTruthy();
   });
 
   it('gives the tree its own error with Retry', async () => {

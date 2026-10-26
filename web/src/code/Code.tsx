@@ -250,21 +250,23 @@ export function Code(p: CodeProps) {
         </div>
       ) : null}
       {git === false ? <p className="code-note">Not a git repository: git badges and changes by runs are hidden.</p> : null}
-      {search ? (
-        <SearchResults q={search.q} result={search.result} error={search.error} onRetry={() => setSearchSeq((n) => n + 1)} onOpen={(path, line) => openAt(path, line)} />
-      ) : tree.rootError ? (
-        <InlineError message={tree.rootError} onRetry={() => void tree.reload()} />
-      ) : (
-        <Loading loading={!root} lines={8} label="Loading files">
-          {root && !root.length ? (
-            <p className="code-note">This folder is empty.</p>
-          ) : filter === 'changed' && !tree.changed.length ? (
-            <p className="code-note">No run changed a file here in the last 30 days.</p>
-          ) : (
-            <FileTree rows={rows} expanded={expanded} current={cur} changed={changedSet} onExpand={onExpand} onCollapse={onCollapse} onOpen={(path) => openAt(path)} />
-          )}
-        </Loading>
-      )}
+      <div className="code-pane">
+        {search ? (
+          <SearchResults q={search.q} result={search.result} error={search.error} onRetry={() => setSearchSeq((n) => n + 1)} onOpen={(path, line) => openAt(path, line)} />
+        ) : tree.rootError ? (
+          <InlineError message={tree.rootError} onRetry={() => void tree.reload()} />
+        ) : (
+          <Loading loading={!root} lines={8} label="Loading files">
+            {root && !root.length ? (
+              <p className="code-note">This folder is empty.</p>
+            ) : filter === 'changed' && !tree.changed.length ? (
+              <p className="code-note">No run changed a file here in the last 30 days.</p>
+            ) : (
+              <FileTree rows={rows} expanded={expanded} current={cur} changed={changedSet} onExpand={onExpand} onCollapse={onCollapse} onOpen={(path) => openAt(path)} />
+            )}
+          </Loading>
+        )}
+      </div>
     </div>
   );
 
