@@ -32,7 +32,8 @@ import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Prepared } from './eccImport.js';
 import { createInterface } from 'node:readline/promises';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
-import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
+import { ghExec } from './accounts/github.js';
+import { DEFAULT_EVENTS, alreadyRan, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, writeBundle, type Bundle } from './wsexport.js';
@@ -1440,7 +1441,7 @@ async function main() {
             console.log(dim('  note: triggers for * (any repo) only work through the webhook; polling needs a named repo'));
           }
           for (const r of polled()) {
-            const list = await defaultExec('gh', ['pr', 'list', '-R', r.repo, '--state', 'open', '--limit', '30', '--json', 'number,headRefOid,isDraft,isCrossRepository,labels']);
+            const list = await ghExec(cfg.home)('gh', ['pr', 'list', '-R', r.repo, '--state', 'open', '--limit', '30', '--json', 'number,headRefOid,isDraft,isCrossRepository,labels']);
             if (list.code !== 0) { console.log(`${amber('!')} ${r.repo}: ${list.stderr.trim().split('\n')[0] || 'gh failed'}`); continue; }
             let prs: { number: number; headRefOid: string; isDraft: boolean; isCrossRepository: boolean; labels: { name: string }[] }[] = [];
             try { prs = JSON.parse(list.stdout); } catch { continue; }

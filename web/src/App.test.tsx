@@ -141,6 +141,18 @@ describe('App shell', () => {
     expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull();
   });
 
+  it('shows the connected account in the sidebar and opens Settings → Accounts from it', async () => {
+    const gh = { id: 'github', name: 'GitHub', kind: 'device', available: true, scopes: [], cli: null, device: { ready: true }, account: { provider: 'github', login: 'octo', name: 'Octo Cat', scopes: ['repo'], via: 'gh', connectedAt: 1 } };
+    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/pipelines': [], 'GET /api/accounts': { user: 'tushar', providers: [gh] } });
+    render(<App />);
+    const row = await screen.findByRole('button', { name: 'Octo Cat: GitHub connected. Open Accounts' });
+    fireEvent.click(row);
+    expect(location.hash).toBe('#/settings/accounts');
+    const drawer = await screen.findByRole('dialog', { name: 'Settings' });
+    expect(within(drawer).getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    expect(within(drawer).getByText(/via the GitHub CLI/)).toBeTruthy();
+  });
+
   it('sends an unknown hash to Home', () => {
     startAt('#/nowhere');
     render(<App />);
