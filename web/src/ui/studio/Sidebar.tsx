@@ -1,5 +1,5 @@
-import { ArrowRight, File, Play, Plus, Search, Settings, SquarePen, Workflow, type LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, File, PanelLeftClose, PanelLeftOpen, Play, Plus, Search, Settings, SquarePen, Workflow, type LucideIcon } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { Screen } from '../../hooks';
 import { cn } from '../cn';
@@ -8,59 +8,44 @@ import { Kbd, isApple } from './Kbd';
 import { NAV, goHint } from './nav';
 import { ProjectSwitcher, type ProjectsProps } from './ProjectSwitcher';
 import { RUN_STATE_LABEL, RunGlyph, runState, shortRunId, type RunState } from './RunGlyph';
-import { SideMenu, SideRow, SideSection } from './SideParts';
+import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
+const TIP_DELAY_MS = 300;
 /** Finished runs the Runs section keeps under the live and waiting ones. */
 export const RECENT_FINISHED = 5;
-/** How long the peeking sidebar stays after the pointer leaves it. */
-const PEEK_LEAVE_MS = 240;
 
-function storedHidden(): boolean {
+function storedCollapsed(): boolean {
   try {
-    return localStorage.getItem(KEY) === 'hidden';
+    return localStorage.getItem(KEY) === 'collapsed';
   } catch {
     return false;
   }
 }
 
-/**
- * Docked or hidden (remembered on this device). ⌘\ toggles; while hidden, the pointer at the left edge peeks the sidebar
- * as a floating panel, which goes again when the pointer leaves it (or on Escape).
- */
-export function useSidebarDock(): { hidden: boolean; peek: boolean; toggle: () => void; peekIn: () => void; peekOut: () => void } {
-  const [hidden, setHidden] = useState(storedHidden);
-  const [peek, setPeek] = useState(false);
-  const leave = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+/** Expanded (244 px) or collapsed to the 56 px icon rail, remembered on this device; ⌘\ toggles. */
+export function useSidebarCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(storedCollapsed);
   const toggle = useRef(() => {});
   toggle.current = () => {
-    setPeek(false);
-    setHidden(!hidden);
+    setCollapsed(!collapsed);
     try {
-      localStorage.setItem(KEY, hidden ? 'docked' : 'hidden');
+      localStorage.setItem(KEY, collapsed ? 'open' : 'collapsed');
     } catch {
       /* storage unavailable */
     }
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === '\\' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        toggle.current();
-      } else if (e.key === 'Escape') setPeek(false);
+      if (e.key !== '\\' || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      toggle.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  useEffect(() => () => clearTimeout(leave.current), []);
-  return {
-    hidden,
-    peek: hidden && peek,
-    toggle: () => toggle.current(),
-    peekIn: () => (clearTimeout(leave.current), setPeek(true)),
-    peekOut: () => (clearTimeout(leave.current), (leave.current = setTimeout(() => setPeek(false), PEEK_LEAVE_MS))),
-  };
+  return [collapsed, () => toggle.current()];
 }
 
 const ORDER: Record<RunState, number> = { running: 0, needs: 1, idle: 2, done: 3, failed: 3 };
@@ -91,18 +76,47 @@ export interface SidebarProps {
   projects: ProjectsProps;
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void; onReorder: (next: Pin[]) => void };
   account: { name: string; provider?: string; onOpen: () => void };
-  /** Peeking while hidden: drawn as a floating panel over the screen. */
-  floating?: boolean;
-  onPointerEnter?: () => void;
-  onPointerLeave?: () => void;
 }
 
 /**
- * The left sidebar (900 px and wider), Linear-style (spec §2): the project switcher and compose; Search, Home, Inbox and
- * Runs; the Workspace screens with their `G` shortcuts; the project's recent runs with status glyphs; Favorites (pins,
- * drag to reorder); Settings and the account row at the bottom.
+ * The left sidebar (900 px and wider), Linear-style (spec §2): the project switcher (the Tether glyph and the project's
+ * name), compose and the collapse button; Search, Home, Inbox and Runs; the Workspace screens with their `G` shortcuts;
+ * the project's recent runs with status glyphs; Favorites (pins, drag to reorder); Settings and the account row at the
+ * bottom. Collapsed (⌘\ or the panel button) it is a 56 px icon rail: every icon shows its label as a tooltip on hover
+ * and focus (Escape dismisses it) and counts become dots.
  */
 export function Sidebar(p: SidebarProps) {
+  const [collapsed, toggle] = useSidebarCollapsed();
+  const asideRef = useRef<HTMLElement>(null);
+  const [tip, setTip] = useState<{ key: string; label: string; top: number }>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tipId = useId();
+  const hideTip = () => {
+    clearTimeout(timer.current);
+    setTip(undefined);
+  };
+  // the tip goes on Escape wherever focus and pointer are (WCAG 1.4.13); its timer dies with the sidebar
+  useEffect(() => {
+    if (!tip) return;
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && hideTip();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [tip]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(hideTip, [collapsed]);
+  /** Rail tooltip wiring for one control (nothing while expanded: the label is in view). */
+  const tipFor = (key: string, label: string): TipProps | undefined => {
+    if (!collapsed) return undefined;
+    const show = (e: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
+      const el = e.currentTarget;
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        const box = el.getBoundingClientRect();
+        setTip({ key, label, top: box.top - (asideRef.current?.getBoundingClientRect().top ?? 0) + box.height / 2 });
+      }, TIP_DELAY_MS);
+    };
+    return { onPointerEnter: show, onFocus: show, onPointerLeave: hideTip, onBlur: hideTip, 'aria-describedby': tip?.key === key ? tipId : undefined };
+  };
   const [dragging, setDragging] = useState<number>();
   const page = (s: Screen) => !p.settingsOpen && p.active === s;
   const top = NAV.filter((n) => n.top);
@@ -117,37 +131,64 @@ export function Sidebar(p: SidebarProps) {
     p.pins.onReorder(next);
   };
   const mod = isApple() ? '⌘' : 'Ctrl ';
+  const toggleLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  const toggleButton = (
+    <button type="button" className="sl-side-icon-btn sl-side-toggle" aria-label={toggleLabel} title={collapsed ? undefined : `${toggleLabel}  ${mod}\\`} onClick={toggle} {...tipFor('toggle', `${toggleLabel}  ${mod}\\`)}>
+      {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.7} aria-hidden="true" /> : <PanelLeftClose size={16} strokeWidth={1.7} aria-hidden="true" />}
+    </button>
+  );
+  const compose = (
+    <button type="button" className="sl-side-compose" aria-label="New run" title={collapsed ? undefined : `New run  C · ${mod}N`} onClick={p.onCompose} {...tipFor('compose', 'New run')}>
+      <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
+    </button>
+  );
+  const navRow = (n: (typeof NAV)[number]) => (
+    <SideRow
+      key={n.id}
+      label={n.long ?? n.label}
+      Icon={n.Icon}
+      page
+      current={page(n.id)}
+      count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : undefined}
+      hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) ? undefined : goHint(n.id)}
+      onClick={() => p.onGo(n.id)}
+      rail={tipFor(n.id, n.long ?? n.label)}
+    />
+  );
 
   return (
-    <aside className={cn('sl-side', { floating: !!p.floating })} aria-label="Sidebar" onPointerEnter={p.onPointerEnter} onPointerLeave={p.onPointerLeave}>
-      <div className="sl-side-head">
-        <ProjectSwitcher {...p.projects} />
-        <button type="button" className="sl-side-compose" aria-label="New run" title={`New run  C · ${mod}N`} onClick={p.onCompose}>
-          <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
-        </button>
-      </div>
+    <aside ref={asideRef} className={cn('sl-side', { collapsed })} aria-label="Sidebar">
+      {collapsed ? (
+        <div className="sl-side-head">
+          <ProjectSwitcher {...p.projects} compact />
+          {toggleButton}
+          {compose}
+        </div>
+      ) : (
+        <div className="sl-side-head">
+          <ProjectSwitcher {...p.projects} />
+          {compose}
+          {toggleButton}
+        </div>
+      )}
 
       <div className="sl-side-scroll">
         <nav className="sl-side-nav" aria-label="Main">
-          <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} />
-          {top.map((n) => (
-            <SideRow
-              key={n.id}
-              label={n.long ?? n.label}
-              Icon={n.Icon}
-              page
-              current={page(n.id)}
-              count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : undefined}
-              hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) ? undefined : goHint(n.id)}
-              onClick={() => p.onGo(n.id)}
-            />
-          ))}
-          <SideSection id="workspace" title="Workspace">
-            {work.map((n) => (
-              <SideRow key={n.id} label={n.long ?? n.label} Icon={n.Icon} page current={page(n.id)} hint={goHint(n.id)} onClick={() => p.onGo(n.id)} />
-            ))}
-          </SideSection>
+          <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} rail={tipFor('search', 'Search')} />
+          {top.map(navRow)}
+          {collapsed ? (
+            <>
+              <div className="sl-side-rule" />
+              {work.map(navRow)}
+            </>
+          ) : (
+            <SideSection id="workspace" title="Workspace">
+              {work.map(navRow)}
+            </SideSection>
+          )}
         </nav>
+        {collapsed ? null : (
+          <>
 
         <SideSection
           id="runs"
@@ -200,13 +241,20 @@ export function Sidebar(p: SidebarProps) {
             />
           ))}
         </SideSection>
+          </>
+        )}
       </div>
 
       <div className="sl-side-foot">
-        <SideRow label="Settings" Icon={Settings} page current={!!p.settingsOpen} hint={<Kbd mod>,</Kbd>} onClick={p.onSettings} />
+        <SideRow label="Settings" Icon={Settings} page current={!!p.settingsOpen} hint={<Kbd mod>,</Kbd>} onClick={p.onSettings} rail={tipFor('settings', 'Settings')} />
         <div className="sl-side-rule" />
-        <AccountRow {...p.account} />
+        <AccountRow {...p.account} rail={tipFor('account', `${p.account.name} · ${p.account.provider ? `${p.account.provider} connected` : 'Connect an account'}`)} />
       </div>
+      {tip ? (
+        <div className="sl-side-tip" role="tooltip" id={tipId} style={{ top: tip.top }}>
+          {tip.label}
+        </div>
+      ) : null}
     </aside>
   );
 }

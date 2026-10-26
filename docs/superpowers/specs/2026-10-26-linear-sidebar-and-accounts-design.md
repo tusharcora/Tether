@@ -62,6 +62,17 @@ Runs section stay custom (they encode state).
 **Accessibility**: `nav` landmark, `aria-current="page"`, section headers are disclosure buttons, status glyphs carry
 text labels (`aria-label="Running"`), shortcuts listed in the ⌘K help.
 
+**Amendment (owner, 2026-10-26, during the build):**
+- **Logo tile.** The switcher shows the **Tether Triad glyph** on a transparent ground (the theme's glyph asset, about
+  20 px) beside the project name and ⌄, in place of the blue initials tile. Projects in the switcher menu keep small
+  neutral initials tiles, and no blue fill is used anywhere: blue means live only.
+- **Collapsible.** A sidebar-panel button sits at the right of the top bar and shows on hover, as in Linear. It
+  collapses the sidebar to a **56 px icon rail**: the glyph, then the same icons, each with its label in a tooltip on
+  hover and focus. Escape dismisses the tooltip, and counts become dots. An expand button sits in the rail.
+- ⌘\ toggles the sidebar. The width animates over about 220 ms, instantly under reduced motion. The state is
+  remembered per device.
+- This **replaces** "hide fully + peek + ☰ dock" in **Collapse** above.
+
 Removes the current Sidebar component's layout; routes, ⌘K, BottomBar and pins API are reused.
 
 ## 3. Connected accounts

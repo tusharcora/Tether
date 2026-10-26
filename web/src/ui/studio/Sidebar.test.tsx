@@ -1,8 +1,8 @@
-import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunRow } from '../../api';
 import { cssRule } from '../../test/css';
-import { Sidebar, sideRuns, useSidebarDock, type SidebarProps } from './Sidebar';
+import { Sidebar, sideRuns, type SidebarProps } from './Sidebar';
 
 const w = (id: string) => ({ id, name: id, path: `/code/${id}`, isDefault: false, exists: true, repos: [] });
 const run = (id: string, task: string, o: Partial<RunRow> = {}): RunRow =>
@@ -171,46 +171,93 @@ describe('Sidebar', () => {
     expect(off.textContent).toContain('Connect');
   });
 
-  it('is 244 px wide with dense 28 px rows, and floats while peeking', () => {
+  it('is 244 px wide with dense 28 px rows, a 56 px rail collapsed, and animates its width over 220 ms', () => {
     expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('width: 244px');
+    expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('transition: width 220ms var(--ease)');
+    expect(cssRule('ui/studio/shell.css', '.sl-side.collapsed')).toContain('width: 56px');
     expect(cssRule('ui/studio/shell.css', '.sl-side-item')).toContain('height: 28px');
     expect(cssRule('ui/studio/shell.css', '.sl-side-item')).toContain('font-size: 13px');
-    expect(cssRule('ui/studio/shell.css', '.sl-side.floating')).toContain('position: fixed');
-    setup({ floating: true });
-    expect(document.querySelector('.sl-side.floating')).toBeTruthy();
+  });
+
+  it('shows the Tether glyph in the switcher, not a blue initials tile; the menu keeps small neutral initials', () => {
+    setup();
+    const sw = screen.getByRole('button', { name: 'Project: shop' });
+    expect(sw.querySelector('.sl-glyph img')).toBeTruthy();
+    expect(sw.querySelector('.sl-switch-tile')).toBeNull();
+    expect(cssRule('ui/studio/shell.css', '.sl-switch-tile')).toContain('background: var(--s3)');
+    expect(cssRule('ui/studio/shell.css', '.sl-switch-tile')).not.toMatch(/--acc|#2563eb/);
   });
 
   it('in Tether.app, leaves the traffic lights their corner and moves the window from the strip under them', () => {
-    expect(cssRule('ui/studio/shell.css', '.tether-app .sl-side:not(.floating)')).toContain('padding-top: 40px');
+    expect(cssRule('ui/studio/shell.css', '.tether-app .sl-side')).toContain('padding-top: 40px');
     expect(cssRule('ui/studio/shell.css', '.tether-app .sl-side::before,.tether-app .welcome::before')).toContain('-webkit-app-region: drag');
   });
 });
 
-describe('useSidebarDock', () => {
-  it('hides and docks with ⌘\\, remembers it, and peeks only while hidden', () => {
-    vi.useFakeTimers();
-    const { result, unmount } = renderHook(() => useSidebarDock());
-    expect(result.current.hidden).toBe(false);
-    act(() => result.current.peekIn());
-    expect(result.current.peek).toBe(false);
-    act(() => void fireEvent.keyDown(window, { key: '\\', metaKey: true }));
-    expect(result.current.hidden).toBe(true);
-    expect(localStorage.getItem('tether.sidebar')).toBe('hidden');
-    act(() => result.current.peekIn());
-    expect(result.current.peek).toBe(true);
-    act(() => result.current.peekOut());
-    act(() => result.current.peekIn());
-    act(() => vi.advanceTimersByTime(500));
-    expect(result.current.peek).toBe(true);
-    act(() => result.current.peekOut());
-    act(() => vi.advanceTimersByTime(500));
-    expect(result.current.peek).toBe(false);
+describe('collapsing to the icon rail', () => {
+  const collapse = () => fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+
+  it('collapses with the panel button and expands from the rail, remembering it on this device', () => {
+    const { unmount } = render(<Sidebar {...setupProps()} />);
+    collapse();
+    const side = document.querySelector('.sl-side')!;
+    expect(side.classList.contains('collapsed')).toBe(true);
+    expect(localStorage.getItem('tether.sidebar')).toBe('collapsed');
+    // the rail: the glyph, the same icons (labels only as names), no Runs or Favorites lists
+    expect(screen.getByRole('button', { name: 'Project: shop' }).querySelector('.sl-switch-name')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Crew' }).textContent).toBe('');
+    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
+    expect(screen.queryByRole('region', { name: 'Recent runs' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'README.md' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
     unmount();
-    const again = renderHook(() => useSidebarDock());
-    expect(again.result.current.hidden).toBe(true);
-    act(() => again.result.current.toggle());
-    expect(again.result.current.hidden).toBe(false);
-    expect(localStorage.getItem('tether.sidebar')).toBe('docked');
+    render(<Sidebar {...setupProps()} />);
+    expect(document.querySelector('.sl-side.collapsed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(document.querySelector('.sl-side.collapsed')).toBeNull();
+    expect(localStorage.getItem('tether.sidebar')).toBe('open');
+  });
+
+  it('toggles with ⌘\\', () => {
+    setup();
+    fireEvent.keyDown(window, { key: '\\', metaKey: true });
+    expect(document.querySelector('.sl-side.collapsed')).toBeTruthy();
+    fireEvent.keyDown(window, { key: '\\', ctrlKey: true });
+    expect(document.querySelector('.sl-side.collapsed')).toBeNull();
+  });
+
+  it('turns counts into small dots on the rail', () => {
+    setup();
+    collapse();
+    expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-count')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-dot.needs')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Runs' }).querySelector('.sl-side-dot.live')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Builder' }).querySelector('.sl-side-dot')).toBeNull();
+  });
+
+  it('shows a label tooltip after hover or focus, linked by aria-describedby, gone on Escape; none while expanded', () => {
+    vi.useFakeTimers();
+    setup();
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Crew' }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    collapse();
+    const crew = screen.getByRole('button', { name: 'Crew' });
+    fireEvent.pointerEnter(crew);
+    act(() => vi.advanceTimersByTime(300));
+    const tip = screen.getByRole('tooltip');
+    expect(tip.textContent).toBe('Crew');
+    expect(crew.getAttribute('aria-describedby')).toBe(tip.id);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.focus(screen.getByRole('button', { name: /Tushar/ }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByRole('tooltip').textContent).toBe('Tushar · GitHub connected');
+    fireEvent.blur(screen.getByRole('button', { name: /Tushar/ }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.focus(screen.getByRole('button', { name: 'Expand sidebar' }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand sidebar {2}(⌘|Ctrl )\\$/);
     vi.useRealTimers();
   });
 });

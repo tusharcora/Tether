@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { WorkspaceRow } from '../../home/workspaces';
 import { cn } from '../cn';
+import { Glyph } from './Glyph';
 import { InlineError } from './InlineError';
 import { Kbd } from './Kbd';
 import './shell.css';
@@ -28,22 +29,25 @@ export interface ProjectsProps {
 }
 
 /**
- * The sidebar's team-style switcher: the current project's tile and name; its menu lists the projects (a blue dot on one
- * with a live run), then Open folder… ⌘O, Reveal in Finder (Tether.app) and Remove from Tether.
+ * The sidebar's team-style switcher: the Tether glyph (on a transparent ground: blue is for live state only) and the
+ * current project's name; on the collapsed rail, the glyph alone. Its menu lists the projects with small neutral initials
+ * (a blue dot on one with a live run), then Open folder… ⌘O, Reveal in Finder (Tether.app) and Remove from Tether.
  */
-export function ProjectSwitcher(p: ProjectsProps) {
+export function ProjectSwitcher(p: ProjectsProps & { compact?: boolean }) {
   const menu = useMenu();
   const current = p.list.find((w) => w.id === p.current);
   const name = current?.name ?? (p.loading ? 'Loading…' : 'No project');
-  if (p.error && !p.list.length) return <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />;
+  if (p.error && !p.list.length && !p.compact) return <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />;
   return (
     <span className="sl-switch-anchor">
-      <button ref={menu.triggerRef} type="button" className="sl-switch" aria-label={`Project: ${name}`} aria-haspopup="menu" aria-expanded={menu.open} onClick={menu.toggle}>
-        <span className="sl-switch-tile" aria-hidden="true">
-          {current ? tileLetters(current.name) : '·'}
-        </span>
-        <span className="sl-switch-name">{name}</span>
-        <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
+      <button ref={menu.triggerRef} type="button" className={cn('sl-switch', { compact: !!p.compact })} aria-label={`Project: ${name}`} title={p.compact ? name : undefined} aria-haspopup="menu" aria-expanded={menu.open} onClick={menu.toggle}>
+        <Glyph size={20} />
+        {p.compact ? null : (
+          <>
+            <span className="sl-switch-name">{name}</span>
+            <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
+          </>
+        )}
       </button>
       {menu.open ? (
         <div ref={menu.menuRef} className="sl-menu sl-switch-menu" role="menu" aria-label="Projects" onKeyDown={menu.onMenuKey}>
@@ -54,7 +58,7 @@ export function ProjectSwitcher(p: ProjectsProps) {
           ) : null}
           {p.list.map((w) => (
             <button key={w.id} type="button" role="menuitem" aria-current={w.id === p.current ? 'true' : undefined} onClick={() => (menu.close(), p.onSelect(w.id))}>
-              <span className="sl-switch-tile small" aria-hidden="true">
+              <span className="sl-switch-tile" aria-hidden="true">
                 {tileLetters(w.name)}
               </span>
               <span className="sl-side-label">{w.name}</span>

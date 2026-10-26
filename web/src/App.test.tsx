@@ -125,20 +125,15 @@ describe('App shell', () => {
     expect(location.hash).toBe('#/home');
   });
 
-  it('hides the sidebar with ⌘\\, peeks it from the left edge, and docks it again with ☰', async () => {
+  it('collapses the sidebar to its icon rail with ⌘\\ and keeps navigating from it', () => {
     localStorage.clear();
     render(<App />);
-    expect(document.querySelector('.sl-side')).toBeTruthy();
     fireEvent.keyDown(window, { key: '\\', metaKey: true });
-    expect(document.querySelector('.sl-side')).toBeNull();
-    expect(document.querySelector('.shell.side-hidden')).toBeTruthy();
-    fireEvent.pointerEnter(document.querySelector('.sl-side-edge')!);
-    expect(document.querySelector('.sl-side.floating')).toBeTruthy();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(document.querySelector('.sl-side')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
-    expect(document.querySelector('.sl-side:not(.floating)')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Show sidebar' })).toBeNull();
+    expect(document.querySelector('.sl-side.collapsed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
+    expect(location.hash).toBe('#/crew');
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(document.querySelector('.sl-side.collapsed')).toBeNull();
   });
 
   it('shows the connected account in the sidebar and opens Settings → Accounts from it', async () => {

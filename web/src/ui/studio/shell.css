@@ -1,16 +1,27 @@
-/* Sidebar (900 px and wider), Linear-style: 244 px, dense 28 px rows at 13 px. ⌘\ hides it; the left edge peeks it as a floating panel. */
-.sl-side { position: relative; display: flex; flex-direction: column; width: 244px; height: 100%; padding: 10px 8px 8px; box-sizing: border-box; background: var(--side); border-right: 1px solid var(--line); font-size: 13px; }
-.sl-side.floating { position: fixed; z-index: 40; top: 8px; bottom: 8px; left: 8px; height: auto; border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 10px 30px rgba(9, 9, 11, .16); animation: sl-peek-in var(--t-med) var(--ease) both; }
-@keyframes sl-peek-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
-.sl-side-edge { position: fixed; z-index: 39; top: 0; bottom: 0; left: 0; width: 8px; }
+/* Sidebar (900 px and wider), Linear-style: 244 px, dense 28 px rows at 13 px. ⌘\ or the panel button collapses it to a
+   56 px icon rail (width animated; instant under reduced motion, see studio.css) */
+.sl-side { position: relative; display: flex; flex-direction: column; width: 244px; height: 100%; padding: 10px 8px 8px; box-sizing: border-box; background: var(--side); border-right: 1px solid var(--line); font-size: 13px; transition: width 220ms var(--ease), padding 220ms var(--ease); }
+.sl-side.collapsed { width: 56px; padding: 10px 6px 8px; }
+.sl-side.collapsed .sl-side-head { flex-direction: column; gap: 6px; padding: 2px 0 8px; }
+.sl-side.collapsed .sl-switch-anchor { flex: none; }
+.sl-switch.compact { justify-content: center; width: 36px; height: 32px; padding: 0; }
+.sl-side-toggle { width: 28px; height: 28px; flex: none; opacity: 0; transition: opacity var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.sl-side-head:hover .sl-side-toggle, .sl-side-toggle:focus-visible, .sl-side.collapsed .sl-side-toggle { opacity: 1; }
+.sl-side.collapsed .sl-side-item { justify-content: center; padding: 0; }
+.sl-side.collapsed .sl-side-account { justify-content: center; padding: 0; }
+.sl-side-dot { position: absolute; top: 5px; right: 10px; width: 6px; height: 6px; border-radius: 50%; }
+.sl-side-dot.needs { background: var(--warn); }
+.sl-side-dot.live { background: var(--acc); }
+.sl-side-tip { position: absolute; left: 58px; z-index: 30; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; transform: translateY(-50%); box-shadow: 0 8px 20px rgba(0, 0, 0, .18); animation: sl-tip-in var(--t-fast) var(--ease) both; }
+@keyframes sl-tip-in { from { opacity: 0; transform: translate(-4px, -50%); } to { opacity: 1; transform: translateY(-50%); } }
 .sl-side-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 8px; }
 .sl-switch-anchor { position: relative; flex: 1; min-width: 0; }
 .sl-switch { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
 .sl-switch:hover { background: var(--side-hover); }
 .sl-switch > svg { flex: none; color: var(--mut); }
 .sl-switch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sl-switch-tile { display: grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--ink); color: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: .02em; }
-.sl-switch-tile.small { width: 18px; height: 18px; font-size: 9px; }
+/* projects in the switcher menu: small neutral initials (blue is for live state only) */
+.sl-switch-tile { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: var(--s3); color: var(--ink); font-size: 9px; font-weight: 700; letter-spacing: .02em; }
 .sl-switch-menu { top: calc(100% + 4px); left: 0; min-width: 236px; font-size: 13px; }
 .sl-side-compose { display: grid; flex: none; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line2); border-radius: 7px; background: var(--s1); color: var(--ink); cursor: pointer; transition: border-color var(--t-fast) var(--ease); }
 .sl-side-compose:hover { border-color: var(--edge); }
@@ -25,7 +36,7 @@
 .sl-side-row:hover { background: var(--side-hover); }
 .sl-side-row.current { background: var(--side-card); box-shadow: var(--card-shadow); }
 .sl-side-row.dragging { opacity: .5; }
-.sl-side-item { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sl-side-item { position: relative; display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .sl-side-row:hover .sl-side-item, .sl-side-row.current .sl-side-item { color: var(--ink); }
 .sl-side-row.current .sl-side-item { font-weight: 500; }
 .sl-side-icon { display: flex; flex: none; justify-content: center; width: 18px; }
@@ -58,19 +69,14 @@
 .sl-side-foot { padding-top: 6px; }
 .sl-side-account { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
 .sl-side-account:hover { background: var(--side-hover); }
-.sl-side-avatar { display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; }
+.sl-side-avatar { position: relative; display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; }
 .sl-side-chip { display: inline-flex; flex: none; align-items: center; gap: 4px; font-size: 11px; color: var(--mut); }
 .sl-side-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-/* The ☰ that docks a hidden sidebar again, at the top-left of the screen (in the screen header's row) */
-.shell-dock { position: fixed; z-index: 38; top: 14px; left: 12px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line2); border-radius: 7px; background: var(--s1); color: var(--ink); cursor: pointer; }
-.shell-dock:hover { border-color: var(--edge); }
-.shell.side-hidden { grid-template-columns: minmax(0, 1fr); }
-.shell.side-hidden .sl-screen-header { padding-left: 56px; }
+.sl-side-chip-dot.on-avatar { position: absolute; right: -2px; bottom: -2px; border: 2px solid var(--side); }
 
 /* Tether.app (no title bar): the traffic lights sit over the sidebar's top-left, so its logo row starts below them; that strip,
    the screen headers and the top of the welcome screen move the window (their controls stay clickable) */
-.tether-app .sl-side:not(.floating) { padding-top: 40px; }
-.tether-app .shell-dock { top: 44px; }
+.tether-app .sl-side { padding-top: 40px; }
 .tether-app .sl-side::before, .tether-app .welcome::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 40px; -webkit-app-region: drag; }
 .tether-app .welcome::before { position: fixed; }
 .tether-app .sl-screen-header { -webkit-app-region: drag; }

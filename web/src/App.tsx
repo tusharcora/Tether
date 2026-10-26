@@ -1,4 +1,3 @@
-import { Menu } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
 import { Builder } from './Builder';
@@ -33,7 +32,7 @@ import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './se
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
 import { SettingsDrawer } from './ui/studio/SettingsDrawer';
-import { Sidebar, useSidebarDock } from './ui/studio/Sidebar';
+import { Sidebar } from './ui/studio/Sidebar';
 import { isTyping, useGoKeys } from './ui/studio/useGoKeys';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './ui/studio/shell.css';
@@ -186,8 +185,6 @@ function Shell() {
 
   const openScreen = (s: Screen) => go(s === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : s === 'code' && lastFile ? { tab: 'code', id: lastFile } : { tab: s });
   useGoKeys(openScreen, compose);
-  const dock = useSidebarDock();
-  const showSide = !phone && (!dock.hidden || dock.peek);
   const openSettings = () => go({ tab: 'settings' });
   const settingsOpen = route.tab === 'settings';
   /** Where focus goes when Settings closes and its opener (a More menu item, the ⌘K field) is gone. */
@@ -207,14 +204,8 @@ function Shell() {
           skipLabel={list.length ? 'Back to Tether' : 'Continue without a project'}
         />
       ) : (
-        <div ref={shellRef} className={cn('shell', { phone, 'side-hidden': !phone && dock.hidden })}>
-          {!phone && dock.hidden && !dock.peek ? <div className="sl-side-edge" aria-hidden="true" onPointerEnter={dock.peekIn} /> : null}
-          {!phone && dock.hidden ? (
-            <button type="button" className="shell-dock" aria-label="Show sidebar" title={'Show sidebar  ⌘\\'} onClick={dock.toggle}>
-              <Menu size={16} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-          ) : null}
-          {showSide ? (
+        <div ref={shellRef} className={cn('shell', { phone })}>
+          {phone ? null : (
             <Sidebar
               active={screen.tab}
               settingsOpen={settingsOpen}
@@ -222,9 +213,6 @@ function Shell() {
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
               onCompose={compose}
-              floating={dock.hidden}
-              onPointerEnter={dock.hidden ? dock.peekIn : undefined}
-              onPointerLeave={dock.hidden ? dock.peekOut : undefined}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
@@ -241,7 +229,7 @@ function Shell() {
               }}
               pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))), onReorder: savePinsOr }}
             />
-          ) : null}
+          )}
           <main className="shell-main" tabIndex={-1}>
             {screen.tab === 'home' ? <Home onGo={go} /> : null}
             {screen.tab === 'inbox' ? <Inbox onGo={go} /> : null}
