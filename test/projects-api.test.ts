@@ -85,11 +85,11 @@ describe('pins', () => {
 });
 
 describe('tools', () => {
-  it('lists each agent CLI with found or not, and ripgrep', async () => {
+  it('lists each agent CLI with found or not (never the mock adapter), and ripgrep', async () => {
     const { api } = await start();
     const r = await api('GET', '/api/tools');
     expect(r.status).toBe(200);
-    expect(r.json.agents).toEqual([expect.objectContaining({ id: 'mock', ok: true })]);
+    expect(r.json.agents).toEqual([]);
     expect(typeof r.json.rg.ok).toBe('boolean');
   });
 });

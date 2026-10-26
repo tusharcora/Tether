@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api, ApiError } from '../api';
 import { calls, routeApi } from '../test/fixtures';
+import { cssRule } from '../test/css';
 import { renderApp } from '../test/render';
 import { Code, type CodeProps } from './Code';
 
@@ -220,6 +221,11 @@ describe('Code screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Changed by runs' }));
     const tree = screen.getByRole('tree');
     expect(within(tree).getAllByRole('treeitem').map((t) => t.querySelector('.code-row-name')!.textContent)).toEqual(['src', 'a.ts']);
+  });
+
+  it('keeps the header in place: only the panels scroll', () => {
+    expect(cssRule('code/code.css', '.code')).toContain('grid-template-rows: auto minmax(0,1fr)');
+    expect(cssRule('code/code.css', '.code-grid')).toContain('grid-template-rows: minmax(0,1fr)');
   });
 
   it('gives the tree its own error with Retry', async () => {

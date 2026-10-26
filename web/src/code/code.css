@@ -1,6 +1,6 @@
 /* Code screen: header, then tree (250 px) · editor · runs lens (280 px); the lens goes for a folder outside git, both side panels become drawers on a phone */
 .code { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
-.code-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; min-height: 0; border-top: 1px solid var(--line); }
+.code-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--line); }
 .code-grid.no-lens { grid-template-columns: 250px minmax(0, 1fr); }
 .code-grid.phone { grid-template-columns: minmax(0, 1fr); }
 

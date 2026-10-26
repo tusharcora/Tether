@@ -174,7 +174,7 @@ function Shell() {
             {screen.tab === 'home' ? <Home onGo={go} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (
-                <Suspense fallback={<Loading loading lines={8} label="Loading Code" />}>
+                <Suspense fallback={<Loading loading lines={8} label="Loading Code" className="shell-loading" />}>
                   <Code
                     key={projects.current.id}
                     project={projects.current}

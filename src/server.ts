@@ -314,7 +314,10 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
     if (p === '/api/doctor' && m === 'GET') return send(res, 200, await doctor()), true;
     if (p === '/api/tools' && m === 'GET') {
-      const agents = Object.entries(await doctor()).map(([id, d]) => ({ id, ok: d.ok, ...(d.version ? { version: d.version } : {}) }));
+      // the mock adapter is for tests and demos, not a tool to install
+      const agents = Object.entries(await doctor())
+        .filter(([id]) => id !== 'mock')
+        .map(([id, d]) => ({ id, ok: d.ok, ...(d.version ? { version: d.version } : {}) }));
       const rg = rgVersion();
       return send(res, 200, { agents, rg: { ok: !!rg, ...(rg ? { version: rg } : {}) } }), true;
     }
