@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tether — Welcome</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#d4d4d8}
+.sl{--bg:#0a0a0b;--s1:#111113;--s2:#18181b;--s3:#26262b;--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.14);--edge:#666670;--ink:#f4f4f5;--mut:#a1a1aa;--accInk:#93c5fd;--ok:#34d399;--warn:#fbbf24;--bad:#f87171;--accBg:rgba(59,130,246,.15);--chrome:#1c1c1f}
+.sl.light{--bg:#fbfbfa;--s1:#ffffff;--s2:#f4f4f5;--s3:#e4e4e7;--line:rgba(9,9,11,.08);--line2:rgba(9,9,11,.16);--edge:#86868f;--ink:#09090b;--mut:#52525b;--accInk:#1d4ed8;--ok:#047857;--warn:#a16207;--bad:#b91c1c;--accBg:#eff6ff;--chrome:#ececee}
+.row{transition:background .18s,border-color .18s}
+.row:hover{background:var(--s2)}
+.btn:active{transform:translateY(1px)}
+.drop{transition:border-color .2s,background .2s}
+.rise{animation:rs .4s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rs{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.m-off *{animation:none !important;transition:none !important}
+@media (prefers-reduced-motion: reduce){.sl *{animation:none !important;transition:none !important}}
+</style>
+</helmet>
+<div style="padding: 28px; min-height: 900px; box-sizing: border-box; background: #d4d4d8; font-family: Geist, system-ui, sans-serif">
+<div class="sl {{themeCls}} {{motionCls}}" style="--acc: {{accent}}; height: 844px; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-size: 13px; box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.25)">
+  <div style="height: 38px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: var(--chrome); border-bottom: 1px solid var(--line)">
+    <span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span><span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span><span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+    <div style="flex-grow: 1; text-align: center; font-size: 12.5px; color: var(--mut)">Tether</div><span style="width: 52px"></span>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 32px">
+    <div class="rise" style="width: 640px; display: flex; flex-direction: column; gap: 22px">
+      <div style="display: flex; align-items: center; gap: 14px">
+        <div style="width: 44px; height: 44px; border-radius: 11px; background: var(--ink); color: var(--bg); display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-weight: 500">ao</div>
+        <div><h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em">Open a project</h1><p style="margin: 4px 0 0; color: var(--mut)">Pick a folder on this Mac. Tether runs your crew on it and shows you its code.</p></div>
+      </div>
+
+      <div class="drop" onDragOver="{{dragOn}}" onDragLeave="{{dragOff}}" onDrop="{{dropIt}}" style="{{dropStyle}}">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="color: var(--mut)"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+        <div style="font-weight: 500">{{dropText}}</div>
+        <button class="btn" type="button" onClick="{{pick}}" style="height: 34px; padding: 0 14px; border-radius: 9px; border: none; background: var(--ink); color: var(--bg); font: inherit; font-weight: 500; cursor: pointer">Open folder… <span style="font-family: 'Geist Mono', monospace; font-size: 11px; opacity: .7">⌘O</span></button>
+      </div>
+
+      <div>
+        <div style="font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 6px">Recent</div>
+        <sc-for list="{{recent}}" as="r" hint-placeholder-count="3"><button class="row" type="button" onClick="{{r.go}}" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px; border: none; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left"><span style="width: 32px; height: 32px; flex: none; border-radius: 9px; background: var(--s3); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px">{{r.mono}}</span><span style="flex-grow: 1; min-width: 0"><span style="display: block; font-weight: 500">{{r.name}}</span><span style="display: block; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--mut)">{{r.path}}</span></span><span style="font-size: 12px; color: var(--mut)">{{r.when}}</span></button></sc-for>
+      </div>
+
+      <div style="border-top: 1px solid var(--line); padding-top: 14px">
+        <div style="font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 8px">Agent tools on this Mac</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <sc-for list="{{tools}}" as="t" hint-placeholder-count="4"><span title="{{t.title}}" style="display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2); font-family: 'Geist Mono', monospace; font-size: 12px"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{t.dot}}"></span>{{t.name}}<span style="color: var(--mut)">{{t.v}}</span></span></sc-for>
+        </div>
+        <p style="margin: 8px 0 0; font-size: 12px; color: var(--mut)">Found through your login shell's PATH. Missing one? Install it, then reopen Tether.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#ea580c","#0f766e","#18181b"]},"dark":{"editor":"boolean","default":true},"motion":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { over: false, picked: '' }; }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb', dark = this.props.dark ?? true, motion = this.props.motion ?? true, s = this.state;
+    return {
+      accent, themeCls: dark ? '' : 'light', motionCls: motion ? '' : 'm-off',
+      dropText: s.picked ? 'Opening ' + s.picked + '…' : s.over ? 'Drop to open this folder' : 'Drag a project folder here',
+      dropStyle: 'display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 30px; border-radius: 14px; border: 1.5px dashed ' + (s.over ? 'var(--accInk)' : 'var(--edge)') + '; background: ' + (s.over ? 'var(--accBg)' : 'var(--s1)'),
+      dragOn: (e) => { e.preventDefault(); this.setState({ over: true }); }, dragOff: () => this.setState({ over: false }),
+      dropIt: (e) => { e.preventDefault(); this.setState({ over: false, picked: 'the folder' }); },
+      pick: () => this.setState({ picked: '~/code/new-project' }),
+      recent: [['OA', 'orders-api', '~/code/orders-api', 'today'], ['AO', 'aorch', '~/Documents/PROJECTS/orchestrator', 'yesterday'], ['BI', 'biometrics', '~/dev/biometrics-run', '3 days ago']].map(([mono, name, path, when]) => ({ mono, name, path, when, go: () => this.setState({ picked: name }) })),
+      tools: [['claude', '2.4.1', 'var(--ok)', 'Found'], ['codex', '0.48', 'var(--ok)', 'Found'], ['gemini', '', 'var(--mut)', 'Not found on PATH'], ['rg', '14.1', 'var(--ok)', 'ripgrep, used for code search']].map(([name, v, dot, title]) => ({ name, v: v || 'not found', dot, title })),
+    };
+  }
+}
+</script>
+</body>
+</html>
