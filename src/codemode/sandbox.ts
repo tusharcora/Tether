@@ -30,6 +30,19 @@ export interface ExecResult {
 
 export type HostCall = (path: string, args: unknown[]) => Promise<unknown>;
 
+/** Node marks its type stripper experimental and says so on stderr once; that line is noise in the server's log. */
+function quietly<T>(fn: () => T): T {
+  const emit = process.emitWarning;
+  process.emitWarning = ((w: string | Error, ...rest: unknown[]) => {
+    if (!String(typeof w === 'string' ? w : w.message).includes('stripTypeScriptTypes')) (emit as (...a: unknown[]) => void).call(process, w, ...rest);
+  }) as typeof process.emitWarning;
+  try {
+    return fn();
+  } finally {
+    process.emitWarning = emit;
+  }
+}
+
 /** A function expression is called, anything else is an async body; types are stripped (Node's own stripper, never checked). */
 export function normalizeCode(code: string): string {
   const js = code.trim().replace(/^```(?:\w+)?\n([\s\S]*?)\n?```$/, '$1').trim();
@@ -39,7 +52,7 @@ export function normalizeCode(code: string): string {
   const head = '(async () => {\n';
   const tail = '\n})';
   try {
-    return stripTypeScriptTypes(head + body + tail, { mode: 'strip' }).slice(head.length, -tail.length);
+    return quietly(() => stripTypeScriptTypes(head + body + tail, { mode: 'strip' })).slice(head.length, -tail.length);
   } catch {
     return body; // not valid TypeScript either: QuickJS reports the syntax error
   }

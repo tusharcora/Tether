@@ -13,13 +13,16 @@ import { RUN_CODE_SCHEMA } from './prompt.js';
 
 export const RUN_CODE = 'run_code';
 
-/** The one tool, as tools/list shows it. */
-export const runCodeTool = (description: string) => ({ name: RUN_CODE, description, inputSchema: RUN_CODE_SCHEMA, annotations: { title: 'Run code in Tether (Code Mode)', openWorldHint: false } });
+/**
+ * The one tool, as tools/list shows it. On a read-only step it is read-only too (repo.write is refused there and calls
+ * that change the outside world need approval), which lets Claude Code's plan mode run it.
+ */
+export const runCodeTool = (description: string, readOnly = false) => ({ name: RUN_CODE, description, inputSchema: RUN_CODE_SCHEMA, annotations: { title: 'Run code in Tether (Code Mode)', readOnlyHint: readOnly, openWorldHint: false } });
 
 export async function serveCodeModeMcp(sessionFile: string): Promise<void> {
   const s = JSON.parse(readFileSync(sessionFile, 'utf8')) as SessionFile;
   const server = new Server({ name: 'tether', version: '0.1.0' }, { capabilities: { tools: {} } });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [runCodeTool(s.description)] }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [runCodeTool(s.description, s.readOnly === true)] }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (req.params.name !== RUN_CODE) return { content: [{ type: 'text', text: `unknown tool "${req.params.name}": the only tool is ${RUN_CODE}` }], isError: true };
     const code = (req.params.arguments as { code?: unknown } | undefined)?.code;

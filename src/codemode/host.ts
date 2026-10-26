@@ -18,6 +18,8 @@ export interface SessionFile {
   url: string;
   token: string;
   description: string;
+  /** The step may not change files: run_code is announced read-only (Claude Code's plan mode allows such tools). */
+  readOnly: boolean;
 }
 
 const MAX_CODE = 200_000;
@@ -75,7 +77,7 @@ export class CodeModeHost {
     const token = randomBytes(24).toString('base64url');
     const dir = mkdtempSync(join(tmpdir(), 'tether-cm-'));
     const file = join(dir, 'session.json');
-    writeFileSync(file, JSON.stringify({ url, token, description: session.description() } satisfies SessionFile), { mode: 0o600 });
+    writeFileSync(file, JSON.stringify({ url, token, description: session.description(), readOnly: !session.info.writable } satisfies SessionFile), { mode: 0o600 });
     this.sessions.set(token, session);
     return {
       launch: { ...mcpCommand(file), dir },

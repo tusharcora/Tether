@@ -56,6 +56,8 @@ describe("Tether's Code Mode MCP server", () => {
     expect(tools.map((t) => t.name)).toEqual(['run_code']);
     expect(tools[0]!.description).toMatch(/- repo: /);
     expect(tools[0]!.inputSchema).toMatchObject({ type: 'object', required: ['code'] });
+    // a read-only step's run_code is read-only too, so Claude Code's plan mode lets it run
+    expect(tools[0]!.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
     const r = (await client.callTool({ name: 'run_code', arguments: { code: 'const files = await repo.list(); const hits = await repo.search("LIMIT"); return { files, hit: hits[0].path };' } })) as { content: { text: string }[]; isError?: boolean };
     expect(r.isError).toBeFalsy();
     expect(JSON.parse(r.content[0]!.text)).toEqual({ files: ['limits.ts', 'README.md'], hit: 'limits.ts' });
