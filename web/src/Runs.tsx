@@ -35,6 +35,8 @@ export interface RunsProps {
   onStart?: () => void;
   /** The current project, for the list's "only this project" switch. */
   project?: WorkspaceRow;
+  /** Open a file a run changed in Code: the run's folder and the file's path in its repo. */
+  onOpenFile?: (repo: string, file: string) => void;
 }
 
 type PhoneView = 'graph' | 'inspector';
@@ -107,7 +109,7 @@ export function Runs(props: RunsProps) {
         }
       />
     );
-  const inspector = run ? <Inspector run={run} events={events} selected={selNode} pane={props.pane} onAct={act} /> : null;
+  const inspector = run ? <Inspector run={run} events={events} selected={selNode} pane={props.pane} onAct={act} onOpenFile={props.onOpenFile && ((f) => props.onOpenFile!(run.repo, f))} /> : null;
   const centre = run ? <RunCentre run={run} selected={selNode} onSelect={pick} onAct={act} /> : null;
 
   if (phone) {

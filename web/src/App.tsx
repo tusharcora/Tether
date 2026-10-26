@@ -12,7 +12,7 @@ import type { WorkspaceRow } from './home/workspaces';
 import { ApiTab } from './http/ApiTab';
 import { useHashRoute, usePoll, type Route, type Screen } from './hooks';
 import { OpenFolderDialog } from './projects/OpenFolderDialog';
-import { liveProjects, samePin, usePins, useProjects } from './projects/projects';
+import { liveProjects, projectOf, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
@@ -102,6 +102,12 @@ function Shell() {
         ? { kind: 'request', id: apiOpen.id, label: apiOpen.label, ...(projects.current ? { ws: projects.current.id } : {}) }
         : undefined;
   const savePinsOr = (next: Pin[]) => void savePins(next).catch(notify.fail);
+  /** A file a run changed (from its diff) opens in Code, in the project that holds the run's folder. */
+  const openFile = (repo: string, file: string) => {
+    const w = projectOf(projects.list.data ?? [], repo);
+    if (!w) return notify.info(`${repo} is not one of your projects: open it as a folder to see its files`);
+    switchProject(w.id, () => go({ tab: 'code', id: file }));
+  };
   const openPin = (x: Pin) => {
     const to: Route = x.kind === 'run' ? { tab: 'runs', id: x.id } : { tab: 'api', id: x.id };
     if (x.kind === 'request' && x.ws) switchProject(x.ws, () => goNow(to));
@@ -177,6 +183,7 @@ function Shell() {
               node={screen.node}
               pane={screen.pane}
               project={projects.current}
+              onOpenFile={openFile}
               onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
               onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
               onStart={() => go({ tab: 'home' })}
@@ -193,14 +200,14 @@ function Shell() {
               onDirtyChange={dirtyFor('api')}
             />
           ) : null}
-          {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} /> : null}
+          {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
           {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} /> : null}
           {screen.tab === 'triggers' ? <Triggers /> : null}
         </main>
         {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
       </div>
       <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} returnFocus={settingsHome} />
-      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} />
+      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog
         project={removing}

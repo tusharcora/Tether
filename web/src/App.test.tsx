@@ -14,7 +14,15 @@ vi.mock('./Builder', () => ({
     </div>
   ),
 }));
-vi.mock('./Runs', () => ({ Runs: (p: { selected?: string; node?: string }) => <div>runs screen {p.selected ?? ''} {p.node ?? ''}</div> }));
+vi.mock('./Runs', () => ({
+  Runs: (p: { selected?: string; node?: string; onOpenFile?: (repo: string, file: string) => void }) => (
+    <div>
+      runs screen {p.selected ?? ''} {p.node ?? ''}
+      <button onClick={() => p.onOpenFile?.('/code/blog/api', 'src/x.ts')}>open changed file</button>
+      <button onClick={() => p.onOpenFile?.('/elsewhere', 'src/x.ts')}>open stray file</button>
+    </div>
+  ),
+}));
 vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph screen {p.note ?? ''}</div> }));
 vi.mock('./Crew', () => ({ Crew: (p: { bot?: string }) => <div>crew screen {p.bot ?? ''}</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
@@ -340,6 +348,18 @@ describe('App shell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
       fireEvent.click(screen.getByRole('button', { name: 'Code' }));
       expect(location.hash).toBe('#/code/lib/b.ts');
+    });
+
+    it('opens a file a run changed in Code, in the project holding the run, and says so when no project holds it', async () => {
+      startAt('#/runs/r5');
+      render(<App />);
+      await screen.findByRole('button', { name: 'blog' });
+      fireEvent.click(screen.getByRole('button', { name: 'open stray file' }));
+      expect(await screen.findByText(/\/elsewhere is not one of your projects/)).toBeTruthy();
+      expect(location.hash).toBe('#/runs/r5');
+      fireEvent.click(screen.getByRole('button', { name: 'open changed file' }));
+      expect(location.hash).toBe('#/code/src/x.ts');
+      expect(await screen.findByText(/code screen blog src\/x\.ts/)).toBeTruthy();
     });
 
     it('asks before leaving Code, or switching project, with unsaved files', async () => {

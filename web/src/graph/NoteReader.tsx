@@ -1,4 +1,5 @@
 import { ago, type VaultActivityItem, type VaultNote } from '../api';
+import { Button } from '../components/arc/button/button';
 import { Loading } from '../components/Loading';
 import { cn } from '../ui/cn';
 import { InlineError } from '../ui/studio/InlineError';
@@ -27,6 +28,8 @@ export function NoteReader(p: {
   onGo: (id: string) => void;
   onHover: (id?: string) => void;
   onRetry: () => void;
+  /** A file's note (`Files/<path>.md`) can open the file in Code. */
+  onOpenFile?: (path: string) => void;
 }) {
   if (!p.path) return <p className="gv-reader-empty">Select a note to read it and see what links to it.</p>;
   if (p.missing || p.state === 'missing')
@@ -55,6 +58,11 @@ export function NoteReader(p: {
               <span>{n.path}</span>
             </p>
             <h2>{n.title}</h2>
+            {p.onOpenFile && n.type === 'file' && n.path.startsWith('Files/') ? (
+              <Button size="sm" variant="secondary" onClick={() => p.onOpenFile!(n.path.slice('Files/'.length).replace(/\.md$/, ''))}>
+                Open in Code
+              </Button>
+            ) : null}
             {n.tags.length ? (
               <div className="gv-tags">
                 {n.tags.map((tag) => (

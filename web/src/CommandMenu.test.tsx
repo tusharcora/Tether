@@ -62,6 +62,18 @@ describe('CommandMenu', () => {
     fireEvent.click(await screen.findByText('Open in Builder'));
     expect(p.onGo).toHaveBeenLastCalledWith({ tab: 'builder', id: 'full-review' });
   });
+  it('finds files of the current project by name, from two characters, and opens them in Code', async () => {
+    routeApi({ 'GET /api/runs': [], 'GET /api/pipelines': [], 'GET /api/code/search?ws=shop&q=lmt&mode=name': { hits: [{ path: 'src/http/limit.ts' }] } });
+    const p = handlers();
+    render(<CommandMenu open {...p} ws="shop" />);
+    const field = screen.getByRole('combobox');
+    fireEvent.change(field, { target: { value: 'l' } });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(screen.queryByText('Files')).toBeNull();
+    fireEvent.change(field, { target: { value: 'lmt' } });
+    fireEvent.click(await screen.findByText('src/http/limit.ts'));
+    expect(p.onGo).toHaveBeenCalledWith({ tab: 'code', id: 'src/http/limit.ts' });
+  });
   it('fetches nothing while closed', () => {
     render(<CommandMenu open={false} {...handlers()} />);
     expect(screen.queryByText('Go to Crew')).toBeNull();
