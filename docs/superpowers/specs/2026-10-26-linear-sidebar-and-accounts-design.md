@@ -1,4 +1,4 @@
-# Linear-style sidebar and Connected accounts
+# Linear-style sidebar, Connected accounts and Code Mode
 
 Date: 2026-10-26 · Branch: `feature/linear-sidebar-accounts` (from `main` @ 93f686a, after Tether PR #5)
 
@@ -52,6 +52,13 @@ chip ("GitHub" with a green dot when connected, "Connect" otherwise) that opens 
 Notion backup — the Linear app does the same); a ☰ button in the screen header docks it again. Below 900 px the bottom
 bar stays as today.
 
+**Icons** (owner, 2026-10-26): use the **Notion backup's line icons** (`.mockup`/canvas board `AppSidebarNotion`), not the
+Linear board's text glyphs — lucide-style outline icons at 16–17 px, stroke 1.7, `currentColor`, from the existing
+`lucide-react` dependency where one matches: Search `search`, Home `house`, Inbox `inbox`, Runs `play`, Code `code`,
+Builder `workflow`, Crew `users`, API client `arrow-left-right`, Graph `waypoints`, Triggers `zap`, Settings `settings`,
+Favorites rows by kind (`file`, `workflow`, `play`, `arrow-right`), compose `square-pen`. The run **status glyphs** in the
+Runs section stay custom (they encode state).
+
 **Accessibility**: `nav` landmark, `aria-current="page"`, section headers are disclosure buttons, status glyphs carry
 text labels (`aria-label="Running"`), shortcuts listed in the ⌘K help.
 
@@ -97,7 +104,46 @@ registry entry plus the feature that uses it.
   never logs `gh` out).
 - All behind the existing loopback/Host/Origin guards; tokens never serialised to clients or logs; redaction applied.
 
-## 4. Testing
+## 4. Code Mode for Tether-run agents
+
+Owner request (2026-10-26): make agents use Cloudflare's **Code Mode** instead of MCP for tool calls, for fewer tokens and
+better agent efficiency.
+
+**Where it applies.** Tether has no MCP surface. Vendor CLIs (Claude Code, Codex, OpenCode, Gemini — `claude.ts`,
+`cli.ts`) run their own tool loops with their own built-in tools; Tether cannot change those and they are already
+code-first (shell). The one loop Tether owns is **`src/adapters/openai.ts`** (Ollama, LM Studio, llama.cpp, OpenRouter),
+which today offers JSON tools (`list_files`, `read_file`, `search`, `write_file`) one call per round-trip. Code Mode is
+built there.
+
+**Design.**
+- The model gets **one tool, `run_code`**, whose description embeds a small **TypeScript declaration** of the API it may
+  call (generated from one definition, like Cloudflare's tool→TS conversion):
+  `repo.list(dir?)`, `repo.read(path, {from?, to?})`, `repo.search(pattern, {path?, max?})`, `repo.write(path, text)` (only
+  when the step is writable), `repo.diff()`, `tether.note(text)` (adds to the step output), `tether.ask(question)` (raises
+  an Inbox question — ends the step waiting, as asks do today), and `console.log` for returning results.
+- The model writes a short async JS/TS snippet (TS is stripped with a type-erasing transform; no type-checking); Tether
+  runs it in a **local QuickJS sandbox (WebAssembly, `quickjs-emscripten`)**: no filesystem, network, process, timers
+  beyond the API; **5 s CPU / 64 MB / 200 API calls per snippet**; API calls are bridged to the host, which applies the same
+  `resolveInWorkspace` path gate as the Code screen, the secrets rule (no `.env*`/keys reads) and the step's write
+  permission. Code runs on this Mac only — never on Cloudflare (repos are private; the app is local).
+- The snippet's return value + logs (capped at 16 KB, truncated with a note) are the tool result. Errors come back as a
+  short stack the model can fix on the next turn.
+- A per-workflow/bot option `toolStyle: 'code' | 'json'` (default `code`; `json` keeps today's tools as a fallback for
+  models that can't write code well), shown in the Builder inspector and the Crew "Runs on" section.
+- Metrics: the run timeline records tool round-trips and tokens per step, so the saving is visible (compare `json` vs
+  `code` on the same task).
+
+**Later (not now)**: offer Tether's own abilities (Inbox ask, vault notes, handoffs) to vendor CLIs through a single
+code-mode tool — that needs an MCP server and is a separate spec.
+
+## 5. Testing (Code Mode)
+- **Node**: TS-declaration generation from the API definition; sandbox limits (CPU timeout, memory, call cap) and escapes
+  (no `require`, `process`, `fetch`, filesystem); path gate and secrets refusals via the bridge; write refused on a
+  read-only step; `tether.ask` ends the step as a question; output truncation; `json` fallback unchanged; an end-to-end
+  adapter test with a fake OpenAI-compatible server that answers with a `run_code` call and checks one round-trip
+  replaces several.
+
+## 6. Testing
 - **Web**: sidebar layout and order (top items, Workspace, Runs glyphs by status, Favorites, Settings at bottom), G-key
   navigation (and not while typing), Inbox route and actions, collapse + peek + dock, fold state, account chip states,
   Accounts panel (CLI adopt, device-flow code display + polling states, disconnect).
@@ -107,6 +153,6 @@ registry entry plus the feature that uses it.
   loopback callback validation.
 - **Manual**: Chrome check of the sidebar in both themes on real data; on this Mac, adopt the existing `gh` login.
 
-## 5. Out of scope
+## 7. Out of scope
 Hosted/multi-user accounts, a login screen, Clerk; Google/GitLab/Linear connections (registry only); per-project
-accounts; GitHub App installation flow.
+accounts; GitHub App installation flow; changing vendor CLIs' tool use; an MCP server; running code on Cloudflare.
