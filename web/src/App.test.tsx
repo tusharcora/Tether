@@ -299,6 +299,17 @@ describe('App shell', () => {
     expect(() => cssRule('styles.css', '.app')).toThrow();
   });
 
+  it('shows the projects skeleton, not "No projects yet", until /api/workspaces first answers', async () => {
+    let answer: (v: unknown) => void = () => {};
+    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/pins': { pins: [] }, 'GET /api/workspaces': new Promise((r) => (answer = r)) });
+    render(<App />);
+    expect(await screen.findByRole('status', { name: 'Loading projects' })).toBeTruthy();
+    expect(screen.queryByText(/No projects yet/)).toBeNull();
+    await act(async () => answer([{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }]));
+    expect(await screen.findByRole('button', { name: 'shop' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Loading projects' })).toBeNull();
+  });
+
   it('opens Settings with ⌘, and Open folder… with ⌘O', async () => {
     render(<App />);
     fireEvent.keyDown(window, { key: ',', metaKey: true });

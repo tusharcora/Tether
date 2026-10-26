@@ -195,7 +195,17 @@ function Shell() {
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
-              projects={{ list, current: projects.current?.id, live: liveProjects(list, runs.data ?? []), onSelect: (id) => switchProject(id), onAdd: pickFolder, onRemove: setRemoving, onReveal: bridge() && ((w: WorkspaceRow) => bridge()!.revealInFinder(w.path)) }}
+              projects={{
+                list,
+                current: projects.current?.id,
+                live: liveProjects(list, runs.data ?? []),
+                loading: !projects.list.data && !projects.list.error,
+                error: !projects.list.data && projects.list.error ? { message: "Couldn't load projects", onRetry: () => void projects.list.refresh() } : undefined,
+                onSelect: (id) => switchProject(id),
+                onAdd: pickFolder,
+                onRemove: setRemoving,
+                onReveal: bridge() && ((w: WorkspaceRow) => bridge()!.revealInFinder(w.path)),
+              }}
               pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
             />
           )}

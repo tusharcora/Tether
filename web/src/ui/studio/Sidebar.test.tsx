@@ -4,17 +4,18 @@ import { cssRule } from '../../test/css';
 import { Sidebar, type SidebarProps } from './Sidebar';
 
 const w = (id: string) => ({ id, name: id, path: `/code/${id}`, isDefault: false, exists: true, repos: [] });
+const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
+  active: 'home',
+  onGo: vi.fn(),
+  onSearch: vi.fn(),
+  onSettings: vi.fn(),
+  counts: { needs: 2, live: 1 },
+  projects: { list: [w('shop'), w('blog')], current: 'shop', live: new Set(['blog']), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() },
+  pins: { list: [{ kind: 'run', id: 'r1', label: 'Add rate limiting' }], canPin: true, onPin: vi.fn(), onOpen: vi.fn(), onUnpin: vi.fn() },
+  ...o,
+});
 const setup = (o: Partial<SidebarProps> = {}) => {
-  const p: SidebarProps = {
-    active: 'home',
-    onGo: vi.fn(),
-    onSearch: vi.fn(),
-    onSettings: vi.fn(),
-    counts: { needs: 2, live: 1 },
-    projects: { list: [w('shop'), w('blog')], current: 'shop', live: new Set(['blog']), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() },
-    pins: { list: [{ kind: 'run', id: 'r1', label: 'Add rate limiting' }], canPin: true, onPin: vi.fn(), onOpen: vi.fn(), onUnpin: vi.fn() },
-    ...o,
-  };
+  const p = setupProps(o);
   render(<Sidebar {...p} />);
   return p;
 };
@@ -162,6 +163,24 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pinned options' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin Add rate limiting' }));
     expect(p.pins.onUnpin).toHaveBeenCalledWith(p.pins.list[0]);
+  });
+
+  it('shows the loading skeleton, not "No projects yet", until the project list answers, and a failed first load with Retry', () => {
+    const base = { list: [], live: new Set<string>(), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() };
+    const { rerender } = render(<Sidebar {...setupProps()} projects={{ ...base, loading: true }} />);
+    const projects = screen.getByRole('region', { name: 'Projects' });
+    expect(within(projects).getByRole('status', { name: 'Loading projects' })).toBeTruthy();
+    expect(screen.queryByText(/No projects yet/)).toBeNull();
+    const onRetry = vi.fn();
+    rerender(<Sidebar {...setupProps()} projects={{ ...base, error: { message: "Couldn't load projects", onRetry } }} />);
+    expect(screen.queryByText(/No projects yet/)).toBeNull();
+    fireEvent.click(within(screen.getByRole('region', { name: 'Projects' })).getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalled();
+    rerender(<Sidebar {...setupProps()} projects={base} />);
+    expect(screen.getByText(/No projects yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    rerender(<Sidebar {...setupProps()} projects={{ ...base, loading: true }} />);
+    expect(screen.queryByRole('status', { name: 'Loading projects' })).toBeNull();
   });
 
   it('says how to fill an empty section, and pinning waits for something to pin', () => {

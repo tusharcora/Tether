@@ -1,6 +1,8 @@
 import { ChevronRight, Ellipsis, Plus, type LucideIcon } from 'lucide-react';
 import { useId, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react';
+import { Loading } from '../../components/Loading';
 import { cn } from '../cn';
+import { InlineError } from './InlineError';
 import './shell.css';
 import { useMenu } from './useMenu';
 
@@ -83,9 +85,22 @@ function SideMenu(p: { label: string; items: MenuItem[] }) {
 
 /**
  * A collapsible sidebar section (Projects, Pinned): a disclosure button with a chevron, + and ⋯. Collapsed, the header
- * goes and the rows stay as icons whether or not the section is folded.
+ * goes and the rows stay as icons whether or not the section is folded. Until its list first answers it shows the
+ * loading skeleton (nothing when collapsed), and a failed first load says so with a retry, never "nothing here".
  */
-export function SideSection(p: { title: string; open: boolean; addLabel: string; addDisabled?: boolean; onAdd: () => void; moreLabel: string; menu: MenuItem[]; empty: string; children: ReactNode[] }) {
+export function SideSection(p: {
+  title: string;
+  open: boolean;
+  addLabel: string;
+  addDisabled?: boolean;
+  onAdd: () => void;
+  moreLabel: string;
+  menu: MenuItem[];
+  empty: string;
+  loading?: boolean;
+  error?: { message: string; onRetry: () => void };
+  children: ReactNode[];
+}) {
   const [expanded, setExpanded] = useState(true);
   const id = useId();
   const show = expanded || !p.open;
@@ -105,7 +120,15 @@ export function SideSection(p: { title: string; open: boolean; addLabel: string;
       ) : null}
       {show ? (
         <div className="sl-side-rows">
-          {p.children.length ? p.children : p.open ? <p className="sl-side-empty">{p.empty}</p> : null}
+          {p.children.length ? (
+            p.children
+          ) : !p.open ? null : p.loading ? (
+            <Loading loading lines={2} label={`Loading ${p.title.toLowerCase()}`} className="sl-side-empty" />
+          ) : p.error ? (
+            <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />
+          ) : (
+            <p className="sl-side-empty">{p.empty}</p>
+          )}
         </div>
       ) : null}
     </section>

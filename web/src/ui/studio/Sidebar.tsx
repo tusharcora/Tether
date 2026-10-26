@@ -54,7 +54,20 @@ export interface SidebarProps {
   onSettings: () => void;
   /** Home: items that need you (amber). Runs: live runs (blue). */
   counts: { needs: number; live: number };
-  projects: { list: WorkspaceRow[]; current?: string; live: ReadonlySet<string>; onSelect: (id: string) => void; onAdd: () => void; onRemove: (w: WorkspaceRow) => void; /** Tether.app: show the folder in the Finder. */ onReveal?: (w: WorkspaceRow) => void };
+  projects: {
+    list: WorkspaceRow[];
+    current?: string;
+    live: ReadonlySet<string>;
+    /** The list has not answered yet. */
+    loading?: boolean;
+    /** The first load failed (nothing to show). */
+    error?: { message: string; onRetry: () => void };
+    onSelect: (id: string) => void;
+    onAdd: () => void;
+    onRemove: (w: WorkspaceRow) => void;
+    /** Tether.app: show the folder in the Finder. */
+    onReveal?: (w: WorkspaceRow) => void;
+  };
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void };
 }
 
@@ -159,6 +172,8 @@ export function Sidebar(p: SidebarProps) {
           moreLabel="Project options"
           menu={current ? [...(p.projects.onReveal ? [{ label: `Reveal ${current.name} in Finder`, onPick: () => p.projects.onReveal!(current) }] : []), { label: `Remove ${current.name} from Tether`, onPick: () => p.projects.onRemove(current) }] : [{ label: 'No project open', onPick: () => {}, disabled: true }]}
           empty="No projects yet. Open a folder with +."
+          loading={p.projects.loading}
+          error={p.projects.error}
         >
           {p.projects.list.map((w) => (
             <SideItem key={w.id} small label={w.name} Icon={Folder} open={open} current={w.id === p.projects.current} live={p.projects.live.has(w.id)} onClick={() => p.projects.onSelect(w.id)} tip={tipFor(`project:${w.id}`, w.name)} />
