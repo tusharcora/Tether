@@ -14,25 +14,23 @@ export const initialsOf = (name: string): string =>
 
 /**
  * The sidebar's last row: an initials avatar, the person's name, and the primary account's chip — "GitHub" with a green dot
- * when connected, "Connect" otherwise. It opens Settings → Accounts. On the collapsed rail, the avatar alone (with a green
- * dot when connected) and the rest in its tooltip.
+ * when connected, "Connect" otherwise. It opens Settings → Accounts. On the collapsed rail the avatar stays in its 40 px
+ * cell (a green dot on it when connected), the rest fades and its tooltip says it.
  */
 export function AccountRow(p: { name: string; /** The connected provider's name (GitHub), if any. */ provider?: string; onOpen: () => void; rail?: TipProps }) {
   return (
     <button type="button" className="sl-side-account" aria-label={`${p.name}: ${p.provider ? `${p.provider} connected` : 'no account connected'}. Open Accounts`} onClick={p.onOpen} {...p.rail}>
-      <span className="sl-side-avatar" aria-hidden="true">
-        {initialsOf(p.name)}
-        {p.rail && p.provider ? <span className="sl-side-chip-dot on-avatar" /> : null}
+      <span className="sl-side-icon" aria-hidden="true">
+        <span className="sl-side-avatar">
+          {initialsOf(p.name)}
+          {p.provider ? <span className="sl-side-chip-dot on-avatar" /> : null}
+        </span>
       </span>
-      {p.rail ? null : (
-        <>
-          <span className="sl-side-label">{p.name}</span>
-          <span className="sl-side-chip">
-            {p.provider ? <span className="sl-side-chip-dot" aria-hidden="true" /> : null}
-            {p.provider ?? 'Connect'}
-          </span>
-        </>
-      )}
+      <span className="sl-side-label">{p.name}</span>
+      <span className="sl-side-chip">
+        {p.provider ? <span className="sl-side-chip-dot" aria-hidden="true" /> : null}
+        {p.provider ?? 'Connect'}
+      </span>
     </button>
   );
 }

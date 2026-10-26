@@ -18,9 +18,10 @@ export interface TipProps {
 }
 
 /**
- * One dense sidebar row (28 px, 13 px text): a line icon (or a glyph), the label, and on the right a count, a meta or a
- * shortcut hint that shows on hover. The current page is a filled row with aria-current="page". On the collapsed rail only
- * the icon shows: the label moves to the tooltip (the button keeps it as its name) and a count becomes a small dot.
+ * One dense sidebar row (28 px, 13 px text): a line icon (or a glyph) in a fixed 40 px cell, the label, and on the right a
+ * count, a meta or a shortcut hint that shows on hover. The current page is a filled row with aria-current="page". The
+ * markup is the same expanded and collapsed (spec §6): on the rail the label, count and hint fade and clip in place (the
+ * button keeps the label as its name and the tooltip shows it), a count's dot fades in, and the row's extras go inert.
  */
 export function SideRow(p: {
   label: string;
@@ -52,14 +53,18 @@ export function SideRow(p: {
       <button type="button" className="sl-side-item" aria-label={p.name ?? p.label} aria-current={p.page && p.current ? 'page' : undefined} onClick={p.onClick} {...p.rail}>
         <span className="sl-side-icon" aria-hidden={p.lead ? undefined : true}>
           {p.lead ?? (p.Icon ? <p.Icon size={16} strokeWidth={1.7} aria-hidden="true" /> : null)}
+          {count ? <span className={cn('sl-side-dot', count.tone)} aria-hidden="true" /> : null}
         </span>
-        {p.rail ? null : <span className="sl-side-label">{p.label}</span>}
-        {!p.rail && p.meta ? <span className="sl-side-meta">{p.meta}</span> : null}
-        {!p.rail && count ? <span className={cn('sl-side-count', count.tone)}>{count.n}</span> : null}
-        {!p.rail && p.hint ? <span className="sl-side-hint">{p.hint}</span> : null}
-        {p.rail && count ? <span className={cn('sl-side-dot', count.tone)} aria-hidden="true" /> : null}
+        <span className="sl-side-label">{p.label}</span>
+        {p.meta ? <span className="sl-side-meta">{p.meta}</span> : null}
+        {count ? <span className={cn('sl-side-count', count.tone)}>{count.n}</span> : null}
+        {p.hint ? <span className="sl-side-hint">{p.hint}</span> : null}
       </button>
-      {p.rail ? null : p.extra}
+      {p.extra ? (
+        <span className="sl-side-row-extra" inert={!!p.rail}>
+          {p.extra}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -103,11 +108,13 @@ function storedFolded(id: string): boolean {
 /**
  * A sidebar section (Workspace, Runs, Favorites): its header is a disclosure button that folds the rows, remembered on
  * this device. Hover shows the header's actions (＋, View all) like Linear. Until its list first answers it shows the
- * loading skeleton; a failed first load says so with a retry, never "nothing here".
+ * loading skeleton; a failed first load says so with a retry, never "nothing here". On the collapsed rail the header keeps
+ * its height and becomes a hairline (its controls go inert), so the rows under it stay where they were.
  */
 export function SideSection(p: {
   id: string;
   title: string;
+  collapsed?: boolean;
   /** The disclosure's accessible name when the title alone would repeat a nav row's (Runs → "Recent runs"). */
   label?: string;
   count?: number;
@@ -129,7 +136,7 @@ export function SideSection(p: {
   };
   return (
     <section className="sl-side-section" aria-labelledby={headId}>
-      <div className="sl-side-section-head">
+      <div className="sl-side-section-head" inert={!!p.collapsed}>
         <button type="button" id={headId} className="sl-side-disclosure" aria-label={p.label} aria-expanded={!folded} onClick={fold}>
           <span className="sl-side-section-title">{p.title}</span>
           <ChevronRight className="sl-side-chevron" size={12} strokeWidth={2} aria-hidden="true" />

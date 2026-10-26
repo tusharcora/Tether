@@ -1,28 +1,39 @@
 /* Sidebar (900 px and wider), Linear-style: 244 px, dense 28 px rows at 13 px. ⌘\ or the panel button collapses it to a
-   56 px icon rail (width animated; instant under reduced motion, see studio.css) */
-.sl-side { position: relative; display: flex; flex-direction: column; width: 244px; height: 100%; padding: 10px 8px 8px; box-sizing: border-box; background: var(--side); border-right: 1px solid var(--line); font-size: 13px; transition: width 220ms var(--ease), padding 220ms var(--ease); }
-.sl-side.collapsed { width: 56px; padding: 10px 6px 8px; }
-.sl-side.collapsed .sl-side-head { flex-direction: column; gap: 6px; padding: 2px 0 8px; }
-.sl-side.collapsed .sl-switch-anchor { flex: none; }
-.sl-switch.compact { justify-content: center; width: 36px; height: 32px; padding: 0; }
-.sl-side-toggle { width: 28px; height: 28px; flex: none; opacity: 0; transition: opacity var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
-.sl-side-head:hover .sl-side-toggle, .sl-side-toggle:focus-visible, .sl-side.collapsed .sl-side-toggle { opacity: 1; }
-.sl-side.collapsed .sl-side-item { justify-content: center; padding: 0; }
-.sl-side.collapsed .sl-side-account { justify-content: center; padding: 0; }
-.sl-side-dot { position: absolute; top: 5px; right: 10px; width: 6px; height: 6px; border-radius: 50%; }
+   56 px icon rail, seamlessly (spec §6): the markup is the same in both states and every row keeps an 8 px gutter and a
+   40 px icon cell, so an icon's centre is 8 + 20 = 28 px (half the rail) collapsed or expanded. Only the width animates
+   (240 ms; instant under reduced motion, see studio.css); labels, counts and hints fade and clip in place. */
+.sl-side { position: relative; display: flex; flex-direction: column; width: 244px; height: 100%; padding: 10px 0 8px; box-sizing: border-box; overflow: hidden; background: var(--side); border-right: 1px solid var(--line); font-size: 13px; transition: width 240ms var(--ease); }
+.sl-side.collapsed { width: 56px; }
+/* what fades on the rail (and back), in place: nothing it holds reflows the icons */
+.sl-side-label, .sl-side-meta, .sl-side-count, .sl-side-chip, .sl-switch-name, .sl-switch-chev, .sl-side-head-actions, .sl-side-row-extra, .sl-side-section-head > *, .sl-side-empty { transition: opacity 160ms var(--ease); }
+.sl-side.collapsed :is(.sl-side-label, .sl-side-meta, .sl-side-count, .sl-side-hint, .sl-side-chip, .sl-switch-name, .sl-switch-chev, .sl-side-head-actions, .sl-side-row-extra, .sl-side-section-head > *, .sl-side-empty) { opacity: 0; }
+.sl-side-dot { position: absolute; top: 4px; right: 9px; width: 6px; height: 6px; border-radius: 50%; opacity: 0; transition: opacity 160ms var(--ease); }
+.sl-side.collapsed .sl-side-dot { opacity: 1; }
 .sl-side-dot.needs { background: var(--warn); }
 .sl-side-dot.live { background: var(--acc); }
-.sl-side-tip { position: absolute; left: 58px; z-index: 30; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; transform: translateY(-50%); box-shadow: 0 8px 20px rgba(0, 0, 0, .18); animation: sl-tip-in var(--t-fast) var(--ease) both; }
+/* fixed to the viewport, level with the row's centre (the aside clips its own box) */
+.sl-side-tip { position: fixed; z-index: 30; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; transform: translateY(-50%); box-shadow: 0 8px 20px rgba(0, 0, 0, .18); animation: sl-tip-in var(--t-fast) var(--ease) both; }
 @keyframes sl-tip-in { from { opacity: 0; transform: translate(-4px, -50%); } to { opacity: 1; transform: translateY(-50%); } }
-.sl-side-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 8px; }
+/* the head keeps its expanded width and the aside clips it: the glyph never moves, compose and collapse slide under the edge */
+.sl-side-head { display: flex; flex: none; align-items: center; gap: 6px; width: 244px; padding: 2px 8px 8px; box-sizing: border-box; }
+.sl-side-head-actions { display: flex; flex: none; align-items: center; gap: 6px; }
+.sl-side-toggle { width: 28px; height: 28px; flex: none; opacity: 0; transition: opacity var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.sl-side-head:hover .sl-side-toggle, .sl-side-toggle:focus-visible { opacity: 1; }
 .sl-switch-anchor { position: relative; flex: 1; min-width: 0; }
-.sl-switch { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.sl-switch { display: flex; align-items: center; gap: 0; width: 100%; height: 30px; padding: 0 6px 0 0; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
 .sl-switch:hover { background: var(--side-hover); }
-.sl-switch > svg { flex: none; color: var(--mut); }
+.sl-side.collapsed .sl-switch:hover { background: none; }
+.sl-switch-glyph { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 30px; border-radius: 6px; color: var(--mut); }
+.sl-switch-expand { position: absolute; opacity: 0; }
+/* collapsed, the glyph is the expand control: hover or focus swaps it for the expand icon in the same cell */
+.sl-side.collapsed .sl-switch:is(:hover, :focus-visible) .sl-switch-glyph { background: var(--side-hover); color: var(--ink); }
+.sl-side.collapsed .sl-switch:is(:hover, :focus-visible) .sl-glyph { opacity: 0; }
+.sl-side.collapsed .sl-switch:is(:hover, :focus-visible) .sl-switch-expand { opacity: 1; }
+.sl-switch-chev { flex: none; margin-left: 6px; color: var(--mut); }
 .sl-switch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* projects in the switcher menu: small neutral initials (blue is for live state only) */
 .sl-switch-tile { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: var(--s3); color: var(--ink); font-size: 9px; font-weight: 700; letter-spacing: .02em; }
-.sl-switch-menu { top: calc(100% + 4px); left: 0; min-width: 236px; font-size: 13px; }
+.sl-switch-menu { top: calc(100% + 4px); left: 0; min-width: 228px; font-size: 13px; }
 .sl-side-compose { display: grid; flex: none; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line2); border-radius: 7px; background: var(--s1); color: var(--ink); cursor: pointer; transition: border-color var(--t-fast) var(--ease); }
 .sl-side-compose:hover { border-color: var(--edge); }
 .sl-side-icon-btn { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--mut); cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
@@ -30,49 +41,54 @@
 .sl-side-icon-btn:disabled { opacity: .45; cursor: default; }
 .sl-side-text-btn { height: 20px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--mut); font: inherit; font-size: 11.5px; cursor: pointer; }
 .sl-side-text-btn:hover { background: var(--side-hover); color: var(--ink); }
-.sl-side-scroll { flex: 1; min-height: 0; margin: 0 -4px; padding: 0 4px; overflow: hidden auto; }
+.sl-side-scroll { flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: thin; }
 .sl-side-nav, .sl-side-rows { display: flex; flex-direction: column; gap: 1px; }
-.sl-side-row { position: relative; display: flex; align-items: center; border-radius: 6px; transition: background-color var(--t-fast) var(--ease); }
+.sl-side-row { position: relative; display: flex; align-items: center; margin: 0 8px; border-radius: 6px; transition: background-color var(--t-fast) var(--ease); }
 .sl-side-row:hover { background: var(--side-hover); }
 .sl-side-row.current { background: var(--side-card); box-shadow: var(--card-shadow); }
 .sl-side-row.dragging { opacity: .5; }
-.sl-side-item { position: relative; display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sl-side-item { position: relative; display: flex; flex: 1; align-items: center; gap: 0; min-width: 0; height: 28px; padding: 0 8px 0 0; overflow: hidden; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; white-space: nowrap; cursor: pointer; }
 .sl-side-row:hover .sl-side-item, .sl-side-row.current .sl-side-item { color: var(--ink); }
 .sl-side-row.current .sl-side-item { font-weight: 500; }
-.sl-side-icon { display: flex; flex: none; justify-content: center; width: 18px; }
+.sl-side-icon { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 40px; height: 100%; }
 .sl-side-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sl-side-meta { flex: none; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); }
+.sl-side-meta { flex: none; margin-left: 6px; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); }
 .sl-side-meta .sl-kbd, .sl-side-hint .sl-kbd { font-size: 10.5px; }
-.sl-side-hint { flex: none; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
-.sl-side-row:hover .sl-side-hint, .sl-side-item:focus-visible .sl-side-hint { opacity: 1; }
-.sl-side-count { display: inline-flex; flex: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; font-size: 11px; font-weight: 600; }
+.sl-side-hint { flex: none; margin-left: 6px; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.sl-side:not(.collapsed) .sl-side-row:hover .sl-side-hint, .sl-side:not(.collapsed) .sl-side-item:focus-visible .sl-side-hint { opacity: 1; }
+.sl-side-count { display: inline-flex; flex: none; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; font-size: 11px; font-weight: 600; }
 .sl-side-count.needs { background: var(--warnBg); color: var(--warn); }
 .sl-side-count.live { background: var(--accBg); color: var(--accInk); }
 .sl-side-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--acc); animation: sl-pulse 1.4s var(--ease) infinite; }
 .sl-run-glyph { flex: none; }
+.sl-side-row-extra { display: flex; flex: none; }
 .sl-side-row-more { opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 .sl-side-row:hover .sl-side-row-more, .sl-side-row-more:focus-within { opacity: 1; }
 .sl-side-row.pin { cursor: grab; }
-.sl-side-rule { height: 1px; margin: 6px 4px; background: var(--line); }
+.sl-side-rule { height: 1px; margin: 6px 14px; background: var(--line); }
 .sl-side-section { margin-top: 14px; }
-.sl-side-section-head { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 8px; color: var(--mut); font-size: 11.5px; font-weight: 500; }
-.sl-side-disclosure { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; height: 22px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+/* a section header keeps its 24 px on the rail and becomes a hairline, so the rows under it stay put */
+.sl-side-section-head { position: relative; display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 12px 0 16px; color: var(--mut); font-size: 11.5px; font-weight: 500; }
+.sl-side-section-head::after { content: ''; position: absolute; top: 50%; left: 14px; right: 14px; height: 1px; background: var(--line); opacity: 0; transition: opacity 160ms var(--ease); pointer-events: none; }
+.sl-side.collapsed .sl-side-section-head::after { opacity: 1; }
+.sl-side-disclosure { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; height: 22px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
 .sl-side-disclosure:hover { color: var(--ink); }
 .sl-side-chevron { opacity: 0; transform: rotate(90deg); transition: transform var(--t-med) var(--ease), opacity var(--t-fast) var(--ease); }
 .sl-side-section-head:hover .sl-side-chevron, .sl-side-disclosure:focus-visible .sl-side-chevron { opacity: 1; }
 .sl-side-disclosure[aria-expanded="false"] .sl-side-chevron { opacity: 1; transform: none; }
 .sl-side-section-actions { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
-.sl-side-section-head:hover .sl-side-section-actions, .sl-side-section-actions:focus-within { opacity: 1; }
+.sl-side:not(.collapsed) .sl-side-section-head:hover .sl-side-section-actions, .sl-side:not(.collapsed) .sl-side-section-actions:focus-within { opacity: 1; }
 .sl-side-section-count { min-width: 14px; text-align: right; }
-.sl-side-empty { margin: 2px 8px 6px; color: var(--mut); font-size: 12px; }
+.sl-side-empty { margin: 2px 16px 6px; color: var(--mut); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sl-side-menu-anchor { position: relative; display: flex; }
 .sl-side-foot { padding-top: 6px; }
-.sl-side-account { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.sl-side-account { display: flex; align-items: center; gap: 0; width: calc(100% - 16px); height: 34px; margin: 0 8px; padding: 0 8px 0 0; overflow: hidden; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; white-space: nowrap; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
 .sl-side-account:hover { background: var(--side-hover); }
 .sl-side-avatar { position: relative; display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; }
-.sl-side-chip { display: inline-flex; flex: none; align-items: center; gap: 4px; font-size: 11px; color: var(--mut); }
+.sl-side-chip { display: inline-flex; flex: none; align-items: center; gap: 4px; margin-left: 6px; font-size: 11px; color: var(--mut); }
 .sl-side-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-.sl-side-chip-dot.on-avatar { position: absolute; right: -2px; bottom: -2px; border: 2px solid var(--side); }
+.sl-side-chip-dot.on-avatar { position: absolute; right: -2px; bottom: -2px; border: 2px solid var(--side); opacity: 0; transition: opacity 160ms var(--ease); }
+.sl-side.collapsed .sl-side-chip-dot.on-avatar { opacity: 1; }
 
 /* Tether.app (no title bar): the traffic lights sit over the sidebar's top-left, so its logo row starts below them; that strip,
    the screen headers and the top of the welcome screen move the window (their controls stay clickable) */

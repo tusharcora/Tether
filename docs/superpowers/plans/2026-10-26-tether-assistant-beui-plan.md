@@ -45,7 +45,8 @@ class named like a bare utility, so Phase 2 can add screen folders safely.
 - `tailwindcss` 4.3.x + `@tailwindcss/vite` 4.3.x: beui's components are written in Tailwind v4 classes; the owner picked
   "Tailwind v4 alongside Studio tokens" (spec §2). Only the classes in use are emitted.
 - `clsx` + `tailwind-merge`: beui's `cn()`; `tailwind-merge` resolves conflicting classes when a caller overrides a
-  component's defaults (`className`). Our old `ui/cn.ts` keeps its API and now wraps them.
+  component's defaults (`className`). Our old `ui/cn.ts` stays as it is (our class names need no merging, and twMerge
+  could drop one of ours it mistakes for a utility); beui's `lib/utils.ts` is the clsx + twMerge `cn`.
 - No Shiki (above).
 
 ## Global Constraints
