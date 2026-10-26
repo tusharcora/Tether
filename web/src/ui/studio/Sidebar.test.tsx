@@ -84,9 +84,9 @@ describe('Sidebar', () => {
 
   it('orders runs live, waiting, queued, then the last five finished (newest first), without probes', () => {
     const fin = Array.from({ length: 7 }, (_, i) => run(`f${i}`, `done ${i}`, { finishedAt: 10 + i, status: i % 2 ? 'error' : 'done' }));
-    const rows = sideRuns([...fin, run('q', 'queued', { status: 'paused' }), run('n', 'waits', { planReady: true, status: 'running', live: true }), run('l', 'live', { live: true, status: 'running' }), run('p', 'probe', { probe: true, live: true })]);
-    expect(rows.map((r) => r.run.id)).toEqual(['l', 'n', 'q', 'f6', 'f5', 'f4', 'f3', 'f2']);
-    expect(rows.map((r) => r.state)).toEqual(['running', 'needs', 'idle', 'done', 'failed', 'done', 'failed', 'done']);
+    const rows = sideRuns([...fin, run('q', 'queued', { status: 'paused' }), run('a', 'approval', { status: 'paused', steps: [{ id: 'ok', status: 'awaiting', bot: 'approval' }] }), run('n', 'waits', { planReady: true, status: 'running', live: true }), run('l', 'live', { live: true, status: 'running' }), run('p', 'probe', { probe: true, live: true })]);
+    expect(rows.map((r) => r.run.id)).toEqual(['l', 'a', 'n', 'q', 'f6', 'f5', 'f4', 'f3', 'f2']);
+    expect(rows.map((r) => r.state)).toEqual(['running', 'needs', 'needs', 'idle', 'done', 'failed', 'done', 'failed', 'done']);
   });
 
   it('opens and pins favorites, unpins and moves one with its ⋯ menu, and reorders by drag', () => {

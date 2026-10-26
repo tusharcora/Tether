@@ -5,9 +5,10 @@ export type RunState = 'running' | 'needs' | 'done' | 'failed' | 'idle';
 export const RUN_STATE_LABEL: Record<RunState, string> = { running: 'Running', needs: 'Needs you', done: 'Done', failed: 'Failed', idle: 'Queued or paused' };
 
 /** Where a run stands for its glyph: live, waiting on the person (a question, a plan, an approval), done, failed, or neither. */
-export function runState(r: Pick<RunRow, 'live' | 'status' | 'pending' | 'planReady'>): RunState {
-  if (r.live && !(r.pending > 0) && !r.planReady) return 'running';
-  if (r.pending > 0 || r.planReady) return 'needs';
+export function runState(r: Pick<RunRow, 'live' | 'status' | 'pending' | 'planReady'> & { steps?: Pick<RunRow['steps'][number], 'status'>[] }): RunState {
+  const waits = r.pending > 0 || r.planReady || !!r.steps?.some((s) => s.status === 'awaiting');
+  if (r.live && !waits) return 'running';
+  if (waits) return 'needs';
   if (r.status === 'done') return 'done';
   if (r.status === 'error') return 'failed';
   return 'idle';

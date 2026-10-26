@@ -39,3 +39,5 @@
 .crew-face.idle .face { opacity: .45; }
 .crew-name { max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--mut); }
 :root:not([data-theme="dark"]) .crew-face .face { border-radius: 30%; box-shadow: 0 0 0 1px var(--line2); }
+/* Needs you (Home and Inbox): the lead column holds a kind chip ("planning failed" is the widest), so rows line up without overlap */
+.s-needs { --row-lead: 112px; }

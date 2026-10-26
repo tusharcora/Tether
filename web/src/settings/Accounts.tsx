@@ -42,7 +42,7 @@ function ComingProvider({ p }: { p: ProviderView }) {
         <b>{p.name}</b>
         <StatusChip tone="neutral" label="coming" />
       </div>
-      <p className="sl-meta">{p.note ?? 'Not available yet.'}</p>
+      <p className="acc-note">{p.note ?? 'Not available yet.'}</p>
     </>
   );
 }
@@ -108,7 +108,7 @@ function GithubAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Pro
               ))}
             </p>
           ) : null}
-          <p className="sl-meta">PR triggers, cloning and comments use this account{a.via === 'device' ? ' (its token stays in the Keychain)' : ''}.</p>
+          <p className="acc-note">PR triggers, cloning and comments use this account{a.via === 'device' ? ' (its token stays in the Keychain)' : ''}.</p>
           <div className="acc-actions">
             <ConfirmButton label="Disconnect" prompt={a.via === 'gh' ? 'Stop using the GitHub CLI login? gh itself stays signed in.' : 'Forget this sign-in and remove its token from the Keychain?'} confirmLabel="Disconnect" onConfirm={disconnect} disabled={busy} />
           </div>
@@ -125,7 +125,7 @@ function GithubAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Pro
               </Button>
             </div>
           ) : (
-            <p className="sl-meta">
+            <p className="acc-note">
               The GitHub CLI is not signed in on this Mac (<code>gh auth login</code> would do it).
             </p>
           )}
@@ -150,7 +150,7 @@ function GithubAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Pro
             </div>
           ) : p.device ? (
             <div className="acc-option acc-setup">
-              <p className="sl-meta">{p.device.setup}</p>
+              <p className="acc-note">{p.device.setup}</p>
               <div className="acc-client">
                 <Input label="OAuth App client id" value={clientId} spellCheck={false} onChange={(e) => setClientId(e.target.value)} />
                 <Button variant="secondary" size="sm" disabled={busy || !clientId.trim()} onClick={() => void saveClient()}>

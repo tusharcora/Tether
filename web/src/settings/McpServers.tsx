@@ -87,10 +87,10 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
               <li key={s.name} className="acc-row">
                 <div className="acc-head">
                   <b>mcp.{s.name}</b>
-                  <span className="sl-meta">{s.kind === 'http' ? 'HTTP' : 'stdio'}</span>
+                  <span className="acc-note">{s.kind === 'http' ? 'HTTP' : 'stdio'}</span>
                 </div>
                 <code className="mcp-target">{s.target}</code>
-                {s.envKeys.length || s.headerKeys.length ? <p className="sl-meta">{[...s.envKeys, ...s.headerKeys].join(', ')} set (values hidden)</p> : null}
+                {s.envKeys.length || s.headerKeys.length ? <p className="acc-note">{[...s.envKeys, ...s.headerKeys].join(', ')} set (values hidden)</p> : null}
                 <div className="acc-actions">
                   <ConfirmButton label="Remove" prompt={`Remove mcp.${s.name}? Agents lose its tools from the next run.`} confirmLabel="Remove" onConfirm={() => remove(s)} />
                 </div>
@@ -98,7 +98,7 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
             ))}
           </ul>
         ) : (
-          <p className="sl-meta">No MCP servers yet.</p>
+          <p className="acc-note">No MCP servers yet.</p>
         )}
       </Loading>
       <div className="mcp-form">
