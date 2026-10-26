@@ -137,7 +137,7 @@ describe.each([
   const bg = c('--bg');
   const solid = (k: string) => over(c(k), bg);
   it('text: ink and muted on every surface', () => {
-    for (const fg of ['--ink', '--mut']) for (const s of ['--bg', '--s1', '--s2', '--s3']) expect(ratio(c(fg), solid(s)), `${fg} on ${s}`).toBeGreaterThanOrEqual(4.5);
+    for (const fg of ['--ink', '--mut']) for (const s of ['--bg', '--s1', '--s2', '--s3', '--side', '--side-hover', '--side-card']) expect(ratio(c(fg), solid(s)), `${fg} on ${s}`).toBeGreaterThanOrEqual(4.5);
   });
   it('text: status colours on the page, on panels and on their own tint', () => {
     const pairs: [string, string][] = [['--accInk', '--accBg'], ['--ok', '--okBg'], ['--warn', '--warnBg'], ['--bad', '--badBg']];
@@ -153,6 +153,15 @@ describe.each([
   it('UI: the accent and the meaningful edge against the page and panels', () => {
     for (const fg of ['--acc', '--edge']) for (const s of ['--bg', '--s1']) expect(ratio(c(fg), solid(s)), `${fg} on ${s}`).toBeGreaterThanOrEqual(3);
     // --line2 is a decorative hairline (about 1.4:1 with the exact token values): see the plan's Interpretations.
+  });
+});
+
+describe('the CodeMirror theme', () => {
+  it('takes every colour from a Studio token', () => {
+    const theme = read('code/cmTheme.ts');
+    expect(theme.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|oklch\(/g) ?? []).toEqual([]);
+    for (const token of ['--ink', '--ok', '--warn', '--mut', '--s3']) expect(theme).toContain(`var(${token})`);
+    expect(theme).not.toMatch(/var\(--acc/);
   });
 });
 

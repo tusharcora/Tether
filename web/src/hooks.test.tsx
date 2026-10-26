@@ -113,8 +113,18 @@ describe('hash routes', () => {
     expect(hashFor({ tab: 'crew', id: 'quill', pane: 'timeline' })).toBe('#/crew/quill');
   });
 
-  it('lists the screens in rail order', () => {
-    expect(SCREENS).toEqual(['home', 'runs', 'builder', 'crew', 'api', 'graph', 'triggers']);
+  it('keeps a Code path readable, with an optional :line', () => {
+    expect(hashFor({ tab: 'code', id: 'src/http/limit.ts', line: 12 })).toBe('#/code/src/http/limit.ts:12');
+    expect(hashFor({ tab: 'code', id: 'docs/a b:c.md' })).toBe('#/code/docs/a%20b%3Ac.md');
+    expect(hashFor({ tab: 'code' })).toBe('#/code');
+    expect(parseHash('#/code/src/http/limit.ts:12')).toEqual({ tab: 'code', id: 'src/http/limit.ts', line: 12 });
+    expect(parseHash('#/code/docs/a%20b%3Ac.md')).toEqual({ tab: 'code', id: 'docs/a b:c.md' });
+    expect(parseHash('#/code')).toEqual({ tab: 'code' });
+    expect(parseHash('#/code/')).toEqual({ tab: 'code' });
+  });
+
+  it('lists the screens in sidebar order', () => {
+    expect(SCREENS).toEqual(['home', 'runs', 'code', 'builder', 'crew', 'api', 'graph', 'triggers']);
     expect(TAB_LABEL.settings).toBe('Settings');
   });
 

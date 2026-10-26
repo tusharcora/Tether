@@ -1,43 +1,25 @@
 import { Ellipsis, Settings } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Screen } from '../../hooks';
 import { cn } from '../cn';
 import { NAV } from './nav';
-import type { RailProps } from './Rail';
 import './shell.css';
+import { useMenu } from './useMenu';
 
 const MAIN: Screen[] = ['home', 'runs', 'builder', 'crew', 'api'];
 const MORE = NAV.filter((n) => !MAIN.includes(n.id));
 
-/** Under 900 px: five screens and a More menu (Graph, Triggers, Settings). */
-export function BottomBar(p: Omit<RailProps, 'onSearch'>) {
-  const [open, setOpen] = useState(false);
-  const moreRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const moreActive = !!p.settingsOpen || MORE.some((n) => n.id === p.active);
+export interface BottomBarProps {
+  active: Screen;
+  /** The Settings drawer is open over the active screen. */
+  settingsOpen?: boolean;
+  onGo: (s: Screen) => void;
+  onSettings: () => void;
+}
 
-  useEffect(() => {
-    if (!open) return;
-    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    const onDown = (e: PointerEvent) => {
-      if (!moreRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [open]);
-  const close = () => {
-    setOpen(false);
-    moreRef.current?.focus();
-  };
-  const onMenuKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') return close();
-    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
-    const at = items.findIndex((b) => b === document.activeElement);
-    const to: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 };
-    if (!(e.key in to) || !items.length) return;
-    e.preventDefault();
-    items[(to[e.key]! + items.length) % items.length]?.focus();
-  };
+/** Under 900 px: five screens and a More menu (the other screens and Settings). */
+export function BottomBar(p: BottomBarProps) {
+  const menu = useMenu();
+  const moreActive = !!p.settingsOpen || MORE.some((n) => n.id === p.active);
 
   return (
     <nav className="sl-bottombar" aria-label="Main">
@@ -47,20 +29,19 @@ export function BottomBar(p: Omit<RailProps, 'onSearch'>) {
           {n.label}
         </button>
       ))}
-      <button ref={moreRef} type="button" className={cn('sl-bottom-btn', { current: moreActive })} aria-haspopup="menu" aria-expanded={open} aria-current={moreActive ? 'page' : undefined} onClick={() => setOpen((o) => !o)}>
+      <button ref={menu.triggerRef} type="button" className={cn('sl-bottom-btn', { current: moreActive })} aria-haspopup="menu" aria-expanded={menu.open} aria-current={moreActive ? 'page' : undefined} onClick={menu.toggle}>
         <Ellipsis size={18} strokeWidth={1.75} aria-hidden="true" />
         More
       </button>
-      {open ? (
-        <div ref={menuRef} className="sl-bottom-menu" role="menu" aria-label="More" onKeyDown={onMenuKey}>
+      {menu.open ? (
+        <div ref={menu.menuRef} className="sl-menu sl-bottom-menu" role="menu" aria-label="More" onKeyDown={menu.onMenuKey}>
           {MORE.map((n) => (
-            // close() puts focus back on More, so it doesn't drop to the body when the picked item unmounts
-            <button key={n.id} type="button" role="menuitem" onClick={() => (close(), p.onGo(n.id))}>
+            <button key={n.id} type="button" role="menuitem" onClick={() => (menu.close(), p.onGo(n.id))}>
               <n.Icon size={16} aria-hidden="true" />
               {n.label}
             </button>
           ))}
-          <button type="button" role="menuitem" onClick={() => (close(), p.onSettings())}>
+          <button type="button" role="menuitem" onClick={() => (menu.close(), p.onSettings())}>
             <Settings size={16} aria-hidden="true" />
             Settings
           </button>

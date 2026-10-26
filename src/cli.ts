@@ -4,10 +4,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { installExamples, loadConfig, resolveHome, writePipeline, makeRegistry, readPipeline, listPipelines, type Config } from './config.js';
-import { Engine } from './engine.js';
 import { loadPipelineFile, preflight } from './pipeline.js';
-import { startServer } from './server.js';
-import { Store } from './store.js';
+import { openContext, serveTether, type Ctx } from './serve.js';
+import type { Store } from './store.js';
 import { httpCommand } from './http/cli.js';
 import type { Answer, Pipeline, Question, RunState, StoredEvent } from './types.js';
 import { answerFromInput, parseTeamArgs } from './team.js';
@@ -49,53 +48,53 @@ const wsOpt = (v: { workspace?: string; 'no-workspace'?: boolean }): string | fa
 const padEndV = (x: string, w: number) => x + ' '.repeat(Math.max(0, w - vlen(x)));
 const s0 = (t: string) => bold(t.split('\n')[0]!.slice(0, 90));
 
-const HELP = `aorch — durable orchestrator for CLI coding agents
+const HELP = `tether — durable orchestrator for CLI coding agents (aorch still works: same command)
 
 Usage
-  aorch run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>] [--no-endpoints]
-  aorch run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
-  aorch resume <runId> [--retry-failed]
-  aorch approve <runId> <node> [--reject] [--resume]
-  aorch feedback <runId> <node> up|down [note…]   thumbs up or down on a step's output (Evolve learns from it)
-  aorch evolve <bot> [--since <date>] [--agent a] [--model m] [--json]   propose edits to a bot's harness from its confident lessons (nothing is applied)
-  aorch evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--allow-commands] [--json]   replay up to n (default 3, max 8) recent read-only runs with the current harness and each proposed edit; spend capped by --budget
-  aorch evolve --accept <id> [--pick 1,3 | --pick kept]   accept a proposal (all edits, or the ones you pick) as the bot's next harness version
-  aorch evolve --reject <id>          reject a proposal; its edits are never proposed again
-  aorch evolve <bot> --list | --show <id>   a bot's proposals (open, accepted, rejected, superseded) · one proposal with its diff, evidence and probe results
-  aorch harness <bot> [show | log | diff <a> <b> | rollback <v>] [--json]   a bot's harness: current version, history, what changed, roll back (as a new version)
-  aorch probes [--clean]              Evolve probe replays (hidden from runs lists); --clean deletes the finished ones
-  aorch lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
-  aorch                               interactive dashboard (runs, workflows, agent sessions)
-  aorch orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
-  aorch team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Maestro asks questions, you approve a plan, a team of bots does it
-  aorch answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
-  aorch plan <runId> [--reject]       approve (or reject) a team run's finished plan
-  aorch mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
-  aorch bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
-  aorch crew list [--source ecc]                                      bots with where they came from
-  aorch crew import ecc [--ref v2.2.3] [--from <dir>] [--update]      add ECC's agents, skills and commands (github.com/affaan-m/ECC)
-  aorch crew remove --source ecc                                      remove everything imported from ECC
-  aorch pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
-  aorch triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
-  aorch skills [--source ecc|claude|aorch] [run <name> --task "…"]    list or run skills (Claude Code skills, aorch workflows, ECC skills and commands; ecc:<name> picks the ECC one)
-  aorch http ls | run <id> [--env e] | send <METHOD> <url> [-H k:v] [-d body] | import <file|-> --kind curl|openapi|postman | env ls|use|none | secret set|rm|ls   saved API requests (.aorch/http); exit 1 = a check failed, 2 = network error
-  aorch workspace export [id] [--out f] [--with-secrets] | import <file> [--into dir] [--yes]   move a workspace (notes, saved requests, optionally secrets) as one JSON file
-  aorch models [agent]                list what each agent can run (local servers included)
-  aorch usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
-  aorch providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
-  aorch theme [name]                  aurora · sunset · matrix · amber · mono
-  aorch runs [--all]                  list runs (--all includes Evolve probe replays)
-  aorch delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
-  aorch show <runId>                  node table, cost, coach findings
-  aorch serve [--port 4177]           API + dashboard (loopback only)
-  aorch doctor                        which agent CLIs are installed
-  aorch init                          install example pipelines
-  aorch pipelines                     list saved pipelines
-  aorch vault search "<query>"        query the knowledge graph
-  aorch vault stats
+  tether run <pipeline> --repo <dir> --task "<text>" [--auto-approve] [--ref <git-ref>] [--no-endpoints]
+  tether run ... [--supervise [--rounds 2]]   Maestro retries, then escalates the failing step to a stronger model
+  tether resume <runId> [--retry-failed]
+  tether approve <runId> <node> [--reject] [--resume]
+  tether feedback <runId> <node> up|down [note…]   thumbs up or down on a step's output (Evolve learns from it)
+  tether evolve <bot> [--since <date>] [--agent a] [--model m] [--json]   propose edits to a bot's harness from its confident lessons (nothing is applied)
+  tether evolve <bot> --probe --budget <usd> [--tasks n] [--proposal id] [--allow-commands] [--json]   replay up to n (default 3, max 8) recent read-only runs with the current harness and each proposed edit; spend capped by --budget
+  tether evolve --accept <id> [--pick 1,3 | --pick kept]   accept a proposal (all edits, or the ones you pick) as the bot's next harness version
+  tether evolve --reject <id>          reject a proposal; its edits are never proposed again
+  tether evolve <bot> --list | --show <id>   a bot's proposals (open, accepted, rejected, superseded) · one proposal with its diff, evidence and probe results
+  tether harness <bot> [show | log | diff <a> <b> | rollback <v>] [--json]   a bot's harness: current version, history, what changed, roll back (as a new version)
+  tether probes [--clean]              Evolve probe replays (hidden from runs lists); --clean deletes the finished ones
+  tether lessons [bot] [--json]        what the bots learned from runs: status, runs, provenance
+  tether                               interactive dashboard (runs, workflows, agent sessions)
+  tether orchestrate "<task>" --repo <dir> [--yes]   Maestro designs a workflow for the task and runs it
+  tether team "<goal>" --repo <dir> [--mode live|autonomous] [--roster a,b] [--budget $] [--rounds n] [--yes] [--no-endpoints]   Maestro asks questions, you approve a plan, a team of bots does it
+  tether answer <runId> <question> <option|"text">   answer a pending question (plan dialogue or a bot's question); option is a number or an id
+  tether plan <runId> [--reject]       approve (or reject) a team run's finished plan
+  tether mode <runId> live|autonomous  live asks you; autonomous lets Maestro answer for you
+  tether bots [link <bot> <agent> [model] | unlink <bot>]   link crew members to Claude, Codex, OpenCode or a local model
+  tether crew list [--source ecc]                                      bots with where they came from
+  tether crew import ecc [--ref v2.2.3] [--from <dir>] [--update]      add ECC's agents, skills and commands (github.com/affaan-m/ECC)
+  tether crew remove --source ecc                                      remove everything imported from ECC
+  tether pr <link> [--workflow full-review] [--comment]               run a workflow on a GitHub PR (also: pr rules | rule add | watch | secret | map)
+  tether triggers [list|add|enable|disable|remove|show|log|test|setup]   PR triggers: which PRs start which workflow, where, with which agent (add <owner/repo|*> --workflow w [--workspace id] [--agent a] [--model m] [--events …] [--labels …] [--comment] [--drafts] [--forks] [--id name] · log [id] [--limit n] · test <id> <pr> [--fire] · setup)
+  tether skills [--source ecc|claude|aorch] [run <name> --task "…"]    list or run skills (Claude Code skills, aorch workflows, ECC skills and commands; ecc:<name> picks the ECC one)
+  tether http ls | run <id> [--env e] | send <METHOD> <url> [-H k:v] [-d body] | import <file|-> --kind curl|openapi|postman | env ls|use|none | secret set|rm|ls   saved API requests (.aorch/http); exit 1 = a check failed, 2 = network error
+  tether workspace export [id] [--out f] [--with-secrets] | import <file> [--into dir] [--yes]   move a workspace (notes, saved requests, optionally secrets) as one JSON file
+  tether models [agent]                list what each agent can run (local servers included)
+  tether usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
+  tether providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
+  tether theme [name]                  aurora · sunset · matrix · amber · mono
+  tether runs [--all]                  list runs (--all includes Evolve probe replays)
+  tether delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
+  tether show <runId>                  node table, cost, coach findings
+  tether serve [--port 4177]           API + dashboard (loopback only)
+  tether doctor                        which agent CLIs are installed
+  tether init                          install example pipelines
+  tether pipelines                     list saved pipelines
+  tether vault search "<query>"        query the knowledge graph
+  tether vault stats
 
 <pipeline> is a saved name or a path to a .json/.yaml file.
-Global flags: --home <dir> (default ~/.aorch, or $AORCH_HOME)  --vault <dir> (default <home>/vault, or $AORCH_VAULT)
+Global flags: --home <dir> (default ~/.aorch, or $TETHER_HOME, then $AORCH_HOME)  --vault <dir> (default <home>/vault, or $AORCH_VAULT)
 Exit codes: 0 done · 1 error/stopped · 2 paused (waiting for approval)`;
 
 function prettyHelp(): string {
@@ -103,7 +102,7 @@ function prettyHelp(): string {
     .slice(1)
     .map((l) => {
       if (/^(Usage|Global flags|Exit codes)/.test(l)) return l.replace(/^(\w[\w ]*?)(:|$)/, (m) => bold(gradient(m, BRAND)));
-      const m = l.match(/^(  aorch \S+(?: \S+)?)(.*)$/);
+      const m = l.match(/^(  tether \S+(?: \S+)?)(.*)$/);
       if (m) return `${cyan(m[1]!)}${m[2]!.replace(/(<[^>]+>)/g, (x) => paint(pal.violet, x)).replace(/(--[\w-]+)/g, (x) => amber(x)).replace(/(\s{2,}[A-Za-z].*)$/, (x) => dim(x))}`;
       return dim(l);
     })
@@ -138,21 +137,7 @@ function fail(msg: string, code = 1): never {
 
 const statusGlyph = (st: string) => glyph(st);
 
-interface Ctx {
-  cfg: Config;
-  store: Store;
-  engine: Engine;
-  vault: Vault;
-}
-
-function open(flags: { home?: string; vault?: string }): Ctx {
-  const cfg = loadConfig({ home: flags.home, vault: flags.vault });
-  refreshCrew(cfg.home);
-  const store = Store.open(join(cfg.home, 'runs.db'));
-  const vault = new Vault(cfg.vault);
-  const engine = new Engine(store, { home: cfg.home, registry: makeRegistry(cfg), vault, bindings: () => loadBindings(cfg.home) });
-  return { cfg, store, engine, vault };
-}
+const open = openContext;
 
 /** Print one line per meaningful event while a run executes in this process. */
 function narrate(store: Store, runId: string, json: boolean): { off: () => void; stop: () => void; start: () => void } {
@@ -1853,19 +1838,8 @@ async function main() {
       return fail('usage: aorch vault search "<query>" | aorch vault stats');
     }
     case 'serve': {
-      const ctx = open(v);
-      installExamples(ctx.cfg.home, examplesDir);
-      await ctx.vault.ensure();
-      const { url } = await startServer({
-        engine: ctx.engine,
-        store: ctx.store,
-        vault: ctx.vault,
-        registry: makeRegistry(ctx.cfg),
-        cfg: ctx.cfg,
-        host: v.host,
-        port: v.port ? Number(v.port) : 4177,
-        webDir,
-      });
+      const ctx = await serveTether({ home: v.home, vault: v.vault, host: v.host, port: v.port ? Number(v.port) : 4177, webDir, examplesDir });
+      const { url } = ctx;
       await banner('dashboard + API');
       console.log(
         box(
@@ -1879,7 +1853,7 @@ async function main() {
         ).join('\n'),
       );
       process.on('SIGINT', () => {
-        for (const r of ctx.store.list()) if (ctx.engine.isLive(r.id)) ctx.engine.stop(r.id);
+        ctx.stopLive();
         setTimeout(() => process.exit(0), 1500).unref();
       });
       return;

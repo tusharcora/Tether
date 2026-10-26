@@ -745,3 +745,101 @@ export interface RosterPreview {
   bots: { id: string; name: string; why: string }[];
   core: string[];
 }
+
+/** A run or a saved API request pinned to the sidebar (<home>/pins.json). */
+export interface Pin {
+  kind: 'run' | 'request';
+  /** A run id, or a saved request id (`collection/name`). */
+  id: string;
+  label: string;
+  /** Requests: the workspace the request is saved in. */
+  ws?: string;
+}
+
+// ---- the Code screen (/api/code/*) ----
+export type CodeLang = 'typescript' | 'tsx' | 'javascript' | 'jsx' | 'json' | 'markdown' | 'css' | 'html' | 'python' | 'text';
+export type GitBadge = 'M' | 'A' | 'D' | '?' | 'R';
+
+export interface TreeEntry {
+  name: string;
+  path: string;
+  kind: 'dir' | 'file';
+  git?: GitBadge;
+}
+
+/** A live run writing in the project's own checkout: saving waits for its step (423). */
+export interface RunLock {
+  runId: string;
+  node: string;
+  /** The bot doing the step, by name ("Bolt"). */
+  bot: string;
+}
+
+export interface CodeFile {
+  path: string;
+  /** Empty when the file is too large or binary. */
+  text: string;
+  size: number;
+  mtimeMs: number;
+  lang: CodeLang;
+  binary?: true;
+  tooLarge?: true;
+  secret?: true;
+  readOnly?: true;
+  lock?: RunLock;
+}
+
+export interface TextHit {
+  path: string;
+  line: number;
+  /** Where the match starts in `text` (0-based characters). */
+  col: number;
+  text: string;
+}
+
+/** A run whose recorded commits changed a file. */
+export interface RunTouch {
+  runId: string;
+  /** The task's first line. */
+  title: string;
+  /** The run's label: its workflow, or "Team run". */
+  label: string;
+  status: RunStatus;
+  live: boolean;
+  /** When it finished, else its newest event. */
+  at: number;
+  add: number;
+  del: number;
+  /** Changed lines in the run's version of the file. */
+  hunks: { start: number; lines: number }[];
+  /** The file's diff in this run, from the first hunk, cut to 80 lines. */
+  patch: string;
+}
+
+// ---- Tether.app ----
+/** Commands the app's menu sends to the page. */
+export type AppCommand = 'welcome';
+
+/**
+ * `window.tether`, which Tether.app's preload exposes to the page (context isolation on, so these functions are all the
+ * page gets). In a browser it is absent and the page falls back (Open folder… types a path, no badge or notifications).
+ */
+export interface TetherBridge {
+  platform: string;
+  /** The native folder picker; undefined when cancelled. */
+  openFolder(): Promise<string | undefined>;
+  /** The path of a file or folder dropped on the page. */
+  pathForFile(file: File): string;
+  revealInFinder(path: string): void;
+  /** The Dock badge (0 clears it). */
+  setBadge(n: number): void;
+  /** A system notification; clicking it focuses the window and opens `route` (a `#/…` hash). */
+  notify(n: { title: string; body?: string; route?: string }): void;
+  /** A folder to open, from the menu, the Dock or `open -a Tether <dir>`. Returns the unsubscribe. */
+  onOpen(cb: (path: string) => void): () => void;
+  /** A hash to show (a clicked notification, a menu item). */
+  onRoute(cb: (hash: string) => void): () => void;
+  onCommand(cb: (command: AppCommand) => void): () => void;
+  /** The page listens now: folders handed over before this are delivered. */
+  ready(): void;
+}

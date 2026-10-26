@@ -21,6 +21,9 @@ Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 document.elementFromPoint ??= () => null;
+// CodeMirror measures text through ranges
+Range.prototype.getClientRects ??= () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 // ascii-reveal draws on <canvas>, which jsdom lacks: tests get a plain stand-in that records the props Loading passes.
 vi.mock('ascii-reveal', async () => {
   const React = await import('react');

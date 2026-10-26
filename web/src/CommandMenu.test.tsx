@@ -19,12 +19,12 @@ beforeEach(() => {
 });
 
 describe('CommandMenu', () => {
-  it('lists Go to entries for every screen in rail order', () => {
+  it('lists Go to entries for every screen in sidebar order', () => {
     open();
-    for (const s of ['Home', 'Runs', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
+    for (const s of ['Home', 'Runs', 'Code', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
     expect(screen.getAllByText('Go to').length).toBeGreaterThan(0);
     const labels = screen.getAllByText(/^Go to \w+$/).map((e) => e.textContent);
-    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
+    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Code', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
   });
   it('goes to a screen', () => {
     const p = open();
@@ -61,6 +61,18 @@ describe('CommandMenu', () => {
     expect(p.onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r3' });
     fireEvent.click(await screen.findByText('Open in Builder'));
     expect(p.onGo).toHaveBeenLastCalledWith({ tab: 'builder', id: 'full-review' });
+  });
+  it('finds files of the current project by name, from two characters, and opens them in Code', async () => {
+    routeApi({ 'GET /api/runs': [], 'GET /api/pipelines': [], 'GET /api/code/search?ws=shop&q=lmt&mode=name': { hits: [{ path: 'src/http/limit.ts' }] } });
+    const p = handlers();
+    render(<CommandMenu open {...p} ws="shop" />);
+    const field = screen.getByRole('combobox');
+    fireEvent.change(field, { target: { value: 'l' } });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(screen.queryByText('Files')).toBeNull();
+    fireEvent.change(field, { target: { value: 'lmt' } });
+    fireEvent.click(await screen.findByText('src/http/limit.ts'));
+    expect(p.onGo).toHaveBeenCalledWith({ tab: 'code', id: 'src/http/limit.ts' });
   });
   it('fetches nothing while closed', () => {
     render(<CommandMenu open={false} {...handlers()} />);

@@ -1,0 +1,2 @@
+.sl-path-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.sl-path-form > :first-child { flex: 1 1 260px; min-width: 0; }

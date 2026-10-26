@@ -5,7 +5,7 @@
 .run-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; padding: 14px 10px; background: var(--s1); border-right: 1px solid var(--line); }
 .run-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
 .run-list-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
-.run-list-probes { padding: 0 4px; font-size: 12px; color: var(--mut); }
+.run-list-probes { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; font-size: 12px; color: var(--mut); }
 .run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 4px; }
 .run-rows { display: flex; flex-direction: column; gap: 2px; }
 .run-row { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px; border: 1px solid transparent; border-radius: var(--radius-panel); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
@@ -56,6 +56,8 @@
 .file-bars { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
 .file-bars li { display: grid; grid-template-columns: minmax(0, 1fr) auto 80px; gap: 8px; align-items: center; }
 .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 12px; }
+.file-open { padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.file-open:hover { text-decoration-color: var(--ink); }
 .file-count { font-family: var(--font-code); font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
 .file-bar { display: flex; height: 6px; overflow: hidden; border-radius: 2px; background: var(--s3); }
 .file-add { background: var(--ok); }

@@ -64,7 +64,7 @@ export function WorkspaceDialog(p: { open: boolean; onOpenChange: (o: boolean) =
   return (
     <Dialog open={p.open} onOpenChange={p.onOpenChange}>
       {p.open ? (
-        <DialogContent className="api-dialog" title="Import a workspace" description="From an export made with Export or aorch workspace export. Nothing is written until you confirm.">
+        <DialogContent className="api-dialog" title="Import a workspace" description="From an export made with Export or tether workspace export. Nothing is written until you confirm.">
           <div className="dialog-body">
             <label className="file-pick">
               <span className="hint">Export file</span>

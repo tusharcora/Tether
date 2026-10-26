@@ -11,6 +11,7 @@ import { Inspector } from './runs/Inspector';
 import { RunBanners } from './runs/RunBanners';
 import { RunCentre } from './runs/RunCentre';
 import { RunHeader } from './runs/RunHeader';
+import type { WorkspaceRow } from './home/workspaces';
 import { RunList } from './runs/RunList';
 import { cn } from './ui/cn';
 import { useNotify } from './ui/notify';
@@ -32,6 +33,10 @@ export interface RunsProps {
   onSelectNode?: (node?: string) => void;
   /** The empty list's action: go and start a run. */
   onStart?: () => void;
+  /** The current project, for the list's "only this project" switch. */
+  project?: WorkspaceRow;
+  /** Open a file a run changed in Code: the run's folder and the file's path in its repo. */
+  onOpenFile?: (repo: string, file: string) => void;
 }
 
 type PhoneView = 'graph' | 'inspector';
@@ -85,7 +90,7 @@ export function Runs(props: RunsProps) {
   };
 
   const latest = list.data?.[0];
-  const listPane = <RunList poll={list} probes={probes} onProbes={setProbes} selected={props.selected} onSelect={props.onSelect} onStart={props.onStart} />;
+  const listPane = <RunList poll={list} probes={probes} onProbes={setProbes} selected={props.selected} onSelect={props.onSelect} onStart={props.onStart} project={props.project} />;
   const placeholder =
     props.selected && error ? (
       <InlineError message={error} onRetry={retry} />
@@ -104,7 +109,7 @@ export function Runs(props: RunsProps) {
         }
       />
     );
-  const inspector = run ? <Inspector run={run} events={events} selected={selNode} pane={props.pane} onAct={act} /> : null;
+  const inspector = run ? <Inspector run={run} events={events} selected={selNode} pane={props.pane} onAct={act} onOpenFile={props.onOpenFile && ((f) => props.onOpenFile!(run.repo, f))} /> : null;
   const centre = run ? <RunCentre run={run} selected={selNode} onSelect={pick} onAct={act} /> : null;
 
   if (phone) {

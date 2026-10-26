@@ -11,7 +11,9 @@ import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, re
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
-import { getWorkspace, listWorkspaces } from './workspace.js';
+import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
+import { checkPins, loadPins, savePins } from './pins.js';
+import { rgVersion } from './tools.js';
 import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
 import { commitDiff, diffCommitted } from './git.js';
@@ -35,6 +37,7 @@ import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
 import { HttpError, readJson, reqObject, send } from './serverkit.js';
 import { httpRoute } from './http/routes.js';
+import { codeRoute } from './codeRoutes.js';
 import { HttpClientError, statusFor } from './http/errors.js';
 
 export interface ServerOptions {
@@ -69,6 +72,8 @@ const MIME: Record<string, string> = {
 };
 
 const MAX_LIST = 20;
+/** A workspace as the pickers, the sidebar and Open folder… see it. */
+const wsRow = (w: Workspace) => ({ id: w.id, name: w.name, path: w.path, isDefault: !!w.isDefault, exists: w.exists, repos: w.repos });
 /** Optional single-line string, trimmed; empty means absent. */
 function reqString(b: Record<string, unknown>, k: string, max = 200): string | undefined {
   const v = b[k];
@@ -233,7 +238,17 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
-  let doctorCache: { at: number; data: unknown } | undefined;
+  type Detected = { ok: boolean; version?: string; detail?: string; reportsCost: boolean; supportsResume: boolean };
+  let doctorCache: { at: number; data: Record<string, Detected> } | undefined;
+  /** Each adapter's detect() result (installed, version), kept for 30 s. */
+  async function doctor() {
+    if (!doctorCache || Date.now() - doctorCache.at > 30_000) {
+      const out: Record<string, Detected> = {};
+      for (const id of registry.ids()) out[id] = { ...(await registry.get(id).detect()), reportsCost: registry.get(id).reportsCost, supportsResume: registry.get(id).supportsResume };
+      doctorCache = { at: Date.now(), data: out };
+    }
+    return doctorCache.data;
+  }
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
 
   const runView = (id: string) => {
@@ -291,18 +306,26 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
+    if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
       return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home }), true;
     }
-    if (p === '/api/doctor' && m === 'GET') {
-      if (!doctorCache || Date.now() - doctorCache.at > 30_000) {
-        const out: Record<string, unknown> = {};
-        for (const id of registry.ids()) out[id] = { ...(await registry.get(id).detect()), reportsCost: registry.get(id).reportsCost, supportsResume: registry.get(id).supportsResume };
-        doctorCache = { at: Date.now(), data: out };
-      }
-      return send(res, 200, doctorCache.data), true;
+    if (p === '/api/doctor' && m === 'GET') return send(res, 200, await doctor()), true;
+    if (p === '/api/tools' && m === 'GET') {
+      // the mock adapter is for tests and demos, not a tool to install
+      const agents = Object.entries(await doctor())
+        .filter(([id]) => id !== 'mock')
+        .map(([id, d]) => ({ id, ok: d.ok, ...(d.version ? { version: d.version } : {}) }));
+      const rg = rgVersion();
+      return send(res, 200, { agents, rg: { ok: !!rg, ...(rg ? { version: rg } : {}) } }), true;
+    }
+    if (p === '/api/pins' && m === 'GET') return send(res, 200, { pins: loadPins(cfg.home) }), true;
+    if (p === '/api/pins' && m === 'PUT') {
+      const pins = checkPins(await readJson(req));
+      savePins(cfg.home, pins);
+      return send(res, 200, { pins }), true;
     }
 
     // ---- crew: bot <-> agent/model links (read live by the engine at every run start) ----
@@ -529,8 +552,26 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
 
     // ---- workspaces (for pickers) ----
-    if (p === '/api/workspaces' && m === 'GET') {
-      return send(res, 200, listWorkspaces(cfg.home).map((w) => ({ id: w.id, name: w.name, path: w.path, isDefault: !!w.isDefault, exists: w.exists, repos: w.repos }))), true;
+    if (p === '/api/workspaces' && m === 'GET') return send(res, 200, listWorkspaces(cfg.home).map(wsRow)), true;
+    // Open folder…: register a folder as a project. Nothing is written into the folder (`tether workspace init` does that).
+    if (p === '/api/workspaces' && m === 'POST') {
+      const dir = (await readJson(req)).path;
+      if (typeof dir !== 'string' || !isAbsolute(dir)) throw new HttpError(400, '"path" must be an absolute folder path');
+      if (!existsSync(dir)) throw new HttpError(400, `${dir} does not exist`);
+      if (!statSync(dir).isDirectory()) throw new HttpError(400, `${dir} is not a folder`);
+      if (isAorchHome(dir, cfg.home)) throw new HttpError(400, aorchHomeMessage(dir, cfg.home));
+      const r = initWorkspace(cfg.home, dir, { write: false });
+      return send(res, r.existed ? 200 : 201, wsRow(r.workspace)), true;
+    }
+    if ((g = p.match(/^\/api\/workspaces\/([a-z][a-z0-9_-]{0,31})$/)) && m === 'DELETE') {
+      let gone: boolean;
+      try {
+        gone = removeWorkspace(cfg.home, g[1]!);
+      } catch (e) {
+        throw bundleError(e);
+      }
+      if (!gone) throw new HttpError(404, `unknown workspace "${g[1]}"`);
+      return send(res, 200, { removed: g[1] }), true;
     }
     if ((g = p.match(/^\/api\/workspaces\/([a-z][a-z0-9_-]{0,31})\/export$/)) && m === 'GET') {
       const w = getWorkspace(cfg.home, g[1]!);
@@ -913,7 +954,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     const root = o.webDir ? resolve(o.webDir) : undefined;
     if (!root || !existsSync(root)) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-      return res.end('aorch API is running. The dashboard is not built yet: run `npm run build:web`.\n');
+      return res.end('Tether API is running. The dashboard is not built yet: run `npm run build:web`.\n');
     }
     let rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
     let file = resolve(root, rel);
@@ -943,7 +984,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (e instanceof HttpError) {
         // the rest of an oversized upload is never read: close the connection instead of reusing a half-read socket
         if (e.status === 413) res.setHeader('connection', 'close');
-        return send(res, e.status, { error: e.message });
+        return send(res, e.status, { error: e.message, ...e.extra });
       }
       send(res, 500, { error: (e as Error).message });
     }

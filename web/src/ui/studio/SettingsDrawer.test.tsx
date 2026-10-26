@@ -16,6 +16,36 @@ describe('SettingsDrawer', () => {
     expect(screen.getByText('connected')).toBeTruthy();
   });
 
+  it('says what Tether is, that aorch still works and where the data stays', () => {
+    const { rerender } = render(<SettingsDrawer {...base} home="/Users/me/.aorch" />);
+    const about = screen.getByRole('region', { name: 'About' });
+    expect(about.textContent).toMatch(/Tether/);
+    expect(about.textContent).toMatch(/aorch still works/);
+    expect(about.textContent).toContain('/Users/me/.aorch');
+    expect(about.querySelectorAll('img')).toHaveLength(2);
+    rerender(<SettingsDrawer {...base} />);
+    expect(screen.getByRole('region', { name: 'About' }).textContent).toContain('~/.aorch');
+  });
+
+  it('lists the agent tools when given them', () => {
+    const tools = { data: { agents: [{ id: 'codex', ok: true, version: '0.48' }], rg: { ok: false } }, error: undefined, fails: 0, refresh: async () => {} };
+    const { rerender } = render(<SettingsDrawer {...base} />);
+    expect(screen.queryByRole('region', { name: 'Agent tools' })).toBeNull();
+    rerender(<SettingsDrawer {...base} tools={tools} />);
+    expect(screen.getByRole('region', { name: 'Agent tools' }).textContent).toContain('codex0.48');
+  });
+
+  it('has the app’s notification switch when given one', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<SettingsDrawer {...base} />);
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+    rerender(<SettingsDrawer {...base} notifications={{ on: true, onChange }} />);
+    const sw = screen.getByRole('switch', { name: /needs me or finishes/ });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
   it('picks a theme', () => {
     const onChoice = vi.fn();
     render(<SettingsDrawer {...base} onChoice={onChoice} />);

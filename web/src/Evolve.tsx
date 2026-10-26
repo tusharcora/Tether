@@ -38,7 +38,7 @@ const PROBE: Record<'kept' | 'dropped' | 'unprobed', { tone: Tone; label: (note?
   unprobed: { tone: 'needs', label: (note) => `not probed${note ? `: ${note}` : ''}` },
 };
 
-/** Harness, proposals and lessons of one bot. Review only: proposals are made with `aorch evolve <bot>` (a model call), never from here. */
+/** Harness, proposals and lessons of one bot. Review only: proposals are made with `tether evolve <bot>` (a model call), never from here. */
 /** `inDrawer`: the Drawer already frames and titles it, so the panel drops its own frame and heading. */
 export function EvolvePanel(props: { bot: string; name: string; onClose: () => void; onChange?: () => void; inDrawer?: boolean }) {
   const [harness, setHarness] = useState<HarnessView | undefined>();
@@ -125,7 +125,7 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
         ) : null}
       </div>
       <p className="ev-help">
-        Proposals are made from the command line with <code>aorch evolve {props.bot}</code> (one model call). Here you review them: tick the edits you want, accept or reject. Nothing changes until you accept, and any
+        Proposals are made from the command line with <code>tether evolve {props.bot}</code> (one model call). Here you review them: tick the edits you want, accept or reject. Nothing changes until you accept, and any
         version can be rolled back.
       </p>
 
@@ -189,7 +189,7 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
                 {p.note ? <p className="ev-help">{p.note}</p> : null}
                 {p.stale ? (
                   <p className="ev-help">
-                    The harness moved on since this was written, so it cannot be accepted. Run <code>aorch evolve {p.bot}</code> again.
+                    The harness moved on since this was written, so it cannot be accepted. Run <code>tether evolve {p.bot}</code> again.
                   </p>
                 ) : null}
                 {p.edits.map((e) => {

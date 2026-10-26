@@ -19,7 +19,7 @@ export const VAULT_SCAN_MS = 5500;
 type NoteState = 'idle' | 'loading' | 'missing' | 'failed';
 
 /** The knowledge graph: a live board of vault notes, a reader and a list. `note` is the deep-linked path. */
-export function GraphView(props: { note?: string; onNote?: (path?: string) => void }) {
+export function GraphView(props: { note?: string; onNote?: (path?: string) => void; /** Open a file note's file in Code. */ onOpenFile?: (path: string) => void }) {
   const reduced = useReducedMotionPref();
   const activity = useVaultActivity();
   const board = useRef<BoardHandle>(null);
@@ -262,6 +262,7 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
                 onGo={go}
                 onHover={setHover}
                 onRetry={() => sel && void open(sel)}
+                onOpenFile={props.onOpenFile}
               />
               <NoteList nodes={matched ?? g.nodes} selected={sel} hiddenTypes={hidden} onGo={go} />
             </aside>

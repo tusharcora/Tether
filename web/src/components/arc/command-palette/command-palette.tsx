@@ -9,7 +9,7 @@ import { motionTokens } from "../lib/motion-tokens";
 import styles from "./command-palette.module.css";
 
 export interface CommandItem { id: string; label: string; description?: string; group?: string; keywords?: string[]; icon?: ReactNode; shortcut?: string; }
-export interface CommandPaletteProps { items: CommandItem[]; placeholder?: string; onSelect?: (item: CommandItem) => void; onClose?: () => void; label?: string; /** Focus the search field on mount, for a palette that opens on demand. */ autoFocus?: boolean; }
+export interface CommandPaletteProps { items: CommandItem[]; placeholder?: string; onSelect?: (item: CommandItem) => void; onClose?: () => void; label?: string; /** Focus the search field on mount, for a palette that opens on demand. */ autoFocus?: boolean; /** Told the search text as it changes, for a palette that fetches more items for it. */ onQueryChange?: (query: string) => void; }
 
 const enter: Transition = { duration: motionTokens.duration.standard, ease: [...motionTokens.ease.enter] };
 const leave: Transition = { duration: motionTokens.duration.instant, ease: [...motionTokens.ease.standard] };
@@ -17,9 +17,10 @@ const GLIDE_ROWS = 6;
 /** Rows fade out while the rest glide into their place; when the list snaps they leave at once so nothing overlaps the new rows. */
 const rowExit: Variants = { exit: (glide: boolean) => ({ opacity: 0, transition: glide ? leave : { duration: 0 } }) };
 
-export function CommandPalette({ items, placeholder = "Search commands", onSelect, onClose, label = "Command palette", autoFocus = false }: CommandPaletteProps) {
+export function CommandPalette({ items, placeholder = "Search commands", onSelect, onClose, label = "Command palette", autoFocus = false, onQueryChange }: CommandPaletteProps) {
   const inputId = useId();
   const [query, setQuery] = useState("");
+  useEffect(() => onQueryChange?.(query), [query, onQueryChange]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [listHeight, setListHeight] = useState<number | "auto">("auto");
   const reduced = useReducedMotion();

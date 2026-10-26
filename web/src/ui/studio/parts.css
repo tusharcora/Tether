@@ -65,3 +65,8 @@ button.sl-row-title:hover { text-decoration: underline; text-underline-offset: 2
 }
 @keyframes sl-stripes { to { transform: translateX(-11.3px); } }
 .sl-seg.s-skipped { flex: 0 0 10px; height: 1px; background: var(--edge); }
+
+/* The Tether glyph: one drawing per theme, the other hidden */
+.sl-glyph { display: inline-grid; flex: none; }
+.sl-glyph > img { grid-area: 1 / 1; display: block; }
+:root:not([data-theme="dark"]) .sl-glyph-dark, :root[data-theme="dark"] .sl-glyph-light { display: none; }

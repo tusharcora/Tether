@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { api, type RunRow, type RunView } from '../api';
+import type { AppCommand, TetherBridge } from '../bridge';
 
 type Handler = unknown | ((body: unknown, path: string) => unknown);
 
@@ -68,3 +69,32 @@ export class FakeEventSource {
     this.closed = true;
   }
 }
+
+/** A stand-in for Tether.app's `window.tether` (unstubbed after each test); `emit` plays the app's side. */
+export function fakeBridge() {
+  const on = { open: [] as ((p: string) => void)[], route: [] as ((h: string) => void)[], command: [] as ((c: AppCommand) => void)[] };
+  const sub =
+    <T,>(list: ((v: T) => void)[]) =>
+    (cb: (v: T) => void) => (list.push(cb), () => void list.splice(list.indexOf(cb), 1));
+  const b = {
+    platform: 'darwin',
+    openFolder: vi.fn(async (): Promise<string | undefined> => undefined),
+    pathForFile: vi.fn((f: File) => `/drop/${f.name}`),
+    revealInFinder: vi.fn(),
+    setBadge: vi.fn(),
+    notify: vi.fn(),
+    onOpen: sub(on.open),
+    onRoute: sub(on.route),
+    onCommand: sub(on.command),
+    ready: vi.fn(),
+  } satisfies TetherBridge;
+  vi.stubGlobal('tether', b);
+  const emit = { open: (p: string) => on.open.forEach((cb) => cb(p)), route: (h: string) => on.route.forEach((cb) => cb(h)), command: (c: AppCommand) => on.command.forEach((cb) => cb(c)) };
+  return { b, emit, listeners: on };
+}
+
+/** What a drop of these items carries: folders (`dir: true`) or files. */
+export const dropOf = (...items: { name: string; dir?: boolean }[]) => ({
+  types: ['Files'],
+  items: items.map((i) => ({ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: !!i.dir }), getAsFile: () => new File([], i.name) })),
+});

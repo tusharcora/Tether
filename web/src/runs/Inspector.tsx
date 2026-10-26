@@ -25,7 +25,7 @@ interface DiffState {
  * Step (the selected step), Branch diff (the whole branch, live as steps commit) and Timeline (run events with JSON detail).
  * `pane` is the route's hint: a failed run's link opens on the Timeline.
  */
-export function Inspector({ run: r, events, selected, pane: hint, onAct }: { run: RunView; events: StoredEvent[]; selected?: string; pane?: 'timeline'; onAct: RunAct }) {
+export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenFile }: { run: RunView; events: StoredEvent[]; selected?: string; pane?: 'timeline'; onAct: RunAct; /** A changed file's name was picked: open it in Code. */ onOpenFile?: (file: string) => void }) {
   const [pane, setPane] = useState<Pane>(hint ?? 'node');
   const [diff, setDiff] = useState<DiffState>({});
   const [retries, setRetries] = useState(0);
@@ -72,7 +72,7 @@ export function Inspector({ run: r, events, selected, pane: hint, onAct }: { run
       <Loading loading={stale || diff.text === undefined} lines={6} label="Loading diff">
         {!stale && diff.text ? (
           <>
-            <FileBars diff={diff.text} />
+            <FileBars diff={diff.text} onOpen={onOpenFile} />
             <Diff text={diff.text} />
           </>
         ) : (

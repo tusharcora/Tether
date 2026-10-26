@@ -39,6 +39,15 @@ node dist/cli.js serve      # web dashboard on a loopback port
 
 `aorch team "<goal>" --repo <dir>` starts a team run: Maestro asks planning questions, you approve the plan, then the team works. `aorch orchestrate "<task>" --repo <dir>` asks Maestro to design a workflow for a task. `aorch run <pipeline.json> --repo <dir> --task "<task>"` runs a saved one. `aorch --help` lists everything.
 
+## Tether.app (macOS, Apple Silicon)
+
+```
+npm run app        # builds, then packages dist-app/Tether-darwin-arm64/Tether.app (ad-hoc signed)
+npm run app:dev    # the app window on the Vite dev server, for UI work
+```
+
+The app runs the same server inside itself on a free loopback port (a running `tether serve` is unaffected) and uses the same home, `~/.aorch`. It is signed for this Mac only, with no Developer ID: if macOS says it cannot verify the developer the first time, right-click Tether.app → Open (or allow it under System Settings → Privacy & Security). Drag it to /Applications to keep it. Open folders with File → Open Folder… (⌘O), by dropping a folder on the window or the Dock icon, or with `open -a Tether <dir>`.
+
 ## Safety notes
 
 - The web server only listens on loopback and checks `Host` and `Origin`.
@@ -55,7 +64,7 @@ npm run typecheck   # root and web
 
 The web dashboard (web/src) is React + Arc components (uiarc.dev, MIT), vendored under web/src/components/arc. Add another with `node scripts/arc-add.mjs <name>`.
 
-State lives under `~/.aorch` (override with `AORCH_HOME`): the run database, worktrees, saved workflows, `bots.json` (bot to model links) and `ui.json` (display preferences, custom themes).
+State lives under `~/.aorch` (override with `TETHER_HOME`, or the older `AORCH_HOME`): the run database, worktrees, saved workflows, `bots.json` (bot to model links) and `ui.json` (display preferences, custom themes).
 
 ## Pull requests as triggers
 

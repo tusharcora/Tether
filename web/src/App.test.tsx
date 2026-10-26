@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,16 +14,34 @@ vi.mock('./Builder', () => ({
     </div>
   ),
 }));
-vi.mock('./Runs', () => ({ Runs: (p: { selected?: string; node?: string }) => <div>runs screen {p.selected ?? ''} {p.node ?? ''}</div> }));
+vi.mock('./Runs', () => ({
+  Runs: (p: { selected?: string; node?: string; onOpenFile?: (repo: string, file: string) => void }) => (
+    <div>
+      runs screen {p.selected ?? ''} {p.node ?? ''}
+      <button onClick={() => p.onOpenFile?.('/code/blog/api', 'src/x.ts')}>open changed file</button>
+      <button onClick={() => p.onOpenFile?.('/elsewhere', 'src/x.ts')}>open stray file</button>
+    </div>
+  ),
+}));
 vi.mock('./Graph', () => ({ GraphView: (p: { note?: string }) => <div>graph screen {p.note ?? ''}</div> }));
 vi.mock('./Crew', () => ({ Crew: (p: { bot?: string }) => <div>crew screen {p.bot ?? ''}</div> }));
 vi.mock('./Triggers', () => ({ Triggers: () => <div>triggers screen</div> }));
+vi.mock('./code/Code', () => ({
+  Code: (p: { project: { id: string }; path?: string; line?: number; onPath: (path?: string, line?: number) => void; onDirtyChange?: (d: boolean) => void }) => (
+    <div>
+      code screen {p.project.id} {p.path ?? ''} {p.line ?? ''}
+      <button onClick={() => p.onPath('lib/b.ts', 4)}>open b</button>
+      <button onClick={() => p.onDirtyChange?.(true)}>edit file</button>
+    </div>
+  ),
+}));
 vi.mock('./http/ApiTab', () => ({
-  ApiTab: (p: { onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void }) => {
+  ApiTab: (p: { workspace?: string; request?: string; onStarted: (id: string) => void; onUseAsGate: (g: { run: string; env?: string }) => void; onDirtyChange?: (d: boolean) => void; onOpenRequest?: (r?: { id: string; label: string }) => void }) => {
     useState(() => mounts.api++);
     return (
       <div>
-        api screen
+        api screen {p.workspace ?? ''} {p.request ?? ''}
+        <button onClick={() => p.onOpenRequest?.({ id: 'crew/list', label: 'List crew' })}>open request</button>
         <button onClick={() => p.onDirtyChange?.(true)}>edit draft</button>
         <button onClick={() => p.onUseAsGate({ run: 'runs/list', env: 'stage' })}>gate it</button>
         <button onClick={() => p.onStarted('r9')}>started</button>
@@ -34,7 +52,7 @@ vi.mock('./http/ApiTab', () => ({
 import { api } from './api';
 import { App } from './App';
 import { cssRule } from './test/css';
-import { routeApi } from './test/fixtures';
+import { fakeBridge, routeApi } from './test/fixtures';
 
 /** The app starts on this hash (no hashchange: the page was loaded there). */
 const startAt = (hash: string) => history.replaceState(null, '', hash);
@@ -44,7 +62,7 @@ const browserGoes = (hash: string) =>
     history.pushState(null, '', hash);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   });
-const railButton = (name: string) => screen.findByRole('button', { name });
+const navButton = (name: string) => screen.findByRole('button', { name });
 const phone = () =>
   vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 899px)', media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
 const dirtyApi = () => {
@@ -67,7 +85,7 @@ describe('App shell', () => {
     expect(screen.getByText(/runs screen r5 code/)).toBeTruthy();
   });
 
-  it('opens on Home with the rail as the main navigation', () => {
+  it('opens on Home with the sidebar as the main navigation', () => {
     startAt('#');
     render(<App />);
     expect(screen.getByText('home screen')).toBeTruthy();
@@ -82,7 +100,7 @@ describe('App shell', () => {
     expect(screen.getByText('home screen')).toBeTruthy();
   });
 
-  it('navigates by the rail and reopens the last viewed run', async () => {
+  it('navigates by the sidebar and reopens the last viewed run', async () => {
     startAt('#/runs/r5');
     render(<App />);
     expect(screen.getByText(/runs screen r5/)).toBeTruthy();
@@ -107,13 +125,13 @@ describe('App shell', () => {
     expect(screen.getByText('graph screen Roles/coder.md')).toBeTruthy();
   });
 
-  it('asks before leaving a dirty API tab by the rail', async () => {
+  it('asks before leaving a dirty API tab by the sidebar', async () => {
     dirtyApi();
     fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
     expect(location.hash).toBe('#/api');
     expect(screen.getByText('api screen')).toBeTruthy();
-    fireEvent.click(await railButton('Crew'));
+    fireEvent.click(await navButton('Crew'));
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     expect(location.hash).toBe('#/crew');
     expect(screen.getByText('crew screen')).toBeTruthy();
@@ -140,7 +158,7 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
     expect(location.hash).toBe('#/api');
-    fireEvent.click(await railButton('More'));
+    fireEvent.click(await navButton('More'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     expect(location.hash).toBe('#/graph');
@@ -223,7 +241,7 @@ describe('App shell', () => {
     expect(await screen.findByText('offline')).toBeTruthy();
   });
 
-  it('returns focus to the rail Settings button when Settings was opened from ⌘K', async () => {
+  it('returns focus to the sidebar Settings button when Settings was opened from ⌘K', async () => {
     render(<App />);
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
     fireEvent.click(await screen.findByText('Open Settings'));
@@ -269,15 +287,226 @@ describe('App shell', () => {
     }
   });
 
-  it('gives the rail the full height and scrolls only the screen', () => {
+  it('gives the sidebar the full height and scrolls only the screen', () => {
     const shell = cssRule('ui/studio/shell.css', '.shell');
     expect(shell).toContain('grid-template-rows: minmax(0,1fr)');
+    expect(shell).toContain('grid-template-columns: auto minmax(0,1fr)');
     expect(shell).toContain('height: 100%');
-    expect(cssRule('ui/studio/shell.css', '.sl-rail')).toContain('height: 100%');
+    expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('height: 100%');
     expect(cssRule('ui/studio/shell.css', '.shell-main')).toContain('overflow: auto');
     expect(cssRule('ui/studio/shell.css', '.shell.phone')).toContain('grid-template-rows: minmax(0,1fr) auto');
     expect(() => cssRule('styles.css', '.topbar')).toThrow();
     expect(() => cssRule('styles.css', '.app')).toThrow();
+  });
+
+  it('shows the projects skeleton, not "No projects yet", until /api/workspaces first answers', async () => {
+    let answer: (v: unknown) => void = () => {};
+    routeApi({ 'GET /api/health': { ok: true }, 'GET /api/crew': { bots: [] }, 'GET /api/runs': [], 'GET /api/pins': { pins: [] }, 'GET /api/workspaces': new Promise((r) => (answer = r)) });
+    render(<App />);
+    expect(await screen.findByRole('status', { name: 'Loading projects' })).toBeTruthy();
+    expect(screen.queryByText(/No projects yet/)).toBeNull();
+    await act(async () => answer([{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }]));
+    expect(await screen.findByRole('button', { name: 'shop' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Loading projects' })).toBeNull();
+  });
+
+  it('opens Settings with ⌘, and Open folder… with ⌘O', async () => {
+    render(<App />);
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+    expect(location.hash).toBe('#/settings');
+    fireEvent.keyDown(window, { key: 'o', metaKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
+  });
+
+  describe('projects and pins', () => {
+    const two = [
+      { id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] },
+      { id: 'blog', name: 'blog', path: '/code/blog', isDefault: false, exists: true, repos: [] },
+    ];
+    let saved: unknown;
+    beforeEach(() => {
+      localStorage.clear();
+      saved = undefined;
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [{ id: 'r5', task: 'Add rate limiting\nmore', repo: '/code/blog/api', live: true, status: 'running', startedAt: 0 }],
+        'GET /api/pipelines': [],
+        'GET /api/attention': { items: [{}, {}] },
+        'GET /api/workspaces': two,
+        'GET /api/pins': () => ({ pins: saved ?? [] }),
+        'PUT /api/pins': (b: { pins: unknown }) => ((saved = b.pins), b),
+      });
+    });
+
+    it('lists projects with a live dot, counts, and switches the API tab to the picked project', async () => {
+      startAt('#/api');
+      render(<App />);
+      expect(await screen.findByText(/api screen shop/)).toBeTruthy();
+      expect(await screen.findByText('2')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      expect(await screen.findByText(/api screen blog/)).toBeTruthy();
+      expect(localStorage.getItem('aorch.api.ws')).toBe('blog');
+      expect(screen.getByRole('button', { name: 'blog' }).querySelector('.sl-side-live')).toBeTruthy();
+    });
+
+    it('hands the file and line in the hash to Code, keeps them in the hash and reopens the last file', async () => {
+      startAt('#/code/src/a.ts:3');
+      render(<App />);
+      expect(await screen.findByText(/code screen shop src\/a\.ts 3/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'open b' }));
+      expect(location.hash).toBe('#/code/lib/b.ts:4');
+      fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Code' }));
+      expect(location.hash).toBe('#/code/lib/b.ts');
+    });
+
+    it('opens a file a run changed in Code, in the project holding the run, and says so when no project holds it', async () => {
+      startAt('#/runs/r5');
+      render(<App />);
+      await screen.findByRole('button', { name: 'blog' });
+      fireEvent.click(screen.getByRole('button', { name: 'open stray file' }));
+      expect(await screen.findByText(/\/elsewhere is not one of your projects/)).toBeTruthy();
+      expect(location.hash).toBe('#/runs/r5');
+      fireEvent.click(screen.getByRole('button', { name: 'open changed file' }));
+      expect(location.hash).toBe('#/code/src/x.ts');
+      expect(await screen.findByText(/code screen blog src\/x\.ts/)).toBeTruthy();
+    });
+
+    it('asks before leaving Code, or switching project, with unsaved files', async () => {
+      startAt('#/code');
+      render(<App />);
+      await screen.findByText(/code screen shop/);
+      fireEvent.click(screen.getByRole('button', { name: 'edit file' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Crew' }));
+      expect(await screen.findByText('Some open files have edits that are not saved.')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+      expect(await screen.findByText(/code screen blog/)).toBeTruthy();
+    });
+
+    it('asks before switching project under a dirty API tab', async () => {
+      startAt('#/api');
+      render(<App />);
+      await screen.findByText(/api screen shop/);
+      fireEvent.click(screen.getByRole('button', { name: 'edit draft' }));
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByText(/api screen shop/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+      expect(await screen.findByText(/api screen blog/)).toBeTruthy();
+    });
+
+    it('pins the open run and the open request, and opens a pinned request in its project', async () => {
+      startAt('#/runs/r5');
+      render(<App />);
+      await screen.findByRole('button', { name: 'blog' });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Pin this run or request' }).hasAttribute('disabled')).toBe(false));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      await waitFor(() => expect(saved).toEqual([{ kind: 'run', id: 'r5', label: 'Add rate limiting' }]));
+      fireEvent.click(await screen.findByRole('button', { name: 'Add rate limiting' }));
+      expect(location.hash).toBe('#/runs/r5');
+
+      fireEvent.click(screen.getByRole('button', { name: 'blog' }));
+      fireEvent.click(screen.getByRole('button', { name: 'API client' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'open request' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pin this run or request' }));
+      await waitFor(() => expect(saved).toContainEqual({ kind: 'request', id: 'crew/list', label: 'List crew', ws: 'blog' }));
+      fireEvent.click(screen.getByRole('button', { name: 'shop' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'List crew' }));
+      expect(location.hash).toBe('#/api/crew%2Flist');
+      expect(await screen.findByText(/api screen blog crew\/list/)).toBeTruthy();
+    });
+  });
+
+  describe('in Tether.app', () => {
+    let list: { id: string; name: string; path: string; isDefault: boolean; exists: boolean; repos: string[] }[];
+    beforeEach(() => {
+      list = [{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }];
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [],
+        'GET /api/attention': { items: [{ id: 'q1', runId: 'r1', title: 'Which db?', kind: 'question', ts: 0, meta: '', actions: [] }] },
+        'GET /api/pins': { pins: [] },
+        'GET /api/workspaces': () => list,
+        'POST /api/workspaces': (b: { path: string }) => {
+          const w = { id: b.path.split('/').pop()!, name: b.path.split('/').pop()!, path: b.path, isDefault: false, exists: true, repos: [] };
+          if (!list.some((x) => x.id === w.id)) list.push(w);
+          return w;
+        },
+      });
+    });
+
+    it('opens a folder from the native picker (+) and from the app (menu, Dock, drop), and lands on Code in it', async () => {
+      const { b, emit } = fakeBridge();
+      b.openFolder.mockResolvedValue('/code/blog');
+      render(<App />);
+      await screen.findByRole('button', { name: 'shop' });
+      expect(b.ready).toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Open folder…' }));
+      expect(await screen.findByText(/code screen blog/)).toBeTruthy();
+      expect(screen.queryByRole('dialog', { name: 'Open a folder' })).toBeNull();
+      act(() => emit.open('/code/docs'));
+      expect(await screen.findByText(/code screen docs/)).toBeTruthy();
+      expect(location.hash).toBe('#/code');
+    });
+
+    it('badges the Dock with what needs you, follows a notification’s route, and reopens Welcome from the menu', async () => {
+      const { b, emit } = fakeBridge();
+      render(<App />);
+      await waitFor(() => expect(b.setBadge).toHaveBeenLastCalledWith(1));
+      act(() => emit.route('#/crew'));
+      expect(await screen.findByText('crew screen')).toBeTruthy();
+      act(() => emit.command('welcome'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Back to Tether' }));
+      expect(await screen.findByText('crew screen')).toBeTruthy();
+    });
+
+    it('shows the notifications switch in Settings', async () => {
+      fakeBridge();
+      startAt('#/settings');
+      render(<App />);
+      expect(await screen.findByRole('switch', { name: /needs me or finishes/ })).toBeTruthy();
+    });
+  });
+
+  describe('first launch', () => {
+    let added: string[];
+    beforeEach(() => {
+      added = [];
+      routeApi({
+        'GET /api/health': { ok: true },
+        'GET /api/crew': { bots: [] },
+        'GET /api/runs': [],
+        'GET /api/tools': { agents: [], rg: { ok: false } },
+        'GET /api/pins': { pins: [] },
+        'GET /api/workspaces': () => added.map((path) => ({ id: 'shop', name: 'shop', path, isDefault: true, exists: true, repos: [] })),
+        'POST /api/workspaces': (b: { path: string }) => (added.push(b.path), { id: 'shop', name: 'shop', path: b.path, isDefault: true, exists: true, repos: [] }),
+      });
+    });
+
+    it('shows the welcome screen instead of the shell, and opening a folder lands on Code', async () => {
+      render(<App />);
+      fireEvent.change(await screen.findByRole('textbox', { name: 'Folder path' }), { target: { value: '/code/shop' } });
+      expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+      expect(await screen.findByText(/code screen shop/)).toBeTruthy();
+      expect(location.hash).toBe('#/code');
+      expect(added).toEqual(['/code/shop']);
+    });
+
+    it('can be skipped; Code then offers Open folder…', async () => {
+      startAt('#/code');
+      render(<App />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue without a project' }));
+      expect(await screen.findByText('No project open')).toBeTruthy();
+      fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Open folder…' }));
+      expect(await screen.findByRole('dialog', { name: 'Open a folder' })).toBeTruthy();
+    });
   });
 
   it('uses the bottom bar under 900 px', () => {

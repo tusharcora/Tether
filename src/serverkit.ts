@@ -5,6 +5,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** More fields for the JSON error body, next to `error` (a 409's current mtime, a 423's run). */
+    readonly extra?: Record<string, unknown>,
   ) {
     super(message);
   }

@@ -19,6 +19,20 @@ const setup = (o: { data?: RunRow[]; selected?: string; probes?: boolean } = {})
 };
 
 describe('RunList', () => {
+  it('narrows to the current project with a switch, and Show all lifts every filter', () => {
+    const data = [makeRow({ id: 'a', task: 'In shop', repo: '/code/shop/api' }), makeRow({ id: 'b', task: 'In blog', repo: '/code/blog' }), makeRow({ id: 'c', task: 'Shopfront', repo: '/code/shopfront' })];
+    render(<RunList poll={poll(data)} probes={false} onProbes={vi.fn()} onSelect={vi.fn()} project={{ id: 'shop', name: 'shop', path: '/code/shop', isDefault: true, exists: true, repos: [] }} />);
+    expect(screen.getByText('In blog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'only shop' }));
+    expect(screen.getByText('In shop')).toBeTruthy();
+    expect(screen.queryByText('In blog')).toBeNull();
+    expect(screen.queryByText('Shopfront')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByText('No finished runs in shop.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+    expect(screen.getByText('In blog')).toBeTruthy();
+  });
+
   it('filters All / Live / Done', () => {
     expect(filterRuns(rows, 'live').map((r) => r.id)).toEqual(['r1', 'r2']);
     expect(filterRuns(rows, 'done').map((r) => r.id)).toEqual(['r3', 'r4']);

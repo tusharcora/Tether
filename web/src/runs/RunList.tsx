@@ -5,6 +5,8 @@ import SegmentedControl from '../components/arc/segmented-control/segmented-cont
 import { Switch } from '../components/arc/switch/switch';
 import { Loading } from '../components/Loading';
 import { isFinished, runTitle } from '../home/runText';
+import type { WorkspaceRow } from '../home/workspaces';
+import { runsIn } from '../projects/projects';
 import type { Poll } from '../hooks';
 import { cn } from '../ui/cn';
 import { EmptyState } from '../ui/studio/EmptyState';
@@ -66,10 +68,15 @@ export function RunList(props: {
   onSelect: (id: string) => void;
   /** The empty list's one action (F14): go and start a run. */
   onStart?: () => void;
+  /** The current project: a switch narrows the list to runs started in its folder. */
+  project?: WorkspaceRow;
 }) {
   const [filter, setFilter] = useState<RunFilter>('all');
+  const [mine, setMine] = useState(false);
   const { data, error, refresh } = props.poll;
-  const rows = filterRuns(data ?? [], filter);
+  const scoped = props.project && mine ? props.project : undefined;
+  const rows = filterRuns(scoped ? runsIn(data ?? [], scoped) : (data ?? []), filter);
+  const none = [filter === 'live' ? 'live' : filter === 'done' ? 'finished' : '', 'runs', scoped ? `in ${scoped.name}` : ''].filter(Boolean).join(' ');
   return (
     <aside className="run-list" aria-label="Runs">
       <div className="run-list-head">
@@ -85,8 +92,9 @@ export function RunList(props: {
           onValueChange={(v) => setFilter(v as RunFilter)}
         />
       </div>
-      <div className="run-list-probes" title="Evolve probe replays are experiments and are hidden by default; aorch probes --clean deletes finished ones">
+      <div className="run-list-probes" title="Evolve probe replays are experiments and are hidden by default; tether probes --clean deletes finished ones">
         <Switch label="show probe replays" checked={props.probes} onCheckedChange={(c) => props.onProbes(c === true)} />
+        {props.project ? <Switch label={`only ${props.project.name}`} checked={mine} onCheckedChange={(c) => setMine(c === true)} /> : null}
       </div>
       <Loading loading={data === undefined && !error} lines={6} label="Loading runs">
         {error && !data ? (
@@ -98,8 +106,8 @@ export function RunList(props: {
             {!rows.length ? (
               data?.length ? (
                 <div className="run-list-none">
-                  <p className="sl-meta">No {filter === 'live' ? 'live' : 'finished'} runs.</p>
-                  <Button variant="ghost" size="sm" onClick={() => setFilter('all')}>
+                  <p className="sl-meta">No {none}.</p>
+                  <Button variant="ghost" size="sm" onClick={() => (setFilter('all'), setMine(false))}>
                     Show all
                   </Button>
                 </div>
