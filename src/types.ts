@@ -815,3 +815,31 @@ export interface RunTouch {
   /** The file's diff in this run, from the first hunk, cut to 80 lines. */
   patch: string;
 }
+
+// ---- Tether.app ----
+/** Commands the app's menu sends to the page. */
+export type AppCommand = 'welcome';
+
+/**
+ * `window.tether`, which Tether.app's preload exposes to the page (context isolation on, so these functions are all the
+ * page gets). In a browser it is absent and the page falls back (Open folder… types a path, no badge or notifications).
+ */
+export interface TetherBridge {
+  platform: string;
+  /** The native folder picker; undefined when cancelled. */
+  openFolder(): Promise<string | undefined>;
+  /** The path of a file or folder dropped on the page. */
+  pathForFile(file: File): string;
+  revealInFinder(path: string): void;
+  /** The Dock badge (0 clears it). */
+  setBadge(n: number): void;
+  /** A system notification; clicking it focuses the window and opens `route` (a `#/…` hash). */
+  notify(n: { title: string; body?: string; route?: string }): void;
+  /** A folder to open, from the menu, the Dock or `open -a Tether <dir>`. Returns the unsubscribe. */
+  onOpen(cb: (path: string) => void): () => void;
+  /** A hash to show (a clicked notification, a menu item). */
+  onRoute(cb: (hash: string) => void): () => void;
+  onCommand(cb: (command: AppCommand) => void): () => void;
+  /** The page listens now: folders handed over before this are delivered. */
+  ready(): void;
+}

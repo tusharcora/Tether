@@ -34,8 +34,7 @@ export async function serveTether(o: { home?: string; vault?: string; host?: str
   installExamples(ctx.cfg.home, o.examplesDir);
   await ctx.vault.ensure();
   const server = await startServer({ engine: ctx.engine, store: ctx.store, vault: ctx.vault, registry: makeRegistry(ctx.cfg), cfg: ctx.cfg, host: o.host, port: o.port ?? 4177, webDir: o.webDir });
-  const stopLive = () => {
-    for (const r of ctx.store.list()) if (ctx.engine.isLive(r.id)) ctx.engine.stop(r.id);
-  };
+  /** Returns how many runs it stopped. */
+  const stopLive = () => ctx.store.list().filter((r) => ctx.engine.isLive(r.id) && ctx.engine.stop(r.id)).length;
   return { ...ctx, url: server.url, close: server.close, stopLive };
 }
