@@ -5,8 +5,8 @@ import type { Route } from '../hooks';
 import type { GoalView } from './goalsApi';
 import './goals.css';
 
-/** A tracker: a checklist of manual items and linked runs, an add-item field and the way to turn it into a loop. */
-export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onToLoop: () => void; onGo: (r: Route) => void }) {
+/** A tracker: a checklist of manual items and linked runs, and an add-item field (Turn into a loop is in the goal's bar). */
+export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onGo: (r: Route) => void }) {
   const [text, setText] = useState('');
   const items: TodoItem[] = p.goal.items.map((i) => {
     const run = i.kind === 'run';
@@ -55,9 +55,6 @@ export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: bool
           Add
         </Button>
       </form>
-      <Button variant="ghost" size="sm" onClick={p.onToLoop}>
-        Add a finish check → turn into a loop
-      </Button>
     </div>
   );
 }
