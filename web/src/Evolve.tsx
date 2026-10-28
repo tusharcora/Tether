@@ -5,7 +5,7 @@ import { Button } from './components/beui/kit/Button';
 import { cn } from './ui/cn';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { SectionHeading } from './ui/studio/SectionHeading';
-import { StatusChip, type Tone } from './ui/studio/StatusChip';
+import { StatusBadge, type Tone } from './ui/studio/StatusBadge';
 import './evolve.css';
 
 /** Shapes from src/evolveops.ts (views are plain data; every string here is rendered as text, never as HTML). */
@@ -130,7 +130,7 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
 
       {h ? (
         <section className="ev-section">
-          <SectionHeading title={`Harness v${h.current.version}`} action={!h.evolvable ? <StatusChip tone="neutral" label="not evolvable" /> : undefined} />
+          <SectionHeading title={`Harness v${h.current.version}`} action={!h.evolvable ? <StatusBadge tone="neutral" label="not evolvable" /> : undefined} />
           <p className="ev-persona">{h.current.persona}</p>
           {h.current.guidance.length ? (
             <ul className="ev-guidance">
@@ -177,8 +177,8 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
               <div className="ev-proposal" key={p.id}>
                 <div className="ev-proposal-head">
                   <code>{p.id}</code>
-                  <StatusChip tone={LABEL_TONE[p.label] ?? 'neutral'} label={p.label} />
-                  {p.stale ? <StatusChip tone="needs" label="stale" /> : null}
+                  <StatusBadge tone={LABEL_TONE[p.label] ?? 'neutral'} label={p.label} />
+                  {p.stale ? <StatusBadge tone="needs" label="stale" /> : null}
                   <span className="sl-meta">
                     based on v{p.base}
                     {p.version !== undefined ? ` · made v${p.version}` : ''}
@@ -204,7 +204,7 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
                             <b>{e.n}.</b> {e.roleNote ? 'role note' : `${e.field} ${e.op}`}
                           </span>
                         )}
-                        {e.probe ? <StatusChip tone={PROBE[e.probe].tone} label={PROBE[e.probe].label(e.probeNote)} /> : null}
+                        {e.probe ? <StatusBadge tone={PROBE[e.probe].tone} label={PROBE[e.probe].label(e.probeNote)} /> : null}
                       </div>
                       {e.roleNote ? (
                         <p className="ev-help">added to the bot's role prompt; {e.before !== undefined ? 'replaces the earlier role note' : 'nothing is removed'}</p>
@@ -264,7 +264,7 @@ export function EvolvePanel(props: { bot: string; name: string; onClose: () => v
           <ul className="ev-lessons">
             {lessons.map((l) => (
               <li key={l.id}>
-                <StatusChip tone={l.status === 'confident' ? 'done' : 'neutral'} label={l.status} />
+                <StatusBadge tone={l.status === 'confident' ? 'done' : 'neutral'} label={l.status} />
                 <span>{l.text}</span>
                 <span className="sl-meta">
                   {l.polarity} · {l.runs} run{l.runs === 1 ? '' : 's'} · from {l.provenance} · <code>{l.id}</code>

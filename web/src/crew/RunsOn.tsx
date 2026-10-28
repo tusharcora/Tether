@@ -5,7 +5,7 @@ import { SegmentedControl } from '../components/beui/kit/controls';
 import { Picker } from '../components/bencho/Picker';
 import { NONE, fromNone } from '../ui/cn';
 import { SectionHeading } from '../ui/studio/SectionHeading';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { AgentInfo, Binding, Row } from './types';
 
 /** Which agent and model a bot runs on. A step with no agent of its own follows its bot. */
@@ -23,7 +23,7 @@ export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: 
   const route = p.agents[runsOn]?.codeMode;
   return (
     <section className="cw-runs-on" aria-labelledby={id}>
-      <SectionHeading id={id} title="Runs on" action={chosen && !chosen.ok ? <StatusChip tone="needs" label="agent not available" /> : undefined} />
+      <SectionHeading id={id} title="Runs on" action={chosen && !chosen.ok ? <StatusBadge tone="needs" label="agent not available" /> : undefined} />
       <p className="sl-meta">A step with no agent of its own follows its bot; a step that names one keeps it. Changes apply to the next run you start.</p>
       <div className="cw-pair">
         <Picker

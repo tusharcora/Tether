@@ -1,5 +1,5 @@
 import type { WorkspaceRow } from '../home/workspaces';
-import type { Tone } from '../ui/studio/StatusChip';
+import type { Tone } from '../ui/studio/StatusBadge';
 
 export interface Delivery { at: string; trigger?: string; source: 'webhook' | 'poll' | 'test'; repo: string; pr?: number; outcome: 'started' | 'ignored' | 'skipped' | 'error'; reason?: string; runId?: string }
 export type Status = 'paused' | 'error' | 'idle' | 'active';

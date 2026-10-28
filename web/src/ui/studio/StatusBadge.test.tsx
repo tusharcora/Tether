@@ -1,9 +1,22 @@
 import { render, screen } from '@testing-library/react';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cssRule } from '../../test/css';
 import { StatusBadge, StatusGlyph, toneFor } from './StatusBadge';
 
+// through a variable so Vite leaves the URL alone (as test/css.ts does)
+const here = import.meta.url;
+
 describe('StatusBadge', () => {
+  it('is the only status badge in the app', () => {
+    const root = fileURLToPath(new URL('../../../../', here));
+    const files = execSync('git ls-files web/src', { cwd: root, encoding: 'utf8' }).split('\n').filter((f) => /\.tsx?$/.test(f) && !f.endsWith('StatusBadge.test.tsx'));
+    const offenders = files.filter((f) => /StatusChip|\bBadge\b.*from '.*kit/.test(readFileSync(join(root, f), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
   it('renders a descriptor as a beui badge with its state', () => {
     const { container } = render(<StatusBadge desc={{ of: 'step', status: 'running', kind: 'gate', attempts: 1 }} />);
     const b = container.querySelector('.sl-badge')!;
