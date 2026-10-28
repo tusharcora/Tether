@@ -186,7 +186,7 @@ export class Engine {
   /** Live probe replays: their harness override and spend estimate. */
   private probes = new Map<string, ProbeRun>();
   /** Where CLI agents' run_code lands (started on the first Code Mode step). */
-  private readonly codeMode = new CodeModeHost();
+  readonly codeMode = new CodeModeHost();
   /** When each live run's current execution pass began, for the wall-clock limit (managers check it too). */
   private wallStart = new Map<string, number>();
   private teams = new Map<string, TeamMeta>();

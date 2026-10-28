@@ -10,6 +10,7 @@ export function parseClaudeLine(
   acc: { text: string; result?: string; costUsd?: number; sessionId?: string; isError?: boolean; usage?: AgentUsage; toolCalls?: number; tools?: string[] },
   onChunk: (t: string) => void,
   onSession: (id: string) => void,
+  onDelta?: (t: string) => void,
 ): void {
   let o: any;
   try {
@@ -21,6 +22,11 @@ export function parseClaudeLine(
   if (typeof o.session_id === 'string' && !acc.sessionId) {
     acc.sessionId = o.session_id;
     onSession(o.session_id);
+  }
+  if (o.type === 'stream_event') {
+    const d = o.event?.type === 'content_block_delta' ? o.event.delta : undefined;
+    if (onDelta && d?.type === 'text_delta' && typeof d.text === 'string') onDelta(d.text);
+    return;
   }
   if (o.type === 'system' && o.subtype === 'init' && Array.isArray(o.tools)) {
     const tools: string[] = o.tools.filter((t: unknown): t is string => typeof t === 'string');
@@ -85,6 +91,7 @@ export class ClaudeAdapter implements AgentAdapter {
       ...(req.model ? ['--model', req.model] : []),
       ...(req.budgetUsd !== undefined && req.budgetUsd > 0 ? ['--max-budget-usd', req.budgetUsd.toFixed(4)] : []),
       ...(req.resumeSessionId ? ['--resume', req.resumeSessionId] : []),
+      ...(req.onDelta ? ['--include-partial-messages'] : []),
       ...(req.codeMode ? claudeCodeModeArgs(req.codeMode) : []),
     ];
     const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
@@ -94,7 +101,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cwd: req.cwd,
       stdin: req.prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
-      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession),
+      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta),
     });
     if (r.spawnError) return { output: '', exitCode: 127, error: `claude: ${r.spawnError}` };
     const exitCode = r.aborted ? 130 : acc.isError ? 1 : (r.code ?? 1);

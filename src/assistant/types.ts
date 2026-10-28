@@ -70,6 +70,8 @@ export interface ChatMessage {
   compare?: Compare;
   attachments?: { name: string; size: number }[];
   feedback?: 'up' | 'down';
+  /** What the turn cost, where the agent reports it. */
+  costUsd?: number;
   /** The turn failed: what to tell the person. */
   error?: string;
 }

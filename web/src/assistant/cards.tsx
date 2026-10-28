@@ -23,12 +23,12 @@ export function ProposalCard({ proposal: p, chat, onGo }: { proposal: Proposal; 
         result={p.status === 'started' ? 'Run started' : p.status === 'failed' ? (p.note ?? 'Could not start') : p.status === 'dismissed' ? 'Dismissed' : undefined}
       >
         <p className="m-0 whitespace-pre-wrap text-sm">{p.task}</p>
-        {p.status === 'started' && p.runId ? (
-          <button type="button" className="mt-2 text-sm underline underline-offset-4" onClick={() => onGo({ tab: 'runs', id: p.runId })}>
-            Open run
-          </button>
-        ) : null}
       </ApprovalCard>
+      {p.status === 'started' && p.runId ? (
+        <button type="button" className="mt-1.5 border-0 bg-transparent p-0 text-sm text-foreground underline underline-offset-4" onClick={() => onGo({ tab: 'runs', id: p.runId })}>
+          Open run
+        </button>
+      ) : null}
     </div>
   );
 }

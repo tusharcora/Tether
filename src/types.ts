@@ -671,6 +671,8 @@ export interface AgentRequest {
   mock?: MockScript;
   verdictNode?: boolean;
   onChunk(text: string): void;
+  /** Token-level text as it is written (Claude: `--include-partial-messages`). Adapters that cannot stream ignore it. */
+  onDelta?(text: string): void;
   onSession(id: string): void;
 }
 
