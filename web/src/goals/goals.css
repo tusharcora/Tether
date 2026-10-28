@@ -1,0 +1,71 @@
+/* Goals: rows on the left, the open goal on the right. Tokens only; only live parts move. */
+.goals { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); height: 100%; min-height: 0; }
+.goals-list { display: flex; flex-direction: column; min-height: 0; overflow: auto; border-right: 1px solid var(--line); background: var(--s1); }
+.goals-list .sl-screen-header { padding: 16px 16px 8px; }
+.goals-list .sl-screen-header h1 { font-size: 18px; }
+.goals-tabs { padding: 0 16px 8px; }
+.goals-rows { padding: 0 8px 16px; }
+.goal-row.current { background: var(--s2); }
+.goal-row .sl-row-extra { padding-top: 2px; }
+.goal-detail { min-width: 0; min-height: 0; overflow: auto; }
+.goal-none { padding: 48px 24px; }
+@media (max-width: 899px) {
+  .goals { display: block; height: auto; }
+  .goals-list { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+.mut { color: var(--mut); }
+.goals .mono, .nod-title .mono { font-family: var(--font-code); }
+
+/* a 3 px bar: the list's progress, the budget meter, a checklist's progress */
+.goal-bar, .gt-bar { display: block; height: 3px; border-radius: 2px; background: var(--line2); overflow: hidden; }
+.goal-bar > span, .gt-bar > span { display: block; height: 100%; background: var(--ink); transition: width var(--t-med) var(--ease); }
+.goal-bar > span.met { background: var(--ok); }
+
+/* an approval is visible: amber, because the run waits for you (the text is the page colour on amber, AA in both themes) */
+.goal-approve { height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--warn); color: var(--bg); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.goal-approve:hover:not(:disabled) { opacity: 0.88; }
+.goal-approve:disabled { opacity: 0.5; cursor: default; }
+.goal-approve:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+.gd-wrap { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 32px; min-width: 0; }
+.gd-head { display: flex; flex-direction: column; gap: 6px; }
+.gd-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.gd-title h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.gd-limits { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
+.gd-limit { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 12px; }
+.gd-limit .mono { font-size: 12px; color: var(--ink); }
+
+/* the dot grid, cut from a solid fill by a mask (no gradient fill), as the pipeline canvas draws it */
+.gd-grid { position: relative; display: flex; justify-content: center; padding: 64px 72px 48px; border: 1px solid var(--line); border-radius: var(--radius-panel); background-color: var(--bg); }
+.gd-grid::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
+.goal-flow { position: relative; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 0; list-style: none; max-width: 100%; }
+.goal-flow > li { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
+.gf-link { width: 2px; height: 24px; background: var(--edge); }
+.goal-flow .gf-next { border-style: dashed; }
+.goal-flow .gf-next:has(.nod-dot.t-needs) { border-color: var(--warn); }
+.gf-task { margin: 0; max-height: 96px; overflow: auto; font-size: 12.5px; line-height: 1.5; color: var(--ink2); white-space: pre-wrap; }
+.gf-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.gf-edit { display: flex; gap: 6px; align-items: center; }
+.gf-input { width: 100%; box-sizing: border-box; min-width: 0; padding: 6px 10px; border: 1px solid var(--edge); border-radius: 8px; background: var(--s1); color: var(--ink); font: inherit; font-size: 13px; }
+.gf-input:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.gf-plan { resize: vertical; }
+.gd-switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.gd-switch p { margin: 2px 0 0; font-size: 12px; }
+.gd, .gd-check { display: flex; flex-direction: column; gap: 14px; }
+.gd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gd .row.between { justify-content: space-between; }
+
+/* a tracker */
+.gt { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+.gt-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.gt-add { display: flex; gap: 8px; }
+.gt-toggle { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gt-toggle:focus-visible, .gt-run:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.gt-item { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gt-run { padding: 1px 7px; border: 1px solid var(--line2); border-radius: 6px; background: var(--s2); color: var(--ink2); font-family: var(--font-code); font-size: 11px; cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-bar > span, .gt-bar > span { transition: none; }
+}
+.goal-tracker-glyph { color: var(--ink2); }

@@ -14,7 +14,7 @@ const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
   onSettings: vi.fn(),
   onCompose: vi.fn(),
   onCreate: vi.fn(),
-  counts: { needs: 2, live: 1 },
+  counts: { needs: 2, live: 1, goals: 0 },
   runs: { list: [run('rmh0aaa1144', 'Tune the limit window', { live: true, status: 'running' }), run('rmh0aaa1142', 'Plan auth flow', { pending: 1, status: 'paused' }), run('rmh0aaa1141', 'Add rate limiting', { finishedAt: 5 })], onOpen: vi.fn() },
   projects: { list: [w('shop'), w('blog')], current: 'shop', live: new Set(['blog']), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() },
   pins: { list: [{ kind: 'workflow', id: 'plan-code-review', label: 'plan-code-review' }, { kind: 'file', id: 'README.md', label: 'README.md', ws: 'shop' }], canPin: true, onPin: vi.fn(), onOpen: vi.fn(), onUnpin: vi.fn(), onReorder: vi.fn() },
@@ -36,7 +36,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: 'Project: shop' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
+    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers']);
     const sections = [...document.querySelectorAll('.sl-side-section-title')].map((s) => s.textContent);
     expect(sections).toEqual(['Workspace', 'Runs', 'Favorites']);
     const foot = document.querySelector('.sl-side-foot') as HTMLElement;
@@ -66,7 +66,7 @@ describe('Sidebar', () => {
     fireEvent.click(create);
     const menu = await screen.findByRole('menu', { name: 'Create' });
     expect(create.getAttribute('aria-expanded')).toBe('true');
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['New run', 'New workflow', 'New bot', 'New trigger', 'New request']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['New run', 'New workflow', 'New bot', 'New trigger', 'New request', 'New goal']);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'New bot' }));
     expect(p.onCreate).toHaveBeenCalledWith('bot');
     expect(p.onCompose).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe('Sidebar', () => {
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New workflow' }));
     fireEvent.keyDown(menu, { key: 'End' });
-    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New request' }));
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New goal' }));
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New run' }));
     fireEvent.keyDown(menu, { key: 'Escape' });
@@ -100,8 +100,8 @@ describe('Sidebar', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-count.needs')!.textContent).toBe('2');
     expect(screen.getByRole('button', { name: 'Runs' }).querySelector('.sl-side-count.live')!.textContent).toBe('1');
-    const hints = ['Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers'].map((n) => screen.getByRole('button', { name: n }).querySelector('.sl-side-hint')!.textContent);
-    expect(hints).toEqual(['G C', 'G B', 'G R', 'G A', 'G G', 'G T']);
+    const hints = ['Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers'].map((n) => screen.getByRole('button', { name: n }).querySelector('.sl-side-hint')!.textContent);
+    expect(hints).toEqual(['G C', 'G B', 'G R', 'G O', 'G A', 'G G', 'G T']);
     expect(screen.getByRole('button', { name: 'Home' }).querySelector('.sl-side-hint')!.textContent).toBe('G H');
   });
 
@@ -251,7 +251,7 @@ describe('collapsing to the icon rail', () => {
     // the head's actions and the section headers go inert (they clip under the edge or become hairlines)
     expect(screen.queryByRole('button', { name: 'Project: shop' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand sidebar' }).querySelector('.sl-switch-glyph .sl-glyph')).toBeTruthy();
-    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
+    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers']);
     expect(screen.getByRole('region', { name: 'Recent runs' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'README.md' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();

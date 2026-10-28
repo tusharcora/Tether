@@ -7,6 +7,7 @@ import { usePoll } from './hooks';
 import { Deliveries } from './triggers/Deliveries';
 import { TriggerForm } from './triggers/TriggerForm';
 import { TriggerCard } from './triggers/TriggerCard';
+import { TriggerFlow } from './triggers/TriggerFlow';
 import { TriggerTest } from './triggers/TriggerTest';
 import { blank, fromTrigger, split, type Delivery, type Form, type Trigger, type Workspace } from './triggers/types';
 import { WebhookSetup } from './triggers/WebhookSetup';
@@ -46,6 +47,8 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
     if (!testId || !rows.some((t) => t.id === testId)) setTestId(rows[0]?.id ?? '');
   }, [rows, testId]);
 
+  /** The trigger whose flow is drawn: the one picked for its log or test, else the first. */
+  const selected = rows.find((t) => t.id === (logFor || testId)) ?? rows[0];
   async function reload() {
     await list.refresh();
     await log.refresh();
@@ -111,11 +114,25 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
           {list.error && !list.data ? (
             <InlineError message={list.error} onRetry={() => void list.refresh()} />
           ) : rows.length ? (
-            <ul className="tg-list">
-              {rows.map((t) => (
-                <TriggerCard key={t.id} t={t} selected={editing && form?.id === t.id} onOpen={() => openForm(t)} onToggle={() => void toggle(t)} />
-              ))}
-            </ul>
+            <>
+              <ul className="tg-list">
+                {rows.map((t) => (
+                  <TriggerCard key={t.id} t={t} selected={editing && form?.id === t.id} onOpen={() => openForm(t)} onToggle={() => void toggle(t)} />
+                ))}
+              </ul>
+              {/* main's Event → Filter → Workflow flow for the selected trigger, under the cards */}
+              {selected ? (
+                <TriggerFlow
+                  t={selected}
+                  workspace={workspaces.find((w) => w.id === selected.workspace)}
+                  onTestFire={() => toTest(selected.id)}
+                  onToggle={() => void toggle(selected)}
+                  onSettings={() => openForm(selected)}
+                  onOpenWorkflow={() => (location.hash = `#/builder/${encodeURIComponent(selected.workflow)}`)}
+                  onStarted={(id) => (location.hash = `#/runs/${id}`)}
+                />
+              ) : null}
+            </>
           ) : (
             <div className="tg-empty">
               <QuietLine>

@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tether — goals</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.sl{--page:#e7e7e4;--bg:#ffffff;--side:#f7f7f6;--s1:#ffffff;--s2:#f1f1ef;--s3:#e5e5e2;--ink:#1d1d1f;--ink2:#55555a;--mut:#6b6b72;--hov:rgba(0,0,0,.05);--sel:rgba(0,0,0,.075);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.16);--acc:#2563eb;--accBg:rgba(37,99,235,.1);--accInk:#1d4ed8;--warn:#92400e;--warnBg:#fdf1d8;--wInk:#ffffff;--ok:#047857;--okBg:#e7f6ef;--bad:#b91c1c;--badBg:#fdecec;--term:#f4f4f2;--pop:0 0 0 1px rgba(0,0,0,.06),0 18px 50px rgba(0,0,0,.18)}
+.sl.dark{--page:#000;--bg:#121214;--side:#18181b;--s1:#1f1f23;--s2:#232328;--s3:#2e2e34;--ink:#ececee;--ink2:#a6a6ad;--mut:#8b8b93;--hov:rgba(255,255,255,.05);--sel:rgba(255,255,255,.08);--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.16);--accBg:rgba(59,130,246,.18);--accInk:#93c5fd;--warn:#fbbf24;--warnBg:rgba(251,191,36,.14);--wInk:#1c1100;--ok:#34d399;--okBg:rgba(52,211,153,.12);--bad:#f87171;--badBg:rgba(248,113,113,.12);--term:#0c0c0e;--pop:0 0 0 1px rgba(255,255,255,.07),0 18px 50px rgba(0,0,0,.6)}
+.r{transition:background .15s}
+.r:hover{background:var(--hov)}
+.b{transition:background .15s,border-color .15s,opacity .15s,transform .15s}
+.b:active{transform:scale(.97)}
+.bi{height:30px;padding:0 12px;border:none;border-radius:8px;background:var(--ink);color:var(--bg);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.bi:hover{opacity:.88}
+.bo{height:30px;padding:0 12px;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--ink);font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bo:hover{background:var(--hov)}
+.bo:disabled{opacity:.5;cursor:default}
+.bd{color:var(--bad)}
+.inp{height:32px;width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:8px;background:var(--s1);color:var(--ink);font:inherit;font-size:13px;padding:0 10px;outline:none}
+.inp:focus{border-color:var(--ink)}
+.mono{font-family:'Geist Mono',monospace}
+.lab{display:block;font-size:12px;font-weight:500;color:var(--ink2);margin-bottom:5px}
+.nw{position:relative;width:300px}
+.nw:hover,.nw:focus-within{z-index:5}
+.nc{position:relative;z-index:1;box-sizing:border-box;width:300px;padding:14px 16px;border-radius:16px;background:var(--s1);border:1px solid var(--line2);display:flex;flex-direction:column;gap:10px}
+.nf{position:absolute;top:0;right:0;width:0;height:0;z-index:0}
+.np{position:absolute;pointer-events:none}
+.fa:focus-visible{outline-offset:2px}
+.fa{position:absolute;left:0;top:0;width:36px;height:36px;margin:0;padding:0;border-radius:50%;border:1px solid var(--line2);background:var(--s1);color:var(--ink);display:grid;place-items:center;cursor:pointer;pointer-events:none;translate:var(--hx) var(--hy);scale:.82;transition:translate .18s cubic-bezier(.4,0,1,1) calc((var(--n) - 1 - var(--i)) * 40ms),scale .18s cubic-bezier(.4,0,1,1) calc((var(--n) - 1 - var(--i)) * 40ms),background .15s,border-color .15s}
+.nw:hover .fa,.nw:focus-within .fa{pointer-events:auto;translate:var(--x) var(--y);scale:1;transition:translate .26s cubic-bezier(.24,1.34,.38,1) calc(var(--i) * 50ms),scale .26s cubic-bezier(.24,1.34,.38,1) calc(var(--i) * 50ms),background .15s,border-color .15s}
+.nw:hover .np,.nw:focus-within .np{pointer-events:auto}
+.nw .fa:hover{scale:1.12;background:var(--s2);border-color:var(--ink2);transition-delay:0s}
+.fa:disabled{color:var(--mut);cursor:default}
+.flash{border-color:var(--acc) !important;transition:border-color .15s}
+.card{border-radius:12px;border:1px solid var(--line);background:var(--s1)}
+.h3{font-size:11.5px;font-weight:500;color:var(--mut);letter-spacing:.02em;text-transform:uppercase;margin:0 0 8px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.launch{transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+.launch:hover{transform:translateY(-2px) scale(1.04)}
+.panel{transform-origin:center;animation:pop .24s cubic-bezier(.2,.9,.25,1.1) both}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+.fade{animation:fd .18s ease-out both}
+@keyframes fd{from{opacity:0}to{opacity:1}}
+.in{animation:in .24s cubic-bezier(.2,.8,.2,1) both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.bar{transition:width .28s cubic-bezier(.2,.8,.2,1)}
+.spin{animation:sp .9s linear infinite;transform-origin:center}
+@keyframes sp{to{transform:rotate(360deg)}}
+.caret::after{content:'';display:inline-block;width:7px;height:13px;margin-left:2px;vertical-align:-2px;background:var(--ink);animation:cr 1s steps(2) infinite}
+@keyframes cr{50%{opacity:0}}
+.draw{stroke-dasharray:26;stroke-dashoffset:26;animation:dw .28s .1s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes dw{to{stroke-dashoffset:0}}
+.ring{animation:rg 2.2s ease-out infinite}
+@keyframes rg{0%{box-shadow:0 0 0 0 rgba(180,83,9,.45)}70%,100%{box-shadow:0 0 0 10px rgba(180,83,9,0)}}
+.m-off *{animation:none !important;transition:none !important}
+.m-off .fa{transition:none !important}
+.m-off .draw{stroke-dashoffset:0 !important}
+@media (prefers-reduced-motion: reduce){.sl *{animation:none !important;transition:none !important}.sl .draw{stroke-dashoffset:0 !important}}
+</style>
+</helmet>
+<div class="sl {{themeCls}} {{motionCls}}" style="min-height: 900px; padding: 18px 22px 22px; box-sizing: border-box; background: var(--page); font-family: Geist, -apple-system, system-ui, sans-serif; font-size: 14px; color: var(--ink); display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 10px; height: 32px">
+    <b style="font-size: 15px">Tether goals · outcome loops and trackers</b>
+    <span style="font-size: 12.5px; color: var(--mut)">Press Play to watch Login tests green run, re-check and turn Met.</span>
+    <span style="flex-grow: 1"></span>
+    <button class="bo b" type="button" onClick="{{reset}}" style="height: 32px">Reset</button>
+    <button class="bi b" type="button" onClick="{{play}}" style="height: 32px; padding: 0 14px; border-radius: 9px">{{playLabel}}</button>
+  </div>
+  <div style="height: 818px; display: flex; border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: 0 14px 40px rgba(0,0,0,.12); position: relative">
+
+    <!-- ===== sidebar (expanded) ===== -->
+    <aside aria-label="Sidebar" style="width: 248px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; font-size: 13px">
+      <div style="height: 48px; display: flex; align-items: center; flex: none">
+        <span style="width: 56px; height: 48px; flex: none; display: flex; align-items: center; justify-content: center"><img width="20" height="20" src="{{glyph}}" alt=""></span>
+        <span style="font-weight: 600; flex-grow: 1">orders-api <span style="color: var(--mut); font-size: 10px">⌄</span></span>
+        <span style="display: flex; gap: 4px; padding-right: 8px">
+          <button type="button" aria-label="New run" title="New run ⌘N" style="width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 7px; background: var(--s1); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.4 2.6a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4z"></path></svg></button>
+          <button type="button" aria-label="Collapse sidebar" title="Collapse ⌘\" style="width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--mut); cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M15 10l-2 2 2 2"></path></svg></button>
+        </span>
+      </div>
+      <div style="flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 0">
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+          <div style="height: {{g.headH}}px; display: flex; align-items: center"><span style="padding-left: 18px; font-size: 11.5px; font-weight: 500; color: var(--mut)">{{g.title}}</span></div>
+          <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+            <div class="r" role="button" tabindex="0" aria-label="{{r.label}}" aria-current="{{r.cur}}" style="{{r.style}}">
+              <span style="width: 40px; flex: none; display: flex; align-items: center; justify-content: center; color: {{r.iconColor}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.d}}"></path></svg></span>
+              <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{r.label}}</span>
+              <sc-if value="{{r.n}}" hint-placeholder-val="{{false}}"><span style="padding-right: 10px; font-size: 11.5px; color: var(--ink2)">{{r.n}}</span></sc-if>
+            </div>
+          </sc-for>
+        </sc-for>
+      </div>
+      <div style="flex: none; border-top: 1px solid var(--line); padding: 6px 0">
+        <div class="r" role="button" tabindex="0" aria-label="Settings" style="{{rowPlain}}"><span style="width: 40px; flex: none; display: flex; justify-content: center; color: var(--ink2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5M17 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg></span><span style="flex-grow: 1">Settings</span></div>
+        <div class="r" style="{{rowPlain}}; height: 36px"><span style="width: 40px; flex: none; display: flex; justify-content: center"><span style="width: 22px; height: 22px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center">T</span></span><span style="flex-grow: 1">Tushar</span><span style="padding-right: 10px; font-size: 11px; color: var(--mut); display: inline-flex; align-items: center; gap: 4px"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--ok)"></span>GitHub</span></div>
+      </div>
+    </aside>
+
+    <!-- ===== content ===== -->
+    <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+      <div style="height: 48px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 24px; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 13px"><span>orders-api</span><span style="color: var(--mut)">/</span><span style="color: var(--ink)">Goals</span></div>
+      <div style="flex: none; display: flex; align-items: center; gap: 12px; padding: 20px 28px 14px">
+        <div style="flex-grow: 1"><h1 style="margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -0.03em">Goals</h1><div style="font-size: 13px; color: var(--ink2); margin-top: 2px">Outcomes Tether works toward until they're met</div></div>
+        <button class="bi b" type="button" onClick="{{openNew}}" style="height: 32px; padding: 0 14px"><span aria-hidden="true">＋</span> New goal</button>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; display: flex; border-top: 1px solid var(--line)">
+
+        <!-- goal list: rows like the Runs list -->
+        <section aria-label="Goal list" style="width: 400px; flex: none; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0">
+          <div role="tablist" aria-label="Filter goals" style="display: flex; gap: 4px; padding: 12px 16px 8px">
+            <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3"><button class="b" type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.go}}" style="{{t.style}}">{{t.label}} <span class="mono" style="font-size: 11.5px; color: var(--mut)">{{t.n}}</span></button></sc-for>
+          </div>
+          <div style="flex-grow: 1; overflow: auto; border-top: 1px solid var(--line)">
+            <sc-for list="{{cards}}" as="c" hint-placeholder-count="4">
+              <div class="r b" role="button" tabindex="0" aria-pressed="{{c.on}}" onClick="{{c.go}}" onKeyDown="{{c.key}}" style="{{c.style}}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-label="{{c.status}}" style="flex: none; color: {{c.dot}}"><path d="{{c.glyph}}"></path></svg>
+                <div style="flex-grow: 1; min-width: 0"><div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{c.title}}</div><div style="font-size: 12px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px">{{c.line}}</div></div>
+                <sc-if value="{{c.needs}}" hint-placeholder-val="{{false}}"><button class="b" type="button" onClick="{{c.approve}}" style="height: 24px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--warn); background: transparent; color: var(--warn); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; flex: none">Approve run</button></sc-if>
+                <span style="width: 44px; height: 3px; border-radius: 2px; background: var(--s3); overflow: hidden; flex: none"><span class="bar" style="display: block; height: 100%; width: {{c.pct}}%; background: {{c.dot}}"></span></span>
+              </div>
+            </sc-for>
+            <sc-if value="{{noCards}}" hint-placeholder-val="{{false}}"><div style="padding: 24px 8px; text-align: center; font-size: 13px; color: var(--mut)">Nothing here yet.</div></sc-if>
+          </div>
+        </section>
+
+        <!-- detail -->
+        <section aria-label="Goal detail" style="flex-grow: 1; min-width: 0; overflow: auto; padding: 20px 22px 28px; display: flex; flex-direction: column; gap: 16px">
+          <div style="display: flex; align-items: flex-start; gap: 12px">
+            <span style="width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--s2); color: var(--ink2); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{dGlyph}}"></path></svg></span>
+            <div style="flex-grow: 1; min-width: 0">
+              <h2 style="margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.02em">{{dTitle}}</h2>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12.5px; color: var(--ink2)"><span style="display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 6px; background: {{stBg}}; color: {{stInk}}; font-weight: 500"><span style="width: 6px; height: 6px; border-radius: 50%; background: {{stDot}}"></span>{{stLabel}}</span><span>{{dSub}}</span></div>
+            </div>
+            <sc-if value="{{canAct}}" hint-placeholder-val="{{true}}"><div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end"><button class="bo b" type="button" onClick="{{pause}}">{{pauseLabel}}</button><button class="bo bd b" type="button" onClick="{{stop}}">Stop</button></div></sc-if>
+          </div>
+
+          <sc-if value="{{isStopped}}" hint-placeholder-val="{{false}}"><div role="status" style="padding: 10px 12px; border-radius: 10px; background: var(--badBg); color: var(--bad); font-size: 13px">Stopped by you. Tether won't start any more runs for this goal.</div></sc-if>
+
+          <sc-if value="{{showSet}}" hint-placeholder-val="{{false}}"><div class="card in" style="padding: 12px 14px; display: flex; align-items: center; gap: 10px"><div style="flex-grow: 1"><div style="font-size: 13px; font-weight: 500">Goal settings</div><div style="font-size: 12px; color: var(--ink2)">Deleting removes the goal and its history. It can't be undone.</div></div><button class="bo bd b" type="button" onClick="{{delGoal}}">Delete goal</button><button class="bo b" type="button" onClick="{{closeSet}}">Close</button></div></sc-if>
+
+          <!-- ===== LOOP ===== -->
+          <sc-if value="{{isLoop}}" hint-placeholder-val="{{true}}">
+            <sc-if value="{{isMet}}" hint-placeholder-val="{{false}}"><div class="card in" role="status" style="padding: 12px 16px; display: flex; align-items: center; gap: 14px; border-color: var(--ok)"><span style="width: 30px; height: 30px; border-radius: 50%; background: var(--okBg); display: flex; align-items: center; justify-content: center; flex: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="draw" d="M5 12.5l4.5 4.5L19 7"></path></svg></span><div><div style="font-weight: 600; color: var(--ok)">Goal met</div><div class="mono" style="font-size: 12.5px; color: var(--ink2); margin-top: 2px">{{metTxt}}</div></div></div></sc-if>
+
+            <div class="card" style="padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; font-size: 12.5px">
+              <div style="display: flex; align-items: center; gap: 8px"><span style="color: var(--ink2)">Budget</span><span style="width: 90px; height: 6px; border-radius: 3px; background: var(--s3); overflow: hidden"><span class="bar" style="display: block; height: 100%; width: {{budgetPct}}%; background: var(--ink)"></span></span><span class="mono">{{budgetTxt}}</span></div>
+              <div style="display: flex; align-items: center; gap: 8px"><span style="color: var(--ink2)">Runs</span><span style="display: inline-flex; gap: 3px"><sc-for list="{{pips}}" as="p" hint-placeholder-count="4"><span style="{{p}}"></span></sc-for></span><span class="mono">{{runsTxt}}</span></div>
+              <span role="group" aria-label="Approval mode" style="display: inline-flex; padding: 2px; border-radius: 8px; background: var(--s2); gap: 2px"><sc-for list="{{modeSeg}}" as="o" hint-placeholder-count="2"><button class="b" type="button" aria-pressed="{{o.on}}" onClick="{{o.go}}" style="{{o.style}}">{{o.label}}</button></sc-for></span>
+            </div>
+
+            <div>
+              <h3 class="h3">Loop flow</h3>
+              <div style="border: 1px solid var(--line); border-radius: 12px; padding: 56px 76px 28px 24px; background-color: var(--bg); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; display: flex; flex-direction: column; align-items: flex-start">
+                <sc-for list="{{nodes}}" as="n" hint-placeholder-count="4">
+                  <div class="nw">
+                    <div class="nf" role="toolbar" aria-label="{{n.title}} actions">
+                      <span class="np" aria-hidden="true" style="{{n.pad}}"></span>
+                      <sc-for list="{{n.acts}}" as="a" hint-placeholder-count="3"><button class="fa" type="button" aria-label="{{a.label}}" title="{{a.label}}" onClick="{{a.go}}" style="{{a.style}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{a.d}}"></path></svg></button></sc-for>
+                    </div>
+                    <div class="nc" style="{{n.style}}">
+                      <div style="display: flex; align-items: center; gap: 12px">
+                        <span style="position: relative; width: 30px; height: 30px; flex: none; border-radius: 9px; background: var(--s2); color: var(--ink2); display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.mark}}"></path></svg><span title="{{n.dotLabel}}" style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: {{n.dot}}; box-shadow: 0 0 0 2px var(--s1)"></span></span>
+                        <div style="flex-grow: 1; min-width: 0"><div style="{{n.titleStyle}}">{{n.title}}</div><div style="font-size: 12.5px; color: var(--ink2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{n.line}}</div></div>
+                        <sc-if value="{{n.face}}" hint-placeholder-val="{{false}}"><span title="{{n.faceName}}" style="width: 24px; height: 24px; border-radius: 50%; background: var(--s3); font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none">{{n.face}}</span></sc-if>
+                      </div>
+                      <sc-if value="{{n.isCheck}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; align-items: center; gap: 6px"><button class="b" type="button" aria-expanded="{{n.termOpen}}" onClick="{{n.termGo}}" style="border: none; background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; padding: 0">{{n.termLbl}}</button></div>
+                        <sc-if value="{{n.termOpen}}" hint-placeholder-val="{{false}}"><div class="mono in" style="padding: 8px 10px; border-radius: 8px; background: var(--term); font-size: 11.5px; line-height: 1.6; overflow-x: auto"><sc-if value="{{n.busy}}" hint-placeholder-val="{{false}}"><div style="color: var(--accInk)">Re-running the check…</div></sc-if><sc-for list="{{n.resLines}}" as="l" hint-placeholder-count="5"><div style="white-space: pre; color: {{l.c}}">{{l.t}}</div></sc-for></div></sc-if>
+                        <sc-if value="{{n.editCmd}}" hint-placeholder-val="{{false}}"><input class="inp mono" aria-label="Check command" value="{{n.cmdVal}}" onChange="{{n.onCmd}}"></sc-if>
+                      </sc-if>
+                      <sc-if value="{{n.isLive}}" hint-placeholder-val="{{false}}"><div class="mono" style="padding: 8px 10px; border-radius: 8px; background: var(--term); font-size: 11.5px; line-height: 1.6; color: var(--ink2)"><sc-for list="{{n.streamLines}}" as="l" hint-placeholder-count="3"><div class="in" style="white-space: pre; overflow: hidden; text-overflow: ellipsis">{{l.t}}</div></sc-for><span class="caret"></span></div></sc-if>
+                      <sc-if value="{{n.isNext}}" hint-placeholder-val="{{false}}">
+                        <sc-if value="{{n.editing}}" hint-placeholder-val="{{false}}"><input class="inp" aria-label="Edit the plan" value="{{n.plan}}" onChange="{{n.onPlan}}"></sc-if>
+                        <div style="font-size: 12px; color: var(--mut)">{{n.meta}}</div>
+                        <div style="display: flex; gap: 6px"><button class="bi b" type="button" onClick="{{n.start}}">{{n.startLabel}}</button><button class="bo b" type="button" onClick="{{n.editGo}}">{{n.editLabel}}</button><button class="bo b" type="button" onClick="{{n.skipGo}}">Skip</button></div>
+                      </sc-if>
+                    </div>
+                  </div>
+                  <sc-if value="{{n.link}}" hint-placeholder-val="{{true}}"><div aria-hidden="true" style="margin-left: 30px; height: 28px; width: 10px; display: flex; flex-direction: column; align-items: center; color: var(--mut)"><span style="width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid currentColor; box-sizing: border-box; background: var(--bg)"></span><span style="width: 1.5px; flex-grow: 1; background: currentColor"></span><svg width="10" height="7" viewBox="0 0 10 7" style="fill: currentColor; display: block"><path d="M0 0h10L5 7z"></path></svg></div></sc-if>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== TRACKER ===== -->
+          <sc-if value="{{isTracker}}" hint-placeholder-val="{{false}}">
+            <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 13px; font-weight: 500; flex-grow: 1">{{doneTxt}}</span><span class="mono" style="font-size: 12px; color: var(--ink2)">{{trPct}}%</span></div>
+              <div style="height: 6px; border-radius: 3px; background: var(--s3); overflow: hidden"><div class="bar" style="height: 100%; width: {{trPct}}%; background: var(--ink)"></div></div>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg>{{dueTxt}}</div>
+            </div>
+            <div>
+              <h3 class="h3">Checklist</h3>
+              <div class="card" style="padding: 6px 8px">
+                <sc-for list="{{items}}" as="i" hint-placeholder-count="6">
+                  <div class="r" style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px">
+                    <button type="button" role="checkbox" aria-checked="{{i.done}}" aria-label="{{i.t}}" onClick="{{i.go}}" style="width: 20px; height: 20px; padding: 0; border: none; background: transparent; cursor: {{i.cursor}}; flex: none"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" style="{{i.ring}}" stroke-width="1.8"></circle><path d="M8 12.5l3 3 5-6" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="{{i.tick}}"></path></svg></button>
+                    <span style="flex-grow: 1; font-size: 13px; color: {{i.ink}}; text-decoration: {{i.strike}}">{{i.t}}</span>
+                    <sc-if value="{{i.isRun}}" hint-placeholder-val="{{false}}"><span class="mono" style="{{i.chip}}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4l14 8-14 8z"></path></svg>{{i.runId}} · {{i.runSt}}</span></sc-if>
+                  </div>
+                </sc-for>
+                <div style="display: flex; gap: 8px; padding: 8px"><input class="inp" aria-label="Add an item" placeholder="Add an item, or link a run…" value="{{addVal}}" onChange="{{onAdd}}" onKeyDown="{{onAddKey}}"><button class="bo b" type="button" onClick="{{addItem}}" style="height: 32px">Add</button></div>
+              </div>
+            </div>
+            <button class="b" type="button" onClick="{{toLoop}}" style="align-self: flex-start; border: none; background: transparent; color: var(--accInk); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; padding: 4px 0">Add a finish check → turn into a loop</button>
+          </sc-if>
+        </section>
+      </div>
+    </main>
+
+    <!-- ===== new goal dialog ===== -->
+    <sc-if value="{{dlg}}" hint-placeholder-val="{{false}}">
+      <div class="fade" style="position: absolute; inset: 0; z-index: 40; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center" onClick="{{closeNew}}">
+        <section class="panel" role="dialog" aria-modal="true" aria-label="New goal" onClick="{{stop2}}" style="width: 500px; max-height: 760px; overflow: auto; border-radius: 16px; background: var(--bg); box-shadow: var(--pop); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+          <div><div style="font-size: 17px; font-weight: 650; letter-spacing: -0.02em">New goal</div><div style="font-size: 12.5px; color: var(--ink2); margin-top: 2px">{{dlgHint}}</div></div>
+          <div><label class="lab" for="g-title">Title</label><input id="g-title" class="inp" placeholder="e.g. Login tests green" value="{{fTitle}}" onChange="{{onTitle}}"></div>
+          <div style="display: flex; gap: 12px">
+            <div style="flex: 1"><label class="lab" for="g-ws">Workspace</label><select id="g-ws" class="inp" value="{{fWs}}" onChange="{{onWs}}"><option value="orders-api">orders-api</option><option value="web-app">web-app</option><option value="docs-site">docs-site</option></select></div>
+            <div style="flex: 1"><label class="lab" for="g-who">Who works on it</label><select id="g-who" class="inp" value="{{fWho}}" onChange="{{onWho}}"><option value="Team">Team (Scout, Bolt, Lens)</option><option value="plan-code-review">Workflow · plan-code-review</option><option value="fix-and-verify">Workflow · fix-and-verify</option></select></div>
+          </div>
+          <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; background: var(--s2); border-color: transparent">
+            <div style="display: flex; align-items: center; gap: 10px"><div style="flex-grow: 1"><div style="font-size: 13px; font-weight: 500">Add a finish check</div><div style="font-size: 12px; color: var(--ink2)">Tether re-runs it after every run until it passes.</div></div><button type="button" role="switch" aria-checked="{{fCheck}}" aria-label="Add a finish check" onClick="{{flipCheck}}" style="{{swTrack}}"><span style="{{swThumb}}"></span></button></div>
+            <sc-if value="{{fCheck}}" hint-placeholder-val="{{true}}">
+              <div class="in" style="display: flex; flex-direction: column; gap: 12px">
+                <div><span class="lab">Check kind</span><span role="group" aria-label="Check kind" style="display: inline-flex; padding: 2px; border-radius: 8px; background: var(--s3); gap: 2px"><sc-for list="{{kindSeg}}" as="o" hint-placeholder-count="3"><button class="b" type="button" aria-pressed="{{o.on}}" onClick="{{o.go}}" style="{{o.style}}">{{o.label}}</button></sc-for></span></div>
+                <div><label class="lab" for="g-cmd">{{cmdLabel}}</label><input id="g-cmd" class="inp mono" placeholder="{{cmdPh}}" value="{{fCmd}}" onChange="{{onCmd}}"></div>
+                <div style="display: flex; gap: 12px"><div style="flex: 1"><label class="lab" for="g-bud">Budget ($)</label><input id="g-bud" class="inp" inputmode="decimal" value="{{fBudget}}" onChange="{{onBudget}}"></div><div style="flex: 1"><label class="lab" for="g-runs">Max runs</label><input id="g-runs" class="inp" inputmode="numeric" value="{{fRuns}}" onChange="{{onRuns}}"></div></div>
+                <div><span class="lab">Approval</span><span role="group" aria-label="Approval mode" style="display: inline-flex; padding: 2px; border-radius: 8px; background: var(--s3); gap: 2px"><sc-for list="{{fModeSeg}}" as="o" hint-placeholder-count="2"><button class="b" type="button" aria-pressed="{{o.on}}" onClick="{{o.go}}" style="{{o.style}}">{{o.label}}</button></sc-for></span></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{fNoCheck}}" hint-placeholder-val="{{false}}"><div class="in"><label class="lab" for="g-due">Due date (optional)</label><input id="g-due" class="inp" placeholder="e.g. Nov 30" value="{{fDue}}" onChange="{{onDue}}"></div></sc-if>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end"><button class="bo b" type="button" onClick="{{closeNew}}" style="height: 32px">Cancel</button><button class="bi b" type="button" onClick="{{create}}" style="height: 32px; padding: 0 14px">Create goal</button></div>
+        </section>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{toast}}" hint-placeholder-val="{{false}}"><div class="in" role="status" style="position: absolute; left: 640px; bottom: 24px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 8px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500">{{toast}}</div></sc-if>
+
+    <!-- launcher (static) -->
+    <button class="launch ring" type="button" aria-label="Ask Tether (⌘J) — 1 needs you" title="Ask Tether  ⌘J" style="position: absolute; right: 20px; bottom: 20px; z-index: 31; width: 52px; height: 52px; border-radius: 26px; border: none; background: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,.25)">
+      <img width="24" height="24" src="{{glyphInv}}" alt="">
+      <span style="position: absolute; top: -3px; right: -3px; min-width: 19px; height: 19px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; border: 2px solid var(--bg); background: var(--warn); color: var(--wInk); font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">1</span>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"motion":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":900}}'>
+const LOOP = 'm17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3';
+const LIST = 'm3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8';
+const GENERIC = ['Scout  reading the failing check', 'Bolt   patching the code', 'Bolt   running the check locally', 'Lens   reviewing the diff', 'Run finished'];
+const mk = () => [
+  { id: 'login', type: 'loop', title: 'Login tests green', ws: 'orders-api', who: 'Team', status: 'live', head: '✗ 1 failing', cmd: 'npm test -- login', kind: 'Tests', mode: 'ask', budget: 5, spent: 1.2, runs: 2, maxRuns: 4, run: null, n: 0,
+    res: { when: '3 min ago', sum: '✗ 1 failing · 11 passing', lines: [{ t: '$ npm test -- login', k: 'mut' }, { t: ' ✓ logs in with valid credentials', k: 'ok' }, { t: ' ✓ rejects a wrong password', k: 'ok' }, { t: ' ✗ redirects to /orders after login', k: 'bad' }, { t: '     expected "/home" to equal "/orders"', k: 'bad' }, { t: ' ✓ refreshes an expiring token', k: 'ok' }, { t: ' 1 failing · 11 passing · 2.4 s', k: 'mut' }] },
+    attempts: [{ t: 'Fix session expiry test', id: 'r-0141', st: 'Done', from: '5 failing', to: '3 failing', ok: false, cost: 0.52 }, { t: 'Handle token refresh', id: 'r-0143', st: 'Done', from: '3 failing', to: '1 failing', ok: false, cost: 0.68 }],
+    next: { t: 'Fix the /orders redirect after login', meta: 'Scout plans → Bolt codes → Lens reviews · est. $0.60' },
+    sim: { sum: '✓ 0 failing · 12 passing', title: 'Fix the /orders redirect after login', id: 'r-0146', cost: 0.64, from: '1 failing', to: '0 failing', stream: ['Scout  reading test/login.test.ts', 'Bolt   patching src/auth/redirect.ts', 'Bolt   npm test -- login (local)', 'Lens   reviewing diff +9 −3', 'Run r-0146 finished · $0.64'],
+      after: [{ t: '$ npm test -- login', k: 'mut' }, { t: ' ✓ logs in with valid credentials', k: 'ok' }, { t: ' ✓ rejects a wrong password', k: 'ok' }, { t: ' ✓ redirects to /orders after login', k: 'ok' }, { t: ' ✓ refreshes an expiring token', k: 'ok' }, { t: ' 0 failing · 12 passing · 2.2 s', k: 'ok' }] } },
+  { id: 'p95', type: 'loop', title: 'p95 latency under 200 ms', ws: 'orders-api', who: 'fix-and-verify', status: 'needs', head: 'p95 312 ms, target 200', cmd: 'npm run bench -- --p95', kind: 'Number target', mode: 'ask', budget: 6, spent: 2.1, runs: 1, maxRuns: 3, run: null, n: 0,
+    res: { when: '12 min ago', sum: 'p95 312 ms · target 200', lines: [{ t: '$ npm run bench -- --p95', k: 'mut' }, { t: ' GET /orders        p95  312 ms', k: 'bad' }, { t: ' GET /orders/:id    p95   96 ms', k: 'ok' }, { t: ' target  p95 < 200 ms  ✗', k: 'bad' }] },
+    attempts: [{ t: 'Add index on orders.created_at', id: 'r-0138', st: 'Done', from: '480 ms', to: '312 ms', ok: false, cost: 2.1 }],
+    next: { t: 'Cache the order list per user for 30 s', meta: 'Scout plans → Bolt codes · est. $1.40 · touches src/http/orders.ts' },
+    sim: { sum: 'p95 184 ms · target 200 ✓', title: 'Cache the order list per user for 30 s', id: 'r-0148', cost: 1.4, from: '312 ms', to: '184 ms', stream: GENERIC, after: [{ t: '$ npm run bench -- --p95', k: 'mut' }, { t: ' GET /orders        p95  184 ms', k: 'ok' }, { t: ' target  p95 < 200 ms  ✓', k: 'ok' }] } },
+  { id: 'auth', type: 'tracker', title: 'Ship v2 auth', ws: 'orders-api', who: 'Team', status: 'live', due: 'Nov 15',
+    items: [{ t: 'Write migration plan', done: true }, { t: 'Add token refresh', done: true, run: 'r-0141', rs: 'done' }, { t: 'Fix flaky login test', done: true, run: 'r-0143', rs: 'done' }, { t: 'Update API docs', done: true }, { t: 'Rotate signing keys', done: true, run: 'r-0139', rs: 'done' }, { t: 'Security review sign-off', done: true }, { t: 'Staging smoke test', done: true }, { t: 'Wire OAuth callback', done: false, run: 'r-0147', rs: 'working' }, { t: 'Announce to customers', done: false }, { t: 'Flip the feature flag', done: false }] },
+  { id: 'readme', type: 'loop', title: 'README covers the CLI', ws: 'docs-site', who: 'Team', status: 'met', head: '✓ Check passes', cmd: 'npx tether-docs check README.md', kind: 'Command', mode: 'ask', budget: 3, spent: 0.64, runs: 1, maxRuns: 3, run: null, n: 0,
+    res: { when: '2 h ago', sum: '✓ 14 of 14 documented', lines: [{ t: '$ npx tether-docs check README.md', k: 'mut' }, { t: ' ✓ 14 of 14 CLI commands documented', k: 'ok' }] },
+    attempts: [{ t: 'Document the CLI flags', id: 'r-0131', st: 'Done', from: '9 missing', to: '0 missing', ok: true, cost: 0.64 }], next: null, sim: null },
+];
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.G = mk(); this.tm = [];
+    this.state = { toast: '', termOpen: false, editCmd: false, setFor: '', goals: this.G, sel: 'login', filter: 'all', dlg: false, editing: false, addVal: '', form: this.blank() };
+  }
+  blank() { return { title: '', ws: 'orders-api', who: 'Team', check: false, kind: 'Command', cmd: '', budget: '5', runs: '4', mode: 'ask', due: '' }; }
+  componentDidMount() { this.k = (e) => { if (e.key === 'Escape' && this.state.dlg) this.setState({ dlg: false }); }; window.addEventListener('keydown', this.k); }
+  componentWillUnmount() { window.removeEventListener('keydown', this.k); this.clear(); }
+  clear() { this.tm.forEach(clearTimeout); this.tm = []; }
+  later(ms, fn) { this.tm.push(setTimeout(fn, ms)); }
+  mut(id, fn) { this.G = this.G.map((g) => (g.id === id ? { ...g, ...(typeof fn === 'function' ? fn(g) : fn) } : g)); this.setState({ goals: this.G }); }
+  startRun(id) {
+    const g = this.G.find((x) => x.id === id);
+    if (!g || g.type !== 'loop' || g.run || g.status === 'met' || g.status === 'paused' || g.status === 'stopped') return;
+    const s = g.sim || { title: 'First pass', id: 'r-0150', cost: 0.5, from: 'unknown', to: 'passing', stream: GENERIC, after: [{ t: ' ✓ check passes', k: 'ok' }] };
+    this.mut(id, { run: 'stream', n: 0, status: 'live', sim: s, next: null });
+    this.setState({ editing: false });
+    for (let i = 1; i <= 5; i++) this.later(i * 300, () => this.mut(id, { n: i }));
+    this.later(1500, () => this.mut(id, { run: 'check' }));
+    this.later(2150, () => this.mut(id, (x) => ({ run: null, status: 'met', head: '✓ Check passes', runs: x.runs + 1, spent: +(x.spent + s.cost).toFixed(2), res: { when: 'just now', sum: s.sum || '✓ check passes', lines: s.after },
+      attempts: [...x.attempts, { t: s.title, id: s.id, st: 'Done', from: s.from, to: s.to, ok: true, cost: s.cost }] })));
+  }
+  say(t) { this.setState({ toast: t }); this.later(1600, () => this.setState({ toast: '' })); }
+  runCheck(id) { this.setState({ sel: id }); this.mut(id, { run: 'check' }); this.later(700, () => this.mut(id, (x) => ({ run: null, res: { ...x.res, when: 'just now' } }))); }
+  pauseToggle(id) { this.mut(id, (x) => (x.status === 'paused' ? { status: x.prev || 'live' } : x.status === 'met' || x.status === 'stopped' ? {} : { status: 'paused', prev: x.status })); }
+  addTo(id, it) { this.setState({ sel: id }); this.mut(id, (x) => ({ items: [...x.items, it] })); }
+  dup(id) { const g = this.G.find((x) => x.id === id); const n = 'g' + Date.now(); this.G = [{ ...JSON.parse(JSON.stringify(g)), id: n, title: g.title + ' (copy)', status: g.type === 'loop' ? 'needs' : 'live', run: null, n: 0, head: g.type === 'loop' ? 'not run yet' : g.head, runs: 0, spent: 0, attempts: [], next: g.type === 'loop' ? { t: 'Run the check and plan the first fix', meta: 'Scout plans → Bolt codes → Lens reviews · est. $0.50' } : null, sim: null, items: g.items ? g.items.map((i) => ({ t: i.t, done: false })) : undefined }, ...this.G]; this.setState({ goals: this.G, sel: n }); }
+  archive(id) { this.G = this.G.filter((x) => x.id !== id); this.setState({ goals: this.G, sel: this.G.length ? this.G[0].id : '', setFor: '' }); }
+  renderVals() {
+    const s = this.state, dark = this.props.dark ?? false, motion = this.props.motion ?? true, G = s.goals;
+    const BAND = [[50, 52], [50, 17], [65.2, 25.8], [65.2, 43.2]], FOLD = [[50, 52], [65.2, 43.2], [80.4, 52], [65.2, 60.8]];
+    const rot = ([x, y], d) => { const r = d * Math.PI / 180, dx = x - 50, dy = y - 52; return [50 + dx * Math.cos(r) - dy * Math.sin(r), 52 + dx * Math.sin(r) + dy * Math.cos(r)]; };
+    const tri = (F) => [0, 120, 240].map((d, i) => { const tone = [[F[0], F[1]], [F[1], F[2]], [F[2], F[0]]]; const a = (d - 90) * Math.PI / 180 + Math.PI / 6, push = ([x, y]) => [x + Math.cos(a) * 2.8, y + Math.sin(a) * 2.8]; const pts = (sh) => sh.map((p) => push(rot(p, d)).map((n) => n.toFixed(2)).join(',')).join(' '); return '<polygon points="' + pts(BAND) + '" fill="' + tone[i][0] + '"/><polygon points="' + pts(FOLD) + '" fill="' + tone[i][1] + '"/>'; }).join('');
+    const svg = (inner) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' + inner + '</svg>');
+    const gl = (F) => svg('<g transform="translate(50 50) scale(1.12) translate(-49.4 -47.8)">' + tri(F) + '</g>');
+    const glyph = dark ? gl(['#fafafa', '#a1a1aa', '#52525b']) : gl(['#18181b', '#71717a', '#d4d4d8']);
+    const glyphInv = dark ? gl(['#18181b', '#52525b', '#a1a1aa']) : gl(['#fafafa', '#a1a1aa', '#52525b']);
+
+    // ---- sidebar ----
+    const I = { search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5', home: 'M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z', runs: 'M6 4l14 8-14 8z', code: 'M16 18l6-6-6-6M8 6l-6 6 6 6', builder: 'M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14', crew: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', target: 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0zM18 12a6 6 0 1 1-12 0 6 6 0 0 1 12 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', api: 'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4', graph: 'M6 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 7l8 1M7.5 8.2l1.8 7.4M16.5 10l-4.8 6.3', trig: 'M13 2L3 14h9l-1 8 10-12h-9z', half: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 3v18', check: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6', dash: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', wf: 'M5 6h6v4H5zM13 14h6v4h-6zM8 10v2a2 2 0 0 0 2 2h3', file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5' };
+    const rowStyle = (on) => 'display: flex; align-items: center; height: 30px; margin: 1px 8px; border-radius: 6px; cursor: pointer; color: ' + (on ? 'var(--ink)' : 'var(--ink2)') + '; background: ' + (on ? 'var(--sel)' : 'transparent') + '; font-weight: ' + (on ? 500 : 400) + '; overflow: hidden';
+    const activeN = G.filter((g) => g.status !== 'met').length;
+    const SB = [
+      { title: '', rows: [['Search', I.search, '⌘K'], ['Home', I.home, ''], ['Inbox', I.inbox, '2', 'warn'], ['Runs', I.runs, '2', 'live']] },
+      { title: 'Workspace', rows: [['Code', I.code], ['Builder', I.builder], ['Crew', I.crew], ['Goals', I.target, String(activeN)], ['API client', I.api], ['Graph', I.graph], ['Triggers', I.trig]] },
+      { title: 'Runs', rows: [['Tune the limit window', I.half, '', 'run-live'], ['Fix flaky login test', I.half, '', 'run-live'], ['Plan auth flow', I.dash, '', 'run-needs'], ['Add rate limiting', I.check, '', 'run-done']] },
+      { title: 'Favorites', rows: [['plan-code-review', I.wf], ['README.md', I.file]] },
+    ];
+    const groups = SB.map((grp) => ({ title: grp.title, headH: grp.title ? 28 : 4, rows: grp.rows.map(([label, d, n, kind]) => { const on = label === 'Goals';
+      return { label, d, n: n || '', cur: on ? 'page' : 'false', style: rowStyle(on), iconColor: kind === 'run-live' ? 'var(--acc)' : kind === 'run-needs' ? 'var(--warn)' : kind === 'run-done' ? 'var(--ok)' : on ? 'var(--ink)' : 'var(--ink2)' }; }) }));
+
+    // ---- goals ----
+    const ST = { live: ['Working', 'var(--acc)', 'var(--accInk)', 'var(--accBg)'], needs: ['Needs you', 'var(--warn)', 'var(--warn)', 'var(--warnBg)'], met: ['Met', 'var(--ok)', 'var(--ok)', 'var(--okBg)'], paused: ['Paused', 'var(--mut)', 'var(--ink2)', 'var(--s2)'], stopped: ['Stopped', 'var(--bad)', 'var(--bad)', 'var(--badBg)'] };
+    const money = (n) => '$' + n.toFixed(2);
+    const trDone = (g) => g.items.filter((i) => i.done).length;
+    const pctOf = (g) => g.type === 'tracker' ? Math.round(trDone(g) / g.items.length * 100) : g.status === 'met' ? 100 : Math.round(g.runs / g.maxRuns * 100);
+    const lineOf = (g) => g.type === 'tracker' ? trDone(g) + ' of ' + g.items.length + ' done' + (g.due ? ' · due ' + g.due : '') : g.status === 'met' ? g.head + ' · ' + money(g.spent) + ' · ' + g.runs + (g.runs === 1 ? ' run' : ' runs')
+      : g.status === 'needs' ? g.head + ' · run ' + (g.runs + 1) + ' awaiting approval' : g.head + ' · ' + g.runs + ' of ' + g.maxRuns + ' runs · ' + money(g.spent) + ' of $' + g.budget;
+    const matches = (g) => s.filter === 'all' || (s.filter === 'met' ? g.status === 'met' : g.status !== 'met');
+    const tabDefs = [['all', 'All', G.length], ['active', 'Active', G.filter((g) => g.status !== 'met').length], ['met', 'Met', G.filter((g) => g.status === 'met').length]];
+    const tabs = tabDefs.map(([k, label, n]) => ({ label, n, on: s.filter === k, go: () => this.setState({ filter: k }), style: 'height: 28px; padding: 0 10px; border: none; border-radius: 7px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (s.filter === k ? 'background: var(--sel); color: var(--ink); font-weight: 500' : 'background: transparent; color: var(--ink2)') }));
+    const shown = G.filter(matches);
+    const D = { flask: 'M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2M8.5 2h7M7 16h10', play: 'M6 3l14 9-14 9z', set: 'M20 7h-9M14 17H5M17 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', copy: 'M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zM4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2', edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z', ext: 'M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6', retry: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5', diff: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6' };
+    const GL = { live: I.half, needs: I.dash, met: I.check, paused: I.half, stopped: I.dash };
+    const rowMeta = (g) => g.type === 'tracker' ? trDone(g) + ' of ' + g.items.length + (g.due ? ' · due ' + g.due : '')
+      : g.status === 'met' ? money(g.spent) + ' · ' + g.runs + (g.runs === 1 ? ' run' : ' runs')
+      : g.run ? 'Run ' + (g.runs + 1) + ' working · ' + money(g.spent) + ' of $' + g.budget
+      : g.status === 'needs' ? 'Run ' + (g.runs + 1) + ' awaiting approval · ' + money(g.spent) + ' of $' + g.budget
+      : g.status === 'stopped' ? 'Stopped · ' + g.runs + ' runs'
+      : g.runs + ' of ' + g.maxRuns + ' runs · ' + money(g.spent) + ' of $' + g.budget;
+    const cards = shown.map((g) => { const st = ST[g.status], on = g.id === s.sel, sel = () => this.setState({ sel: g.id, editing: false });
+      const needs = g.type === 'loop' && g.status === 'needs' && !g.run;
+      return { title: g.title, status: st[0], dot: g.type === 'tracker' ? 'var(--ink2)' : st[1], glyph: g.type === 'tracker' ? LIST : GL[g.status], line: rowMeta(g), pct: pctOf(g), on, needs,
+        approve: (e) => { e.stopPropagation(); this.setState({ sel: g.id }); this.startRun(g.id); },
+        go: sel, key: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(); } },
+        style: 'display: flex; align-items: center; gap: 12px; height: 52px; box-sizing: border-box; padding: 0 16px; cursor: pointer; border-bottom: 1px solid var(--line); background: ' + (on ? 'var(--s2)' : 'transparent') }; });
+
+    // ---- loop-flow nodes: bencho fan, corner 16, 36 px discs ----
+    const CR = 16, RR = 18, OFF = 12 + RR, SP = 44;
+    const ride = (t) => { const arc = CR + OFF, len = arc * Math.PI / 2; if (t <= 0) return [-CR + t, -OFF]; if (t >= len) return [OFF, CR + (t - len)]; const th = Math.PI / 2 - t / arc; return [-CR + arc * Math.cos(th), CR - arc * Math.sin(th)]; };
+    const fanOf = (list) => { const n = list.length, mid = (CR + OFF) * Math.PI / 4, sp = list.map((_, i) => ride(mid + (i - (n - 1) / 2) * SP));
+      const l = Math.min(...sp.map((q) => q[0])) - RR - 6, r = Math.max(...sp.map((q) => q[0])) + RR + 6, t = Math.min(...sp.map((q) => q[1])) - RR - 6, d = Math.max(...sp.map((q) => q[1])) + RR + 6;
+      return { pad: 'left: ' + l + 'px; top: ' + t + 'px; width: ' + (r - l) + 'px; height: ' + (d - t) + 'px', acts: list.map(([label, d2, go], i) => ({ label, d: d2, go, style: '--i: ' + i + '; --n: ' + n + '; --x: ' + (sp[i][0] - RR) + 'px; --y: ' + (sp[i][1] - RR) + 'px; --hx: -44px; --hy: 8px' })) }; };
+
+    // ---- detail ----
+    const g = G.find((x) => x.id === s.sel) || G[0], st = ST[g.status], isLoop = g.type === 'loop';
+    const seg = (opts, cur, pick) => opts.map(([v, label]) => ({ label, on: cur === v, go: () => pick(v), style: 'height: 26px; padding: 0 10px; border: none; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (cur === v ? 'background: var(--s1); color: var(--ink); font-weight: 500; box-shadow: 0 0 0 1px var(--line2)' : 'background: transparent; color: var(--ink2)') }));
+    const busy = !!g.run, canAct = g.status !== 'met' && g.status !== 'stopped' && !busy;
+    const hasNext = isLoop && g.next && !busy && (g.status === 'live' || g.status === 'needs');
+    const auto = g.mode === 'auto';
+    const sw = s.form.check;
+    const f = s.form, setF = (k) => (e) => this.setState({ form: { ...this.state.form, [k]: e.target.value } });
+    const KIND = { Command: ['Command', 'npm run lint'], Tests: ['Test command', 'npm test -- login'], 'Number target': ['Number target', 'p95_ms < 200'] };
+    const nodes = [];
+    if (isLoop) {
+      const sel2 = () => this.setState({ setFor: g.id });
+      const tone = g.run === 'check' ? 'var(--acc)' : g.status === 'met' ? 'var(--ok)' : g.head === 'not run yet' ? 'var(--mut)' : 'var(--bad)';
+      const nb = (o) => nodes.push({ mark: LOOP, dot: 'var(--ok)', dotLabel: '', titleStyle: 'font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap', style: '', face: '', faceName: '', isCheck: false, isLive: false, isNext: false, streamLines: [], resLines: [], link: true, termOpen: false, ...o, ...fanOf(o.fan) });
+      nb({ title: g.cmd, titleStyle: 'font-family: Geist Mono, monospace; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap', mark: D.flask, dot: tone, dotLabel: g.run === 'check' ? 'Checking' : g.status === 'met' ? 'Passing' : 'Failing', isCheck: true, busy: g.run === 'check',
+        line: g.run === 'check' ? 'Re-running the check…' : (g.res.sum || '') + ' · ' + g.res.when, style: g.run === 'check' ? 'border-color: var(--acc)' : g.status === 'met' ? 'border-color: var(--ok)' : '',
+        termOpen: s.termOpen, termLbl: (s.termOpen ? '▾' : '▸') + ' Output', termGo: () => this.setState({ termOpen: !s.termOpen }),
+        resLines: g.res.lines.map((l) => ({ t: l.t, c: l.k === 'ok' ? 'var(--ok)' : l.k === 'bad' ? 'var(--bad)' : l.k === 'mut' ? 'var(--mut)' : 'var(--ink)' })),
+        editCmd: s.editCmd, cmdVal: g.cmd, onCmd: (e) => this.mut(g.id, { cmd: e.target.value }),
+        fan: [['Run check', D.flask, () => this.runCheck(g.id)], ['Edit command', D.edit, () => this.setState({ editCmd: !s.editCmd })], ['Settings', D.set, sel2]] });
+      g.attempts.forEach((a, i) => nb({ title: 'Run ' + (i + 1) + ' · ' + a.t, line: 'check ' + a.from + ' → ' + a.to + ' · ' + money(a.cost), mark: D.play, dotLabel: 'Done', face: 'B', faceName: 'Bolt',
+        fan: [['Open run', D.ext, () => this.say('Opening ' + a.id)], ['Retry', D.retry, () => this.say('Retry of ' + a.id + ' queued for approval')], ['View diff', D.diff, () => this.say('Diff for ' + a.id)]] }));
+      if (g.run) nb({ title: 'Run ' + (g.runs + 1) + ' · ' + g.sim.title, mark: D.play, dot: 'var(--acc)', dotLabel: 'Working', face: 'B', faceName: 'Bolt', isLive: true, line: g.run === 'stream' ? 'Working, then the check re-runs' : 'Run finished · re-running the check…',
+        streamLines: g.run === 'stream' ? g.sim.stream.slice(Math.max(0, g.n - 3), g.n).map((t) => ({ t })) : [], fan: [['Open run', D.ext, () => this.say('Opening ' + g.sim.id)], ['Settings', D.set, sel2]] });
+      else if (hasNext) nb({ title: 'Next run', mark: D.play, dot: auto ? 'var(--acc)' : 'var(--warn)', dotLabel: auto ? 'Auto' : 'Needs you', isNext: true, line: g.next.t, style: 'border: 1px dashed var(--ink2)', editing: s.editing, plan: g.next.t, meta: g.next.meta + (auto ? ' · Auto' : ' · awaiting approval'), link: false,
+        onPlan: (e) => this.mut(g.id, (x) => ({ next: { ...x.next, t: e.target.value }, sim: x.sim ? { ...x.sim, title: e.target.value } : x.sim })),
+        start: () => this.startRun(g.id), startLabel: auto ? 'Start now' : 'Start run', editLabel: s.editing ? 'Done' : 'Edit plan', editGo: () => this.setState({ editing: !s.editing }),
+        skipGo: () => this.mut(g.id, (x) => { const t = 'Try a smaller change: only the redirect helper'; return { next: { t, meta: 'Scout plans → Bolt codes · est. $0.35' }, sim: x.sim ? { ...x.sim, title: t, cost: Math.min(x.sim.cost, 0.35) } : x.sim }; }),
+        fan: [['Duplicate', D.copy, () => this.dup(g.id)], ['Settings', D.set, sel2]] });
+      if (nodes.length) nodes[nodes.length - 1].link = false;
+    }
+    const items = !isLoop ? g.items.map((it, ix) => { const run = !!it.run, live = it.rs === 'working';
+      return { t: it.t, done: it.done, isRun: run, runId: it.run, runSt: it.rs, cursor: run ? 'default' : 'pointer', ink: it.done ? 'var(--mut)' : 'var(--ink)', strike: it.done ? 'line-through' : 'none',
+        ring: it.done ? 'fill: var(--ok); stroke: var(--ok)' : 'fill: none; stroke: ' + (live ? 'var(--acc)' : 'var(--mut)'), tick: it.done ? 'stroke: var(--bg)' : 'stroke: transparent',
+        chip: 'display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 7px; border-radius: 6px; ' + (live ? 'background: var(--accBg); color: var(--accInk)' : 'background: var(--okBg); color: var(--ok)'),
+        go: () => { if (!run) this.mut(g.id, (x) => ({ items: x.items.map((y, j) => (j === ix ? { ...y, done: !y.done } : y)) })); } }; }) : [];
+    const add = () => { const v = s.addVal.trim(); if (!v) return; this.mut(g.id, (x) => ({ items: [...x.items, { t: v, done: false }] })); this.setState({ addVal: '' }); };
+    const trPct = !isLoop ? pctOf(g) : 0;
+    return {
+      themeCls: dark ? 'dark' : '', motionCls: motion ? '' : 'm-off', glyph, glyphInv, groups, rowPlain: rowStyle(false),
+      playLabel: g.run && g.id === 'login' ? 'Playing…' : '▶ Play',
+      play: () => { this.clear(); this.G = this.G.map((x) => (x.id === 'login' ? mk()[0] : x)); this.setState({ goals: this.G, sel: 'login', dlg: false }); this.later(250, () => this.startRun('login')); },
+      reset: () => { this.clear(); this.G = mk(); this.setState({ goals: this.G, sel: 'login', filter: 'all', dlg: false, editing: false, form: this.blank() }); },
+      tabs, cards, noCards: shown.length === 0, nodes, toast: s.toast,
+      dTitle: g.title, dGlyph: isLoop ? LOOP : LIST, stLabel: st[0], stDot: st[1], stInk: st[2], stBg: st[3],
+      dSub: (isLoop ? 'Outcome loop' : 'Tracker') + ' · ' + g.ws + ' · ' + (g.who === 'Team' ? 'Team' : 'Workflow ' + g.who) + (isLoop && g.status === 'met' ? ' · ' + money(g.spent) + ' · ' + g.runs + (g.runs === 1 ? ' run' : ' runs') : ''),
+      canAct, isStopped: g.status === 'stopped', pauseLabel: g.status === 'paused' ? 'Resume goal' : 'Pause goal',
+      pause: () => this.pauseToggle(g.id),
+      stop: () => this.mut(g.id, { status: 'stopped', next: null }),
+      isLoop, isTracker: !isLoop,
+      // loop
+      isMet: isLoop && g.status === 'met', metTxt: isLoop ? money(g.spent) + ' · ' + g.runs + (g.runs === 1 ? ' run' : ' runs') : '',
+      showNext: !!hasNext, nextT: g.next ? g.next.t : '', nextMeta: g.next ? g.next.meta : '', editing: s.editing,
+      nextEdge: g.status === 'needs' ? 'var(--warn)' : 'var(--line2)', nextInk: g.status === 'needs' ? 'var(--warn)' : 'var(--ink2)',
+      nextState: auto ? 'Auto · starts on its own' : 'Awaiting approval', startLabel: auto ? 'Start now' : 'Start run', approveNote: auto ? 'Approval mode: Auto' : 'Approval mode: ask each run',
+      onNextT: (e) => this.mut(g.id, (x) => ({ next: { ...x.next, t: e.target.value }, sim: x.sim ? { ...x.sim, title: e.target.value } : x.sim })),
+      startRun: () => this.startRun(g.id), editLabel: s.editing ? 'Done' : 'Edit plan', editPlan: () => this.setState({ editing: !s.editing }),
+      skip: () => this.mut(g.id, (x) => { const t = 'Try a smaller change: only the redirect helper'; return { next: { t, meta: 'Scout plans → Bolt codes · est. $0.35' }, sim: x.sim ? { ...x.sim, title: t, cost: Math.min(x.sim.cost, 0.35) } : x.sim }; }),
+      streaming: g.run === 'stream', liveTitle: 'Run ' + (g.runs + 1) + ' · ' + (g.sim ? g.sim.title : ''),
+      streamLines: g.sim && g.run === 'stream' ? g.sim.stream.slice(0, g.n).map((t) => ({ t })) : [],
+      kindLbl: g.kind || '', cmd: g.cmd || '', resWhen: g.res ? g.res.when : '', checking: g.run === 'check', notChecking: g.run !== 'check', checkBusy: busy,
+      resLines: g.res ? g.res.lines.map((l) => ({ t: l.t, c: l.k === 'ok' ? 'var(--ok)' : l.k === 'bad' ? 'var(--bad)' : l.k === 'mut' ? 'var(--mut)' : 'var(--ink)' })) : [],
+      runCheck: () => this.runCheck(g.id), checkCls: g.run === 'check' ? 'flash' : '',
+      showSet: s.setFor === g.id, closeSet: () => this.setState({ setFor: '' }), delGoal: () => this.archive(g.id),
+      budgetTxt: isLoop ? money(g.spent) + ' of $' + g.budget : '', budgetPct: isLoop ? Math.min(100, Math.round(g.spent / g.budget * 100)) : 0,
+      runsTxt: isLoop ? g.runs + ' of ' + g.maxRuns : '',
+      pips: isLoop ? Array.from({ length: g.maxRuns }, (_, i) => 'width: 22px; height: 6px; border-radius: 3px; background: ' + (i < g.runs ? 'var(--ink)' : 'var(--s3)')) : [],
+      modeSeg: seg([['ask', 'Ask each run'], ['auto', 'Auto']], g.mode, (v) => this.mut(g.id, { mode: v })),
+      attempts: isLoop ? g.attempts.map((a, i) => ({ t: a.t, id: a.id, st: a.st, from: a.from, to: a.to, toInk: a.ok ? 'var(--ok)' : 'var(--bad)', cost: money(a.cost), rail: i === g.attempts.length - 1 ? 'transparent' : 'var(--line2)' })) : [],
+      noAttempts: isLoop && g.attempts.length === 0,
+      // tracker
+      doneTxt: !isLoop ? trDone(g) + ' of ' + g.items.length + ' done' : '', trPct, dueTxt: !isLoop ? (g.due ? 'Due ' + g.due : 'No due date') : '', items,
+      addVal: s.addVal, onAdd: (e) => this.setState({ addVal: e.target.value }), onAddKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.setState({ addVal: e.target.value }); add(); } }, addItem: add,
+      toLoop: () => this.mut(g.id, { type: 'loop', status: 'needs', head: 'not run yet', cmd: 'npm test', kind: 'Tests', mode: 'ask', budget: 5, spent: 0, runs: 0, maxRuns: 4, run: null, n: 0,
+        res: { when: 'never', sum: 'No result yet', lines: [{ t: 'No result yet. Run the check to get a baseline.', k: 'mut' }] }, attempts: [], next: { t: 'Run the check and plan the first fix', meta: 'Scout plans → Bolt codes → Lens reviews · est. $0.50' }, sim: null }),
+      // dialog
+      dlg: s.dlg, openNew: () => this.setState({ dlg: true, form: this.blank() }), closeNew: () => this.setState({ dlg: false }), stop2: (e) => e.stopPropagation(),
+      dlgHint: sw ? 'An outcome loop: Tether runs until the check passes or a cap is hit.' : 'A tracker: a checklist of items and linked runs.',
+      fTitle: f.title, fWs: f.ws, fWho: f.who, fCmd: f.cmd, fBudget: f.budget, fRuns: f.runs, fDue: f.due, fCheck: sw, fNoCheck: !sw,
+      onTitle: setF('title'), onWs: setF('ws'), onWho: setF('who'), onCmd: setF('cmd'), onBudget: setF('budget'), onRuns: setF('runs'), onDue: setF('due'),
+      swTrack: 'position: relative; width: 36px; height: 20px; flex: none; padding: 0; border: none; border-radius: 10px; cursor: pointer; transition: background .16s; background: ' + (sw ? 'var(--ink)' : 'var(--s3)'),
+      swThumb: 'position: absolute; top: 2px; width: 16px; height: 16px; border-radius: 50%; transition: left .16s; left: ' + (sw ? 18 : 2) + 'px; background: ' + (sw ? 'var(--bg)' : 'var(--ink2)'),
+      flipCheck: () => this.setState({ form: { ...f, check: !f.check } }),
+      kindSeg: seg([['Command', 'Command'], ['Tests', 'Tests'], ['Number target', 'Number target']], f.kind, (v) => this.setState({ form: { ...this.state.form, kind: v } })),
+      fModeSeg: seg([['ask', 'Ask each run'], ['auto', 'Auto']], f.mode, (v) => this.setState({ form: { ...this.state.form, mode: v } })),
+      cmdLabel: KIND[f.kind][0], cmdPh: KIND[f.kind][1],
+      create: () => {
+        const title = f.title.trim() || 'Untitled goal', id = 'g' + Date.now();
+        const base = { id, title, ws: f.ws, who: f.who };
+        const goal = f.check
+          ? { ...base, type: 'loop', status: 'needs', head: 'not run yet', cmd: f.cmd.trim() || KIND[f.kind][1], kind: f.kind, mode: f.mode, budget: parseFloat(f.budget) || 5, spent: 0, runs: 0, maxRuns: parseInt(f.runs, 10) || 4, run: null, n: 0,
+            res: { when: 'never', sum: 'No result yet', lines: [{ t: 'No result yet. Run the check to get a baseline.', k: 'mut' }] }, attempts: [], next: { t: 'Run the check and plan the first fix', meta: 'Scout plans → Bolt codes → Lens reviews · est. $0.50' }, sim: null }
+          : { ...base, type: 'tracker', status: 'live', due: f.due.trim(), items: [] };
+        this.G = [goal, ...this.G];
+        this.setState({ goals: this.G, sel: id, filter: 'all', dlg: false });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

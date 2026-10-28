@@ -101,6 +101,16 @@ describe('Inbox', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
+  it('lists a goal waiting for you as an entry with Approve run, which starts it', async () => {
+    const goal = { id: 'g1', workspace: 'w', title: 'Login tests green', kind: 'loop', status: 'needs_you', budgetUsd: 5, maxRuns: 3, approval: 'ask', workflow: 'team', createdAt: 1, spentUsd: 0, pending: { task: 'Fix the redirect' }, progress: 0, items: [] } as never;
+    routeApi({ 'GET /api/attention': { items: [] }, 'POST /api/goals/g1/next': goal });
+    renderApp(<Inbox onGo={vi.fn()} goals={[goal]} onGoal={vi.fn()} />);
+    fireEvent.click(within(await screen.findByRole('list', { name: 'Inbox' })).getByRole('button', { name: /Login tests green/ }));
+    expect(screen.getByText('Fix the redirect')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve run' }));
+    await waitFor(() => expect(calls('POST', '/api/goals/g1/next')[0]?.[2]).toEqual({ action: 'start' }));
+  });
+
   it('says when nothing needs you', async () => {
     routeApi({ 'GET /api/attention': { items: [] } });
     renderApp(<Inbox onGo={vi.fn()} />);

@@ -6,6 +6,7 @@ import { Switch } from '../../components/beui/kit/fields';
 import type { Poll } from '../../hooks';
 import { Accounts } from '../../settings/Accounts';
 import type { AccountsView } from '../../settings/accountsApi';
+import { Connectors, type ConnectorView } from '../../settings/Connectors';
 import { McpServers, type McpServerView } from '../../settings/McpServers';
 import { ThemeToggle } from '../../components/beui/motion/theme-toggle';
 import { resolveTheme, THEME_LABEL, type ThemeChoice } from '../../theme';
@@ -46,6 +47,8 @@ export interface SettingsPageProps {
   accounts?: Poll<AccountsView>;
   /** Code Mode's MCP servers (shown when given). */
   mcp?: Poll<{ servers: McpServerView[] }>;
+  /** Code Mode's connectors (shown when given). */
+  connectors?: Poll<{ connectors: ConnectorView[] }>;
   /** A section to scroll to (the sidebar's account row opens Accounts). */
   section?: string;
   /** Tether.app's notifications switch (shown when given). */
@@ -67,7 +70,7 @@ export function SettingsPage(p: SettingsPageProps) {
   const opener = useRef(document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null);
   const sections = [
     ...(p.accounts ? [{ id: 'accounts', title: 'Accounts' }] : []),
-    ...(p.tools || p.mcp ? [{ id: 'agents', title: 'Agents & tools' }] : []),
+    ...(p.tools || p.mcp || p.connectors ? [{ id: 'agents', title: 'Agents & tools' }] : []),
     { id: 'appearance', title: 'Appearance' },
     { id: 'storage', title: 'Storage' },
     { id: 'server', title: 'Server' },
@@ -123,12 +126,18 @@ export function SettingsPage(p: SettingsPageProps) {
               </Disclosure>
             </Card>
           ) : null}
-          {p.tools || p.mcp ? (
+          {p.tools || p.mcp || p.connectors ? (
             <Card id="agents" title="Agents & tools">
               {p.tools ? (
                 <section className="sl-settings-group" aria-labelledby="set-tools">
                   <h3 id="set-tools">Agent tools</h3>
                   <ToolsStrip poll={p.tools} />
+                </section>
+              ) : null}
+              {p.connectors ? (
+                <section className="sl-settings-group" aria-labelledby="set-connectors">
+                  <h3 id="set-connectors">Connectors</h3>
+                  <Connectors poll={p.connectors} />
                 </section>
               ) : null}
               {p.mcp ? (

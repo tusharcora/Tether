@@ -1,5 +1,5 @@
 /* The run graph (the demo's .dag): crew cards in dependency layers on a dot grid; wide team runs scroll sideways. Tokens only. */
-.rg { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--side); }
+.rg { position: relative; padding: 44px 48px 0 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--side); }
 /* at least as wide as the scroller, so the dot grid fills it; the dots are a solid fill cut by a mask (no gradient fill, as canvas.css) */
 .rg-inner { position: relative; min-width: 100%; }
 .rg-inner::before {
@@ -29,3 +29,8 @@
 .rg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; }
 .rg-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); }
 @media (prefers-reduced-motion: reduce) { .rg-card:hover { transform: none; } }
+
+/* each card sits in a host that carries its fan; the fan hangs outside the card, so the scroller keeps room above and beside the cards and the open one rises over its neighbours */
+.rg-node { position: absolute; }
+.rg-node > .rg-card { position: relative; width: 100%; height: 100%; box-sizing: border-box; }
+.rg-node:hover, .rg-node:focus-within, .rg-node[data-fan-open] { z-index: 5; }

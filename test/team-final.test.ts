@@ -402,7 +402,7 @@ describe('#12 card keys need card focus', () => {
 describe('#14 README matches the code', () => {
   it('describes the total cap, the list count, the status codes and card focus', async () => {
     const { readFileSync } = await import('node:fs');
-    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const readme = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
     const section = readme.split(/^## /m).find((x) => x.startsWith('Team runs')) ?? '';
     for (const s of ['planning included', 'number of waiting cards (`pending`)', '400 for bad input (including an unknown roster bot', '422 when the run cannot be created', 'returns `201', 'Press enter to give the card the keys', 'At most 4 questions per reply', '1 minute to 4 hours', 'May agents change files in the worktree?']) {
       expect(section, s).toContain(s);

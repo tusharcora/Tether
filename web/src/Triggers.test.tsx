@@ -144,6 +144,24 @@ describe('Triggers', () => {
     expect(log.closest('.tf-bar')!.classList.contains('tf-wide')).toBe(true);
   });
 
+  it('draws Event → Filter → Workflow for the selected trigger, with the fans and "All events" when nothing filters', async () => {
+    renderApp(<Triggers />);
+    const flow = await screen.findByRole('region', { name: 'acme-full-review flow' });
+    expect(within(flow).getByText('All events')).toBeTruthy();
+    const names = (n: string) => within(within(flow).getByRole('toolbar', { name: n })).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names('Event actions')).toEqual(['Test fire', 'Pause trigger', 'Copy URL', 'Settings']);
+    expect(names('Workflow actions')).toEqual(['Open workflow', 'Run now', 'Settings']);
+    fireEvent.click(within(flow).getByRole('button', { name: 'Pause trigger' }));
+    await waitFor(() => expect(calls('PATCH', '/api/triggers/acme-full-review')[0]![2]).toEqual({ enabled: false }));
+    // Test fire is the existing test panel, which calls the existing endpoint
+    fireEvent.click(within(flow).getByRole('button', { name: 'Test fire' }));
+    // the test panel now opens in the dock, which focuses the field once it is up
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Pull request')));
+    fireEvent.change(screen.getByLabelText('Pull request'), { target: { value: 'https://github.com/acme/api/pull/12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Dry run' }));
+    await waitFor(() => expect(calls('POST', '/api/triggers/acme-full-review/test')[0]![2]).toEqual({ pr: 'https://github.com/acme/api/pull/12', fire: false }));
+  });
+
   it('opens Setup & test in the dock with the PR field focused, and Test on a trigger picks it there', async () => {
     triggers = [trig(), trig({ id: 'acme-two' })];
     renderApp(<Triggers />);
