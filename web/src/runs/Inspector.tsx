@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { stepLabel } from '../../../src/runLabels';
-import { api, describeEvent, type RunView, type StoredEvent } from '../api';
+import { describeEvent, type RunView, type StoredEvent } from '../api';
 import { JsonViewer } from '../components/kept/json-viewer/json-viewer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/beui/kit/controls';
 import { Timeline, type TimelineEvent } from '../components/kept/timeline/timeline';
@@ -10,25 +10,17 @@ import { RunDiff } from '../ui/RunDiff';
 import { InlineError } from '../ui/studio/InlineError';
 import { FileBars } from './FileBars';
 import { StepPane } from './StepPane';
+import { useDiff } from './useDiff';
 
 export type Pane = 'node' | 'timeline' | 'branch';
 const TONE: Record<string, TimelineEvent['tone']> = { done: 'success', error: 'danger' };
-
-/** The diff on show: the path it came from, its text once loaded, or the load error. */
-interface DiffState {
-  path?: string;
-  text?: string;
-  error?: string;
-}
 
 /**
  * Step (the selected step), Branch diff (the whole branch, live as steps commit) and Timeline (run events with JSON detail).
  * `pane` is the route's hint: a failed run's link opens on the Timeline.
  */
-export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenFile }: { run: RunView; events: StoredEvent[]; selected?: string; pane?: 'timeline'; onAct: RunAct; /** A changed file's name was picked: open it in Code. */ onOpenFile?: (file: string) => void }) {
+export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenFile }: { run: RunView; events: StoredEvent[]; selected?: string; pane?: Pane; onAct: RunAct; /** A changed file's name was picked: open it in Code. */ onOpenFile?: (file: string) => void }) {
   const [pane, setPane] = useState<Pane>(hint ?? 'node');
-  const [diff, setDiff] = useState<DiffState>({});
-  const [retries, setRetries] = useState(0);
   // one draft note per step, so a note typed under one step can never be sent with another
   const [notes, setNotes] = useState<Record<string, string>>({});
   const noteKey = `${r.id}\0${selected ?? ''}`;
@@ -37,7 +29,6 @@ export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenF
   const lastSel = useRef(selected);
   useEffect(() => {
     setPane(hint ?? 'node');
-    setDiff({});
   }, [r.id, hint]);
   useEffect(() => {
     if (selected && selected !== lastSel.current) setPane('node');
@@ -49,28 +40,15 @@ export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenF
   // the branch diff follows every step's commit, so it stays live as later steps commit
   const branchKey = pane === 'branch' ? Object.values(r.nodes).map((n) => n.commit ?? '').join(',') : '';
   const path = pane === 'branch' ? `/api/runs/${r.id}/diff` : selected && commit ? `/api/runs/${r.id}/diff?node=${encodeURIComponent(selected)}` : undefined;
-  useEffect(() => {
-    if (!path) return setDiff({});
-    let cancelled = false;
-    // a refetch of the same diff keeps showing the old text; a different diff starts from the skeleton
-    setDiff((d) => (d.path === path && d.text !== undefined ? { path, text: d.text } : { path }));
-    api<{ diff: string }>('GET', path)
-      .then((d) => !cancelled && setDiff({ path, text: d.diff }))
-      .catch((e: unknown) => !cancelled && setDiff({ path, error: e instanceof Error ? e.message : String(e) }));
-    return () => {
-      cancelled = true;
-    };
-  }, [path, branchKey, retries]);
+  const diff = useDiff(path, branchKey);
 
   /** The loaded diff, its load error with a retry (never "no changes" on error), or the skeleton while it loads. */
-  // until the effect catches up, a diff from another path (the previous step's) counts as loading
-  const stale = diff.path !== path;
   const diffBlock = (empty: string) =>
-    !stale && diff.error ? (
-      <InlineError message={diff.error} onRetry={() => setRetries((n) => n + 1)} />
+    diff.error ? (
+      <InlineError message={diff.error} onRetry={diff.retry} />
     ) : (
-      <Loading loading={stale || diff.text === undefined} lines={6} label="Loading diff">
-        {!stale && diff.text ? (
+      <Loading loading={diff.loading} lines={6} label="Loading diff">
+        {diff.text ? (
           <>
             <FileBars diff={diff.text} onOpen={onOpenFile} />
             <RunDiff text={diff.text} />

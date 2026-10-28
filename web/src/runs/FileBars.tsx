@@ -1,7 +1,7 @@
 import { fileStats } from './fileStats';
 
 /** One row per changed file: name, +/− counts and a bar split into added (green) and removed (red). With `onOpen` a name opens the file in Code. */
-export function FileBars(props: { diff: string; onOpen?: (file: string) => void }) {
+export function FileBars(props: { diff: string; onOpen?: (file: string) => void; openTitle?: string }) {
   const stats = fileStats(props.diff);
   if (!stats.length) return null;
   const max = Math.max(...stats.map((s) => s.add + s.del), 1);
@@ -10,7 +10,7 @@ export function FileBars(props: { diff: string; onOpen?: (file: string) => void 
       {stats.map((s) => (
         <li key={s.file}>
           {props.onOpen ? (
-            <button type="button" className="file-name file-open" title="Open in Code" onClick={() => props.onOpen!(s.file)}>
+            <button type="button" className="file-name file-open" title={props.openTitle ?? 'Open in Code'} onClick={() => props.onOpen!(s.file)}>
               {s.file}
             </button>
           ) : (

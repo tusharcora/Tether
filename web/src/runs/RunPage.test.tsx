@@ -1,7 +1,11 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
+import { api, type Question } from '../api';
+import { Runs } from '../Runs';
 import { cssRule } from '../test/css';
-import { makeAwaitingRun, makeRun } from '../test/fixtures';
+import { FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import { ApprovalBar, gateSummary } from './ApprovalBar';
 import { RunHeader } from './RunHeader';
@@ -73,4 +77,68 @@ describe('run header, notices and approval bar', () => {
     expect(gateSummary(makeRun({ nodes: { ...makeRun().nodes, gate: { status: 'done', attempts: 2, costUsd: 0, loops: 1, gate: { ok: false, exitCode: 1, output: '' } } } }))).toBe('npm test failed');
     expect(gateSummary(makeRun({ pipeline: { ...makeRun().pipeline, nodes: makeRun().pipeline.nodes.filter((n) => n.kind !== 'gate') } }))).toBe('No gates in this run');
   });
+});
+
+const q1: Question = { id: 'q1', ask: 'Which store?', recommended: 'a', options: [{ id: 'a', label: 'Postgres' }, { id: 'b', label: 'Redis' }] };
+const open = (run = makeRun(), props: Partial<Parameters<typeof Runs>[0]> = {}) => {
+  const p = { onSelect: vi.fn(), onSelectNode: vi.fn(), ...props };
+  renderApp(<Runs selected="r1" {...p} />);
+  act(() => FakeEventSource.all[0]!.emit('state', run));
+  return p;
+};
+
+describe('run page', () => {
+  beforeEach(() => {
+    vi.mocked(api).mockReset();
+    FakeEventSource.all = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+    routeApi({ 'GET /api/runs': [makeRow()], 'GET /api/runs/r1/events': [], 'GET /api/runs/r1/diff': { diff: '' } });
+  });
+
+  it('lays out header, graph, output and files, full width with no runs list', async () => {
+    open();
+    act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'node.started', node: 'code', attempt: 1 } }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' })).toBeTruthy();
+    expect(document.querySelector('.rg [data-id="code"]')).toBeTruthy();
+    expect(screen.getByText('Files · branch aorch/r1')).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'Runs' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Runs' })).toBeNull();
+    expect(document.querySelector('.out-line[data-node="code"]')!.textContent).toContain('started');
+    expect(await screen.findByText('No committed changes yet.')).toBeTruthy();
+  });
+  it('opens a step from an output line', async () => {
+    const p = open();
+    act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'node.started', node: 'code', attempt: 1 } }));
+    await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
+    fireEvent.click(document.querySelector('.out-line[data-node="code"]')!);
+    expect(p.onSelectNode).toHaveBeenCalledWith('code');
+  });
+  it('goes back to the list', async () => {
+    const p = open();
+    fireEvent.click(await screen.findByRole('button', { name: '← Runs' }));
+    expect(p.onSelect).toHaveBeenCalledWith(undefined);
+  });
+  it('renders a team run before approval without a graph, with its questions inline', async () => {
+    open(makeRun({ kind: 'team', planning: true, pipeline: { ...makeRun().pipeline, nodes: [], edges: [] }, nodes: {}, pending: [q1] }));
+    expect(await screen.findByRole('radio', { name: /Postgres/ })).toBeTruthy();
+    expect(document.querySelector('.rg')).toBeNull();
+    expect(document.querySelector('.run-split')).toBeNull();
+  });
+  it('says Tether is planning while a team run plans with nothing to ask', async () => {
+    open(makeRun({ kind: 'team', planning: true, pipeline: { ...makeRun().pipeline, nodes: [], edges: [] }, nodes: {} }));
+    expect((await screen.findByText('Tether is planning…')).className).toBe('sl-quiet');
+  });
+  it('collapses planning and the team plan into disclosure rows', async () => {
+    const answers = [1, 2, 3, 4, 5].map((i) => ({ question: `c${i}`, option: 'a', by: 'user' as const }));
+    open(makeRun({ kind: 'team', cards: answers.map((a) => ({ ...q1, id: a.question })), answers }));
+    const planning = await screen.findByRole('button', { name: /Planning · 5 answers/ });
+    expect(planning.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByRole('button', { name: /Team plan · 1 of 3/ }).getAttribute('aria-expanded')).toBe('false');
+  });
+  it('puts the approval bar on the page and opens the run changes from Review diff', async () => {
+    open(makeAwaitingRun());
+    fireEvent.click(await screen.findByRole('button', { name: 'Review diff' }));
+    expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
+  });
+  it('keeps the team plan inside the page width', () => expect(cssRule('runs/runs.css', '.run-disclosure')).toContain('min-width: 0'));
 });
