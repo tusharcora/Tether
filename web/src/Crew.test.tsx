@@ -176,6 +176,8 @@ describe('Crew', () => {
     expect(screen.queryByLabelText('Find a bot')).toBeNull();
     fireEvent.click(lib);
     expect(screen.getByLabelText('Find a bot')).toBeTruthy();
+    // a bottom-wide bar: it stops short of the assistant launcher
+    expect(document.querySelector('.cw-bench')!.classList.contains('tf-wide')).toBe(true);
   });
 
   it('keeps Crew packs, Evolve, Import and Remove ECC in one menu', async () => {

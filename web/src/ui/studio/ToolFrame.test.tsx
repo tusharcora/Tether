@@ -75,6 +75,12 @@ describe('ToolFrame', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('keeps bottom-wide bars clear of the assistant launcher (fixed 52 px at right 20 px)', () => {
+    expect(cssRule('ui/studio/toolframe.css', '.tf-screen')).toContain('--tf-launcher: 84px');
+    expect(cssRule('ui/studio/toolframe.css', '.tf-wide')).toContain('right: var(--tf-launcher)');
+    expect(cssRule('ui/studio/toolframe.css', '.tf-wide')).toContain('transform: none');
+  });
+
   it('draws the backdrop dots with a mask and turns the dock into a bottom sheet on narrow screens', () => {
     expect(cssRule('ui/studio/toolframe.css', '.tf-screen::before')).toContain('mask-image');
     expect(cssRule('ui/studio/toolframe.css', '.tf-screen::before')).toContain('background: var(--line2)');

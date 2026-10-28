@@ -45,7 +45,7 @@
 .cw-swap-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }
 
 /* the library (mockup .bench): a wide floating bar along the bottom */
-.cw-bench { left: 16px; right: 16px; transform: none; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; }
+.cw-bench { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; }
 .cw-screen.docked .cw-bench { right: 352px; }
 .cw-bench-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .cw-bench-head > b { font-size: 13px; }
@@ -84,6 +84,6 @@
 @media (max-width: 899px) {
   .cw-lineup, .cw-screen.lib .cw-lineup, .cw-screen.docked .cw-lineup { padding: 120px 16px 230px; }
   .cw-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .cw-bench, .cw-screen.docked .cw-bench { left: 8px; right: 8px; bottom: 8px; }
+  .cw-bench, .cw-screen.docked .cw-bench { left: 8px; right: var(--tf-launcher); bottom: 8px; }
   .cw-bench-q { width: 100%; margin-left: 0; }
 }

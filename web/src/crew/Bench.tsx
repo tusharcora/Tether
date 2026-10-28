@@ -50,7 +50,7 @@ export function Bench(p: { bots: BotDef[]; filter: Filter; onFilter: (f: Filter)
   const needle = p.q.trim().toLowerCase();
   const shown = p.bots.filter((b) => (view === 'all' || sourceOf(b) === view) && (!needle || `${b.name} ${b.title} ${b.id} ${b.whenToUse ?? ''} ${b.persona}`.toLowerCase().includes(needle)));
   return (
-    <FloatBar at="bottom" className="cw-bench">
+    <FloatBar at="bottom" className="tf-wide cw-bench">
       <div className="cw-bench-head">
         <b>Library</b>
         <Tabs value={view} onValueChange={(v) => p.onFilter(v as Filter)}>
