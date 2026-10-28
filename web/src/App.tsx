@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
+import { Assistant } from './assistant/Assistant';
 import { Builder } from './Builder';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/arc/toast-stack/toast-stack';
@@ -279,6 +280,7 @@ function Shell() {
             {screen.tab === 'triggers' ? <Triggers /> : null}
           </main>
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
+          <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />
         </div>
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
