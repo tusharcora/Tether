@@ -1,0 +1,1218 @@
+<title>Tether Landing</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the app is the hero. A real-size Tether window you can click through, a tour that plays it like a film, then facts, docs, access. Tokens = the app's own Studio tokens. */
+:root{
+  --page:#e7e7e4; --bg:#ffffff; --side:#f7f7f6; --s1:#ffffff; --s2:#f1f1ef; --s3:#e4e4e1;
+  --ink:#1d1d1f; --ink2:#55555a; --mut:#8e8e93; --line:rgba(0,0,0,.08); --line2:rgba(0,0,0,.13);
+  --hov:rgba(0,0,0,.045); --sel:rgba(0,0,0,.075);
+  --acc:#2563eb; --accBg:rgba(37,99,235,.1); --accInk:#1d4ed8;
+  --warn:#b45309; --warnBg:#fdf1d8; --ok:#047857; --okBg:#e7f6ef; --bad:#b91c1c; --badBg:#fdecec;
+  --str:#047857; --num:#a16207; --key:#1d4ed8;
+  --shadow:0 0 0 1px rgba(0,0,0,.06),0 30px 80px -20px rgba(0,0,0,.28),0 12px 24px -12px rgba(0,0,0,.12);
+  --pop:0 0 0 1px rgba(0,0,0,.06),0 16px 40px rgba(0,0,0,.18);
+  --f:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --m:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171; --badBg:rgba(248,113,113,.12);
+  --str:#86efac; --num:#fcd34d; --key:#93c5fd;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 40px 120px -30px rgba(59,130,246,.10),0 30px 80px -20px rgba(0,0,0,.9);
+  --pop:0 0 0 1px rgba(255,255,255,.07),0 16px 40px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171; --badBg:rgba(248,113,113,.12);
+  --str:#86efac; --num:#fcd34d; --key:#93c5fd;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 40px 120px -30px rgba(59,130,246,.10),0 30px 80px -20px rgba(0,0,0,.9);
+  --pop:0 0 0 1px rgba(255,255,255,.07),0 16px 40px rgba(0,0,0,.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font:15px/1.55 var(--f);-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--page)}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1280px;margin:0 auto}
+.mono{font-family:var(--m)}
+.mut{color:var(--mut)}
+svg.i{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:34px;padding:0 14px;border-radius:7px;font:500 13.5px/1 var(--f);cursor:pointer;border:1px solid transparent;transition:transform .12s,background .15s,opacity .15s}
+.btn.ink:hover{opacity:.88}
+.btn .kbd{color:inherit;opacity:.55;border-color:currentColor;background:transparent}
+.btn svg.i{width:14px;height:14px}
+.btn:active{transform:scale(.97)}
+.btn.ink{background:var(--ink);color:var(--bg)}
+.btn.ghost{border-color:var(--line2);background:transparent}
+.btn.ghost:hover{background:var(--hov)}
+.btn.sm{height:28px;padding:0 10px;font-size:12.5px;border-radius:6px}
+.kbd{font:500 11px var(--m);color:var(--mut);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;line-height:16px}
+
+/* ---------- page header ---------- */
+.top{position:sticky;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:40;display:flex;align-items:center;gap:4px;height:48px;margin-top:10px;padding:0 8px;border-radius:12px;
+  background:color-mix(in srgb,var(--side) 86%,transparent);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);box-shadow:0 0 0 1px var(--line),0 8px 24px -12px rgba(0,0,0,.18)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;letter-spacing:-.01em;padding:0 6px}
+.brand svg{width:22px;height:22px}
+.ver{font:500 10.5px var(--m);color:var(--mut);background:var(--s2);border-radius:5px;padding:1px 5px}
+.top .div{width:1px;height:20px;background:var(--line2);margin:0 8px}
+.nr{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:7px;font-size:13px;color:var(--ink2);transition:background .1s,color .1s}
+.nr:hover{background:var(--hov);color:var(--ink)}
+.nr.on{background:var(--sel);color:var(--ink);font-weight:500}
+.nr svg.i{width:14px;height:14px}
+.top .sp{flex:1}
+.askbtn{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 4px;border-radius:7px;border:1px solid var(--line2);background:var(--s1);cursor:pointer;font-size:13px;color:var(--ink2);margin-right:6px}
+.askbtn:hover{color:var(--ink);background:var(--bg)}
+.top .btn{height:30px;padding:0 12px;font-size:13px;border-radius:7px}
+@media (max-width:860px){.nr,.top .div,.askbtn .t{display:none}}
+@media (max-width:420px){.askbtn{display:none}}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:end;padding-block:56px 36px}
+.hero h1{font-size:clamp(40px,6.2vw,80px);line-height:.98;letter-spacing:-.045em;font-weight:600;text-wrap:balance}
+.hero h1 span{color:var(--mut)}
+.hero p{margin-top:18px;font-size:18px;color:var(--ink2);max-width:40em}
+.hero .ctas{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap;align-items:center}
+.hero .ctas small{font:12px var(--m);color:var(--mut);margin-left:6px}
+.watcher{display:flex;flex-direction:column;align-items:center;gap:10px}
+.watcher .cap{font:12px var(--m);color:var(--mut)}
+@media (max-width:760px){.hero{grid-template-columns:1fr;padding-block:32px 24px}.watcher{display:none}}
+
+/* ---------- the window ---------- */
+.win{position:relative;background:var(--bg);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;height:680px;display:grid;grid-template-columns:236px minmax(0,1fr);font-size:13px}
+@media (max-width:900px){.win{grid-template-columns:minmax(0,1fr);height:auto;min-height:600px}.side{display:none!important}}
+.side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:10px 8px;gap:1px;min-width:0}
+.lights{display:flex;gap:7px;padding:4px 6px 12px}
+.lights i{width:12px;height:12px;border-radius:50%;background:var(--s3)}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.proj{display:flex;align-items:center;gap:8px;padding:4px 6px 10px}
+.proj .tile{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:transparent}
+.proj b{font-weight:600;font-size:13.5px}
+.proj .compose{margin-left:auto;width:26px;height:26px;border-radius:6px;border:1px solid var(--line2);display:grid;place-items:center;background:var(--s1);cursor:pointer}
+.r{display:flex;align-items:center;gap:9px;height:28px;padding:0 8px;border-radius:6px;cursor:pointer;color:var(--ink2);border:0;background:transparent;width:100%;text-align:left;font-size:13px;transition:background .1s}
+.r:hover{background:var(--hov)}
+.r.on{background:var(--sel);color:var(--ink);font-weight:500}
+.r .n{margin-left:auto;font:11.5px var(--m);color:var(--mut)}
+.r .n.w{color:var(--warn);font-weight:600}
+.r .h{margin-left:auto;font:11px var(--m);color:var(--mut);opacity:0;transition:opacity .1s}
+.r:hover .h{opacity:1}
+.r .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.grp{font-size:11.5px;color:var(--mut);padding:14px 8px 4px;font-weight:500}
+.side .grow{flex:1}
+.acct{display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--line);margin-top:6px}
+.acct .av{width:24px;height:24px;border-radius:50%;background:var(--s3);display:grid;place-items:center;font-size:11px;font-weight:600}
+.acct small{display:block;font-size:11px;color:var(--ok)}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid var(--line);flex:none}
+.bar .crumb{color:var(--mut)} .bar .crumb b{color:var(--ink);font-weight:500}
+.bar .sp{flex:1}
+.screen{flex:1;min-height:0;overflow:auto;padding:22px 24px 90px}
+.screen[hidden]{display:none!important}
+.screen h2{font-size:22px;font-weight:600;letter-spacing:-.02em;margin-bottom:16px}
+.sec{font-size:12px;font-weight:500;color:var(--mut);margin:22px 0 8px;display:flex;align-items:center;gap:8px}
+.sec .ct{font:11px var(--m);background:var(--s2);border-radius:99px;padding:0 6px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:28px}
+@media (max-width:1100px){.cols{grid-template-columns:minmax(0,1fr)}}
+.pill{display:inline-flex;align-items:center;gap:5px;font:11.5px var(--m);padding:1px 8px;border-radius:99px;white-space:nowrap}
+.pill.live{background:var(--accBg);color:var(--accInk)} .pill.wait{background:var(--warnBg);color:var(--warn)} .pill.ok{background:var(--okBg);color:var(--ok)} .pill.bad{background:var(--badBg);color:var(--bad)} .pill.q{background:var(--s2);color:var(--mut)}
+.pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pl 1.4s ease-in-out infinite}
+@keyframes pl{50%{opacity:.3}}
+
+/* composer */
+.composer{border:1px solid var(--line2);border-radius:12px;background:var(--s1);padding:12px 12px 10px}
+.composer .ph{color:var(--mut);font-size:14px;min-height:22px}
+.composer .row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:6px;background:var(--s2);font-size:12px;color:var(--ink2);border:0;cursor:pointer}
+/* rows */
+.list{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--s1)}
+.li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--line)}
+.li:first-child{border-top:0}
+.li .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .d{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .acts{display:flex;gap:6px}
+.track{display:flex;gap:3px;margin-top:7px}
+.track i{height:4px;flex:1;border-radius:2px;background:var(--s3)}
+.track i.d{background:var(--ok)} .track i.l{background:var(--acc);animation:pl 1.4s ease-in-out infinite} .track i.f{background:var(--bad)}
+.feed{display:flex;flex-direction:column;gap:0;font-size:12.5px}
+.feed .e{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px solid var(--line);animation:in .3s ease both}
+.feed .e:first-child{border-top:0}
+.feed .e .tm{font:11px var(--m);color:var(--mut);padding-top:1px}
+@keyframes in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.facestrip{display:flex;gap:8px;flex-wrap:wrap}
+.mini{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--mut);width:52px}
+.mface{width:34px;height:34px;border-radius:50%;background:var(--s3);position:relative;display:flex;align-items:center;justify-content:center;gap:5px}
+.mface i{width:4px;height:7px;border-radius:2px;background:var(--ink)}
+.mface.busy::after{content:"";position:absolute;right:0;bottom:0;width:9px;height:9px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+
+/* runs */
+.runhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.runhead h2{margin:0}
+.stepper{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px;background:var(--s1)}
+.stepper > div{flex:1;padding:10px 12px;border-left:1px solid var(--line);min-width:0}
+.stepper > div:first-child{border-left:0}
+.stepper b{display:block;font-weight:500;font-size:12.5px}
+.stepper span{font:11px var(--m);color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stepper .bar2{height:3px;border-radius:2px;margin-top:8px;background:var(--s3)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
+@media (max-width:1100px){.split{grid-template-columns:minmax(0,1fr)}}
+.term{background:var(--side);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:12px/1.75 var(--m);color:var(--ink2);overflow:hidden;min-width:0}
+.term .l{white-space:pre-wrap;word-break:break-word}
+.c-acc{color:var(--accInk)} .c-ok{color:var(--ok)} .c-bad{color:var(--bad)} .c-warn{color:var(--warn)} .c-mut{color:var(--mut)}
+.files .f{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font:12px var(--m);padding:6px 0;border-top:1px solid var(--line)}
+.files .f:first-child{border-top:0}
+.fb{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:4px;grid-column:1/-1}
+.fb .a{background:var(--ok)} .fb .x{background:var(--bad)}
+.approve{border:1px solid var(--warn);border-radius:12px;padding:14px;background:var(--s1);margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.approve .q{flex:1;min-width:200px}
+.approve .q b{display:block;font-weight:500;font-size:14px}
+.approve .q span{font-size:12px;color:var(--mut)}
+
+/* code */
+.code3{display:grid;grid-template-columns:190px minmax(0,1fr) 230px;height:100%;min-height:520px;margin:-22px -24px -90px}
+@media (max-width:1100px){.code3{grid-template-columns:minmax(0,1fr)}.code3 .tree,.code3 .lens{display:none}}
+.tree{border-right:1px solid var(--line);padding:12px 8px;font-size:12.5px;background:var(--side)}
+.tree .n{display:flex;align-items:center;gap:6px;height:24px;padding:0 6px;border-radius:5px;color:var(--ink2);white-space:nowrap}
+.tree .n.on{background:var(--sel);color:var(--ink)}
+.tree .n .m{margin-left:auto;font:10.5px var(--m)}
+.ed{font:12.5px/1.8 var(--m);padding:14px 0;overflow:auto;min-width:0}
+.ed .ln{display:grid;grid-template-columns:44px minmax(0,1fr);white-space:pre}
+.ed .ln .no{color:var(--mut);text-align:right;padding-right:14px;user-select:none}
+.ed .ln.hl{background:var(--accBg)}
+.tk{color:var(--key)} .st{color:var(--str)} .nu{color:var(--num)} .cm{color:var(--mut)}
+.lens{border-left:1px solid var(--line);padding:14px;font-size:12.5px;display:flex;flex-direction:column;gap:10px}
+.lens .card{border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--s1)}
+
+/* crew */
+.crew{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.bot{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--s1);display:flex;flex-direction:column;gap:8px}
+.bot .hd{display:flex;align-items:center;gap:10px}
+.bot b{font-weight:600;font-size:14px}
+.bot .role{font-size:12px;color:var(--mut)}
+.bot .lk{font:11.5px var(--m);color:var(--ink2);background:var(--s2);border-radius:6px;padding:4px 8px;display:flex;justify-content:space-between;gap:6px}
+.ecc{margin-top:16px;border:1px dashed var(--line2);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--ink2);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+/* api */
+.api{display:grid;grid-template-columns:190px minmax(0,1fr);gap:0;margin:-22px -24px -90px;min-height:560px}
+@media (max-width:1100px){.api{grid-template-columns:minmax(0,1fr)}.api .tree{display:none}}
+.api .pane{padding:18px 20px;min-width:0}
+.urlbar{display:flex;gap:8px;align-items:center;border:1px solid var(--line2);border-radius:8px;padding:6px 6px 6px 10px;font:12.5px var(--m);background:var(--s1)}
+.urlbar .m{color:var(--ok);font-weight:500}
+.urlbar .u{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);margin:14px 0 10px;font-size:12.5px}
+.tabs span{padding:6px 0;color:var(--mut)} .tabs span.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.json{font:12px/1.75 var(--m);background:var(--side);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;white-space:pre}
+.checks{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+/* graph / builder / triggers / inbox */
+.gwrap{position:relative;border:1px solid var(--line);border-radius:12px;background:radial-gradient(circle at 1px 1px,var(--line2) 1px,transparent 1.2px) 0 0/20px 20px,var(--side);height:470px;overflow:hidden}
+.gwrap svg{position:absolute;inset:0;width:100%;height:100%}
+.flow{display:flex;align-items:center;gap:0;flex-wrap:wrap;row-gap:14px}
+.node{border:1px solid var(--line2);border-radius:10px;background:var(--s1);padding:10px 12px;min-width:132px}
+.node b{display:block;font-weight:500;font-size:13px}
+.node span{font:11px var(--m);color:var(--mut)}
+.arrow{width:34px;height:1px;background:var(--line2);position:relative}
+.arrow::after{content:"";position:absolute;right:0;top:-3px;border:3.5px solid transparent;border-left:5px solid var(--line2);border-right:0}
+.inbox{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px}
+@media (max-width:1100px){.inbox{grid-template-columns:minmax(0,1fr)}}
+.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;cursor:pointer;background:var(--s1)}
+.opt.on{border-color:var(--ink)}
+.opt .rd{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--line2);margin-top:2px;flex:none}
+.opt.on .rd{border:4px solid var(--ink)}
+.opt small{display:block;color:var(--mut);font-size:12px}
+
+/* palette */
+.pal{position:absolute;left:50%;top:70px;transform:translateX(-50%);width:min(520px,90%);background:var(--s1);border-radius:12px;box-shadow:var(--pop);z-index:6;overflow:hidden}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;padding:14px 16px;font:14px var(--f);color:var(--ink);outline:none}
+.pal .it{display:flex;align-items:center;gap:10px;padding:8px 16px;font-size:13px;color:var(--ink2);cursor:pointer}
+.pal .it.on,.pal .it:hover{background:var(--hov);color:var(--ink)}
+.pal .it .k{margin-left:auto}
+.pal .g{font-size:11px;color:var(--mut);padding:8px 16px 2px}
+
+/* assistant */
+.launch{position:absolute;right:18px;bottom:18px;z-index:5;width:52px;height:52px;border-radius:50%;border:0;padding:0;background:var(--s1);box-shadow:var(--pop);cursor:pointer;display:grid;place-items:center}
+.launch .badge{position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;border-radius:9px;background:var(--warn);color:#fff;font:600 10.5px var(--f);display:grid;place-items:center;border:2px solid var(--bg)}
+.chat{position:absolute;right:18px;bottom:18px;z-index:7;width:384px;max-width:calc(100% - 36px);height:560px;max-height:calc(100% - 36px);background:var(--bg);border-radius:14px;box-shadow:var(--pop);display:flex;flex-direction:column;overflow:hidden;animation:pop .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.chat .hd{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.chat .hd b{font-weight:600}
+.chat .hd small{display:block;font-size:11.5px;color:var(--mut)}
+.chat .hd .x{margin-left:auto;border:0;background:none;cursor:pointer;color:var(--mut);font-size:16px;padding:4px 6px}
+.chat .ctx{font:11.5px var(--m);color:var(--mut);padding:6px 12px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thread{flex:1;overflow:auto;padding:14px 12px;display:flex;flex-direction:column;gap:12px;font-size:13px}
+.msg-u{align-self:flex-end;background:var(--s2);border-radius:12px 12px 4px 12px;padding:8px 12px;max-width:85%}
+.msg-a{color:var(--ink);line-height:1.6}
+.cite{display:inline-grid;place-items:center;min-width:16px;height:16px;border-radius:4px;background:var(--accBg);color:var(--accInk);font:600 10px var(--m);margin:0 1px;vertical-align:1px;padding:0 3px}
+.srcs{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.srcs div{font:11.5px var(--m);color:var(--mut);display:flex;gap:6px}
+.card{border:1px solid var(--line2);border-radius:10px;background:var(--s1);overflow:hidden;animation:in .25s ease both}
+.card .ch{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--line)}
+.card .cb{padding:8px 10px;font:11.5px/1.7 var(--m);color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.card .cf{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line);flex-wrap:wrap}
+.todo div{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 0}
+.todo .bx{width:13px;height:13px;border-radius:4px;border:1.5px solid var(--line2);flex:none}
+.todo .bx.d{background:var(--ok);border-color:var(--ok)}
+.todo .bx.l{border-color:var(--acc)}
+.prompt{border-top:1px solid var(--line);padding:10px}
+.prompt .box{border:1px solid var(--line2);border-radius:10px;padding:8px 10px;display:flex;align-items:center;gap:8px;color:var(--mut);font-size:13px}
+.caret::after{content:"";display:inline-block;width:6px;height:13px;background:var(--ink);margin-left:2px;vertical-align:-2px;animation:pl 1s steps(2) infinite}
+.toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);font-size:13px;padding:9px 14px;border-radius:10px;z-index:8;animation:pop .2s ease both;white-space:nowrap}
+
+/* tour bar */
+.tour{display:flex;gap:6px;margin-top:16px;overflow-x:auto;padding-bottom:4px}
+.tour button{flex:1;min-width:120px;border:0;background:none;text-align:left;padding:10px 4px 0;cursor:pointer;color:var(--mut)}
+.tour button .pg{display:block;height:2px;background:var(--line2);border-radius:2px;overflow:hidden;margin-bottom:10px}
+.tour button .pg i{display:block;height:100%;width:0;background:var(--ink)}
+.tour button b{display:block;font-weight:500;font-size:13px;color:var(--ink2)}
+.tour button span{font-size:12.5px}
+.tour button.on b{color:var(--ink)}
+.tourctl{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font:12px var(--m);color:var(--mut)}
+.tourctl button{border:0;background:none;cursor:pointer;color:var(--ink2);font:inherit;padding:4px 0}
+
+/* below the fold */
+section.s{padding-block:110px 0}
+.s h2.big{font-size:clamp(30px,3.8vw,48px);font-weight:600;letter-spacing:-.04em;line-height:1.04;max-width:16em;text-wrap:balance}
+.s .sub{color:var(--ink2);font-size:17px;max-width:38em;margin-top:14px}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:36px;margin-top:44px;border-top:1px solid var(--line2);padding-top:26px}
+.three h3{font-size:18px;font-weight:600;letter-spacing:-.02em;margin-bottom:8px}
+.three p{color:var(--ink2);font-size:14.5px}
+.three code{display:block;margin-top:14px;font:12px/1.7 var(--m);color:var(--mut);white-space:pre;overflow-x:auto}
+@media (max-width:820px){.three{grid-template-columns:1fr}}
+.inside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px;margin-top:40px}
+.inside div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:16px;padding:16px 0;border-top:1px solid var(--line2);font-size:14.5px}
+.inside b{font-weight:500}
+.inside span{color:var(--ink2)}
+@media (max-width:820px){.inside{grid-template-columns:1fr}.inside div{grid-template-columns:1fr;gap:4px}}
+.docs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;margin-top:40px;align-items:start}
+.dl a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:15px 0;border-top:1px solid var(--line2);transition:padding .2s}
+.dl a:hover{padding-left:6px}
+.dl a b{font-weight:500;font-size:16px}
+.dl a small{display:block;color:var(--mut);font-size:13.5px}
+.cli{background:var(--bg);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.cli .ch{display:flex;gap:7px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.cli .ch i{width:10px;height:10px;border-radius:50%;background:var(--s3)}
+.cli pre{margin:0;padding:16px 18px;font:12.5px/1.85 var(--m);color:var(--ink);overflow-x:auto}
+@media (max-width:820px){.docs{grid-template-columns:1fr}}
+.access{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,520px);gap:56px;align-items:center;padding-block:130px 90px}
+.access h2{font-size:clamp(40px,6vw,76px);font-weight:600;letter-spacing:-.045em;line-height:1;margin-top:22px}
+.access .lede{color:var(--ink2);font-size:17px;max-width:30em;margin-top:16px}
+.access ul{list-style:none;padding:0;margin:24px 0 0;display:flex;flex-direction:column;gap:10px;font-size:14px;color:var(--ink2)}
+.access li{display:flex;gap:10px;align-items:center}
+.access li i{width:7px;height:7px;border-radius:50%;flex:none}
+@media (max-width:900px){.access{grid-template-columns:minmax(0,1fr);gap:36px}}
+.reqcard{background:var(--bg);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.reqcard .hd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.reqcard .hd b{font-weight:600;font-size:14px}
+.reqcard .hd small{display:block;font-size:12px;color:var(--mut)}
+.reqcard .bd{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.reqcard .full{grid-column:1/-1}
+@media (max-width:520px){.reqcard .bd{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fld label{font-size:12.5px;font-weight:500;color:var(--ink2)}
+.fld label em{font-style:normal;font-weight:400;color:var(--mut)}
+.fld input,.fld textarea{width:100%;border-radius:8px;border:1px solid var(--line2);background:var(--side);color:var(--ink);font:14px var(--f);padding:9px 11px;transition:border-color .15s,box-shadow .15s,background .15s}
+.fld input{height:38px}
+.fld textarea{min-height:120px;resize:vertical;line-height:1.5}
+.fld input::placeholder,.fld textarea::placeholder{color:var(--mut)}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accBg);background:var(--bg)}
+.fld.err input,.fld.err textarea{border-color:var(--bad)}
+.fld .er{font-size:12px;color:var(--bad);min-height:0}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.reqcard .ft .hint.bad{color:var(--bad)}
+.fld .cnt{font:11px var(--m);color:var(--mut);text-align:right}
+.reqcard .ft{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);background:var(--side)}
+.reqcard .ft .hint{flex:1;font:11.5px var(--m);color:var(--mut)}
+.sent{padding:28px 20px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.sent b{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.sent p{color:var(--ink2);font-size:14px;max-width:34em}
+.sent .sum{margin-top:6px;width:100%;border:1px solid var(--line);border-radius:10px;background:var(--side);padding:10px 12px;font:12px/1.8 var(--m);color:var(--ink2);text-align:left}
+footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line2);padding-block:22px 40px;font-size:13px;color:var(--mut)}
+footer div{display:flex;gap:22px;flex-wrap:wrap}
+
+/* tether face (eye tracker) */
+.tf{display:block;overflow:visible}
+.tf .body{fill:var(--s3)}
+.tf .eye{fill:var(--ink)}
+/* ---------- visual layer ---------- */
+html,body{overflow-x:clip}
+.stagebox{position:relative}
+.stagebox::before{content:"";position:absolute;inset:-70px -60px;background:radial-gradient(circle at 1px 1px,var(--line2) 1px,transparent 1.3px) 0 0/22px 22px;-webkit-mask-image:radial-gradient(ellipse at center,#000 25%,transparent 70%);mask-image:radial-gradient(ellipse at center,#000 25%,transparent 70%);pointer-events:none}
+.win{z-index:1}
+.float{position:absolute;z-index:9;background:var(--bg);border-radius:12px;box-shadow:var(--pop);padding:10px 12px;display:flex;gap:10px;align-items:center;font-size:13px;animation:floatin .6s cubic-bezier(.2,.8,.2,1) both,bob 6s ease-in-out infinite}
+.float small{display:block;color:var(--mut);font-size:12px}
+.float b{font-weight:600}
+.f1{top:-26px;right:28px;animation-delay:1.2s,1.8s}
+.f2{left:28px;bottom:-24px;animation-delay:2.2s,2.8s}
+.f3{right:120px;bottom:-20px;animation-delay:3s,3.6s}
+@media (min-width:1420px){.f1{right:-40px}.f2{left:-44px}}
+@media (max-width:900px){.float{display:none}}
+@keyframes floatin{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes bob{50%{transform:translateY(-5px)}}
+.gbar{width:90px;height:4px;border-radius:2px;background:var(--ok);margin-top:5px}
+
+/* run graph */
+.dag{position:relative;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:22px;padding:18px 16px;border:1px solid var(--line);border-radius:12px;margin-bottom:16px;background:radial-gradient(circle at 1px 1px,var(--line2) 1px,transparent 1.2px) 0 0/18px 18px,var(--side)}
+.dag svg.dl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.dcol{display:flex;flex-direction:column;justify-content:center;gap:14px;position:relative;z-index:1;min-width:0}
+.dn{background:var(--s1);border:1px solid var(--line2);border-radius:10px;padding:8px 9px;display:flex;gap:8px;align-items:center;min-width:0}
+.dn.live{border-color:var(--acc)} .dn.wait{border-color:var(--warn)}
+.dn b{display:block;font-weight:500;font-size:12.5px}
+.dn span{display:block;font:10.5px var(--m);color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){.dag{grid-template-columns:repeat(3,minmax(0,1fr))}.dag svg.dl{display:none}}
+
+/* crew faces */
+.cface{position:relative;display:inline-block;flex:none;line-height:0}
+.cface.busy::after{content:"";position:absolute;right:0;bottom:0;width:9px;height:9px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+.crewrow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;margin-top:44px}
+.crewrow .m{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 8px 18px;border-radius:14px;transition:background .2s;cursor:default}
+.crewrow .m:hover{background:var(--bg)}
+.crewrow .m:hover svg{transform:scale(1.06) rotate(-4deg)}
+.crewrow svg{transition:transform .25s cubic-bezier(.2,.9,.25,1.4);margin-bottom:6px}
+.crewrow b{font-size:15px;font-weight:600}
+.crewrow .ro{font-size:12.5px;color:var(--mut);min-height:2.6em}
+.crewrow .mo{font:11px var(--m);background:var(--bg);box-shadow:0 0 0 1px var(--line2);border-radius:99px;padding:2px 9px;color:var(--ink2)}
+@media (max-width:1000px){.crewrow{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:560px){.crewrow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* feature tiles */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:44px}
+.ftile{background:var(--bg);border-radius:16px;box-shadow:0 0 0 1px var(--line);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.ftile .viz{height:230px;position:relative;background:var(--side);border-bottom:1px solid var(--line);overflow:hidden;display:grid;place-items:center}
+.ftile .tx{padding:18px 20px 20px}
+.ftile h3{font-size:16px;font-weight:600;letter-spacing:-.01em}
+.ftile p{font-size:14px;color:var(--ink2);margin-top:4px}
+@media (max-width:980px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.tiles{grid-template-columns:minmax(0,1fr)}}
+.wt{width:100%;height:100%}
+.wt .br{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:420;stroke-dashoffset:420;animation:draw 6s ease-in-out infinite}
+.wt .br.b2{animation-delay:.5s}.wt .br.b3{animation-delay:1s}
+@keyframes draw{0%{stroke-dashoffset:420;opacity:1}40%{stroke-dashoffset:0}85%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+.gates{display:grid;grid-template-columns:repeat(8,18px);gap:6px}
+.gates i{width:18px;height:18px;border-radius:5px;background:var(--s3);transition:background .15s,transform .15s}
+.gates i.p{background:var(--ok)} .gates i.f{background:var(--bad);transform:scale(.9)}
+.gstat{font:12px var(--m);margin-top:16px;text-align:center;min-height:18px}
+.ticker{position:absolute;inset:0;padding:16px 18px;font:11.5px/2 var(--m);color:var(--ink2);overflow:hidden;-webkit-mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent)}
+.ticker div{display:flex;gap:10px;align-items:center;animation:in .35s ease both}
+.ticker .dt{width:7px;height:7px;border-radius:50%;flex:none}
+.cm-calls{position:absolute;inset:14px 14px 44px;display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start}
+.cm-calls span{font:10.5px var(--m);padding:2px 7px;border-radius:5px;background:var(--s3);color:var(--ink2);animation:in .2s ease both;transition:transform .5s cubic-bezier(.6,0,.4,1),opacity .5s}
+.cm-calls.gone span{transform:translate(var(--tx),var(--ty)) scale(.2);opacity:0}
+.cm-one{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(.9);opacity:0;transition:all .4s cubic-bezier(.2,.9,.25,1.3);width:82%;background:var(--s1);border:1px solid var(--acc);border-radius:10px;padding:10px 12px;font:11px/1.7 var(--m);color:var(--ink2);white-space:pre}
+.cm-one.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.cm-meter{position:absolute;left:14px;right:14px;bottom:12px;display:flex;justify-content:space-between;font:11.5px var(--m);color:var(--mut)}
+.mini-chat{width:84%;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.mini-chat .u{align-self:flex-end;background:var(--s3);padding:6px 10px;border-radius:10px 10px 3px 10px}
+.mini-chat .a{display:flex;gap:8px;align-items:flex-start}
+.mini-chat .a p{margin:0;font-size:12px;color:var(--ink);line-height:1.55}
+.mini-chat .ap{border:1px solid var(--warn);border-radius:8px;background:var(--s1);padding:7px 9px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.trig{width:88%;display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1fr);align-items:center;gap:0}
+.trig .src{display:flex;flex-direction:column;gap:8px}
+.trig .src div{font-size:11.5px;padding:7px 9px;border-radius:8px;background:var(--s1);box-shadow:0 0 0 1px var(--line);transition:box-shadow .2s,transform .2s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trig .src div.on{box-shadow:0 0 0 1.5px var(--acc);transform:translateX(3px)}
+.trig .wire{position:relative;height:2px;background:var(--line2)}
+.trig .wire i{position:absolute;top:-3px;left:0;width:8px;height:8px;border-radius:50%;background:var(--acc);animation:wire 2.2s linear infinite}
+@keyframes wire{from{left:0;opacity:0}15%{opacity:1}85%{opacity:1}to{left:calc(100% - 8px);opacity:0}}
+.trig .run{background:var(--s1);border-radius:10px;box-shadow:0 0 0 1px var(--line2);padding:10px;font-size:12px}
+.trig .run b{display:block;font-weight:500;margin-bottom:6px}
+.also{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px;align-items:center;font-size:13px;color:var(--mut)}
+.also span.c{background:var(--bg);box-shadow:0 0 0 1px var(--line2);border-radius:99px;padding:4px 11px;color:var(--ink2)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="triad" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="7" fill="var(--ink)"/>
+    <g fill="var(--bg)"><path d="M9.2 10.6 L16.6 6.4 L19.2 7.9 L11.8 12.1 Z"/><path d="M21.4 10 L21.4 18.6 L18.8 20.1 L18.8 11.5 Z" opacity=".72"/><path d="M17.4 23.6 L10 19.3 L10 16.3 L17.4 20.6 Z" opacity=".46"/></g>
+  </symbol>
+  <symbol id="glyph" viewBox="0 0 32 32">
+    <g fill="var(--ink)"><path d="M6.2 9.6 L16.6 3.6 L20.6 5.9 L10.2 11.9 Z"/><path d="M24.4 9 L24.4 21 L20.4 23.3 L20.4 11.3 Z" opacity=".72"/><path d="M18.6 28.4 L8 22.3 L8 17.7 L18.6 23.8 Z" opacity=".46"/></g>
+  </symbol>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#top"><svg aria-hidden="true"><use href="#triad"/></svg>Tether<span class="ver">v0.1</span></a>
+    <span class="div" aria-hidden="true"></span>
+    <nav aria-label="Main" style="display:flex;gap:2px">
+      <a class="nr" href="#tour" data-sec="tour"><svg class="i" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>Tour</a>
+      <a class="nr" href="#crew" data-sec="crew"><svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Crew</a>
+      <a class="nr" href="#inside" data-sec="inside"><svg class="i" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14"/></svg>Features</a>
+      <a class="nr" href="#docs" data-sec="docs"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/></svg>Docs</a>
+    </nav>
+    <span class="sp"></span>
+    <button class="askbtn" type="button" id="askTop"><svg class="tf" id="navface" width="22" height="22" viewBox="-4 -4 108 108" aria-hidden="true"></svg><span class="t">Ask Tether</span><span class="kbd">⌘J</span></button>
+    <a class="btn ink" href="#access" data-sec="access">Request access</a>
+  </header>
+
+  <div class="hero" id="top">
+    <div>
+      <h1>Let them run.<br><span>Never let go.</span></h1>
+      <p>Tether is a Mac app for running coding agents. Claude Code, Codex, OpenCode and local models work side by side, each run in its own git worktree. Your tests decide what passes, and you approve what merges.</p>
+      <div class="ctas">
+        <a class="btn ink" href="#access">Request access <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn ghost" href="#tour"><svg class="i" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>Take the tour</a>
+        <small>v0.1 · macOS · Apple silicon</small>
+      </div>
+    </div>
+    <div class="watcher">
+      <svg class="tf" id="bigface" width="104" height="104" viewBox="-4 -4 108 108" aria-label="Tether's face, watching your pointer"></svg>
+      <div class="cap">this is Tether. it's watching.</div>
+    </div>
+  </div>
+
+  <!-- ================= THE APP ================= -->
+  <div class="stagebox">
+  <div class="float f1" aria-hidden="true"><svg class="tf" id="floatface" width="30" height="30" viewBox="-4 -4 108 108"></svg><div><b>Tether needs you</b><small>Merge “Tune the limit window”?</small></div><span class="pill wait">approve</span></div>
+  <div class="float f2" aria-hidden="true"><span class="pill ok">✓</span><div><b>npm test</b><small>214 passed · R-144</small><div class="gbar"></div></div></div>
+  <div class="float f3" aria-hidden="true"><span class="pulse" style="color:var(--acc)"></span><div><b>Lens</b><small>reviewing on qwen3 · local · $0.00</small></div></div>
+  <div class="win" id="win" aria-label="Tether app, interactive">
+    <aside class="side">
+      <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="proj"><span class="tile"><svg width="18" height="18" aria-hidden="true"><use href="#glyph"/></svg></span><b>orders-api</b><span class="mut" style="font-size:11px">⌄</span><button class="compose" type="button" data-go="home" aria-label="New run"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
+      <button class="r" type="button" data-go="search"><svg class="i" viewBox="0 0 24 24"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5"/></svg><span class="lbl">Search</span><span class="n">⌘K</span></button>
+      <button class="r on" type="button" data-go="home"><svg class="i" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="lbl">Home</span></button>
+      <button class="r" type="button" data-go="inbox"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span class="lbl">Inbox</span><span class="n w" id="inboxN">2</span></button>
+      <button class="r" type="button" data-go="runs"><svg class="i" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg><span class="lbl">Runs</span><span class="n" id="runsN">4</span></button>
+      <div class="grp">Workspace</div>
+      <button class="r" type="button" data-go="code"><svg class="i" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg><span class="lbl">Code</span><span class="h">G C</span></button>
+      <button class="r" type="button" data-go="builder"><svg class="i" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14"/></svg><span class="lbl">Builder</span><span class="h">G B</span></button>
+      <button class="r" type="button" data-go="crew"><svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="lbl">Crew</span><span class="h">G R</span></button>
+      <button class="r" type="button" data-go="api"><svg class="i" viewBox="0 0 24 24"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg><span class="lbl">API client</span><span class="h">G A</span></button>
+      <button class="r" type="button" data-go="graph"><svg class="i" viewBox="0 0 24 24"><path d="M6 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 7l8 1M7.5 8.2l1.8 7.4M16.5 10l-4.8 6.3"/></svg><span class="lbl">Graph</span><span class="h">G G</span></button>
+      <button class="r" type="button" data-go="triggers"><svg class="i" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></svg><span class="lbl">Triggers</span><span class="h">G T</span></button>
+      <div class="grp">Runs</div>
+      <div id="sideRuns"></div>
+      <div class="grp">Favorites</div>
+      <button class="r" type="button" data-go="builder"><svg class="i" viewBox="0 0 24 24"><path d="M5 6h6v4H5zM13 14h6v4h-6zM8 10v2a2 2 0 0 0 2 2h3"/></svg><span class="lbl">plan-code-review</span></button>
+      <div class="grow"></div>
+      <button class="r" type="button" data-go="settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="lbl">Settings</span><span class="n">⌘,</span></button>
+      <div class="acct"><span class="av">Y</span><div style="min-width:0"><div style="font-weight:500">You</div><small>GitHub connected</small></div></div>
+    </aside>
+
+    <div class="main">
+      <div class="bar"><span class="crumb">orders-api / <b id="crumb">Home</b></span><span class="sp"></span><span class="kbd">⌘K</span><span class="kbd">⌘J</span></div>
+
+      <!-- HOME -->
+      <div class="screen" data-s="home">
+        <h2>Home</h2>
+        <div class="cols">
+          <div style="min-width:0">
+            <div class="composer">
+              <div class="ph" id="compose">Ask the crew to <span class="caret"></span></div>
+              <div class="row">
+                <span class="chip">orders-api · main</span><span class="chip">Team run</span><span class="chip">Tether picks the crew</span>
+                <span style="flex:1"></span><button class="btn ink sm" type="button" data-go="runs">Start run</button>
+              </div>
+            </div>
+            <div class="sec">Needs you <span class="ct">2</span></div>
+            <div class="list">
+              <div class="li"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-dasharray="2 2"/></svg><div style="min-width:0"><div class="t">Merge “Tune the limit window” into main?</div><div class="d">R-144 · gates 3/3 passed · +128 −41 in 4 files</div></div><div class="acts"><button class="btn ghost sm" type="button" data-go="runs">Review</button><button class="btn ink sm" type="button" data-approve>Approve</button></div></div>
+              <div class="li"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-dasharray="2 2"/></svg><div style="min-width:0"><div class="t">Plan auth flow: sessions or JWT?</div><div class="d">R-142 · Tether asks before planning · recommended: sessions</div></div><div class="acts"><button class="btn ink sm" type="button" data-go="inbox">Answer</button></div></div>
+            </div>
+            <div class="sec">Running <span class="ct">2</span></div>
+            <div class="list">
+              <div class="li" style="align-items:start"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="margin-top:3px"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--acc)" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="var(--acc)"/></svg><div style="min-width:0"><div class="t">Tune the limit window</div><div class="d">Bolt writing on Codex · step 3 of 6 · Lens reviews on qwen3 (local)</div><div class="track"><i class="d"></i><i class="d"></i><i class="l"></i><i></i><i></i><i></i></div></div><span class="mono mut" data-clock="134"></span></div>
+              <div class="li" style="align-items:start"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="margin-top:3px"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--acc)" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="var(--acc)"/></svg><div style="min-width:0"><div class="t">Fix flaky login test</div><div class="d">Probe: npm test failed once · Bolt fixing, loop 1 of 2</div><div class="track"><i class="d"></i><i class="f"></i><i class="l"></i><i></i></div></div><span class="mono mut" data-clock="611"></span></div>
+            </div>
+            <div class="sec">Recent</div>
+            <div class="list">
+              <div class="li"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--ok)" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.2" fill="none" stroke="var(--ok)" stroke-width="1.6"/></svg><div style="min-width:0"><div class="t">Add rate limiting</div><div class="d">R-141 · merged 3f9c2e1 · 6m 12s · $0.42</div></div><span class="pill ok">done</span></div>
+            </div>
+          </div>
+          <div style="min-width:0">
+            <div class="sec" style="margin-top:0">Activity <span class="pulse" style="color:var(--acc)"></span></div>
+            <div class="feed" id="feed"></div>
+            <div class="sec">Crew</div>
+            <div class="facestrip" id="strip"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INBOX -->
+      <div class="screen" data-s="inbox" hidden>
+        <h2>Inbox</h2>
+        <div class="inbox">
+          <div class="list" style="align-self:start">
+            <div class="li" style="background:var(--sel)"><span class="pulse" style="color:var(--warn)"></span><div style="min-width:0"><div class="t">Plan auth flow</div><div class="d">Question 1 of 2 · R-142</div></div><span class="pill wait">answer</span></div>
+            <div class="li"><span class="pulse" style="color:var(--warn)"></span><div style="min-width:0"><div class="t">Merge “Tune the limit window”</div><div class="d">Approval · R-144</div></div><span class="pill wait">approve</span></div>
+          </div>
+          <div style="min-width:0">
+            <div class="mono mut" style="font-size:11.5px">NEEDS YOUR ANSWER · 1 OF 2</div>
+            <h3 style="font-size:18px;font-weight:600;margin:6px 0 4px;letter-spacing:-.01em">How should users stay signed in?</h3>
+            <p class="mut" style="font-size:13px">Tether asks before it plans. It recommends one option and says why.</p>
+            <div class="opt on" data-opt><span class="rd"></span><div><b style="font-weight:500">Server sessions</b> <span class="pill ok" style="margin-left:4px">recommended</span><small>You already store users in Postgres, and sessions can be revoked.</small></div></div>
+            <div class="opt" data-opt><span class="rd"></span><div><b style="font-weight:500">JWT</b><small>Stateless, but revoking a token needs a deny list.</small></div></div>
+            <div class="opt" data-opt><span class="rd"></span><div><b style="font-weight:500">Let Tether decide</b><small>It picks the recommended option and notes why in the plan.</small></div></div>
+            <div style="display:flex;gap:8px;margin-top:14px"><button class="btn ghost sm" type="button">Previous</button><button class="btn ink sm" type="button" data-toast="Answer sent. Tether is planning R-142.">Next question</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RUNS -->
+      <div class="screen" data-s="runs" hidden>
+        <div class="runhead"><h2>Tune the limit window</h2><span class="pill live"><span class="pulse"></span>running</span><span class="mono mut" style="font-size:12px">R-144 · team run · <span data-clock="134"></span> · $0.31</span></div>
+        <div class="dag" id="dag">
+          <svg class="dl" id="dagsvg" aria-hidden="true"></svg>
+          <div class="dcol"><div class="dn" data-n="scout" data-c="scout"><div><b>Scout</b><span>plan · sonnet</span></div></div></div>
+          <div class="dcol"><div class="dn" data-n="brick" data-c="brick"><div><b>Brick</b><span>design · opus</span></div></div></div>
+          <div class="dcol"><div class="dn live" data-n="bolt" data-c="bolt"><div><b>Bolt</b><span>code · Codex</span></div></div></div>
+          <div class="dcol"><div class="dn" data-n="probe" data-c="probe"><div><b>Probe</b><span>npm test</span></div></div></div>
+          <div class="dcol"><div class="dn" data-n="lens" data-c="lens"><div><b>Lens</b><span>review · qwen3</span></div></div></div>
+          <div class="dcol"><div class="dn wait" data-n="gate" data-c="gate"><div><b>Gate</b><span>you approve</span></div></div></div>
+        </div>
+        <div class="split">
+          <div class="term" id="term"></div>
+          <div style="min-width:0">
+            <div class="sec" style="margin-top:0">Files · branch aorch/R-144</div>
+            <div class="files">
+              <div class="f"><span>src/middleware/rateLimit.ts</span><span><span class="c-ok">+84</span> <span class="c-bad">−12</span></span><div class="fb"><i class="a" style="flex:84"></i><i class="x" style="flex:12"></i></div></div>
+              <div class="f"><span>src/server.ts</span><span><span class="c-ok">+6</span> <span class="c-bad">−2</span></span><div class="fb"><i class="a" style="flex:6"></i><i class="x" style="flex:2"></i></div></div>
+              <div class="f"><span>test/rateLimit.test.ts</span><span><span class="c-ok">+38</span> <span class="c-bad">−27</span></span><div class="fb"><i class="a" style="flex:38"></i><i class="x" style="flex:27"></i></div></div>
+            </div>
+            <div class="sec">Why this crew</div>
+            <p style="font-size:12.5px;color:var(--ink2)">Scout plans and Brick designs, both read-only. Bolt writes the change on Codex. Probe runs npm test, and a failure goes back to Bolt up to twice. Lens reviews on a local model at $0.00. You are the Gate.</p>
+          </div>
+        </div>
+        <div class="approve">
+          <div class="q"><b>Merge 4 files into main?</b><span>Gates must pass first: npm test, tsc --noEmit, npm run lint</span></div>
+          <button class="btn ghost sm" type="button" data-go="code">Review diff</button><button class="btn ink sm" type="button" data-approve>Approve when gates pass</button>
+        </div>
+      </div>
+
+      <!-- CODE -->
+      <div class="screen" data-s="code" hidden>
+        <div class="code3">
+          <div class="tree">
+            <div class="n">▾ src</div>
+            <div class="n" style="padding-left:18px">▾ middleware</div>
+            <div class="n on" style="padding-left:30px">rateLimit.ts <span class="m c-warn">M</span></div>
+            <div class="n" style="padding-left:18px">▸ routes</div>
+            <div class="n" style="padding-left:18px">server.ts <span class="m c-warn">M</span></div>
+            <div class="n">▾ test</div>
+            <div class="n" style="padding-left:18px">rateLimit.test.ts <span class="m c-ok">A</span></div>
+            <div class="n">package.json</div>
+            <div class="n">README.md</div>
+          </div>
+          <div class="ed" id="editor"></div>
+          <div class="lens">
+            <div class="mono mut" style="font-size:11px">RUNS THAT TOUCHED THIS FILE</div>
+            <div class="card"><div style="display:flex;justify-content:space-between;gap:6px"><b style="font-weight:500">Tune the limit window</b><span class="pill live">live</span></div><div class="mut" style="font-size:12px;margin-top:4px">Bolt · lines 6–19 · now</div></div>
+            <div class="card"><div style="display:flex;justify-content:space-between;gap:6px"><b style="font-weight:500">Add rate limiting</b><span class="pill ok">done</span></div><div class="mut" style="font-size:12px;margin-top:4px">created this file · yesterday</div></div>
+            <button class="btn ghost sm" type="button" data-chat>Ask Tether about this file</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUILDER -->
+      <div class="screen" data-s="builder" hidden>
+        <h2>plan-code-review</h2>
+        <p class="mut" style="margin:-8px 0 20px">A saved workflow. Drag steps, pick a role, add gates. Runs from the Builder, the CLI or a trigger.</p>
+        <div class="flow">
+          <div class="node"><b>Plan</b><span>scout · read-only</span></div><div class="arrow"></div>
+          <div class="node"><b>Design</b><span>brick · read-only</span></div><div class="arrow"></div>
+          <div class="node"><b>Code</b><span>bolt · writes</span></div><div class="arrow"></div>
+          <div class="node" style="border-color:var(--warn)"><b>Tests</b><span>probe · npm test --silent</span></div><div class="arrow"></div>
+          <div class="node"><b>Review</b><span>lens · verdict</span></div><div class="arrow"></div>
+          <div class="node"><b>Approve</b><span>gate · you</span></div>
+        </div>
+        <div class="sec" style="margin-top:28px">Supervisor</div>
+        <div class="list"><div class="li"><span class="c-warn mono">↻</span><div><div class="t">On failure: retry, then escalate to a stronger model, then stop and explain</div><div class="d">Applies to every step in this workflow</div></div><span class="pill q">default</span></div></div>
+      </div>
+
+      <!-- CREW -->
+      <div class="screen" data-s="crew" hidden>
+        <h2>Crew</h2>
+        <div class="crew" id="crewgrid"></div>
+        <div class="ecc"><b style="font-weight:500">Everything Claude Code</b><span class="mut">68 agents · 293 skills · 94 commands imported. Link any of them to a role.</span></div>
+      </div>
+
+      <!-- API -->
+      <div class="screen" data-s="api" hidden>
+        <div class="api">
+          <div class="tree">
+            <div class="n">▾ orders</div>
+            <div class="n on" style="padding-left:18px"><span class="c-ok mono" style="font-size:10.5px">GET</span> list orders</div>
+            <div class="n" style="padding-left:18px"><span class="c-warn mono" style="font-size:10.5px">POST</span> create order</div>
+            <div class="n">▾ auth</div>
+            <div class="n" style="padding-left:18px"><span class="c-warn mono" style="font-size:10.5px">POST</span> login</div>
+            <div class="n mut" style="margin-top:10px">env · local</div>
+            <div class="n mut">secrets · local, 0600</div>
+          </div>
+          <div class="pane">
+            <div class="urlbar"><span class="m">GET</span><span class="u">{{base}}/v1/orders?limit=20</span><button class="btn ink sm" type="button" data-send>Send</button></div>
+            <div class="tabs"><span>Params</span><span>Headers</span><span>Checks</span><span class="on">Response</span></div>
+            <div style="display:flex;gap:8px;align-items:center;font:12px var(--m);margin-bottom:8px"><span class="pill ok">200 OK</span><span class="mut">84 ms · 2.1 KB</span></div>
+            <div class="json" id="json"></div>
+            <div class="checks"><span class="pill ok">✓ status is 200</span><span class="pill ok">✓ body.items.length ≤ 20</span><span class="pill ok">✓ header x-ratelimit-remaining</span></div>
+            <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" type="button" data-toast="Sent to Bolt with the request and response attached.">Send to agent</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRAPH -->
+      <div class="screen" data-s="graph" hidden>
+        <h2>Graph</h2>
+        <div class="gwrap"><svg id="graph" viewBox="0 0 800 470" preserveAspectRatio="xMidYMid meet"></svg></div>
+      </div>
+
+      <!-- TRIGGERS -->
+      <div class="screen" data-s="triggers" hidden>
+        <h2>Triggers</h2>
+        <div class="list">
+          <div class="li"><svg class="i" viewBox="0 0 24 24" style="color:var(--acc)"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></svg><div style="min-width:0"><div class="t">Pull request opened</div><div class="d">GitHub webhook · runs full-review and comments on the PR</div></div><span class="pill ok">on</span></div>
+          <div class="li"><svg class="i" viewBox="0 0 24 24" style="color:var(--acc)"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></svg><div style="min-width:0"><div class="t">Signed webhook</div><div class="d">POST with x-hub-signature-256 · runs plan-code-review</div></div><span class="pill ok">on</span></div>
+        </div>
+        <div class="sec">Deliveries</div>
+        <div class="term" style="font-size:11.5px">
+          <div class="l"><span class="c-mut">14:02:11</span>  pull request #212    <span class="c-ok">202</span>  → started R-145</div>
+          <div class="l"><span class="c-mut">13:40:57</span>  signed webhook POST  <span class="c-ok">202</span>  → started R-143</div>
+          <div class="l"><span class="c-mut">11:15:03</span>  bad signature         <span class="c-bad">401</span>  → ignored</div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="screen" data-s="settings" hidden>
+        <h2>Settings</h2>
+        <div class="sec" style="margin-top:0">Accounts</div>
+        <div class="list">
+          <div class="li"><span class="mono">GH</span><div><div class="t">GitHub</div><div class="d">uses your gh login · Tether keeps only who you are</div></div><span class="pill ok">connected</span></div>
+          <div class="li"><span class="mono">G</span><div><div class="t">Google</div><div class="d">connect when a feature needs it</div></div><button class="btn ghost sm" type="button">Connect</button></div>
+        </div>
+        <div class="sec">Agents found on this Mac</div>
+        <div class="list">
+          <div class="li"><span class="c-ok">●</span><div><div class="t">Claude Code</div><div class="d">Code Mode: one run_code tool, built-ins kept</div></div><span class="pill ok">ready</span></div>
+          <div class="li"><span class="c-ok">●</span><div><div class="t">Codex</div><div class="d">codex CLI</div></div><span class="pill ok">ready</span></div>
+          <div class="li"><span class="c-ok">●</span><div><div class="t">OpenCode</div><div class="d">direct tools (no Code Mode)</div></div><span class="pill ok">ready</span></div>
+          <div class="li"><span class="c-ok">●</span><div><div class="t">Ollama · qwen3:32b</div><div class="d">localhost:11434</div></div><span class="pill ok">ready</span></div>
+        </div>
+      </div>
+
+      <!-- SEARCH (palette over the current screen) -->
+    </div>
+
+    <div class="pal" id="pal" hidden>
+      <input id="palq" type="text" placeholder="Jump to a screen, run, file or command" aria-label="Search">
+      <div class="g">Runs</div>
+      <div class="it on" data-go="runs">▷ Tune the limit window <span class="k pill live">live</span></div>
+      <div class="it" data-go="runs">▷ Fix flaky login test <span class="k pill live">live</span></div>
+      <div class="g">Go to</div>
+      <div class="it" data-go="code">Code <span class="k kbd">G C</span></div>
+      <div class="it" data-go="crew">Crew <span class="k kbd">G R</span></div>
+      <div class="it" data-go="api">API client <span class="k kbd">G A</span></div>
+      <div class="it" data-chat>Ask Tether <span class="k kbd">⌘J</span></div>
+    </div>
+
+    <button class="launch" id="launch" type="button" aria-label="Open Tether assistant">
+      <svg class="tf" id="smallface" width="34" height="34" viewBox="-4 -4 108 108" aria-hidden="true"></svg>
+      <span class="badge">2</span>
+    </button>
+    <div class="chat" id="chat" hidden role="dialog" aria-label="Tether assistant">
+      <div class="hd"><svg class="tf" id="chatface" width="28" height="28" viewBox="-4 -4 108 108" aria-hidden="true"></svg><div><b>Tether</b><small id="cstat">your crew's lead</small></div><button class="x" type="button" id="cx" aria-label="Close">×</button></div>
+      <div class="ctx">orders-api / Runs / Fix flaky login test</div>
+      <div class="thread" id="thread"></div>
+      <div class="prompt"><div class="box"><span style="flex:1">Ask about runs, code or the crew</span><span class="kbd">↵</span></div></div>
+    </div>
+  </div>
+  </div>
+
+  <!-- tour -->
+  <div id="tour">
+    <div class="tour" id="tourbar"></div>
+    <div class="tourctl"><span id="tourstate">Tour playing · click anything in the window to take over</span><button type="button" id="tourbtn">Pause tour</button></div>
+  </div>
+
+  <!-- crew -->
+  <section class="s" id="crew">
+    <h2 class="big">Meet the crew.</h2>
+    <p class="sub">Eight roles, each with its own face. Link seven of them to any agent or model, including one on your Mac. The eighth, Gate, is you.</p>
+    <div class="crewrow" id="crewrow"></div>
+  </section>
+
+  <!-- how it works, as pictures -->
+  <section class="s" id="inside">
+    <h2 class="big">Agents get room to work. You keep the last word.</h2>
+    <div class="tiles">
+      <div class="ftile"><div class="viz">
+        <svg class="wt" viewBox="0 0 360 230" aria-hidden="true">
+          <line x1="24" y1="118" x2="336" y2="118" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+          <path class="br" d="M60 118 C 90 118, 90 56, 120 56 L 250 56 C 280 56, 280 118, 300 118" stroke="#fdba74"/>
+          <path class="br b2" d="M80 118 C 105 118, 105 88, 130 88 L 200 88" stroke="#a8a29e" stroke-dasharray="4 5"/>
+          <path class="br b3" d="M70 118 C 100 118, 100 176, 130 176 L 240 176 C 270 176, 270 118, 300 118" stroke="#4ade80"/>
+          <circle cx="300" cy="118" r="7" fill="var(--side)" stroke="var(--ink)" stroke-width="2.5"/>
+          <text x="124" y="48" font-size="11" font-family="Geist Mono, monospace" fill="var(--ink2)">aorch/R-144</text>
+          <text x="134" y="80" font-size="11" font-family="Geist Mono, monospace" fill="var(--mut)">aorch/R-145 · review</text>
+          <text x="134" y="198" font-size="11" font-family="Geist Mono, monospace" fill="var(--ink2)">aorch/R-146</text>
+          <text x="24" y="140" font-size="11" font-family="Geist Mono, monospace" fill="var(--mut)">main</text>
+          <text x="288" y="144" font-size="11" font-family="Geist Mono, monospace" fill="var(--ink2)">merge</text>
+        </svg>
+      </div><div class="tx"><h3>Its own worktree</h3><p>Every run gets its own worktree and branch. Your checkout stays clean.</p></div></div>
+
+      <div class="ftile"><div class="viz"><div><div class="mono mut" style="font-size:12px;text-align:center;margin-bottom:12px">gate · npm test</div><div class="gates" id="gates"></div><div class="gstat" id="gstat"></div></div></div>
+        <div class="tx"><h3>Your gates</h3><p>Your tests decide. On a failure Tether retries, escalates, then stops and explains.</p></div></div>
+
+      <div class="ftile"><div class="viz"><div class="ticker" id="ticker"></div></div>
+        <div class="tx"><h3>Every run on record</h3><p>An append-only log. Resume after a crash from any event.</p></div></div>
+
+      <div class="ftile"><div class="viz"><div class="cm-calls" id="cmcalls"></div><div class="cm-one" id="cmone">const hits = await repo.search("rateLimit")
+const files = await Promise.all(hits.map(h => repo.read(h.path)))
+const checks = await github.checks(144)
+return { files: files.length, checks }</div><div class="cm-meter"><span id="cmlabel">direct tools</span><span id="cmcount">0 calls</span></div></div>
+        <div class="tx"><h3>Code Mode</h3><p>One sandboxed script instead of dozens of tool calls, wherever the agent supports it.</p></div></div>
+
+      <div class="ftile"><div class="viz"><div class="mini-chat">
+          <div class="u">Why is login flaky?</div>
+          <div class="a"><svg class="tf" id="tileface" width="26" height="26" viewBox="-4 -4 108 108" aria-hidden="true"></svg><p>Expiry uses <span class="mono">&lt;</span> not <span class="mono">&lt;=</span> <span class="cite">1</span> and R-143 hit it too. <span class="cite">2</span></p></div>
+          <div class="ap"><span>Start a run to fix it?</span><span class="btn ink sm" style="height:24px">Start</span></div>
+        </div></div>
+        <div class="tx"><h3>Ask Tether · ⌘J</h3><p>Answers cite your code and runs. It acts only through cards you approve.</p></div></div>
+
+      <div class="ftile"><div class="viz"><div class="trig">
+          <div class="src" id="tsrc"><div>Pull request opened</div><div>PR review requested</div><div>Signed webhook POST</div></div>
+          <div class="wire"><i></i></div>
+          <div class="run"><b id="trun">R-145 started</b><span class="pill live"><span class="pulse"></span>running</span></div>
+        </div></div>
+        <div class="tx"><h3>Triggers</h3><p>A webhook, a labelled issue or a failed CI job starts a run.</p></div></div>
+    </div>
+    <div class="also"><span>Also inside:</span><span class="c">Builder</span><span class="c">API client</span><span class="c">Graph</span><span class="c">Evolve</span><span class="c">⌘K palette</span><span class="c">Terminal UI</span><span class="c">Keychain for accounts</span></div>
+  </section>
+
+  <section class="s" id="docs">
+    <h2 class="big">Docs</h2>
+    <div class="docs">
+      <div class="dl">
+        <a href="docs.html#quickstart"><span><b>Quickstart</b><small>Install, find your agents, start a first run.</small></span><span class="mut">→</span></a>
+        <a href="docs.html#team-runs"><span><b>Team runs</b><small>Planning questions, handoffs, live or autonomous.</small></span><span class="mut">→</span></a>
+        <a href="docs.html#gates"><span><b>Gates and the supervisor</b><small>Retry, escalate, stop and explain.</small></span><span class="mut">→</span></a>
+        <a href="docs.html#crew"><span><b>Crew and models</b><small>Roles, linking, local models, importing agents.</small></span><span class="mut">→</span></a>
+        <a href="docs.html#code-mode"><span><b>Code Mode</b><small>Connectors, the sandbox, per-agent setup.</small></span><span class="mut">→</span></a>
+        <a href="docs.html#security"><span><b>Security</b><small>Loopback only, signed webhooks, isolated runs.</small></span><span class="mut">→</span></a>
+      </div>
+      <div class="cli" id="clibox">
+        <div class="ch"><i></i><i></i><i></i></div>
+<pre id="clipre"><span class="c-mut"># which agents and local servers are on this Mac</span>
+tether doctor
+
+<span class="c-mut"># plan with Tether, then run a crew</span>
+tether team "Add rate limiting" --repo ~/code/orders-api
+
+<span class="c-mut"># pick up a run where it stopped</span>
+tether resume R-144
+
+<span class="c-mut"># review what a bot has learned</span>
+tether evolve brick
+
+<span class="c-mut"># the terminal app</span>
+tether tui</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="access" id="access">
+    <div>
+      <svg class="tf" id="ctaface" width="72" height="72" viewBox="-4 -4 108 108" aria-hidden="true"></svg>
+      <h2>Hold the line.</h2>
+      <p class="lede">Tether opens in small batches. Tell us who you are and what you'd hand to a crew first, and we'll be in touch with an invite.</p>
+      <ul>
+        <li><i style="background:var(--acc)"></i>Runs on your Mac with the agents you already use</li>
+        <li><i style="background:var(--warn)"></i>Nothing merges without your approval</li>
+        <li><i style="background:var(--ok)"></i>Every run is logged and can be resumed</li>
+      </ul>
+    </div>
+    <form class="reqcard" id="req" novalidate>
+      <div class="hd"><svg class="tf" id="formface" width="28" height="28" viewBox="-4 -4 108 108" aria-hidden="true"></svg><div><b>Request access</b><small>Goes to the Tether team</small></div></div>
+      <div class="bd" id="reqbody">
+        <div class="fld" id="f-name"><label for="rq-name">Name</label><input id="rq-name" type="text" autocomplete="name" placeholder="Ada Park"><span class="er"></span></div>
+        <div class="fld" id="f-email"><label for="rq-email">Email</label><input id="rq-email" type="email" autocomplete="email" placeholder="you@company.com"><span class="er"></span></div>
+        <div class="fld full" id="f-co"><label for="rq-co">Company <em>(optional)</em></label><input id="rq-co" type="text" autocomplete="organization" placeholder="Where you build"></div>
+        <div class="hp" aria-hidden="true"><label for="rq-web">Website</label><input id="rq-web" type="text" tabindex="-1" autocomplete="off"></div>
+        <div class="fld full" id="f-msg"><label for="rq-msg">Message</label><textarea id="rq-msg" maxlength="600" placeholder="What would you hand to a crew first? Which agents and models do you use today?"></textarea><div style="display:flex;justify-content:space-between;gap:8px"><span class="er"></span><span class="cnt" id="rq-cnt">0 / 600</span></div></div>
+      </div>
+      <div class="ft" id="reqft"><span class="hint" id="reqhint">⌘↵ to send</span><button class="btn ink" type="submit" id="reqbtn">Send request <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+    </form>
+  </section>
+
+  <footer><span>Tether · v0.1 · made for macOS</span><div><a href="#docs">Docs</a><a href="#inside">Features</a><a href="#docs">Security</a><a href="#access">Request access</a></div></footer>
+</div>
+
+<script>
+(() => {
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const win=$('#win');
+
+/* ---------- Tether face: eyes ride a sphere and follow the pointer ---------- */
+const faces=[];
+function makeFace(svg,opts={}){
+  const NS='http://www.w3.org/2000/svg';
+  const body=document.createElementNS(NS,'circle');body.setAttribute('cx',50);body.setAttribute('cy',50);body.setAttribute('r',50);body.setAttribute('class','body');
+  if(opts.color) body.style.fill=opts.color;
+  svg.appendChild(body);
+  const eyes=[0,1].map(()=>{const r=document.createElementNS(NS,'rect');r.setAttribute('class','eye');if(opts.color)r.style.fill='#18181b';svg.appendChild(r);return r;});
+  const f={svg,eyes,yaw:0,pitch:0,vy:0,vp:0,blink:0,next:2+Math.random()*3,mood:opts.mood||'idle'};
+  faces.push(f);return f;
+}
+let px=innerWidth/2, py=innerHeight/3, seen=false;
+addEventListener('pointermove',e=>{px=e.clientX;py=e.clientY;seen=true;},{passive:true});
+function drawFace(f,dt){
+  const b=f.svg.getBoundingClientRect();
+  const cx=b.left+b.width/2, cy=b.top+b.height/2;
+  const dx=px-cx, dy=py-cy;
+  const ty=seen&&!reduce?Math.max(-.75,Math.min(.75,Math.atan2(dx,420)*.95)):0;
+  const tp=seen&&!reduce?Math.max(-.6,Math.min(.6,Math.atan2(dy,420)*.95)):0;
+  f.vy=(f.vy+(ty-f.yaw)*.12)*.72; f.vp=(f.vp+(tp-f.pitch)*.12)*.72; f.yaw+=f.vy; f.pitch+=f.vp;
+  f.next-=dt; if(f.next<0&&!reduce){f.blink=1;f.next=2.5+Math.random()*3.5;}
+  f.blink=Math.max(0,f.blink-dt*7);
+  const close=f.blink>0?Math.abs(Math.cos(f.blink*Math.PI)):1;
+  const W=9,H=15,GAP=.19,EY=-.04;
+  f.eyes.forEach((el,i)=>{
+    const ex=(i?1:-1)*GAP, ey=EY, ez=Math.sqrt(1-ex*ex-ey*ey);
+    // yaw about Y, pitch about X
+    const x1=ex*Math.cos(f.yaw)+ez*Math.sin(f.yaw), z1=-ex*Math.sin(f.yaw)+ez*Math.cos(f.yaw);
+    const y2=ey*Math.cos(f.pitch)+z1*Math.sin(f.pitch), z2=-ey*Math.sin(f.pitch)+z1*Math.cos(f.pitch);
+    const sx=50+x1*50, sy=50+y2*50;
+    const fw=W*Math.max(.25,Math.sqrt(Math.max(0,1-x1*x1))), fh=H*Math.max(.25,Math.sqrt(Math.max(0,1-y2*y2)))*close*(f.mood==='wait'?.6:1);
+    el.setAttribute('x',sx-fw/2);el.setAttribute('y',sy-fh/2);el.setAttribute('width',fw);el.setAttribute('height',Math.max(1.2,fh));el.setAttribute('rx',Math.min(fw,fh)/2);
+    el.style.opacity=z2>0?1:0;
+  });
+}
+let lt=performance.now();
+function faceLoop(now){const dt=Math.min(.05,(now-lt)/1000);lt=now;faces.forEach(f=>{const r=f.svg.getBoundingClientRect();if(r.bottom>0&&r.top<innerHeight&&r.width)drawFace(f,dt);});requestAnimationFrame(faceLoop);}
+['#bigface','#smallface','#chatface','#ctaface','#floatface','#tileface','#navface','#formface'].forEach(s=>makeFace($(s)));
+const CC={tether:null,scout:'#d6d3d1',brick:'#fdba74',bolt:'#93c5fd',probe:'#86efac',lens:'#fca5a5',gate:'#fde68a',boss:'#bef264',you:'#e4e4e7'};
+function faceEl(key,size,busy){
+  const w=document.createElement('span');w.className='cface'+(busy?' busy':'');
+  const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('class','tf');s.setAttribute('width',size);s.setAttribute('height',size);s.setAttribute('viewBox','-4 -4 108 108');s.setAttribute('aria-hidden','true');
+  w.appendChild(s);makeFace(s,{color:CC[key]||undefined});return w;
+}
+faces.forEach(f=>drawFace(f,0));requestAnimationFrame(faceLoop);
+
+/* ---------- window navigation ---------- */
+const NAMES={home:'Home',inbox:'Inbox',runs:'Runs',code:'Code',builder:'Builder',crew:'Crew',api:'API client',graph:'Graph',triggers:'Triggers',settings:'Settings'};
+let cur='home';
+function go(k){
+  if(k==='search'){openPal();return;}
+  if(!NAMES[k])return;
+  cur=k; closePal();
+  $$('.screen').forEach(s=>s.hidden=s.dataset.s!==k);
+  $$('.side .r').forEach(r=>r.classList.toggle('on',r.dataset.go===k&&!r.closest('#sideRuns')));
+  $('#crumb').textContent=NAMES[k];
+  const sc=$(`.screen[data-s="${k}"]`); if(sc) sc.scrollTop=0;
+  if(k==='runs') requestAnimationFrame(()=>drawDag&&drawDag());
+}
+win.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]'); if(g){go(g.dataset.go);}
+  if(e.target.closest('[data-chat]')){closePal();openChat();}
+  const ap=e.target.closest('[data-approve]'); if(ap){ap.textContent='Approved';ap.disabled=true;toast('Approved. Tether merges when the gates pass.');setN('#inboxN',-1);}
+  const t=e.target.closest('[data-toast]'); if(t) toast(t.dataset.toast);
+  const o=e.target.closest('[data-opt]'); if(o){$$('[data-opt]').forEach(x=>x.classList.toggle('on',x===o));}
+  if(e.target.closest('[data-send]')) toast('200 OK · 84 ms · 3 checks passed');
+});
+function setN(sel,d){const el=$(sel);const n=Math.max(0,(+el.textContent||0)+d);el.textContent=n||'';$('.launch .badge').hidden=+$('#inboxN').textContent===0;}
+function toast(t){const o=$('.toast');if(o)o.remove();const d=document.createElement('div');d.className='toast';d.textContent=t;win.appendChild(d);setTimeout(()=>d.remove(),2600);}
+
+/* sidebar runs */
+const RUNS=[['Tune the limit window','R-144','p'],['Fix flaky login test','R-143','p'],['Plan auth flow','R-142','n'],['Add rate limiting','R-141','d']];
+const glyph=k=>k==='p'?'<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--acc)" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="var(--acc)"/></svg>':k==='n'?'<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-dasharray="2 2"/></svg>':'<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="var(--ok)" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.2" fill="none" stroke="var(--ok)" stroke-width="1.6"/></svg>';
+function sideRuns(){ $('#sideRuns').innerHTML=RUNS.map(r=>`<button class="r" type="button" data-go="${r[2]==='n'?'inbox':'runs'}">${glyph(r[2])}<span class="lbl">${r[0]}</span><span class="n">${r[1]}</span></button>`).join(''); }
+sideRuns();
+
+/* clocks */
+let tick=0;
+function clocks(){$$('[data-clock]').forEach(el=>{const s=+el.dataset.clock+tick;el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');});}
+setInterval(()=>{tick++;clocks();},1000);clocks();
+
+/* composer typing */
+const asks=['tune the rate limit window to 60 s','fix the flaky login test','add pagination to /v1/orders','review last week’s merges'];
+let ai=0,ac=0,adel=false;
+function typeLoop(){
+  const s=asks[ai]; const el=$('#compose');
+  if(!adel){ac++; if(ac>s.length){adel=true;setTimeout(typeLoop,1600);render();return;}}
+  else{ac-=2; if(ac<=0){ac=0;adel=false;ai=(ai+1)%asks.length;}}
+  render(); setTimeout(typeLoop,adel?25:55);
+  function render(){el.innerHTML='Ask the crew to <span style="color:var(--ink)">'+s.slice(0,ac)+'</span><span class="caret"></span>';}
+}
+if(!reduce) typeLoop();
+
+/* activity feed */
+const FEED=[['Bolt','wrote src/middleware/rateLimit.ts','c-acc'],['Brick','designed a per-key token bucket','c-acc'],['Probe','npm test failed on R-143, 2 of 31','c-bad'],['Tether','escalated Bolt to Opus on R-143','c-warn'],['Scout','read 14 routes and wrote the plan',''],['Probe','npm test passed on R-141, 214','c-ok'],['Lens','VERDICT: PASS on R-141','c-ok'],['Tether','asked you about R-142','c-warn']];
+let fi=0; const feed=$('#feed');
+function pushFeed(){const f=FEED[fi%FEED.length];fi++;const d=document.createElement('div');d.className='e';const now=new Date();d.innerHTML=`<span class="tm">${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}</span><span><b style="font-weight:500">${f[0]}</b> <span class="${f[2]}">${f[1]}</span></span>`;feed.prepend(d);while(feed.children.length>7)feed.lastChild.remove();}
+for(let i=0;i<6;i++)pushFeed(); setInterval(pushFeed,3200);
+
+/* crew */
+const CREW=[['Tether','turns requests into workflows','claude opus',false],['Scout','reads the repo, writes the plan','claude sonnet',false],['Brick','designs structure and interfaces','claude opus',false],['Bolt','writes the change','codex',true],['Probe','runs your test command','npm test',false],['Lens','reviews the diff, gives a verdict','ollama · qwen3',true],['Boss','splits work, checks what comes back','claude sonnet',false],['Gate','approves. That is you.','a person',false]];
+$('#strip').innerHTML=CREW.map(c=>`<div class="mini"><span data-f="${c[0].toLowerCase()}" data-b="${c[3]?1:''}"></span>${c[0]}</div>`).join('');
+$('#crewgrid').innerHTML=CREW.map(c=>`<div class="bot"><div class="hd"><span data-f="${c[0].toLowerCase()}" data-b="${c[3]?1:''}" data-sz="38"></span><div><b>${c[0]}</b><div class="role">${c[1]}</div></div></div><div class="lk"><span>runs on</span><span>${c[2]}</span></div>${c[3]?'<span class="pill live" style="align-self:flex-start"><span class="pulse"></span>working</span>':'<span class="pill q" style="align-self:flex-start">idle</span>'}</div>`).join('');
+$('#crewrow').innerHTML=CREW.map(c=>`<div class="m"><span data-f="${c[0].toLowerCase()}" data-sz="84"></span><b>${c[0]}</b><span class="ro">${c[1]}</span><span class="mo">${c[2]}</span></div>`).join('');
+$$('.dn[data-c]').forEach(n=>n.insertAdjacentHTML('afterbegin',`<span data-f="${n.dataset.c}" data-sz="24"></span>`));
+$$('[data-f]').forEach(p=>p.replaceWith(faceEl(p.dataset.f,+(p.dataset.sz||34),!!p.dataset.b)));
+
+/* run terminal */
+const TERM=[['tether','plan approved · scout → brick → bolt → probe → lens → gate','c-mut'],['scout','read-only · 14 routes in src/routes, no limiter',''],['brick','design: token bucket per key, 60 s window','c-mut'],['bolt','worktree ~/.aorch/worktrees/R-144 · branch aorch/R-144','c-mut'],['bolt','editing src/middleware/rateLimit.ts','c-acc'],['run_code','repo.search("rateLimit") → 3 files','c-mut'],['bolt','window 60 s, burst 20, header x-ratelimit-remaining','c-acc'],['bolt','editing src/server.ts','c-acc'],['probe','queued · npm test --silent','c-mut']];
+let ti=0; const term=$('#term');
+function pushTerm(){const t=TERM[ti%TERM.length];ti++;const d=document.createElement('div');d.className='l';d.innerHTML=`<span class="c-mut">${t[0].padEnd(8,' ')}</span> <span class="${t[2]}">${t[1]}</span>`;term.appendChild(d);while(term.children.length>12)term.firstChild.remove();}
+for(let i=0;i<7;i++)pushTerm(); setInterval(pushTerm,2100);
+
+/* editor */
+const CODE=[
+['<span class="tk">import</span> { TokenBucket } <span class="tk">from</span> <span class="st">"./bucket"</span>'],[''],
+['<span class="tk">export interface</span> Opts { rpm: <span class="tk">number</span>; burst?: <span class="tk">number</span>; windowMs?: <span class="tk">number</span> }'],[''],
+['<span class="cm">// Bolt · R-144: 60 s window, burst of 20</span>'],
+['<span class="tk">export function</span> rateLimit({ rpm, burst = <span class="nu">20</span>, windowMs = <span class="nu">60_000</span> }: Opts) {',1],
+['  <span class="tk">const</span> buckets = <span class="tk">new</span> Map&lt;<span class="tk">string</span>, TokenBucket&gt;()',1],
+['  <span class="tk">return</span> (req, res, next) =&gt; {',1],
+['    <span class="tk">const</span> key = req.ip ?? <span class="st">"anon"</span>',1],
+['    <span class="tk">const</span> b = buckets.get(key) ?? <span class="tk">new</span> TokenBucket(rpm, burst, windowMs)',1],
+['    buckets.set(key, b)',1],
+['    res.setHeader(<span class="st">"x-ratelimit-remaining"</span>, b.remaining)',1],
+['    <span class="tk">if</span> (!b.take()) <span class="tk">return</span> res.status(<span class="nu">429</span>).end()',1],
+['    next()',1],['  }',1],['}'],[''],
+['<span class="cm">// Lens: consider evicting idle buckets after 10 min</span>'],
+];
+$('#editor').innerHTML=CODE.map((l,i)=>`<div class="ln ${l[1]?'hl':''}"><span class="no">${i+1}</span><span>${l[0]||' '}</span></div>`).join('');
+
+/* json */
+$('#json').innerHTML=`{
+  <span class="tk">"items"</span>: [
+    { <span class="tk">"id"</span>: <span class="st">"ord_8f21"</span>, <span class="tk">"total"</span>: <span class="nu">129.5</span>, <span class="tk">"status"</span>: <span class="st">"paid"</span> },
+    { <span class="tk">"id"</span>: <span class="st">"ord_8f20"</span>, <span class="tk">"total"</span>: <span class="nu">42</span>, <span class="tk">"status"</span>: <span class="st">"refunded"</span> }
+  ],
+  <span class="tk">"next"</span>: <span class="st">"ord_8f1f"</span>,
+  <span class="tk">"limit"</span>: <span class="nu">20</span>
+}`;
+
+/* graph */
+(function(){
+  const N=[['README',400,235,9],['rate limits',250,150,7],['auth',560,140,7],['R-141',150,260,5],['R-144',300,320,5],['sessions vs JWT',650,250,6],['R-142',560,340,5],['orders API',420,90,6],['Lens notes',200,390,4],['gates',480,390,5]];
+  const E=[[0,1],[0,2],[0,7],[1,3],[1,4],[2,5],[2,6],[5,6],[4,9],[3,8],[1,7],[0,9]];
+  const NS='http://www.w3.org/2000/svg', g=$('#graph');
+  E.forEach(([a,b])=>{const l=document.createElementNS(NS,'line');l.setAttribute('x1',N[a][1]);l.setAttribute('y1',N[a][2]);l.setAttribute('x2',N[b][1]);l.setAttribute('y2',N[b][2]);l.setAttribute('stroke','var(--line2)');l.setAttribute('stroke-width','1.2');g.appendChild(l);});
+  N.forEach((n,i)=>{const c=document.createElementNS(NS,'circle');c.setAttribute('cx',n[1]);c.setAttribute('cy',n[2]);c.setAttribute('r',n[3]);c.setAttribute('fill',n[0].startsWith('R-')?'var(--acc)':'var(--ink)');g.appendChild(c);
+    const t=document.createElementNS(NS,'text');t.setAttribute('x',n[1]+n[3]+6);t.setAttribute('y',n[2]+4);t.setAttribute('font-size','12');t.setAttribute('font-family','Geist, sans-serif');t.setAttribute('fill','var(--ink2)');t.textContent=n[0];g.appendChild(t);});
+  const ping=document.createElementNS(NS,'circle');ping.setAttribute('r','4');ping.setAttribute('fill','var(--acc)');g.appendChild(ping);
+  let k=0;setInterval(()=>{const [a,b]=E[k%E.length];k++;const A=N[a],B=N[b];let s=0;const iv=setInterval(()=>{s+=.05;ping.setAttribute('cx',A[1]+(B[1]-A[1])*s);ping.setAttribute('cy',A[2]+(B[2]-A[2])*s);if(s>=1)clearInterval(iv);},30);},1800);
+})();
+
+/* command palette */
+function openPal(){ $('#pal').hidden=false; setTimeout(()=>$('#palq').focus({preventScroll:true}),0); }
+function closePal(){ $('#pal').hidden=true; }
+addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'&&inView()){e.preventDefault();stopTour();$('#pal').hidden?openPal():closePal();}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='j'&&inView()){e.preventDefault();stopTour();$('#chat').hidden?openChat():closeChat();}
+  if(e.key==='Escape'){closePal();closeChat();}
+});
+function inView(){const r=win.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;}
+
+/* assistant chat: one scripted turn */
+let chatRun=0;
+function openChat(){ $('#chat').hidden=false; $('#launch').hidden=true; playChat(); }
+function closeChat(){ $('#chat').hidden=true; $('#launch').hidden=false; chatRun++; }
+$('#launch').addEventListener('click',()=>{stopTour();openChat();});
+$('#cx').addEventListener('click',closeChat);
+function wait(ms){return new Promise(r=>setTimeout(r,reduce?0:ms));}
+async function playChat(){
+  const id=++chatRun, th=$('#thread'), st=$('#cstat'); th.innerHTML='';
+  const add=h=>{if(id!==chatRun)return null;const d=document.createElement('div');d.innerHTML=h;const el=d.firstElementChild;th.appendChild(el);th.scrollTop=th.scrollHeight;return el;};
+  add('<div class="msg-u">Why does the login test keep failing?</div>');
+  st.textContent='thinking'; await wait(700); if(id!==chatRun)return;
+  const todo=add('<div class="card todo"><div class="ch"><b style="font-weight:500">Plan</b><span class="mut" style="margin-left:auto">3</span></div><div class="cb" style="font-family:var(--f)"><div><span class="bx d"></span>Read R-143 events</div><div><span class="bx l"></span>Run the test 20 times</div><div><span class="bx"></span>Find the cause</div></div></div>');
+  await wait(600);
+  const ta=add('<div class="card"><div class="ch"><span class="pill wait">needs you</span><b style="font-weight:500">Bash</b><span class="mut">run the login tests</span></div><div class="cb">$ npm test -- test/login.test.ts --repeat 20\ncwd · run worktree   network · off</div><div class="cf"><button class="btn ink sm" type="button" data-allow>Allow once</button><button class="btn ghost sm" type="button">Always allow</button><button class="btn ghost sm" type="button" data-deny>Deny</button></div></div>');
+  st.textContent='waiting for you';
+  if(!ta)return;
+  await new Promise(res=>{ta.addEventListener('click',e=>{if(e.target.closest('[data-allow],[data-deny]'))res();}); if(tourOn) setTimeout(res,1600);});
+  if(id!==chatRun)return;
+  ta.querySelector('.cf').innerHTML='<span class="pill ok">allowed once</span>';
+  todo.querySelectorAll('.bx')[1].className='bx d';
+  st.textContent='running';
+  const res=add('<div class="card"><div class="ch"><span class="mono">terminal</span><span class="mut">npm test — login</span></div><div class="cb" id="tres"></div></div>');
+  const lines=['run 1–14   <span class="c-ok">✓ pass</span>','run 15     <span class="c-bad">✗ session expired (clock 00:59:59.998)</span>','run 16–20  <span class="c-ok">✓ pass</span>','<span class="c-mut">19 of 20 passed</span>'];
+  for(const l of lines){await wait(380);if(id!==chatRun)return;res.querySelector('.cb').innerHTML+=(res.querySelector('.cb').innerHTML?'\n':'')+l;th.scrollTop=th.scrollHeight;}
+  todo.querySelectorAll('.bx')[2].className='bx d';
+  st.textContent='writing';
+  const ans=add('<div class="msg-a"></div>');
+  const text='The test fails when the session check lands on the last millisecond of the hour. <span class="cite">1</span> The expiry compares with <code class="mono">&lt;</code> instead of <code class="mono">&lt;=</code>, <span class="cite">2</span> and R-143 hit the same failure on its first gate. <span class="cite">3</span>';
+  const plain=text.split(/(<[^>]+>[^<]*<\/[^>]+>)/);
+  let out='';
+  for(const part of plain){ if(part.startsWith('<')){out+=part;ans.innerHTML=out;continue;} for(let i=0;i<part.length;i+=3){if(id!==chatRun)return;out+=part.slice(i,i+3);ans.innerHTML=out+'<span class="caret"></span>';await wait(18);} }
+  ans.innerHTML=out+'<div class="srcs"><div><span class="cite">1</span>terminal · run 15</div><div><span class="cite">2</span>src/auth/session.ts:42</div><div><span class="cite">3</span>R-143 · event 0309 gate.failed</div></div>';
+  await wait(400);
+  const diff=add('<div class="card"><div class="ch"><span class="mono">src/auth/session.ts</span><span class="c-ok mono" style="margin-left:auto">+1</span><span class="c-bad mono">−1</span></div><div class="cb"><span class="c-bad">- return now &lt; session.expiresAt</span>\n<span class="c-ok">+ return now &lt;= session.expiresAt</span></div></div>');
+  await wait(300);
+  const ap=add('<div class="card" style="border-color:var(--warn)"><div class="ch"><b style="font-weight:500">Start a run to fix it?</b></div><div class="cb" style="font-family:var(--f);font-size:12.5px">Bolt makes the one-line change in a worktree. Gates: npm test ×20. You approve the merge.</div><div class="cf"><button class="btn ink sm" type="button" data-start>Start run</button><button class="btn ghost sm" type="button">Not now</button></div></div>');
+  st.textContent='your crew’s lead';
+  if(!ap)return;
+  ap.addEventListener('click',e=>{if(!e.target.closest('[data-start]'))return;ap.querySelector('.cf').innerHTML='<span class="pill live"><span class="pulse"></span>R-145 started</span>';RUNS.unshift(['Fix session expiry','R-145','p']);sideRuns();setN('#runsN',1);toast('R-145 started · Bolt is on it');});
+  if(tourOn){await wait(1400); if(id===chatRun) ap.querySelector('[data-start]').click();}
+}
+
+/* ---------- tour: plays the window like a film ---------- */
+const TOUR=[
+  ['home','Home','What needs you, what is running'],
+  ['runs','A run','A crew on one branch, step by step'],
+  ['code','Code','Which runs touched which lines'],
+  ['crew','Crew','Any role on any model'],
+  ['api','API client','Requests an agent can use'],
+  ['chat','Ask Tether','⌘J. It cites, then asks'],
+];
+const DUR=[6500,6500,5500,5000,5000,12000];
+let tourOn=!reduce, ti2=0, tStart=performance.now();
+$('#tourbar').innerHTML=TOUR.map((t,i)=>`<button type="button" data-t="${i}"><span class="pg"><i></i></span><b>${t[1]}</b><span>${t[2]}</span></button>`).join('');
+function showTour(i){
+  ti2=i; tStart=performance.now();
+  const k=TOUR[i][0];
+  if(k==='chat'){go('code');openChat();} else {closeChat();go(k);}
+  $$('#tourbar button').forEach((b,j)=>{b.classList.toggle('on',j===i);b.querySelector('i').style.width=j<i?'100%':'0';});
+}
+function tourFrame(now){
+  if(tourOn){
+    const p=Math.min(1,(now-tStart)/DUR[ti2]);
+    const bar=$$('#tourbar button i')[ti2]; if(bar) bar.style.width=(p*100)+'%';
+    if(p>=1){ showTour((ti2+1)%TOUR.length); }
+  }
+  requestAnimationFrame(tourFrame);
+}
+function stopTour(){ if(!tourOn)return; tourOn=false; $('#tourstate').textContent='Tour paused · you are driving'; $('#tourbtn').textContent='Play tour'; }
+function startTour(){ tourOn=true; $('#tourstate').textContent='Tour playing · click anything in the window to take over'; $('#tourbtn').textContent='Pause tour'; showTour(ti2); }
+$('#tourbtn').addEventListener('click',()=>tourOn?stopTour():startTour());
+$('#tourbar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;stopTour();showTour(+b.dataset.t);});
+win.addEventListener('pointerdown',()=>stopTour());
+// start the tour only once the window is on screen
+let started=false;
+new IntersectionObserver(es=>{es.forEach(en=>{if(en.isIntersecting&&!started&&tourOn){started=true;showTour(0);}});},{threshold:.35}).observe(win);
+if(reduce){$('#tourstate').textContent='Tour paused · you are driving';$('#tourbtn').textContent='Play tour';}
+$$('#tourbar button')[0].classList.add('on');
+requestAnimationFrame(tourFrame);
+
+/* ---------- run graph edges with moving batons ---------- */
+var drawDag=function(){
+  const dag=$('#dag'), svg=$('#dagsvg'); if(!dag||!dag.offsetParent) return;
+  const R=dag.getBoundingClientRect(), pt=(n,side)=>{const r=$(`.dn[data-n="${n}"]`).getBoundingClientRect();return {x:(side?r.right:r.left)-R.left,y:r.top+r.height/2-R.top};};
+  const E=[['scout','brick','d'],['brick','bolt','d'],['bolt','probe','l'],['probe','lens','q'],['lens','gate','q']];
+  const col={d:'var(--ok)',l:'var(--acc)',q:'var(--line2)'};
+  svg.setAttribute('viewBox',`0 0 ${R.width} ${R.height}`);
+  svg.innerHTML=E.map(([a,b,s],i)=>{const A=pt(a,1),B=pt(b,0),dx=(B.x-A.x)/2;
+    const d=`M${A.x} ${A.y} C${A.x+dx} ${A.y},${B.x-dx} ${B.y},${B.x} ${B.y}`;
+    return `<path id="e${i}" d="${d}" fill="none" stroke="${col[s]}" stroke-width="1.8" ${s==='l'?'stroke-dasharray="5 5"':''} ${s==='q'?'stroke-dasharray="2 4"':''}/>`+
+      (s==='l'&&!reduce?`<circle r="4" fill="var(--acc)"><animateMotion dur="${1.6+i*.2}s" repeatCount="indefinite"><mpath href="#e${i}"/></animateMotion></circle>`:'');}).join('');
+};
+addEventListener('resize',()=>drawDag());
+
+/* ---------- tile: gates ---------- */
+(function(){
+  const g=$('#gates'), st=$('#gstat'); g.innerHTML='<i></i>'.repeat(24); const cells=[...g.children];
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  async function loop(){
+    for(;;){
+      cells.forEach(c=>c.className=''); st.innerHTML='<span class="c-mut">running…</span>';
+      for(let i=0;i<24;i++){cells[i].className=(i===9||i===17)?'f':'p';await sleep(70);}
+      st.innerHTML='<span class="c-bad">✗ 2 failed</span>'; await sleep(1100);
+      st.innerHTML='<span class="c-warn">↻ retry · escalate to opus</span>'; await sleep(1100);
+      cells.forEach(c=>c.className=''); for(let i=0;i<24;i++){cells[i].className='p';await sleep(55);}
+      st.innerHTML='<span class="c-ok">✓ 24 passed · gate open</span>'; await sleep(2200);
+    }
+  }
+  if(reduce){cells.forEach(c=>c.className='p');st.innerHTML='<span class="c-ok">✓ 24 passed · gate open</span>';} else loop();
+})();
+
+/* ---------- tile: event log ticker ---------- */
+(function(){
+  const EV=[['step.started','bolt','var(--acc)'],['tool.call','run_code','var(--mut)'],['file.written','rateLimit.ts','var(--acc)'],['gate.failed','npm test · 2','var(--bad)'],['step.retried','bolt → opus','var(--warn)'],['gate.passed','npm test · 214','var(--ok)'],['approval.asked','merge → main','var(--warn)'],['approval.given','you · 14:02','var(--ok)'],['run.merged','3f9c2e1','var(--ok)']];
+  const t=$('#ticker'); let n=296,i=0;
+  function push(){const e=EV[i%EV.length];i++;n++;const d=document.createElement('div');d.innerHTML=`<span class="c-mut">${String(n).padStart(4,'0')}</span><span class="dt" style="background:${e[2]}"></span><span style="color:var(--ink)">${e[0]}</span><span class="c-mut">${e[1]}</span>`;t.appendChild(d);while(t.children.length>9)t.firstChild.remove();}
+  for(let k=0;k<8;k++)push(); if(!reduce)setInterval(push,950);
+})();
+
+/* ---------- tile: code mode collapse ---------- */
+(function(){
+  const box=$('#cmcalls'), one=$('#cmone'), cnt=$('#cmcount'), lab=$('#cmlabel');
+  const NAMES=['grep','read','read','list','read','grep','read','gh.pr','read','list','grep','read','read','gh.checks','read','grep','list','read','read','grep','read','read','list','read','gh.diff','read','grep','read'];
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  async function loop(){
+    for(;;){
+      box.className='cm-calls'; box.innerHTML=''; one.classList.remove('on'); lab.textContent='direct tools';
+      for(let i=0;i<NAMES.length;i++){const s=document.createElement('span');s.textContent=NAMES[i];box.appendChild(s);cnt.textContent=(i+1)+' calls · '+((i+1)*1.4).toFixed(0)+'s';await sleep(90);}
+      await sleep(900);
+      const bb=box.getBoundingClientRect();
+      [...box.children].forEach(s=>{const r=s.getBoundingClientRect();s.style.setProperty('--tx',(bb.left+bb.width/2-r.left-r.width/2)+'px');s.style.setProperty('--ty',(bb.top+bb.height*.45-r.top)+'px');});
+      box.classList.add('gone'); await sleep(450);
+      one.classList.add('on'); lab.textContent='code mode · run_code'; cnt.innerHTML='<span class="c-ok">1 call · 4s</span>';
+      await sleep(3200);
+    }
+  }
+  if(reduce){one.classList.add('on');lab.textContent='code mode · run_code';cnt.textContent='1 call';} else loop();
+})();
+
+/* ---------- tile: triggers ---------- */
+(function(){
+  const src=[...$('#tsrc').children], run=$('#trun'); let i=0,id=145;
+  function step(){src.forEach((s,j)=>s.classList.toggle('on',j===i%3));run.textContent='R-'+id+' started';i++;id++;}
+  step(); if(!reduce) setInterval(step,2200);
+})();
+
+/* ---------- docs terminal types itself ---------- */
+(function(){
+  const pre=$('#clipre'), full=pre.innerHTML; let done=false;
+  new IntersectionObserver(es=>{if(done||reduce||!es[0].isIntersecting)return;done=true;
+    const parts=full.split(/(<[^>]+>)/); let out='', pi=0, ci=0; pre.innerHTML='';
+    (function type(){ if(pi>=parts.length){pre.innerHTML=full;return;}
+      const p=parts[pi]; if(p.startsWith('<')){out+=p;pi++;return type();}
+      out+=p.slice(ci,ci+2); ci+=2; if(ci>=p.length){pi++;ci=0;}
+      pre.innerHTML=out+'<span class="caret"></span>'; setTimeout(type,p[ci-1]==='\n'?120:14);
+    })();
+  },{threshold:.5}).observe($('#clibox'));
+})();
+
+/* request access */
+const req=$('#req'), msgEl=$('#rq-msg');
+msgEl.addEventListener('input',()=>{$('#rq-cnt').textContent=msgEl.value.length+' / 600';});
+req.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();req.requestSubmit();}});
+['name','email','msg'].forEach(k=>$('#rq-'+k).addEventListener('input',()=>{const f=$('#f-'+k);f.classList.remove('err');f.querySelector('.er').textContent='';}));
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+req.addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(req.dataset.busy)return;
+  const v={name:$('#rq-name').value.trim(),email:$('#rq-email').value.trim(),co:$('#rq-co').value.trim(),msg:msgEl.value.trim()};
+  const bad=[];
+  const flag=(k,t)=>{const f=$('#f-'+k);f.classList.add('err');f.querySelector('.er').textContent=t;bad.push(k);};
+  if(!v.name) flag('name','Add your name.');
+  if(!/^\S+@\S+\.\S+$/.test(v.email)) flag('email','Enter an email we can reply to.');
+  if(v.msg.length<10) flag('msg','Tell us a little about what you want to run.');
+  if(bad.length){$('#rq-'+bad[0]).focus();return;}
+  // On the deployed site (build.mjs adds <meta name="tether-live">) the form posts to the Pages Function; in the artifact it stays a mockup.
+  const live=!!document.querySelector('meta[name="tether-live"]');
+  if(live){
+    const btn=$('#reqbtn'), hint=$('#reqhint');
+    req.dataset.busy='1'; btn.disabled=true; btn.firstChild.textContent='Sending… '; hint.className='hint'; hint.textContent='⌘↵ to send';
+    try{
+      const r=await fetch('/api/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:v.name,email:v.email,company:v.co,message:v.msg,website:$('#rq-web').value})});
+      if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Something went wrong on our side. Try again in a minute.');}
+    }catch(err){
+      delete req.dataset.busy; btn.disabled=false; btn.firstChild.textContent='Send request ';
+      hint.className='hint bad'; hint.textContent=err instanceof TypeError?'Couldn\u2019t reach the server. Check your connection and try again.':err.message;
+      return;
+    }
+  }
+  $('#reqbody').outerHTML=`<div class="sent"><svg class="tf" id="sentface" width="56" height="56" viewBox="-4 -4 108 108" aria-hidden="true"></svg><b>Request sent</b><p>Thanks, ${esc(v.name.split(' ')[0])}. We'll write to ${esc(v.email)} when your invite is ready.</p><div class="sum">name     ${esc(v.name)}<br>email    ${esc(v.email)}${v.co?'<br>company  '+esc(v.co):''}<br>message  ${esc(v.msg.slice(0,90))}${v.msg.length>90?'…':''}</div>${live?'':'<span class="mono mut" style="font-size:11.5px">mockup · nothing was sent</span>'}</div>`;
+  $('#reqft').innerHTML='<span class="hint"><span class="pill ok">✓ received</span></span>';
+  makeFace($('#sentface'));
+});
+
+/* top bar: Ask Tether opens the demo assistant; current section highlights */
+$('#askTop').addEventListener('click',()=>{stopTour();win.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});setTimeout(openChat,reduce?0:450);});
+const navSecs=['tour','crew','inside','docs','access'].map(id=>document.getElementById(id)).filter(Boolean);
+const navObs=new IntersectionObserver(es=>{es.forEach(en=>{if(en.isIntersecting)$$('.top .nr').forEach(a=>a.classList.toggle('on',a.dataset.sec===en.target.id));});},{rootMargin:'-45% 0px -50% 0px'});
+navSecs.forEach(s=>navObs.observe(s));
+})();
+</script>
