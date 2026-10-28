@@ -1,8 +1,11 @@
 .home { min-height: 100%; padding-bottom: 32px; }
+/* the demo's .cols: a main column and a 270 px side column that stacks under it below 1100 px (same DOM order) */
+.home-cols { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 28px; align-items: start; padding: 0 24px; }
+@media (max-width: 1099px) { .home-cols { grid-template-columns: minmax(0, 1fr); } }
+.home-main, .home-side { min-width: 0; }
+/* Inbox */
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
-/* below 1200 px the two columns dissolve into the one stack */
-.home-col { display: contents; }
-@media (max-width: 899px) { .home-grid { padding: 0 12px; } }
+@media (max-width: 899px) { .home-cols, .home-grid { padding: 0 12px; } }
 .start-form { display: flex; flex-direction: column; gap: 12px; }
 .start-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .start-chip { padding: 2px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
@@ -17,14 +20,7 @@
 .start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
 .s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
-.run-now { font-size: 12px; color: var(--mut); }
-.s-running .run-todos { margin: 6px 0 0; }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
-@media (min-width: 1200px) {
-  /* two independent stacks: a short Live activity leaves no row gap beside the left column */
-  .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 20px; }
-  .home-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-}
 .act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 420px; overflow: auto; }
 .act-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 2px; border-top: 1px solid var(--line); }
 .act-line:first-child { border-top-color: transparent; }
@@ -34,11 +30,8 @@
 .act-dot { width: 8px; height: 8px; background: var(--mut); }
 .act-dot.t-live { background: var(--acc); } .act-dot.t-needs { background: var(--warn); } .act-dot.t-done { background: var(--ok); } .act-dot.t-failed { background: var(--bad); }
 .act-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.saved-method { display: inline-block; min-width: 44px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
 .crew-strip { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .crew-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
 .crew-face.idle .face { opacity: .45; }
 .crew-name { max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--mut); }
 :root:not([data-theme="dark"]) .crew-face .face { border-radius: 30%; box-shadow: 0 0 0 1px var(--line2); }
-/* Needs you (Home and Inbox): the lead column holds a kind chip ("planning failed" is the widest), so rows line up without overlap */
-.s-needs { --row-lead: 112px; }

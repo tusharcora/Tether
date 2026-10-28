@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AttentionItem, RunRow } from '../api';
-import { Button } from '../components/beui/kit/Button';
 import { usePoll, type Route } from '../hooks';
 import { useNotify } from '../ui/notify';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
@@ -9,7 +8,6 @@ import { CrewStrip } from './CrewStrip';
 import { NeedsYou } from './NeedsYou';
 import { Recent } from './Recent';
 import { Running } from './Running';
-import { SavedRequests } from './SavedRequests';
 import { StartRun } from './StartRun';
 import { WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
 import './home.css';
@@ -18,11 +16,9 @@ export const LIVE_MS = 2000;
 export const IDLE_MS = 10_000;
 
 /**
- * Home: what needs you, what is running, and where to start the next run. It polls (no EventSource): runs and attention
- * every 2 s while any run is live (the server's `live` flag), every 10 s otherwise; the activity feed every 3 s while the
- * tab is visible and not paused. It owns the one /api/workspaces poll its sections share. Sections sit in two independent
- * columns (each stacks on its own, so a short one leaves no gap) at 1200 px; below that the columns dissolve into one stack
- * in the same DOM order.
+ * Home (the demo's home screen): a main column (start a run, what needs you, what is running, recent runs) and a 270 px
+ * side column (activity, crew) that stacks under it below 1100 px. It polls (no EventSource): runs and attention every
+ * 2 s while any run is live (the server's `live` flag), every 10 s otherwise. It owns the one /api/workspaces poll.
  */
 export function Home(props: { onGo: (r: Route) => void }) {
   const notify = useNotify();
@@ -34,41 +30,15 @@ export function Home(props: { onGo: (r: Route) => void }) {
   useEffect(() => setMs(anyLive ? LIVE_MS : IDLE_MS), [anyLive]);
   const [paused, setPaused] = useState(false);
   const feed = useActivity(paused);
-  const [savedKey, setSavedKey] = useState(0);
-
-  const [refreshing, setRefreshing] = useState(false);
   const { refresh: refreshRuns } = runs;
   const { refresh: refreshAttention } = attention;
-  const { refresh: refreshFeed } = feed;
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    setSavedKey((k) => k + 1);
-    try {
-      await Promise.all([refreshRuns(), refreshAttention(), refreshFeed()]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshRuns, refreshAttention, refreshFeed]);
   const refetch = useCallback(() => Promise.all([refreshAttention(), refreshRuns()]), [refreshAttention, refreshRuns]);
-
-  const liveCount = runs.data?.filter((r) => r.live).length ?? 0;
-  const needs = attention.data?.items.length ?? 0;
 
   return (
     <div className="home">
-      <ScreenHeader
-        meta={`${liveCount} running · ${needs} need${needs === 1 ? 's' : ''} you`}
-        title="Home"
-        summary="What needs you, what is running, and a place to start the next run."
-        actions={
-          <Button variant="secondary" size="sm" disabled={refreshing} onClick={() => void refresh()}>
-            Refresh
-          </Button>
-        }
-      />
-      <div className="home-grid">
-        <div className="home-col home-main">
-          <NeedsYou poll={attention} refreshing={refreshing} onGo={props.onGo} onChanged={refetch} />
+      <ScreenHeader title="Home" />
+      <div className="home-cols">
+        <div className="home-main">
           <StartRun
             workspaces={workspaces}
             onGo={props.onGo}
@@ -77,12 +47,12 @@ export function Home(props: { onGo: (r: Route) => void }) {
               void refetch();
             }}
           />
-          <Running poll={runs} refreshing={refreshing} onGo={props.onGo} />
-          <Recent poll={runs} refreshing={refreshing} onGo={props.onGo} />
+          <NeedsYou poll={attention} onGo={props.onGo} onChanged={refetch} />
+          <Running poll={runs} onGo={props.onGo} />
+          <Recent poll={runs} onGo={props.onGo} />
         </div>
-        <div className="home-col home-side">
-          <ActivityFeed feed={feed} paused={paused} onPause={setPaused} refreshing={refreshing} onGo={props.onGo} />
-          <SavedRequests workspaces={workspaces} onGo={props.onGo} refreshKey={savedKey} />
+        <div className="home-side">
+          <ActivityFeed feed={feed} paused={paused} onPause={setPaused} refreshing={false} onGo={props.onGo} />
           <CrewStrip runs={runs.data} />
         </div>
       </div>

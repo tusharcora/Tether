@@ -1,52 +1,48 @@
 import { fmtDur, fmtUsd, type RunRow } from '../api';
-import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import type { Poll, Route } from '../hooks';
-import { EmptyState } from '../ui/studio/EmptyState';
 import { InlineError } from '../ui/studio/InlineError';
 import { ListRow } from '../ui/studio/ListRow';
-import { Panel } from '../ui/studio/Panel';
-import { StatusChip, toneFor } from '../ui/studio/StatusChip';
-import { recentRuns, runTitle } from './runText';
+import { shortRunId } from '../ui/studio/RunGlyph';
+import { QuietLine, RowList, Section } from '../ui/studio/Section';
+import { badgeFor, rowDesc } from '../ui/studio/status';
+import { StatusBadge, StatusGlyph } from '../ui/studio/StatusBadge';
+import { recentRuns, taskTitle } from './runText';
 
-/** The last few finished runs: result, title, duration and cost. */
-export function Recent(props: { poll: Poll<RunRow[]>; refreshing: boolean; onGo: (r: Route) => void }) {
+/** The last few finished runs: the task, then id · result · time · cost, and the result badge. */
+export function Recent(props: { poll: Poll<RunRow[]>; onGo: (r: Route) => void }) {
   const { data, error, refresh } = props.poll;
   const rows = recentRuns(data ?? []);
   return (
-    <Panel title="Recent" className="s-recent">
-      <Loading loading={(data === undefined && !error) || props.refreshing} lines={3} label="Loading recent runs">
+    <Section title="Recent">
+      <Loading loading={data === undefined && !error} lines={3} label="Loading recent runs">
         {error && !data ? (
           <InlineError message={error} onRetry={() => void refresh()} />
         ) : (
           <>
             {error ? <InlineError compact message="Couldn't refresh" onRetry={() => void refresh()} /> : null}
             {!rows.length ? (
-              <EmptyState
-                title="No finished runs yet"
-                description="Finished runs show their result, time and cost here."
-                action={
-                  <Button variant="secondary" size="sm" onClick={() => props.onGo({ tab: 'runs' })}>
-                    Open Runs
-                  </Button>
-                }
-              />
+              <QuietLine>No finished runs yet.</QuietLine>
             ) : (
-              <ul className="sl-list">
-                {rows.map((r) => (
-                  <ListRow
-                    key={r.id}
-                    lead={<StatusChip tone={toneFor(r.status)} label={r.status} />}
-                    title={runTitle(r)}
-                    onOpen={() => props.onGo({ tab: 'runs', id: r.id })}
-                    meta={`${fmtDur((r.finishedAt ?? r.lastTs) - r.startedAt)} · ${fmtUsd(r.costUsd)}`}
-                  />
-                ))}
-              </ul>
+              <RowList label="Recent">
+                {rows.map((r) => {
+                  const desc = rowDesc(r);
+                  return (
+                    <ListRow
+                      key={r.id}
+                      lead={<StatusGlyph desc={desc} />}
+                      title={taskTitle(r)}
+                      onOpen={() => props.onGo({ tab: 'runs', id: r.id })}
+                      meta={`${shortRunId(r.id)} · ${badgeFor(desc).label} · ${fmtDur((r.finishedAt ?? r.lastTs) - r.startedAt)} · ${fmtUsd(r.costUsd)}`}
+                      actions={<StatusBadge desc={desc} />}
+                    />
+                  );
+                })}
+              </RowList>
             )}
           </>
         )}
       </Loading>
-    </Panel>
+    </Section>
   );
 }

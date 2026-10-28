@@ -31,6 +31,6 @@ describe('Inbox', () => {
   it('says when nothing needs you', async () => {
     routeApi({ 'GET /api/attention': { items: [] } });
     renderApp(<Inbox onGo={vi.fn()} />);
-    expect(await screen.findByText('Nothing needs you')).toBeTruthy();
+    expect(await screen.findByText('Nothing needs you.')).toBeTruthy();
   });
 });

@@ -21,7 +21,7 @@ export function Inbox(props: { onGo: (r: Route) => void }) {
     <div className="home inbox">
       <ScreenHeader meta={attention.data ? `${n} item${n === 1 ? '' : 's'}` : undefined} title="Inbox" summary="Questions, plans and approvals from your runs, and runs that stopped." />
       <div className="home-grid">
-        <NeedsYou poll={attention} refreshing={false} onGo={props.onGo} onChanged={refetch} />
+        <NeedsYou poll={attention} onGo={props.onGo} onChanged={refetch} />
       </div>
     </div>
   );

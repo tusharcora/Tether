@@ -1,17 +1,14 @@
 import { useState } from 'react';
-import { ago, api, type AttentionAction, type AttentionItem } from '../api';
-import { ApprovalCard } from '../components/beui/agents/approval-card';
+import { api, type AttentionAction, type AttentionItem } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import type { Poll, Route } from '../hooks';
 import { useNotify } from '../ui/notify';
-import { EmptyState } from '../ui/studio/EmptyState';
 import { InlineError } from '../ui/studio/InlineError';
 import { ListRow } from '../ui/studio/ListRow';
-import { Panel } from '../ui/studio/Panel';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { RunGlyph } from '../ui/studio/RunGlyph';
+import { QuietLine, RowList, Section } from '../ui/studio/Section';
 
-const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'plan ready', question: 'question', approval: 'approval', planning_error: 'planning failed', paused: 'paused', interrupted: 'interrupted', failed: 'failed' };
 const ACTION_LABEL: Record<AttentionAction, string> = { answer: 'Answer', review: 'Review plan', approve: 'Approve', resume: 'Resume', retry: 'Retry', open: 'Open' };
 const PRIMARY = new Set<AttentionAction>(['answer', 'review', 'approve']);
 
@@ -25,7 +22,8 @@ export function linkFor(item: AttentionItem, a: AttentionAction): Route {
   return { tab: 'runs', id: item.runId };
 }
 
-export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refreshing: boolean; onGo: (r: Route) => void; onChanged: () => Promise<unknown> | void }) {
+/** What waits on the person, one row each with its actions in place (Approve posts; Reject lives in Inbox and the run). */
+export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: (r: Route) => void; onChanged: () => Promise<unknown> | void }) {
   const notify = useNotify();
   // ids with an action in flight; an id stays busy until the re-fetch lands, so its row can't be approved twice
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
@@ -51,59 +49,42 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refres
       mark(item.id, false);
     }
   }
-  const act = (item: AttentionItem, a: AttentionAction | 'reject') => {
+  const act = (item: AttentionItem, a: AttentionAction) => {
     if (a === 'approve') return void post(item, 'approve', { node: item.node, approved: true });
-    if (a === 'reject') return void post(item, 'approve', { node: item.node, approved: false });
     if (a === 'resume' || a === 'retry') return void post(item, 'resume', {});
     props.onGo(linkFor(item, a));
   };
 
   return (
-    <Panel title="Needs you" count={data ? items.length : undefined} className="s-needs">
-      <Loading loading={(data === undefined && !error) || props.refreshing} lines={3} label="Loading what needs you">
+    <Section title="Needs you" count={data ? items.length : undefined}>
+      <Loading loading={data === undefined && !error} lines={3} label="Loading what needs you">
         {error && !data ? (
           <InlineError message={error} onRetry={() => void refresh()} />
         ) : (
           <>
             {error ? <InlineError compact message="Couldn't refresh" onRetry={() => void refresh()} /> : null}
             {!items.length ? (
-              <EmptyState
-                title="Nothing needs you"
-                description="Questions, plans and approvals from your runs show up here."
-                action={
-                  <Button variant="secondary" size="sm" onClick={() => props.onGo({ tab: 'runs' })}>
-                    Open Runs
-                  </Button>
-                }
-              />
+              <QuietLine>Nothing needs you.</QuietLine>
             ) : (
-              <ul className="sl-list">
-                {items.map((it) => {
-                  // a human gate is an approval card (approve or reject in place); every other item keeps its row actions
-                  const gate = it.kind === 'approval' && it.actions.includes('approve');
-                  return (
-                    <ListRow
-                      key={it.id}
-                      lead={<StatusChip tone={it.kind === 'failed' || it.kind === 'planning_error' ? 'failed' : 'needs'} label={KIND_LABEL[it.kind]} />}
-                      title={it.title}
-                      meta={it.meta}
-                      age={ago(it.ts)}
-                      extra={gate ? <ApprovalCard className="mt-2" status={busy.has(it.id) ? 'submitting' : 'pending'} onApprove={() => act(it, 'approve')} onReject={() => act(it, 'reject')} /> : undefined}
-                      actions={it.actions
-                        .filter((a) => !(gate && a === 'approve'))
-                        .map((a) => (
-                          <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy.has(it.id)} onClick={() => act(it, a)}>
-                            {ACTION_LABEL[a]}
-                          </Button>
-                        ))}
-                    />
-                  );
-                })}
-              </ul>
+              <RowList label="Needs you">
+                {items.map((it) => (
+                  <ListRow
+                    key={it.id}
+                    lead={<RunGlyph state={it.kind === 'failed' || it.kind === 'planning_error' ? 'failed' : 'needs'} />}
+                    title={it.title}
+                    meta={it.meta}
+                    actions={it.actions.map((a) => (
+                      <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy.has(it.id)} onClick={() => act(it, a)}>
+                        {ACTION_LABEL[a]}
+                      </Button>
+                    ))}
+                  />
+                ))}
+              </RowList>
             )}
           </>
         )}
       </Loading>
-    </Panel>
+    </Section>
   );
 }
