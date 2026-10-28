@@ -68,6 +68,10 @@ export interface PipelineNode {
   guidance?: string;
   /** Claude Code permission mode override (default: plan if readOnly else acceptEdits). */
   permissionMode?: string;
+  /** How the agent calls tools: `code` (one run_code tool, Code Mode; the default) or `direct` (its own tools only). */
+  toolStyle?: ToolStyle;
+  /** Code Mode only for reading: the agent explores through run_code (Claude Code also loses Grep and Glob). */
+  codeReads?: boolean;
   /** Does not modify files. Read-only agent nodes in the same frontier run concurrently. */
   readOnly?: boolean;
   /** Append the current diff vs. the run's base commit to this node's prompt. */
@@ -97,6 +101,8 @@ export interface Edge {
   from: string;
   to: string;
 }
+
+export type ToolStyle = 'code' | 'direct';
 
 export interface PipelineSettings {
   /** Max concurrently running read-only agent nodes. */
@@ -260,6 +266,8 @@ export type RunEvent =
   | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef }
   | { type: 'node.session'; node: string; sessionId: string }
   | { type: 'node.chunk'; node: string; text: string }
+  /** What a step's agent calls took (spec §4.2 metrics): Code Mode or direct, round-trips, run_code executions, connector calls, tokens. */
+  | { type: 'node.metrics'; node: string; toolStyle: ToolStyle; fallback?: boolean; roundTrips?: number; runCode: number; connectorCalls: number; inputTokens?: number; outputTokens?: number }
   | {
       type: 'node.finished';
       node: string;
@@ -656,6 +664,8 @@ export interface AgentRequest {
   budgetUsd?: number;
   /** Resume this vendor session instead of starting fresh (if the adapter supports it). */
   resumeSessionId?: string;
+  /** Code Mode for this call: the run_code runner, and for MCP-capable CLIs how to start Tether's MCP server. */
+  codeMode?: CodeModeRequest;
   signal: AbortSignal;
   mock?: MockScript;
   verdictNode?: boolean;
@@ -669,6 +679,36 @@ export interface AgentResult {
   costUsd?: number;
   sessionId?: string;
   error?: string;
+  /** What the call took, where the adapter can tell: tokens, tool round-trips, turns. */
+  usage?: AgentUsage;
+}
+
+export interface AgentUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Tool calls the model made (every tool: run_code and the agent's own). */
+  toolCalls?: number;
+  turns?: number;
+}
+
+/** How a CLI starts Tether's Code Mode MCP server (stdio): the command and where its per-run files live. */
+export interface McpLaunch {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  /** A temp folder of this step's (0700) for per-run config files; removed when the step ends. */
+  dir: string;
+}
+
+export interface CodeModeRequest {
+  /** Runs one script (the in-process loop of the OpenAI-compatible adapter calls it directly). */
+  runner: { runCode(code: string): Promise<{ text: string; isError: boolean }>; description(): string };
+  /** Set for adapters that reach run_code over MCP. */
+  mcp?: McpLaunch;
+  /** The system-prompt note every agent gets. */
+  note: string;
+  /** Code Mode only for reading (Claude Code: --disallowedTools Grep Glob). */
+  readsOnly?: boolean;
 }
 
 export interface AgentAdapter {
@@ -685,6 +725,8 @@ export interface AgentAdapter {
   listModels?(): Promise<string[]>;
   /** Command that reopens this agent's interactive session for a step, run inside the run's worktree. */
   attachCommand?(sessionId?: string): { cmd: string; args: string[] } | undefined;
+  /** How it takes Code Mode's run_code: over a per-run MCP config, natively in its own loop, or not at all (direct only). */
+  codeMode?: 'mcp' | 'native';
 }
 
 // ---------- dashboard read models (Home) ----------
@@ -703,6 +745,8 @@ export interface RunCurrent {
 }
 /** What GET /api/runs adds to each run row. */
 export interface RunRowExtras {
+  /** The repo folder's real path, so a run started on a symlinked path (/tmp) still matches its project (/private/tmp). */
+  repoReal: string;
   branch: string;
   lastTs: number;
   steps: RunStep[];
@@ -747,12 +791,13 @@ export interface RosterPreview {
 }
 
 /** A run or a saved API request pinned to the sidebar (<home>/pins.json). */
+export const PIN_KINDS = ['run', 'request', 'workflow', 'file'] as const;
 export interface Pin {
-  kind: 'run' | 'request';
-  /** A run id, or a saved request id (`collection/name`). */
+  kind: (typeof PIN_KINDS)[number];
+  /** A run id, a saved request id (`collection/name`), a saved workflow name, or a file path in a project. */
   id: string;
   label: string;
-  /** Requests: the workspace the request is saved in. */
+  /** Requests and files: the workspace they belong to. */
   ws?: string;
 }
 

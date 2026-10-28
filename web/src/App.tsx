@@ -7,12 +7,13 @@ import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
 import { Home } from './home/Home';
+import { Inbox } from './home/Inbox';
 import type { WorkspaceRow } from './home/workspaces';
 import { ApiTab } from './http/ApiTab';
 import { bridge, useBridgeEvents } from './bridge';
 import { useHashRoute, usePoll, type Route, type Screen } from './hooks';
 import { OpenFolderDialog } from './projects/OpenFolderDialog';
-import { liveProjects, projectOf, samePin, usePins, useProjects } from './projects/projects';
+import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
 import { useTheme } from './theme';
@@ -26,10 +27,13 @@ import { useNotify } from './ui/notify';
 import { useAppSignals, useNotifyPref } from './useAppSignals';
 import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
+import { MCP_PATH, type McpServerView } from './settings/McpServers';
+import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
 import { SettingsDrawer } from './ui/studio/SettingsDrawer';
 import { Sidebar } from './ui/studio/Sidebar';
+import { isTyping, useGoKeys } from './ui/studio/useGoKeys';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './ui/studio/shell.css';
 
@@ -43,8 +47,6 @@ const COUNTS_MS = 5000;
 /** What the leave dialog says about a screen's unsaved work. */
 const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.', code: 'Some open files have edits that are not saved.' };
 
-const isTextField = (t: EventTarget | null) =>
-  t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 
 export function App() {
   return (
@@ -91,6 +93,9 @@ function Shell() {
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
   const { pins, save: savePins } = usePins();
   const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
+  /** Connected accounts: the sidebar's account row, and Settings → Accounts. */
+  const accounts = usePoll<AccountsView>(ACCOUNTS_PATH, ACCOUNTS_MS);
+  const mcp = usePoll<{ servers: McpServerView[] }>(route.tab === 'settings' ? MCP_PATH : null, 60_000);
   /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -114,7 +119,11 @@ function Shell() {
       ? { kind: 'run', id: screen.id, label: runLabel(screen.id) }
       : screen.tab === 'api' && apiOpen
         ? { kind: 'request', id: apiOpen.id, label: apiOpen.label, ...(projects.current ? { ws: projects.current.id } : {}) }
-        : undefined;
+        : screen.tab === 'builder' && screen.id
+          ? { kind: 'workflow', id: screen.id, label: screen.id }
+          : screen.tab === 'code' && screen.id && projects.current
+            ? { kind: 'file', id: screen.id, label: screen.id.split('/').pop()!, ws: projects.current.id }
+            : undefined;
   const savePinsOr = (next: Pin[]) => void savePins(next).catch(notify.fail);
   /** A file a run changed (from its diff) opens in Code, in the project that holds the run's folder. */
   const openFile = (repo: string, file: string) => {
@@ -140,8 +149,8 @@ function Shell() {
   };
   useBridgeEvents({ open: (path) => void openProject(path), command: (c) => c === 'welcome' && setWelcomeOpen(true) });
   const openPin = (x: Pin) => {
-    const to: Route = x.kind === 'run' ? { tab: 'runs', id: x.id } : { tab: 'api', id: x.id };
-    if (x.kind === 'request' && x.ws) switchProject(x.ws, () => goNow(to));
+    const to: Route = { tab: x.kind === 'run' ? 'runs' : x.kind === 'request' ? 'api' : x.kind === 'workflow' ? 'builder' : 'code', id: x.id };
+    if (x.ws) switchProject(x.ws, () => goNow(to));
     else go(to);
   };
 
@@ -150,17 +159,23 @@ function Shell() {
     if (route.tab === 'runs' && route.id) setLastRun(route.id);
     if (route.tab === 'code') setLastFile(route.id);
   }, [route]);
-  const keys = useRef({ settings: () => {}, folder: () => {} });
-  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder };
+  /** New run (the sidebar's compose, ⌘N, C): Home's Start a run, its task field focused. */
+  const compose = () => {
+    go({ tab: 'home' });
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.shell-main .home textarea')?.focus());
+  };
+  const keys = useRef({ settings: () => {}, folder: () => {}, compose: () => {} });
+  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder, compose };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
       if (k === ',') return e.preventDefault(), keys.current.settings();
       if (k === 'o' && !e.shiftKey) return e.preventDefault(), keys.current.folder();
+      if (k === 'n' && !e.shiftKey && !isTyping(e.target)) return e.preventDefault(), keys.current.compose();
       if (k !== 'k') return;
       // Ctrl-K edits text in fields (macOS: delete to end of line); only Meta-K is taken there
-      if (!e.metaKey && isTextField(e.target)) return;
+      if (!e.metaKey && isTyping(e.target)) return;
       e.preventDefault();
       setPalette(true);
     };
@@ -169,11 +184,14 @@ function Shell() {
   }, []);
 
   const openScreen = (s: Screen) => go(s === 'runs' && lastRun ? { tab: 'runs', id: lastRun } : s === 'code' && lastFile ? { tab: 'code', id: lastFile } : { tab: s });
+  useGoKeys(openScreen, compose);
   const openSettings = () => go({ tab: 'settings' });
   const settingsOpen = route.tab === 'settings';
   /** Where focus goes when Settings closes and its opener (a More menu item, the ⌘K field) is gone. */
   const settingsHome = () => shellRef.current?.querySelector<HTMLElement>(phone ? '.sl-bottombar [aria-haspopup="menu"]' : '.sl-side [aria-label="Settings"]');
   const list = projects.list.data ?? [];
+  /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
+  const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);
 
   return (
     <>
@@ -194,7 +212,10 @@ function Shell() {
               onGo={openScreen}
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
+              onCompose={compose}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
+              runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
+              account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
                 list,
                 current: projects.current?.id,
@@ -206,11 +227,12 @@ function Shell() {
                 onRemove: setRemoving,
                 onReveal: bridge() && ((w: WorkspaceRow) => bridge()!.revealInFinder(w.path)),
               }}
-              pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))) }}
+              pins={{ list: pins, canPin: !!pinHere && !pins.some((x) => samePin(x, pinHere)), onPin: () => pinHere && savePinsOr([...pins, pinHere]), onOpen: openPin, onUnpin: (x) => savePinsOr(pins.filter((y) => !samePin(x, y))), onReorder: savePinsOr }}
             />
           )}
           <main className="shell-main" tabIndex={-1}>
             {screen.tab === 'home' ? <Home onGo={go} /> : null}
+            {screen.tab === 'inbox' ? <Inbox onGo={go} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (
                 <Suspense fallback={<Loading loading lines={8} label="Loading Code" className="shell-loading" />}>
@@ -259,7 +281,7 @@ function Shell() {
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog

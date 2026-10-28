@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path';
 import { readPipeline } from './config.js';
 import { aorchSkills, claudeSkillPipeline, claudeSkills, skillPipeline } from './skills.js';
 import { detectTestCommand } from './composer.js';
-import { runProcess } from './proc.js';
+import { ghExec } from './accounts/github.js';
+import { defaultExec, type Exec } from './exec.js';
 import { applyOverrides, ensureIds } from './triggers.js';
 import { getWorkspace } from './workspace.js';
 import type { Pipeline, RunState } from './types.js';
@@ -35,11 +36,7 @@ export interface PrInfo {
   files: { path: string; additions: number; deletions: number }[];
 }
 
-export type Exec = (cmd: string, args: string[], cwd?: string, stdin?: string) => Promise<{ code: number | null; stdout: string; stderr: string }>;
-export const defaultExec: Exec = async (cmd, args, cwd = process.cwd(), stdin) => {
-  const r = await runProcess({ cmd, args, cwd, stdin, maxBuffer: 8_000_000 });
-  return { code: r.code, stdout: r.stdout, stderr: r.spawnError ?? r.stderr };
-};
+export { defaultExec, type Exec };
 
 const GH = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/i;
 const SHORT = /^([\w.-]+)\/([\w.-]+)#(\d+)$/;
@@ -273,7 +270,7 @@ export interface PrRunOpts {
 }
 
 export async function startPrRun(d: PrDeps, ref: PrRef, o: PrRunOpts): Promise<{ runId: string; info: PrInfo; repoDir: string; done: Promise<RunState> }> {
-  const exec = d.exec ?? defaultExec;
+  const exec = d.exec ?? ghExec(d.home);
   const info = await fetchPr(ref, exec);
   let repoDir = o.repoDir;
   if (!repoDir && typeof o.workspace === 'string') {

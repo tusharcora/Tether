@@ -19,12 +19,13 @@ beforeEach(() => {
 });
 
 describe('CommandMenu', () => {
-  it('lists Go to entries for every screen in sidebar order', () => {
+  it('lists Go to entries for every screen in sidebar order, each with its G shortcut', () => {
     open();
-    for (const s of ['Home', 'Runs', 'Code', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
+    for (const s of ['Home', 'Inbox', 'Runs', 'Code', 'Builder', 'Crew', 'API', 'Graph', 'Triggers']) expect(screen.getByText(`Go to ${s}`)).toBeTruthy();
     expect(screen.getAllByText('Go to').length).toBeGreaterThan(0);
     const labels = screen.getAllByText(/^Go to \w+$/).map((e) => e.textContent);
-    expect(labels).toEqual(['Go to Home', 'Go to Runs', 'Go to Code', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
+    expect(labels).toEqual(['Go to Home', 'Go to Inbox', 'Go to Runs', 'Go to Code', 'Go to Builder', 'Go to Crew', 'Go to API', 'Go to Graph', 'Go to Triggers']);
+    for (const k of ['G H', 'G I', 'G U', 'G C', 'G B', 'G R', 'G A', 'G G', 'G T', '⌘,']) expect(screen.getByText(k)).toBeTruthy();
   });
   it('goes to a screen', () => {
     const p = open();

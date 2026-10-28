@@ -1,12 +1,14 @@
-import { ChevronRight, Ellipsis, Plus, type LucideIcon } from 'lucide-react';
-import { useId, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react';
+import { ChevronRight, Ellipsis, type LucideIcon } from 'lucide-react';
+import { useId, useState, type DragEvent, type FocusEvent, type PointerEvent, type ReactNode } from 'react';
 import { Loading } from '../../components/Loading';
 import { cn } from '../cn';
 import { InlineError } from './InlineError';
 import './shell.css';
 import { useMenu } from './useMenu';
 
-/** What a sidebar control spreads on itself so the collapsed sidebar can show its label as a tooltip. */
+export type Signal = 'needs' | 'live';
+
+/** What a rail control spreads on itself so the collapsed sidebar can show its label as a tooltip. */
 export interface TipProps {
   onPointerEnter: (e: PointerEvent<HTMLElement>) => void;
   onPointerLeave: () => void;
@@ -15,44 +17,50 @@ export interface TipProps {
   'aria-describedby'?: string;
 }
 
-export type Signal = 'needs' | 'live';
-
 /**
- * One sidebar row: icon and label, the current one as a card. Expanded it shows its meta or count; collapsed, a dot
- * stands in for the count and the label lives in the tooltip (the button keeps it as its name either way).
+ * One dense sidebar row (28 px, 13 px text): a line icon (or a glyph), the label, and on the right a count, a meta or a
+ * shortcut hint that shows on hover. The current page is a filled row with aria-current="page". On the collapsed rail only
+ * the icon shows: the label moves to the tooltip (the button keeps it as its name) and a count becomes a small dot.
  */
-export function SideItem(p: {
+export function SideRow(p: {
   label: string;
-  Icon: LucideIcon;
-  open: boolean;
+  /** The button's accessible name when it should say more than the label (a run's state). */
+  name?: string;
+  Icon?: LucideIcon;
+  lead?: ReactNode;
   current?: boolean;
-  /** The row is the page being shown (nav tabs): aria-current="page". */
+  /** The row is a page (top items, Workspace, Settings): aria-current="page" when current. */
   page?: boolean;
+  count?: { n: number; tone?: Signal };
   meta?: ReactNode;
-  count?: { n: number; tone: Signal };
-  /** A live dot (a project with a run going). */
-  live?: boolean;
-  small?: boolean;
+  /** Shown on hover and focus only (Linear's `G C`). */
+  hint?: ReactNode;
   onClick: () => void;
-  tip: TipProps;
+  /** Extra controls on the row's right (a pin's ⋯), outside the button. */
+  extra?: ReactNode;
+  className?: string;
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: (e: DragEvent) => void;
+  onDrop?: () => void;
+  /** Drawn on the collapsed rail, with this tooltip wiring. */
+  rail?: TipProps;
 }) {
   const count = p.count && p.count.n > 0 ? p.count : undefined;
   return (
-    <button
-      type="button"
-      className={cn('sl-side-item', { current: !!p.current, small: !!p.small })}
-      aria-label={p.label}
-      aria-current={p.page && p.current ? 'page' : undefined}
-      onClick={p.onClick}
-      {...p.tip}
-    >
-      <p.Icon size={p.small ? 18 : 19} strokeWidth={1.8} aria-hidden="true" />
-      {p.open ? <span className="sl-side-label">{p.label}</span> : null}
-      {p.open && p.meta ? <span className="sl-side-meta">{p.meta}</span> : null}
-      {p.open && count ? <span className={cn('sl-side-count', count.tone)}>{count.n}</span> : null}
-      {!p.open && count ? <span className={cn('sl-side-dot', count.tone)} aria-hidden="true" /> : null}
-      {p.live ? <span className="sl-side-live" aria-hidden="true" /> : null}
-    </button>
+    <div className={cn('sl-side-row', p.className, { current: !!p.current })} draggable={p.draggable} onDragStart={p.onDragStart} onDragOver={p.onDragOver} onDrop={p.onDrop}>
+      <button type="button" className="sl-side-item" aria-label={p.name ?? p.label} aria-current={p.page && p.current ? 'page' : undefined} onClick={p.onClick} {...p.rail}>
+        <span className="sl-side-icon" aria-hidden={p.lead ? undefined : true}>
+          {p.lead ?? (p.Icon ? <p.Icon size={16} strokeWidth={1.7} aria-hidden="true" /> : null)}
+        </span>
+        {p.rail ? null : <span className="sl-side-label">{p.label}</span>}
+        {!p.rail && p.meta ? <span className="sl-side-meta">{p.meta}</span> : null}
+        {!p.rail && count ? <span className={cn('sl-side-count', count.tone)}>{count.n}</span> : null}
+        {!p.rail && p.hint ? <span className="sl-side-hint">{p.hint}</span> : null}
+        {p.rail && count ? <span className={cn('sl-side-dot', count.tone)} aria-hidden="true" /> : null}
+      </button>
+      {p.rail ? null : p.extra}
+    </div>
   );
 }
 
@@ -62,13 +70,13 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-/** A section's ⋯ button and its menu. */
-function SideMenu(p: { label: string; items: MenuItem[] }) {
+/** A ⋯ (or other) button and its popup menu. */
+export function SideMenu(p: { label: string; items: MenuItem[]; icon?: ReactNode; className?: string }) {
   const menu = useMenu();
   return (
-    <span className="sl-side-menu-anchor">
+    <span className={cn('sl-side-menu-anchor', p.className)}>
       <button ref={menu.triggerRef} type="button" className="sl-side-icon-btn" aria-label={p.label} title={p.label} aria-haspopup="menu" aria-expanded={menu.open} onClick={menu.toggle}>
-        <Ellipsis size={15} aria-hidden="true" />
+        {p.icon ?? <Ellipsis size={15} aria-hidden="true" />}
       </button>
       {menu.open ? (
         <div ref={menu.menuRef} className="sl-menu sl-side-menu" role="menu" aria-label={p.label} onKeyDown={menu.onMenuKey}>
@@ -83,54 +91,65 @@ function SideMenu(p: { label: string; items: MenuItem[] }) {
   );
 }
 
+const FOLD_KEY = (id: string) => `tether.side.${id}`;
+function storedFolded(id: string): boolean {
+  try {
+    return localStorage.getItem(FOLD_KEY(id)) === 'folded';
+  } catch {
+    return false;
+  }
+}
+
 /**
- * A collapsible sidebar section (Projects, Pinned): a disclosure button with a chevron, + and ⋯. Collapsed, the header
- * goes and the rows stay as icons whether or not the section is folded. Until its list first answers it shows the
- * loading skeleton (nothing when collapsed), and a failed first load says so with a retry, never "nothing here".
+ * A sidebar section (Workspace, Runs, Favorites): its header is a disclosure button that folds the rows, remembered on
+ * this device. Hover shows the header's actions (＋, View all) like Linear. Until its list first answers it shows the
+ * loading skeleton; a failed first load says so with a retry, never "nothing here".
  */
 export function SideSection(p: {
+  id: string;
   title: string;
-  open: boolean;
-  addLabel: string;
-  addDisabled?: boolean;
-  onAdd: () => void;
-  moreLabel: string;
-  menu: MenuItem[];
-  empty: string;
+  /** The disclosure's accessible name when the title alone would repeat a nav row's (Runs → "Recent runs"). */
+  label?: string;
+  count?: number;
+  actions?: ReactNode;
+  empty?: string;
   loading?: boolean;
   error?: { message: string; onRetry: () => void };
   children: ReactNode[];
 }) {
-  const [expanded, setExpanded] = useState(true);
-  const id = useId();
-  const show = expanded || !p.open;
+  const [folded, setFolded] = useState(() => storedFolded(p.id));
+  const headId = useId();
+  const fold = () => {
+    setFolded(!folded);
+    try {
+      localStorage.setItem(FOLD_KEY(p.id), folded ? 'open' : 'folded');
+    } catch {
+      /* storage unavailable */
+    }
+  };
   return (
-    <section className="sl-side-section" aria-labelledby={p.open ? id : undefined} aria-label={p.open ? undefined : p.title}>
-      {p.open ? (
-        <div className="sl-side-section-head">
-          <button type="button" id={id} className="sl-side-disclosure" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-            <ChevronRight className="sl-side-chevron" size={14} strokeWidth={2} aria-hidden="true" />
-            {p.title}
-          </button>
-          <button type="button" className="sl-side-icon-btn" aria-label={p.addLabel} title={p.addLabel} disabled={p.addDisabled} onClick={p.onAdd}>
-            <Plus size={16} aria-hidden="true" />
-          </button>
-          <SideMenu label={p.moreLabel} items={p.menu} />
-        </div>
-      ) : null}
-      {show ? (
+    <section className="sl-side-section" aria-labelledby={headId}>
+      <div className="sl-side-section-head">
+        <button type="button" id={headId} className="sl-side-disclosure" aria-label={p.label} aria-expanded={!folded} onClick={fold}>
+          <span className="sl-side-section-title">{p.title}</span>
+          <ChevronRight className="sl-side-chevron" size={12} strokeWidth={2} aria-hidden="true" />
+        </button>
+        {p.actions ? <span className="sl-side-section-actions">{p.actions}</span> : null}
+        {p.count !== undefined && p.count > 0 ? <span className="sl-side-section-count">{p.count}</span> : null}
+      </div>
+      {folded ? null : (
         <div className="sl-side-rows">
           {p.children.length ? (
             p.children
-          ) : !p.open ? null : p.loading ? (
+          ) : p.loading ? (
             <Loading loading lines={2} label={`Loading ${p.title.toLowerCase()}`} className="sl-side-empty" />
           ) : p.error ? (
             <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />
-          ) : (
+          ) : p.empty ? (
             <p className="sl-side-empty">{p.empty}</p>
-          )}
+          ) : null}
         </div>
-      ) : null}
+      )}
     </section>
   );
 }

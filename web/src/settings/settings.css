@@ -1,0 +1,24 @@
+/* Settings → Accounts and Tools */
+.acc-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.acc-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
+.acc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.acc-head b { color: var(--ink); font-weight: 600; }
+.acc-body, .acc-option, .acc-device { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.acc-body p { margin: 0; color: var(--ink); }
+.acc-body .sl-meta { color: var(--mut); }
+.acc-scopes { display: flex; flex-wrap: wrap; gap: 4px; }
+.acc-scopes code { padding: 1px 6px; border-radius: 5px; background: var(--s2); font-size: 11.5px; }
+.acc-code-row { display: flex; align-items: center; gap: 8px; }
+.acc-code { padding: 6px 10px; border: 1px solid var(--line2); border-radius: 8px; font-family: var(--font-code); font-size: 18px; letter-spacing: .08em; user-select: all; }
+.acc-device a { color: var(--accInk); }
+.acc-client { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
+.acc-client > :first-child { flex: 1; }
+.acc-actions { display: flex; gap: 8px; }
+.mcp-panel { display: flex; flex-direction: column; gap: 10px; }
+.mcp-panel > p { margin: 0; }
+.mcp-target { overflow-wrap: anywhere; font-size: 12px; }
+.mcp-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.mcp-form > * { width: 100%; }
+.mcp-form > button { width: auto; }
+.acc-note { margin: 0; color: var(--mut); font-size: 12.5px; line-height: 1.5; }
+.acc-body .acc-note { color: var(--mut); }

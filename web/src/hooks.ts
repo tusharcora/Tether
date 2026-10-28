@@ -75,11 +75,11 @@ export function useUnloadWarning(on: boolean): void {
   }, [on]);
 }
 
-export type Screen = 'home' | 'runs' | 'code' | 'builder' | 'crew' | 'api' | 'graph' | 'triggers';
+export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'api' | 'graph' | 'triggers';
 export type Tab = Screen | 'settings';
-export const SCREENS: Screen[] = ['home', 'runs', 'code', 'builder', 'crew', 'api', 'graph', 'triggers'];
+export const SCREENS: Screen[] = ['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'api', 'graph', 'triggers'];
 const TAB_IDS: readonly string[] = [...SCREENS, 'settings'];
-export const TAB_LABEL: Record<Tab, string> = { home: 'Home', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', api: 'API', graph: 'Graph', triggers: 'Triggers', settings: 'Settings' };
+export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', api: 'API', graph: 'Graph', triggers: 'Triggers', settings: 'Settings' };
 
 export interface Route {
   tab: Tab;

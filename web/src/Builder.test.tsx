@@ -120,6 +120,22 @@ describe('Builder', () => {
     expect((await screen.findAllByText(/follow .* \(set in Crew\)/)).length).toBeGreaterThan(0);
   });
 
+  it('sets a step’s tool calls to follow its bot, Code Mode or Direct, and checks the pipeline with it', async () => {
+    const { container } = renderApp(<Builder onStarted={() => {}} />);
+    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
+    fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    const group = await screen.findByRole('group', { name: 'Tool calls' });
+    expect(within(group).getByRole('button', { name: 'Follow bot' }).getAttribute('aria-pressed')).toBe('true');
+    const before = calls('POST', '/api/preflight').length;
+    fireEvent.click(within(group).getByRole('button', { name: 'Direct' }));
+    expect(within(group).getByRole('button', { name: 'Direct' }).getAttribute('aria-pressed')).toBe('true');
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(before));
+    const sent = calls('POST', '/api/preflight').at(-1)![2] as { nodes: { id: string; toolStyle?: string }[] };
+    expect(sent.nodes.find((n) => n.id === 'code')!.toolStyle).toBe('direct');
+    fireEvent.click(within(group).getByRole('button', { name: 'Follow bot' }));
+    expect(within(group).getByRole('button', { name: 'Follow bot' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('adds an ECC skill as a step', async () => {
     renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));

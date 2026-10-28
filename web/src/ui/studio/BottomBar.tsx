@@ -6,7 +6,8 @@ import './shell.css';
 import { useMenu } from './useMenu';
 
 const MAIN: Screen[] = ['home', 'runs', 'builder', 'crew', 'api'];
-const MORE = NAV.filter((n) => !MAIN.includes(n.id));
+// the bottom bar stays as it was before the Inbox route (Home shows what needs you on a phone)
+const MORE = NAV.filter((n) => !MAIN.includes(n.id) && n.id !== 'inbox');
 
 export interface BottomBarProps {
   active: Screen;

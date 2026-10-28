@@ -56,8 +56,11 @@ const inside = (child: string, parent: string) => child === parent || child.star
 /** The registered project that holds a folder (the deepest wins, as the server's run lookup does). */
 export const projectOf = (list: WorkspaceRow[], dir: string): WorkspaceRow | undefined => list.filter((w) => inside(dir, w.path)).sort((a, b) => b.path.length - a.path.length)[0];
 
+/** The project a run belongs to: by the repo's real path (project paths are real paths), else the path as given. */
+export const runProject = (list: WorkspaceRow[], r: Pick<RunRow, 'repo'> & { repoReal?: string }): WorkspaceRow | undefined => (r.repoReal ? projectOf(list, r.repoReal) : undefined) ?? projectOf(list, r.repo);
+
 /** Ids of the projects with a live run (the sidebar's blue dots). */
-export const liveProjects = (list: WorkspaceRow[], runs: RunRow[]): Set<string> => new Set(runs.filter((r) => r.live).flatMap((r) => projectOf(list, r.repo)?.id ?? []));
+export const liveProjects = (list: WorkspaceRow[], runs: RunRow[]): Set<string> => new Set(runs.filter((r) => r.live).flatMap((r) => runProject(list, r)?.id ?? []));
 
 /** Runs started in a project's folder (the Runs screen's "only this project" filter). */
 export const runsIn = (rows: RunRow[], w: WorkspaceRow): RunRow[] => rows.filter((r) => projectOf([w], r.repo));

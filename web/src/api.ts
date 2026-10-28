@@ -78,6 +78,16 @@ export const ago = (t: number) => {
   return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
 };
 
+const kTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+/** A step's tool-call metrics in one line: Code Mode or direct, run_code runs, connector calls, round-trips and tokens. */
+export function metricsLine(e: Extract<StoredEvent['event'], { type: 'node.metrics' }>): string {
+  const parts = [e.toolStyle === 'code' ? 'Code Mode' : e.fallback ? 'direct (no Code Mode route)' : 'direct'];
+  if (e.toolStyle === 'code') parts.push(`${e.runCode} run_code`, `${e.connectorCalls} connector call${e.connectorCalls === 1 ? '' : 's'}`);
+  if (e.roundTrips !== undefined) parts.push(`${e.roundTrips} tool round-trip${e.roundTrips === 1 ? '' : 's'}`);
+  if (e.inputTokens || e.outputTokens) parts.push(`${kTokens((e.inputTokens ?? 0) + (e.outputTokens ?? 0))} tokens`);
+  return parts.join(' · ');
+}
+
 /** Human description of an event for the timeline; undefined = not shown. */
 export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => string): { text: string; tone: string } | undefined {
   switch (e.type) {
@@ -123,6 +133,8 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       return { text: `${nameOf(e.node)} queued again — ${e.reason}`, tone: 'wait' };
     case 'manager.cost':
       return undefined;
+    case 'node.metrics':
+      return { text: `${nameOf(e.node)} · ${metricsLine(e)}`, tone: 'info' };
     case 'gate.result':
       return { text: `${nameOf(e.node)} gate ${e.ok ? 'passed' : `failed (exit ${e.exitCode})`}`, tone: e.ok ? 'done' : 'error' };
     case 'loop':

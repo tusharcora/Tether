@@ -68,6 +68,8 @@ export function normalizePipeline(raw: unknown, fallbackName = 'untitled'): Pipe
       model: str(rn.model),
       prompt: str(rn.prompt),
       permissionMode: str(rn.permissionMode),
+      toolStyle: rn.toolStyle === 'code' || rn.toolStyle === 'direct' ? rn.toolStyle : undefined,
+      codeReads: bool(rn.codeReads),
       readOnly: bool(rn.readOnly),
       includeDiff: bool(rn.includeDiff),
       verdict: bool(rn.verdict),

@@ -32,7 +32,8 @@ import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Prepared } from './eccImport.js';
 import { createInterface } from 'node:readline/promises';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
-import { DEFAULT_EVENTS, alreadyRan, defaultExec, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
+import { ghExec } from './accounts/github.js';
+import { DEFAULT_EVENTS, alreadyRan, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
 import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, writeBundle, type Bundle } from './wsexport.js';
@@ -87,7 +88,8 @@ Usage
   tether delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
   tether show <runId>                  node table, cost, coach findings
   tether serve [--port 4177]           API + dashboard (loopback only)
-  tether doctor                        which agent CLIs are installed
+  tether doctor                        which agent CLIs are installed (and which take Code Mode)
+  tether codemode-mcp --session <file> the Code Mode MCP server (run_code) an agent CLI starts for one step
   tether init                          install example pipelines
   tether pipelines                     list saved pipelines
   tether vault search "<query>"        query the knowledge graph
@@ -520,6 +522,15 @@ async function main() {
   if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') {
     await banner('durable orchestrator for CLI coding agents');
     return console.log(prettyHelp());
+  }
+
+  // the Code Mode MCP server an agent CLI starts for one step (stdio): it only needs its session file
+  if (cmd === 'codemode-mcp') {
+    const at = argv.indexOf('--session');
+    const file = at > 0 ? argv[at + 1] : undefined;
+    if (!file) fail('usage: tether codemode-mcp --session <file>');
+    const { serveCodeModeMcp } = await import('./codemode/mcpMain.js');
+    return serveCodeModeMcp(file);
   }
 
   const { values: v, positionals: pos } = parseArgs({
@@ -1440,7 +1451,7 @@ async function main() {
             console.log(dim('  note: triggers for * (any repo) only work through the webhook; polling needs a named repo'));
           }
           for (const r of polled()) {
-            const list = await defaultExec('gh', ['pr', 'list', '-R', r.repo, '--state', 'open', '--limit', '30', '--json', 'number,headRefOid,isDraft,isCrossRepository,labels']);
+            const list = await ghExec(cfg.home)('gh', ['pr', 'list', '-R', r.repo, '--state', 'open', '--limit', '30', '--json', 'number,headRefOid,isDraft,isCrossRepository,labels']);
             if (list.code !== 0) { console.log(`${amber('!')} ${r.repo}: ${list.stderr.trim().split('\n')[0] || 'gh failed'}`); continue; }
             let prs: { number: number; headRefOid: string; isDraft: boolean; isCrossRepository: boolean; labels: { name: string }[] }[] = [];
             try { prs = JSON.parse(list.stdout); } catch { continue; }
@@ -1540,7 +1551,7 @@ async function main() {
           d.ok ? green('✔') : red('✘'),
           bold(id),
           d.ok ? cyan(d.version ?? '') : dim(d.detail ?? 'unavailable'),
-          d.ok ? dim(`cost ${a.reportsCost ? green('reported') : amber('unknown')}  ·  resume ${a.supportsResume ? green('yes') : dim('no')}`) : '',
+          d.ok ? dim(`cost ${a.reportsCost ? green('reported') : amber('unknown')}  ·  resume ${a.supportsResume ? green('yes') : dim('no')}  ·  code mode ${a.codeMode ? green(a.codeMode) : dim('direct only')}`) : '',
         ]);
       }
       console.log(box(table(rows), { title: 'agents', width: caps.cols, border: BRAND }).join('\n'));

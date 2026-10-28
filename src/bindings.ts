@@ -6,11 +6,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CREW, crewFor } from './bots.js';
-import type { Pipeline } from './types.js';
+import type { Pipeline, ToolStyle } from './types.js';
 
 export interface Binding {
   agent: string;
   model?: string;
+  /** Code Mode (default) or direct tool calls for this bot's steps. */
+  toolStyle?: ToolStyle;
+  /** Code Mode only for reading. */
+  codeReads?: boolean;
 }
 export type Bindings = Record<string, Binding>;
 
@@ -23,7 +27,7 @@ export function loadBindings(home: string): Bindings {
     const out: Bindings = {};
     for (const [bot, b] of Object.entries(raw ?? {})) {
       const v = b as Partial<Binding>;
-      if (BOT_RE.test(bot) && v && typeof v.agent === 'string' && v.agent) out[bot] = { agent: v.agent, ...(typeof v.model === 'string' && v.model ? { model: v.model } : {}) };
+      if (BOT_RE.test(bot) && v && typeof v.agent === 'string' && v.agent) out[bot] = { agent: v.agent, ...(typeof v.model === 'string' && v.model ? { model: v.model } : {}), ...(v.toolStyle === 'direct' || v.toolStyle === 'code' ? { toolStyle: v.toolStyle } : {}), ...(v.codeReads === true ? { codeReads: true } : {}) };
     }
     return out;
   } catch {
@@ -41,7 +45,7 @@ export function saveBindings(home: string, b: Bindings): void {
 export function link(home: string, bot: string, binding: Binding): Bindings {
   if (!BOT_RE.test(bot)) throw new Error(`invalid bot name "${bot}"`);
   const b = loadBindings(home);
-  b[bot] = binding.model ? { agent: binding.agent, model: binding.model } : { agent: binding.agent };
+  b[bot] = { agent: binding.agent, ...(binding.model ? { model: binding.model } : {}), ...(binding.toolStyle ? { toolStyle: binding.toolStyle } : {}), ...(binding.codeReads ? { codeReads: true } : {}) };
   saveBindings(home, b);
   return b;
 }
@@ -79,8 +83,11 @@ export function applyBindings(p: Pipeline, b: Bindings): Pipeline {
       const agent = n.agent ?? bound?.agent;
       let model = n.model ?? (bound && agent === bound.agent ? bound.model : undefined);
       if (!model && (agent || !n.spawn)) model = hintFor(who, agent);
-      if (agent === n.agent && model === n.model) return n;
-      return { ...n, ...(agent ? { agent } : {}), ...(model ? { model } : {}) };
+      // the step's own tool style wins; else its bot's
+      const toolStyle = n.toolStyle ?? bound?.toolStyle;
+      const codeReads = n.codeReads ?? bound?.codeReads;
+      if (agent === n.agent && model === n.model && toolStyle === n.toolStyle && codeReads === n.codeReads) return n;
+      return { ...n, ...(agent ? { agent } : {}), ...(model ? { model } : {}), ...(toolStyle ? { toolStyle } : {}), ...(codeReads ? { codeReads } : {}) };
     }),
   };
 }

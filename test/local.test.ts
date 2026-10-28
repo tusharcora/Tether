@@ -202,7 +202,8 @@ describe('engine with a bot linked to a local model', () => {
     const home = tmp('home-');
     const registry = new AdapterRegistry().register(new MockAdapter()).register(new OpenAICompatAdapter('local', { baseUrl: base }));
     const store = Store.open(':memory:');
-    const engine = new Engine(store, { home, registry, bindings: () => ({ coder: { agent: 'local', model: 'tiny-coder' } }) });
+    // direct tool calls (the bot opts out of Code Mode): the adapter's own write_file
+    const engine = new Engine(store, { home, registry, bindings: () => ({ coder: { agent: 'local', model: 'tiny-coder', toolStyle: 'direct' } }) });
     script = [{ tools: [{ name: 'write_file', args: { path: 'LOCAL.md', content: 'written by a local model\n' } }] }, { content: 'finished' }];
     seen.length = 0;
     const pipeline = normalizePipeline({
@@ -217,6 +218,21 @@ describe('engine with a bot linked to a local model', () => {
     expect(s.nodes.code!.commit).toBeTruthy();
     expect(seen[0]!.model).toBe('tiny-coder');
     expect(readFileSync(join(s.workdir, 'LOCAL.md'), 'utf8')).toBe('written by a local model\n');
+  });
+
+  it('by default writes through run_code (Code Mode) on the bound local endpoint', async () => {
+    const repo = makeRepo();
+    const registry = new AdapterRegistry().register(new MockAdapter()).register(new OpenAICompatAdapter('local', { baseUrl: base }));
+    const store = Store.open(':memory:');
+    const engine = new Engine(store, { home: tmp('home-'), registry, bindings: () => ({ coder: { agent: 'local', model: 'tiny-coder' } }) });
+    script = [{ tools: [{ name: 'run_code', args: { code: 'return await repo.write("LOCAL.md", "written by a local model\\n")' } }] }, { content: 'finished' }];
+    seen.length = 0;
+    const pipeline = normalizePipeline({ name: 'bound', nodes: [{ id: 'code', kind: 'agent', role: 'coder' }, { id: 'tests', kind: 'gate', command: 'test -f LOCAL.md', fixNode: 'code' }], edges: [{ from: 'code', to: 'tests' }] });
+    const id = await engine.start({ pipeline, task: 'make a file', repo });
+    const s = await engine.wait(id);
+    expect(s.status).toBe('done');
+    expect(readFileSync(join(s.workdir, 'LOCAL.md'), 'utf8')).toBe('written by a local model\n');
+    expect(store.events(id).map((e) => e.event).find((e) => e.type === 'node.metrics')).toMatchObject({ toolStyle: 'code', runCode: 1, connectorCalls: 1, roundTrips: 1 });
   });
 
   it('fails preflight when a bot is linked to an agent that does not exist', async () => {

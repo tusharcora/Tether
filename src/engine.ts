@@ -23,6 +23,8 @@ let harnessWarned = false; // log a broken harness store once per process, not o
 import { CREW, crewFor } from './bots.js';
 import { TeamError, cleanAnswerText, TEAM_DEFAULT_BUDGET_USD, TEAM_MAX_BUDGET_USD, askToQuestion, clampRounds, defaultPlan, extractAny, freshId, parsePlan as parseTeamPlan, parseQuestions, planningPrompt, recommendedAnswers, stripControl, WRITES_QUESTION, type BotSummary } from './team.js';
 import { applyBindings, hintFor, type Bindings } from './bindings.js';
+import { CodeModeHost } from './codemode/host.js';
+import { openStepCodeMode, type StepCodeMode } from './codemode/step.js';
 import { reflect } from './lessons.js';
 import { Vault } from './vault.js';
 import { resolveWorkspace, snapshot } from './workspace.js';
@@ -183,6 +185,8 @@ export class Engine {
   private noReflect = new Set<string>();
   /** Live probe replays: their harness override and spend estimate. */
   private probes = new Map<string, ProbeRun>();
+  /** Where CLI agents' run_code lands (started on the first Code Mode step). */
+  private readonly codeMode = new CodeModeHost();
   /** When each live run's current execution pass began, for the wall-clock limit (managers check it too). */
   private wallStart = new Map<string, number>();
   private teams = new Map<string, TeamMeta>();
@@ -1669,6 +1673,10 @@ export class Engine {
     return answer > other;
   }
 
+  /**
+   * One attempt of an agent step, with Code Mode around it (spec §4): the step's run_code session (and, for CLI agents,
+   * the per-run MCP server) lives for the attempt, and its metrics land on the timeline when it ends, however it ends.
+   */
   private async runAgentOnce(
     runId: string,
     node: PipelineNode,
@@ -1677,6 +1685,33 @@ export class Engine {
     /** Spend of the steps waiting on this one (hand-off delegators) that is not in the log yet. */
     unrecorded = 0,
   ): Promise<{ ok: boolean; aborted?: boolean; /** The step is waiting for the person to answer a question; it has not finished. */ paused?: boolean; output: string; error?: string }> {
+    const cm = await openStepCodeMode({
+      host: this.codeMode,
+      adapter: this.opts.registry.get(node.agent ?? 'claude'),
+      node,
+      state: this.state(runId),
+      home: this.opts.home,
+      store: this.store,
+      vault: this.opts.vault,
+      onNote: (text) => this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[note] ${text}\n` }),
+    });
+    try {
+      return await this.runAgentAttempt(runId, node, runSignal, failure, unrecorded, cm);
+    } finally {
+      await cm.close().catch(() => undefined);
+      const m = cm.metrics(node.id);
+      if (m) this.store.append(runId, m);
+    }
+  }
+
+  private async runAgentAttempt(
+    runId: string,
+    node: PipelineNode,
+    runSignal: AbortSignal,
+    failure: { check: string; output: string } | undefined,
+    unrecorded: number,
+    cm: StepCodeMode,
+  ): Promise<{ ok: boolean; aborted?: boolean; paused?: boolean; output: string; error?: string }> {
     const state = this.state(runId);
     const ns = state.nodes[node.id]!;
     const attempt = ns.attempts + 1;
@@ -1796,9 +1831,10 @@ export class Engine {
           signal: sig,
           mock: node.mock,
           verdictNode: node.verdict,
+          ...(cm.request ? { codeMode: cm.request } : {}),
           onChunk,
           onSession: (id) => this.store.append(runId, { type: 'node.session', node: node.id, sessionId: id }),
-        });
+        }).then(cm.record);
       } catch (err) {
         return { output: '', exitCode: 1, error: (err as Error).message };
       }

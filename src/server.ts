@@ -10,6 +10,9 @@ import { loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
+import { GithubAccount, ghExec } from './accounts/github.js';
+import { accountsRoute } from './accounts/routes.js';
+import { codemodeRoute } from './codemode/routes.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -54,6 +57,8 @@ export interface ServerOptions {
   exec?: Exec;
   /** Fetches the ECC checkout for `POST /api/crew/import`; defaults to cloning it. Tests copy a fixture instead. */
   eccFetch?: Fetch;
+  /** The GitHub account behind Settings → Accounts; tests give one with a fake `gh`, GitHub and Keychain. */
+  github?: GithubAccount;
 }
 
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
@@ -238,6 +243,9 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
+  const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
+  /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
+  const exec = o.exec ?? ghExec(cfg.home);
   type Detected = { ok: boolean; version?: string; detail?: string; reportsCost: boolean; supportsResume: boolean };
   let doctorCache: { at: number; data: Record<string, Detected> } | undefined;
   /** Each adapter's detect() result (installed, version), kept for 30 s. */
@@ -307,6 +315,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
+    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github }, req, res, url);
+    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
@@ -331,7 +341,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     // ---- crew: bot <-> agent/model links (read live by the engine at every run start) ----
     if (p === '/api/bots' && m === 'GET') {
       if (!modelsCache || Date.now() - modelsCache.at > 30_000) {
-        const out: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> = {};
+        const out: Record<string, { ok: boolean; version?: string; detail?: string; models: string[]; codeMode: 'mcp' | 'native' | null }> = {};
         await Promise.all(
           registry.ids().map(async (id) => {
             const a = registry.get(id);
@@ -344,7 +354,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
                 /* best effort */
               }
             }
-            out[id] = { ok: d.ok, version: d.version, detail: d.detail, models };
+            out[id] = { ok: d.ok, version: d.version, detail: d.detail, models, codeMode: a.codeMode ?? null };
           }),
         );
         modelsCache = { at: Date.now(), data: out };
@@ -365,7 +375,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (!registry.ids().includes(agent)) throw new HttpError(400, `unknown agent "${agent}"`);
         const model = typeof body.model === 'string' ? body.model.trim() : '';
         if (model.length > 200 || /[\n\r]/.test(model)) throw new HttpError(400, 'invalid model name');
-        link(cfg.home, role, { agent, ...(model ? { model } : {}) });
+        if (body.toolStyle !== undefined && body.toolStyle !== 'code' && body.toolStyle !== 'direct') throw new HttpError(400, '"toolStyle" must be "code" or "direct"');
+        link(cfg.home, role, { agent, ...(model ? { model } : {}), ...(body.toolStyle === 'direct' ? { toolStyle: 'direct' as const } : {}), ...(body.codeReads === true ? { codeReads: true } : {}) });
         return send(res, 200, { ok: true }), true;
       }
       if (m === 'DELETE') {
@@ -661,7 +672,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       }
       let info;
       try {
-        info = await fetchPr(ref, o.exec);
+        info = await fetchPr(ref, exec);
       } catch (e) {
         throw new HttpError(502, (e as Error).message);
       }
@@ -674,7 +685,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       refreshCrew(cfg.home);
       const at = () => new Date().toISOString();
       try {
-        const started = await startPrRun({ home: cfg.home, engine, exec: o.exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model });
+        const started = await startPrRun({ home: cfg.home, engine, exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model });
         started.done.catch(() => undefined);
         recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: 'started', runId: started.runId });
         return send(res, 200, { matches: true, why: verdict.why, fired: true, runId: started.runId, pr }), true;

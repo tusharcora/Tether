@@ -69,6 +69,8 @@ describe('pins', () => {
     const pins = [
       { kind: 'run', id: 'r-1', label: 'Add rate limiting' },
       { kind: 'request', id: 'crew/list', label: 'List crew', ws: 'api' },
+      { kind: 'workflow', id: 'plan-code-review', label: 'plan-code-review' },
+      { kind: 'file', id: 'README.md', label: 'README.md', ws: 'api' },
     ];
     expect((await api('PUT', '/api/pins', { pins })).json).toEqual({ pins });
     expect((await api('GET', '/api/pins')).json).toEqual({ pins });
