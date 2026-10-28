@@ -106,7 +106,11 @@ describe('SettingsPage', () => {
     // long help is folded until asked for
     expect(screen.getByRole('button', { name: /Why loopback only/ }).getAttribute('aria-expanded')).toBe('false');
     // it covers the content area like a page, the screen underneath stays mounted (grid cell overlay, not a drawer)
-    expect(cssRule('ui/studio/settings-page.css', '.st-page')).toContain('grid-area: 1 / -2 / 2 / -1');
+    expect(cssRule('ui/studio/settings-page.css', '.st-page')).toContain('grid-area: 1 / 2');
+    // the content area sits in that same cell explicitly (auto-placed, it would be pushed aside into a new column)
+    expect(cssRule('ui/studio/shell.css', '.shell-main')).toContain('grid-area: 1 / 2');
+    expect(cssRule('ui/studio/shell.css', '.shell.phone .shell-main')).toContain('grid-area: 1 / 1');
+    expect(cssRule('ui/studio/settings-page.css', '.shell.phone .st-page, .st-alone .st-page')).toContain('grid-area: 1 / 1');
   });
 
   it('closes with the × in its top bar', () => {

@@ -1,6 +1,7 @@
 /* Settings as a page (mockup #settings): it takes the content area's grid cell, over the screen it opened from (which stays
    mounted underneath). Section cards scroll; the section list floats on the left. Tokens only. */
-.st-page { grid-area: 1 / -2 / 2 / -1; position: relative; z-index: 25; min-width: 0; min-height: 0; outline: none; }
+.st-page { grid-area: 1 / 2; position: relative; z-index: 25; min-width: 0; min-height: 0; outline: none; }
+.shell.phone .st-page, .st-alone .st-page { grid-area: 1 / 1; }
 /* opened over the Welcome screen (no shell grid): it covers the window */
 .st-alone { position: fixed; inset: 0; z-index: 50; display: grid; }
 .st-title { margin: 0; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--ink); }
