@@ -2,28 +2,27 @@
    Loops: the green ping of a note a run just wrote (a 12 s live window), and flowing dashes along the hovered note's
    links while the pointer is over it (interaction feedback that ends with the hover). Matches pulse three times.
    The root reduced-motion rule stops both. */
-.gv-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.gv-page > .sl-screen-header { border-bottom: 1px solid var(--line); }
-.gv-search { display: flex; align-items: flex-end; gap: 8px; }
-.gv-found { padding-bottom: 10px; font-family: var(--font-code); font-size: 11.5px; color: var(--mut); white-space: nowrap; }
-.gv-types { display: flex; flex-wrap: wrap; gap: 4px; }
-.gv-types button {
-  height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid var(--line);
-  background: transparent; color: var(--mut); font: inherit; font-size: 12.5px; cursor: pointer;
-  transition: background-color var(--t-med) var(--ease), color var(--t-med) var(--ease), border-color var(--t-med) var(--ease);
-}
-.gv-types button[aria-pressed='true'] { border-color: var(--edge); background: var(--s2); color: var(--ink); }
+.gv-found { font-family: var(--font-code); font-size: 11.5px; color: var(--mut); white-space: nowrap; }
 .gv-glyph { fill: currentColor; stroke: currentColor; stroke-width: 1.5; }
 .gv-glyph.hollow { fill: none; }
 .gv-count { font-family: var(--font-code); font-size: 11px; color: var(--mut); }
-.gv-search-note { margin: 8px 24px 0; }
 /* the loading wrapper and the body both flex, so the board fills the viewport height beside the reader */
-.gv-load { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.gv-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr); }
-.gv-side { border-left: 1px solid var(--line); background: var(--s1); display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+/* The frame (mockup #graph): the board fills the screen; the title, search and Notes float on top, the reader and the
+   list share the dock. Loading's wrapper is positioned inline (AsciiReveal), so it is sized to the screen and the board fills it. */
+.gv-load { box-sizing: border-box; height: 100%; }
+.gv-load[aria-busy="true"] { padding: 72px 24px 0; }
+.gv-title { margin: 0; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.gv-fact { font-size: 12px; color: var(--mut); }
+.gv-q { width: 240px; }
+.gv-notes { position: absolute; z-index: 6; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; max-width: calc(100% - 32px); }
+.gv-legend { gap: 14px; padding: 6px 12px; font-size: 11.5px; color: var(--mut); }
+.gv-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tf-dock .gv-reader, .tf-dock .gv-reader-empty { padding: 0; border-bottom: 0; }
+.tf-dock .gv-list { padding: 0; }
 
 /* the board */
-.gb { position: relative; height: 100%; min-height: 360px; overflow: hidden; background: var(--bg); }
+/* the board paints the backdrop colour; its own dots move with the camera */
+.gb { position: relative; height: 100%; min-height: 360px; overflow: hidden; background: var(--side); }
 .gb-svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .gb-svg:active { cursor: grabbing; }
 .gb-dot { fill: var(--line2); }
@@ -51,24 +50,25 @@
 .gb-match { fill: var(--accBg); stroke: var(--acc); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: gb-match 1.1s ease-in-out 3; }
 @keyframes gb-ping { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.6); } }
 @keyframes gb-match { 50% { transform: scale(1.25); } }
-.gb-tools { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 4px; }
+/* zoom, fit and re-layout: a small floating bar at the bottom-left, the hint beside it */
+.gb-tools { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px; background: var(--s1); box-shadow: var(--tf-float); }
 .gb-tools button {
-  width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border-radius: 9px; border: 1px solid var(--edge);
-  background: var(--s1); color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+  width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 7px; border: 0;
+  background: none; color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
 }
 .gb-tools button:hover { background: var(--s2); }
-.gb-hint { position: absolute; right: 14px; bottom: 14px; margin: 0; font-size: 12px; color: var(--mut); pointer-events: none; }
+.gb-hint { position: absolute; left: 64px; bottom: 16px; max-width: 260px; margin: 0; font-size: 12px; color: var(--mut); pointer-events: none; }
 .gb-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--mut); pointer-events: none; }
 
 /* overlays from the screen */
 .gv-hops {
-  position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px;
+  position: absolute; left: 16px; top: 64px; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px;
   border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); font-size: 12px; color: var(--mut);
 }
 .gv-hops button { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--line2); background: transparent; color: var(--ink); cursor: pointer; }
 .gv-hops button:disabled { opacity: .4; cursor: default; }
 .gv-ticker {
-  position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px); display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+  position: absolute; left: 64px; bottom: 64px; max-width: calc(100% - 80px); display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
   border-radius: 999px; border: 1px solid var(--line2); background: var(--s1); font-size: 12.5px; color: var(--ink); animation: gv-pop var(--t-slow) var(--ease) both;
 }
 .gv-ticker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -98,10 +98,7 @@
 .gv-list tr[aria-current="true"] { background: var(--accBg); color: var(--accInk); }
 .gv-list-item { cursor: inherit; padding: 0; background: none; }
 .gv-list-item.off, .gv-link-kind.off { color: var(--mut); }
-@media (max-width: 1199px) { .gv-body { grid-template-columns: minmax(0, 1fr) 300px; } }
 @media (max-width: 899px) {
-  .gv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-  .gb { height: auto; min-height: 60vh; }
-  .gv-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .gv-q { width: 160px; }
   .gb-hint { display: none; }
 }

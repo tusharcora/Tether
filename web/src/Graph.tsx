@@ -11,7 +11,7 @@ import { useVaultActivity } from './graph/useVaultActivity';
 import { cn } from './ui/cn';
 import { EmptyState } from './ui/studio/EmptyState';
 import { InlineError } from './ui/studio/InlineError';
-import { ScreenHeader } from './ui/studio/ScreenHeader';
+import { Dock, FloatBar, MenuButton, ToolScreen, type MenuItem } from './ui/studio/ToolFrame';
 import './graph/graph.css';
 
 /** The server caches its vault scan for 5 s: a note a run just wrote is looked for again after that. */
@@ -35,6 +35,8 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
   const [q, setQ] = useState('');
   const [serverHits, setServerHits] = useState<ReadonlySet<string>>(() => new Set());
   const [searchFailed, setSearchFailed] = useState(false);
+  /** The dock: the selected note's reader, else (when Notes is on) the list of notes. */
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -161,114 +163,125 @@ export function GraphView(props: { note?: string; onNote?: (path?: string) => vo
         })
       : [];
 
+  const shown = TYPES.filter((t) => counts[t]);
+  const typeItems: (MenuItem | 'rule')[] = [...shown.map((t) => ({ label: `${TYPE_LABEL[t]} ${counts[t]}`, current: !hidden.has(t), onSelect: () => toggleType(t) })), 'rule', { label: 'Reload', onSelect: () => void load() }];
   return (
-    <div className="gv-page">
-      <ScreenHeader
-        meta={g ? `vault · ${g.nodes.length} notes · ${g.edges.length} links${g.unresolved ? ` · ${g.unresolved} unresolved` : ''}` : 'vault'}
-        title="Knowledge graph"
-        actions={
-          <>
-            <div className="gv-search">
-              <SearchField
-                label="Search the vault"
-                value={q}
-                onValueChange={setQ}
-                placeholder="Titles, tags and text"
-                onKeyDown={(e) => {
-                  const first = matched?.[0];
-                  if (e.key === 'Enter' && first) go(first.id);
-                }}
-              />
-              {q.trim() ? (
-                <span className="gv-found" role="status">
-                  {hits.size} found
-                </span>
-              ) : null}
-            </div>
-            {g ? (
-              <div className="gv-types" role="group" aria-label="Show note types">
-                {TYPES.filter((t) => counts[t]).map((t) => (
-                  <button key={t} type="button" aria-pressed={!hidden.has(t)} onClick={() => toggleType(t)}>
-                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                      <path d={GLYPH[t]} className={cn('gv-glyph', { hollow: t === 'note' })} />
-                    </svg>
-                    {TYPE_LABEL[t]} <span className="gv-count">{counts[t]}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <Button variant="secondary" onClick={() => void load()}>
-              Reload
-            </Button>
-          </>
-        }
-      />
-      {err ? <InlineError message={err} onRetry={() => void load()} /> : null}
-      {searchFailed ? (
-        <p className="sl-note gv-search-note" role="status">
-          Full-text search failed; showing title and tag matches.
-        </p>
-      ) : null}
+    <ToolScreen className="gv-screen">
       <Loading className="gv-load" loading={!g && !err} lines={8} label="Loading the vault">
         {g && g.nodes.length === 0 ? (
           <EmptyState title="The vault is empty" description="Finish a run and its notes appear here, linked to the pipeline, roles and files it touched." />
         ) : g ? (
-          <div className="gv-body">
-            <GraphBoard
-              ref={board}
-              graph={g}
-              hiddenTypes={hidden}
-              selected={sel}
-              focus={focus}
-              near={near}
-              hits={hits}
-              fresh={fresh}
-              reduced={reduced}
-              initialFocus={props.note}
-              onHover={setHover}
-              onSelect={select}
-              onOpen={go}
-            >
-              <div className="gv-hops" role="group" aria-label="How far highlights reach">
-                <span>{depth === 1 ? 'showing direct links' : `showing ${depth} hops`}</span>
-                <button type="button" aria-label="Fewer hops" disabled={depth <= 1} onClick={() => setDepth(depth - 1)}>
-                  −
-                </button>
-                <button type="button" aria-label="More hops" disabled={depth >= 3} onClick={() => setDepth(depth + 1)}>
-                  +
-                </button>
+          <GraphBoard
+            ref={board}
+            graph={g}
+            hiddenTypes={hidden}
+            selected={sel}
+            focus={focus}
+            near={near}
+            hits={hits}
+            fresh={fresh}
+            reduced={reduced}
+            initialFocus={props.note}
+            onHover={setHover}
+            onSelect={select}
+            onOpen={go}
+          >
+            <div className="gv-hops" role="group" aria-label="How far highlights reach">
+              <span>{depth === 1 ? 'showing direct links' : `showing ${depth} hops`}</span>
+              <button type="button" aria-label="Fewer hops" disabled={depth <= 1} onClick={() => setDepth(depth - 1)}>
+                −
+              </button>
+              <button type="button" aria-label="More hops" disabled={depth >= 3} onClick={() => setDepth(depth + 1)}>
+                +
+              </button>
+            </div>
+            {latest ? (
+              <div key={latest.id} className="gv-ticker" role="status">
+                <span className="gv-ticker-dot" aria-hidden="true" />
+                <span>
+                  {latest.run} recorded {byId.get(latest.path)?.title ?? latest.path}
+                </span>
+                <span className="gv-ticker-age">{ago(latest.ts)}</span>
               </div>
-              {latest ? (
-                <div key={latest.id} className="gv-ticker" role="status">
-                  <span className="gv-ticker-dot" aria-hidden="true" />
-                  <span>
-                    {latest.run} recorded {byId.get(latest.path)?.title ?? latest.path}
-                  </span>
-                  <span className="gv-ticker-age">{ago(latest.ts)}</span>
-                </div>
-              ) : null}
-            </GraphBoard>
-            <aside className="gv-side" aria-label="Note">
-              <NoteReader
-                path={sel}
-                note={note}
-                state={noteState}
-                missing={!!sel && !ids.has(sel)}
-                degree={sel ? byId.get(sel)?.degree : undefined}
-                touch={sel ? activity.last.get(sel) : undefined}
-                fresh={!!sel && fresh.has(sel)}
-                links={links}
-                onTag={(t) => setQ(`#${t}`)}
-                onGo={go}
-                onHover={setHover}
-                onRetry={() => sel && void open(sel)}
-                onOpenFile={props.onOpenFile}
-              />
-              <NoteList nodes={matched ?? g.nodes} selected={sel} hiddenTypes={hidden} onGo={go} />
-            </aside>
-          </div>
+            ) : null}
+          </GraphBoard>
         ) : null}
       </Loading>
-    </div>
+
+      <FloatBar at="left">
+        <h1 className="gv-title">Graph</h1>
+        <span className="gv-fact">{g ? `${g.nodes.length} notes · ${g.edges.length} links${g.unresolved ? ` · ${g.unresolved} unresolved` : ''}` : 'vault'}</span>
+      </FloatBar>
+      <FloatBar at="center">
+        <SearchField
+          className="gv-q"
+          label="Search the vault"
+          value={q}
+          onValueChange={setQ}
+          placeholder="Titles, tags and text"
+          onKeyDown={(e) => {
+            const first = matched?.[0];
+            if (e.key === 'Enter' && first) go(first.id);
+          }}
+        />
+        {q.trim() ? (
+          <span className="gv-found" role="status">
+            {hits.size} found
+          </span>
+        ) : null}
+        {g ? <MenuButton title="Note types" variant="secondary" label={hidden.size ? `${shown.length - shown.filter((t) => hidden.has(t)).length} of ${shown.length} types ▾` : 'All types ▾'} items={typeItems} /> : null}
+      </FloatBar>
+      <FloatBar at="right">
+        <Button variant="secondary" size="sm" aria-pressed={notesOpen} onClick={() => setNotesOpen(!notesOpen)}>
+          Notes <span className="gv-count">{g?.nodes.length ?? 0}</span>
+        </Button>
+      </FloatBar>
+      {g && shown.length ? (
+        <FloatBar at="bottom" className="gv-legend">
+          {shown.map((t) => (
+            <span key={t}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d={GLYPH[t]} className={cn('gv-glyph', { hollow: t === 'note' })} />
+              </svg>
+              {TYPE_LABEL[t]}
+            </span>
+          ))}
+        </FloatBar>
+      ) : null}
+      {err || searchFailed ? (
+        <div className="gv-notes">
+          {err ? <InlineError message={err} onRetry={() => void load()} /> : null}
+          {searchFailed ? (
+            <p className="sl-note" role="status">
+              Full-text search failed; showing title and tag matches.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {g && sel ? (
+        <Dock label="Note" onClose={() => select(undefined)}>
+          <NoteReader
+            path={sel}
+            note={note}
+            state={noteState}
+            missing={!ids.has(sel)}
+            degree={byId.get(sel)?.degree}
+            touch={activity.last.get(sel)}
+            fresh={fresh.has(sel)}
+            links={links}
+            onTag={(t) => setQ(`#${t}`)}
+            onGo={go}
+            onHover={setHover}
+            onRetry={() => void open(sel)}
+            onOpenFile={props.onOpenFile}
+          />
+        </Dock>
+      ) : g && notesOpen ? (
+        <Dock label="All notes" head={<h2 className="gv-title">All notes</h2>} onClose={() => setNotesOpen(false)}>
+          <NoteList nodes={matched ?? g.nodes} selected={sel} hiddenTypes={hidden} onGo={go} />
+        </Dock>
+      ) : null}
+    </ToolScreen>
   );
 }
