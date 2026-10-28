@@ -156,6 +156,7 @@ describe('Start a run', () => {
   });
 
   it('grows with its content', () => expect(cssRule('home/home.css', '.composer textarea')).toContain('field-sizing: content'));
+  it('keeps a workspace name on one line in its menu', () => expect(cssRule('home/home.css', '.composer-menu [role="menuitem"] > span:first-child')).toContain('white-space: nowrap'));
 
   it('shows Tether’s likely picks as a guess, next to the core crew', async () => {
     routeApi({ ...routes, 'GET /api/roster/preview': { bots: [{ id: 'rag-pipeline-reviewer', name: 'RAG reviewer', why: 'Reviews retrieval' }], core: ['planner', 'coder', 'reviewer', 'architect'] } });
