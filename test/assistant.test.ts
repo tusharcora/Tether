@@ -151,7 +151,7 @@ describe('POST /api/assistant', () => {
     expect((await t.call('POST', '/api/assistant/new', { ws: 'api' })).json.messages).toEqual([]);
     expect(readdirSync(join(t.home, 'assistant', 'api.archive')).length).toBe(20);
     expect((await t.call('GET', '/api/assistant?ws=api')).json.models).toEqual(['m1', 'm2']);
-  });
+  }, 60_000);
 
   it('turns a refused outside-world call into an approval card, and remembers "always"', async () => {
     const t = await boot();

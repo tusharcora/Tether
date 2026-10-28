@@ -398,7 +398,8 @@ describe('App shell', () => {
       startAt('#/api');
       render(<App />);
       expect(await screen.findByText(/api screen shop/)).toBeTruthy();
-      expect(await screen.findByText('2')).toBeTruthy();
+      // (the assistant launcher's needs-you badge may also show a 2)
+      expect((await screen.findAllByText('2')).length).toBeGreaterThan(0);
       fireEvent.click(await screen.findByRole('button', { name: 'Project: shop' }));
       expect(within(screen.getByRole('menuitem', { name: /blog/ })).getByRole('img', { name: 'a run is live' })).toBeTruthy();
       fireEvent.click(screen.getByRole('menuitem', { name: /blog/ }));
