@@ -7,6 +7,7 @@ import { usePoll } from './hooks';
 import { Deliveries } from './triggers/Deliveries';
 import { TriggerForm } from './triggers/TriggerForm';
 import { TriggerRow } from './triggers/TriggerRow';
+import { TriggerFlow } from './triggers/TriggerFlow';
 import { TriggerTest } from './triggers/TriggerTest';
 import { blank, fromTrigger, split, type Delivery, type Form, type Trigger, type Workspace } from './triggers/types';
 import { WebhookSetup } from './triggers/WebhookSetup';
@@ -41,6 +42,8 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
     if (!testId || !rows.some((t) => t.id === testId)) setTestId(rows[0]?.id ?? '');
   }, [rows, testId]);
 
+  /** The trigger whose flow is drawn: the one picked for its log or test, else the first. */
+  const selected = rows.find((t) => t.id === (logFor || testId)) ?? rows[0];
   async function reload() {
     await list.refresh();
     await log.refresh();
@@ -122,12 +125,21 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
                   </p>
                 )}
               </section>
+              {selected ? (
+                <TriggerFlow
+                  t={selected}
+                  workspace={workspaces.find((w) => w.id === selected.workspace)}
+                  onTestFire={() => toTest(selected.id)}
+                  onToggle={() => void toggle(selected)}
+                  onSettings={() => openForm(selected)}
+                  onOpenWorkflow={() => (location.hash = `#/builder/${encodeURIComponent(selected.workflow)}`)}
+                  onStarted={(id) => (location.hash = `#/runs/${id}`)}
+                />
+              ) : null}
+              <Deliveries triggers={rows} logFor={logFor} onLogFor={setLogFor} log={log} />
               <TriggerTest triggers={rows} testId={testId} onTestId={setTestId} onFired={reload} />
               <WebhookSetup />
             </div>
-            <aside className="tg-side">
-              <Deliveries triggers={rows} logFor={logFor} onLogFor={setLogFor} log={log} />
-            </aside>
           </div>
         </Loading>
       </div>

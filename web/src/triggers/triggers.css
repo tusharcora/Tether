@@ -53,3 +53,11 @@
 .tg-delivery-sub a { color: var(--accInk); text-decoration: none; }
 .tg-delivery-sub a:hover { text-decoration: underline; }
 @media (max-width: 899px) { .tg-test-fields, .tg-log-tools, .tg-dl { grid-template-columns: 1fr; } }
+
+/* Event → Filter → Workflow on the dot grid (the mask cuts dots from a solid fill, no gradient fill) */
+.tf { position: relative; padding: 28px 24px 36px; border: 1px solid var(--line); border-radius: var(--radius-panel); background-color: var(--bg); overflow: hidden; }
+.tf::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
+.tf-flow { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 28px 0; margin: 0; padding: 0; list-style: none; }
+.tf-flow > li { display: flex; align-items: center; }
+.tf-link { width: 40px; height: 2px; background: var(--edge); }
+@media (max-width: 899px) { .tf-flow { flex-direction: column; } .tf-flow > li { flex-direction: column; } .tf-link { width: 2px; height: 24px; } }

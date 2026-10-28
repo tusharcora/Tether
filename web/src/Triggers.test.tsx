@@ -129,6 +129,23 @@ describe('Triggers', () => {
     await waitFor(() => expect(calls('GET', '/api/triggers/deliveries?trigger=acme-full-review&limit=50').length).toBeGreaterThan(0));
   });
 
+  it('draws Event → Filter → Workflow for the selected trigger, with the fans and "All events" when nothing filters', async () => {
+    renderApp(<Triggers />);
+    const flow = await screen.findByRole('region', { name: 'acme-full-review flow' });
+    expect(within(flow).getByText('All events')).toBeTruthy();
+    const names = (n: string) => within(within(flow).getByRole('toolbar', { name: n })).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names('Event actions')).toEqual(['Test fire', 'Pause trigger', 'Copy URL', 'Settings']);
+    expect(names('Workflow actions')).toEqual(['Open workflow', 'Run now', 'Settings']);
+    fireEvent.click(within(flow).getByRole('button', { name: 'Pause trigger' }));
+    await waitFor(() => expect(calls('PATCH', '/api/triggers/acme-full-review')[0]![2]).toEqual({ enabled: false }));
+    // Test fire is the existing test panel, which calls the existing endpoint
+    fireEvent.click(within(flow).getByRole('button', { name: 'Test fire' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Pull request'));
+    fireEvent.change(screen.getByLabelText('Pull request'), { target: { value: 'https://github.com/acme/api/pull/12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Dry run' }));
+    await waitFor(() => expect(calls('POST', '/api/triggers/acme-full-review/test')[0]![2]).toEqual({ pr: 'https://github.com/acme/api/pull/12', fire: false }));
+  });
+
   it('takes you to the test panel from the header', async () => {
     renderApp(<Triggers />);
     await screen.findByRole('switch', { name: /Pause acme-full-review/ });
