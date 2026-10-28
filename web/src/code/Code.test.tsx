@@ -242,6 +242,14 @@ describe('Code screen', () => {
     expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
   });
 
+  it('marks every run’s lines in the gutter without a pick: blue while live, green when done', async () => {
+    await openA();
+    const gutter = (cls: string) => [...document.querySelectorAll(`.cm-gutterElement.${cls}`)].map((e) => e.textContent);
+    await waitFor(() => expect(gutter('cm-run-live')).toEqual(['3']));
+    expect(gutter('cm-run-done')).toEqual(['1', '2']);
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
+  });
+
   it('searches in the tree’s place and opens a hit at its line with a highlight', async () => {
     const p = setup();
     fireEvent.change(await screen.findByRole('textbox', { name: 'Search code' }), { target: { value: 'limit' } });

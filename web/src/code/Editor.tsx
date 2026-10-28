@@ -2,40 +2,55 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, RangeSet, StateEffect, StateField, type Text } from '@codemirror/state';
-import { Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLineGutter, keymap, lineNumbers, type DecorationSet } from '@codemirror/view';
+import { Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, type DecorationSet } from '@codemirror/view';
 import { useEffect, useRef } from 'react';
 import { tetherHighlight, tetherTheme } from './cmTheme';
 import type { CodeLang } from './codeApi';
 import { LANGS } from './langs';
 
 export type Hunk = { start: number; lines: number };
+/** A run that touched the file: the lines it changed, whether it is live, whether it is the one picked in the runs panel. */
+export type RunMarks = { hunks: Hunk[]; live: boolean; picked?: boolean };
 
 /** How long a line opened from search or a link keeps its highlight before it fades. */
 export const FLASH_MS = 2400;
 
-const setMarks = StateEffect.define<Hunk[]>();
+const setRuns = StateEffect.define<RunMarks[]>();
 const setFlash = StateEffect.define<number | null>();
-const runGutter = new (class extends GutterMarker {
-  elementClass = 'cm-run-gutter';
-})();
-const runLine = Decoration.line({ class: 'cm-run-line' });
+const gutterMark = (cls: string) =>
+  new (class extends GutterMarker {
+    elementClass = cls;
+  })();
+const liveGutter = gutterMark('cm-run-live');
+const doneGutter = gutterMark('cm-run-done');
+const pickLine = Decoration.line({ class: 'cm-run-line' });
+const pickLiveLine = Decoration.line({ class: 'cm-run-line cm-run-line-live' });
 const flashLine = Decoration.line({ class: 'cm-flash' });
 
-/** Line starts of the lines `hunks` cover, inside the document, in order (a pure deletion covers no line). */
-function lineStarts(doc: Text, hunks: Hunk[]): number[] {
+/** The line numbers `hunks` cover, inside the document, in order (a pure deletion covers no line). */
+function lineNos(doc: Text, hunks: Hunk[]): number[] {
   const lines = new Set<number>();
   for (const h of hunks) for (let n = h.start; n < h.start + h.lines; n++) if (n >= 1 && n <= doc.lines) lines.add(n);
-  return [...lines].sort((a, b) => a - b).map((n) => doc.line(n).from);
+  return [...lines].sort((a, b) => a - b);
 }
 
-/** The selected run's changed lines: a tint on the line and a green edge on its number. */
+/**
+ * Every run's changed lines as a bar on their number (blue where a live run touched the line, else green), and the
+ * picked run's lines tinted (blue if it is live, green if done).
+ */
 const marksField = StateField.define<{ deco: DecorationSet; gutter: RangeSet<GutterMarker> }>({
   create: () => ({ deco: Decoration.none, gutter: RangeSet.empty }),
   update(v, tr) {
     for (const e of tr.effects)
-      if (e.is(setMarks)) {
-        const at = lineStarts(tr.state.doc, e.value);
-        return { deco: Decoration.set(at.map((p) => runLine.range(p))), gutter: RangeSet.of(at.map((p) => runGutter.range(p))) };
+      if (e.is(setRuns)) {
+        const doc = tr.state.doc;
+        const at = (n: number) => doc.line(n).from;
+        const live = new Set(lineNos(doc, e.value.filter((r) => r.live).flatMap((r) => r.hunks)));
+        const pick = e.value.find((r) => r.picked);
+        return {
+          deco: pick ? Decoration.set(lineNos(doc, pick.hunks).map((n) => (pick.live ? pickLiveLine : pickLine).range(at(n)))) : Decoration.none,
+          gutter: RangeSet.of(lineNos(doc, e.value.flatMap((r) => r.hunks)).map((n) => (live.has(n) ? liveGutter : doneGutter).range(at(n)))),
+        };
       }
     return tr.docChanged ? { deco: v.deco.map(tr.changes), gutter: v.gutter.map(tr.changes) } : v;
   },
@@ -59,8 +74,8 @@ export interface EditorProps {
   readOnly: boolean;
   label: string;
   onChange: (text: string) => void;
-  /** Lines a run changed (the runs lens). */
-  marks?: Hunk[];
+  /** The runs that touched the file (gutter bars for all, a tint for the picked one). */
+  runs?: RunMarks[];
   /** Scroll to a line and highlight it briefly; a new `seq` repeats it. */
   flash?: { line: number; seq: number };
   /** The cursor's 1-based line and column, on every move and when a document is shown. */
@@ -90,6 +105,7 @@ export function Editor(p: EditorProps) {
       doc: text,
       extensions: [
         lineNumbers(),
+        highlightActiveLine(),
         highlightActiveLineGutter(),
         history(),
         drawSelection(),
@@ -129,8 +145,8 @@ export function Editor(p: EditorProps) {
     view.current!.dispatch({ effects: [parts.current.lang.reconfigure(LANGS[p.lang].ext()), parts.current.readOnly.reconfigure(EditorState.readOnly.of(p.readOnly))] });
   }, [p.docKey, p.lang, p.readOnly]);
   useEffect(() => {
-    view.current!.dispatch({ effects: setMarks.of(p.marks ?? []) });
-  }, [p.docKey, p.marks]);
+    view.current!.dispatch({ effects: setRuns.of(p.runs ?? []) });
+  }, [p.docKey, p.runs]);
   useEffect(() => {
     const v = view.current!;
     const f = p.flash;

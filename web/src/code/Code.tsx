@@ -235,7 +235,7 @@ export function Code(p: CodeProps) {
     if (cur && git) void loadRuns(cur);
     else setRuns(undefined);
   }, [cur, git, loadRuns]);
-  const marks = runs?.data?.find((r) => r.runId === run)?.hunks;
+  const runMarks = useMemo(() => runs?.data?.map((r) => ({ hunks: r.hunks, live: r.live, picked: r.runId === run })), [runs?.data, run]);
 
   // "Changed by runs" is a whole tree built from the changed paths, open unless a folder is closed by hand; nothing loads
   const changedSet = useMemo(() => new Set(tree.changed), [tree.changed]);
@@ -305,7 +305,7 @@ export function Code(p: CodeProps) {
   ) : file.binary ? (
     <EmptyState title="Not a text file" description={`${nameOf(tab.path)} holds binary data, so it is not shown.`} />
   ) : (
-    <Editor docKey={`${tab.path}#${tab.seq}`} text={file.text} lang={file.lang} readOnly={!editing || readOnly} label={`Code of ${tab.path}`} onChange={(text) => patchTab(tab.path, (t) => ({ ...t, edit: text }))} marks={marks} flash={flash} onCursor={(line, col) => setCursor({ line, col })} />
+    <Editor docKey={`${tab.path}#${tab.seq}`} text={file.text} lang={file.lang} readOnly={!editing || readOnly} label={`Code of ${tab.path}`} onChange={(text) => patchTab(tab.path, (t) => ({ ...t, edit: text }))} runs={runMarks} flash={flash} onCursor={(line, col) => setCursor({ line, col })} />
   );
 
   const editorPanel = (
