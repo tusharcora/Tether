@@ -1,0 +1,292 @@
+/* The AI prompt composer's own palette (from the composer snippet), light by default and dark under Tether's data-theme. */
+.aic-root {
+  --card-bg: #ffffff;
+  --card-border: rgba(24, 24, 28, 0.085);
+  --card-focus-border: rgba(24, 24, 28, 0.16);
+  --card-shadow: 0 20px 44px -16px rgba(15, 23, 42, 0.09), 0 2px 8px -2px rgba(15, 23, 42, 0.04), 0 1px 0 0 rgba(255, 255, 255, 0.9) inset;
+  --pill-bg: #f3f3f6;
+  --pill-hover-bg: #eaeaf0;
+  --pill-border: rgba(24, 24, 28, 0.09);
+  --pill-hover-border: rgba(24, 24, 28, 0.16);
+  --pill-inset: 0 1px 0 0 rgba(255, 255, 255, 0.8) inset;
+  --ghost-hover-bg: rgba(24, 24, 28, 0.045);
+  --ghost-hover-border: rgba(24, 24, 28, 0.08);
+  --popover-bg: #ffffff;
+  --popover-border: rgba(24, 24, 28, 0.11);
+  --popover-shadow: 0 22px 48px -12px rgba(15, 23, 42, 0.16), 0 4px 14px -4px rgba(15, 23, 42, 0.07), 0 1px 0 0 rgba(255, 255, 255, 0.9) inset;
+  --model-row-hover: rgba(24, 24, 28, 0.065);
+  --filter-track-bg: rgba(24, 24, 28, 0.055);
+  --filter-track-border: rgba(24, 24, 28, 0.06);
+  --filter-active-bg: #ffffff;
+  --filter-active-border: rgba(24, 24, 28, 0.09);
+  --filter-active-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+  --text-primary: #18181c;
+  --text-secondary: #6c6b74;
+  --text-muted: #94939d;
+  --placeholder-color: #82818a;
+  --icon-primary: #27272c;
+  --submit-bg: #f3f3f6;
+  --submit-border: rgba(24, 24, 28, 0.085);
+  --submit-color: #8e8d96;
+  --submit-ready-bg: #18181c;
+  --submit-ready-border: #18181c;
+  --submit-ready-color: #ffffff;
+  --switch-off-bg: #d0d0d8;
+  --accent-blue: #1d74f5;
+  --chip-bg: #ffffff;
+  --chip-border: rgba(24, 24, 28, 0.12);
+  width: 100%;
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .aic-root {
+  --card-bg: #18181c;
+  --card-border: rgba(255, 255, 255, 0.065);
+  --card-focus-border: rgba(255, 255, 255, 0.12);
+  --card-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.45), 0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+  --pill-bg: #26262c;
+  --pill-hover-bg: #2d2d34;
+  --pill-border: rgba(255, 255, 255, 0.095);
+  --pill-hover-border: rgba(255, 255, 255, 0.15);
+  --pill-inset: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+  --ghost-hover-bg: rgba(255, 255, 255, 0.045);
+  --ghost-hover-border: rgba(255, 255, 255, 0.075);
+  --popover-bg: #2b2b33;
+  --popover-border: rgba(255, 255, 255, 0.12);
+  --popover-shadow: 0 22px 48px -10px rgba(0, 0, 0, 0.65), 0 1px 0 0 rgba(255, 255, 255, 0.08) inset;
+  --model-row-hover: rgba(14, 14, 18, 0.68);
+  --filter-track-bg: rgba(12, 12, 16, 0.48);
+  --filter-track-border: rgba(255, 255, 255, 0.06);
+  --filter-active-bg: #2c2c35;
+  --filter-active-border: rgba(255, 255, 255, 0.11);
+  --filter-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  --text-primary: #f4f4f6;
+  --text-secondary: #8e8d95;
+  --text-muted: #6e6d76;
+  --placeholder-color: #8c8b93;
+  --icon-primary: #e4e4e8;
+  --submit-bg: #222227;
+  --submit-border: rgba(255, 255, 255, 0.08);
+  --submit-color: #7c7b84;
+  --submit-ready-bg: #2d2d35;
+  --submit-ready-border: rgba(255, 255, 255, 0.16);
+  --submit-ready-color: #f4f4f6;
+  --switch-off-bg: #484852;
+  --chip-bg: #24242b;
+  --chip-border: rgba(255, 255, 255, 0.1);
+}
+
+.aic-card {
+  position: relative;
+  background: var(--card-bg);
+  border-radius: 22px;
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  padding: 14px 12px 12px;
+  transition: background-color 0.25s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+}
+.aic-card:focus-within { border-color: var(--card-focus-border); }
+
+.aic-prompt-input {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  max-height: 140px;
+  field-sizing: content;
+  padding: 0 4px;
+  margin: 0 0 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  resize: none;
+}
+.aic-prompt-input::placeholder { color: var(--placeholder-color); opacity: 1; }
+
+.aic-pill {
+  height: 36px;
+  border-radius: 9999px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  box-shadow: var(--pill-inset);
+  color: var(--text-primary);
+  font: inherit;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+.aic-pill:hover:not(:disabled) { background: var(--pill-hover-bg); border-color: var(--pill-hover-border); }
+.aic-pill:active { transform: scale(0.98); }
+
+/* Add files and Record: an icon that widens to show its word on hover or keyboard focus */
+.aic-grow { width: 36px; padding: 0 9px; justify-content: flex-start; }
+.aic-grow-label {
+  opacity: 0;
+  transform: translateX(-6px);
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 7px;
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aic-add:hover, .aic-add:focus-visible { width: 108px; padding: 0 12px 0 10px; }
+.aic-record:hover, .aic-record:focus-visible, .aic-record.recording { width: 98px; padding: 0 12px 0 10px; }
+.aic-grow:hover .aic-grow-label, .aic-grow:focus-visible .aic-grow-label, .aic-record.recording .aic-grow-label { opacity: 1; transform: translateX(0); }
+.aic-record.recording { background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.45); color: #ef4444; }
+@keyframes aic-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.85); } }
+.aic-recording-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: aic-pulse 1.2s infinite ease-in-out; }
+
+.aic-model-trigger {
+  height: 36px;
+  min-width: 0;
+  border-radius: 9999px;
+  padding: 0 10px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.aic-model-trigger:hover { background: var(--ghost-hover-bg); border-color: var(--ghost-hover-border); }
+
+.aic-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #0d0d10;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.aic-submit {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 9999px;
+  background: var(--submit-bg);
+  border: 1px solid var(--submit-border);
+  color: var(--submit-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.aic-submit.ready { background: var(--submit-ready-bg); border-color: var(--submit-ready-border); color: var(--submit-ready-color); }
+.aic-submit:disabled { cursor: default; }
+.aic-submit:active:not(:disabled) { transform: scale(0.95); }
+
+.aic-popover {
+  background: var(--popover-bg);
+  border: 1px solid var(--popover-border);
+  box-shadow: var(--popover-shadow);
+  backdrop-filter: blur(18px);
+  transform-origin: bottom left;
+  transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aic-popover:not(.open) { opacity: 0; transform: translateY(6px) scale(0.97); pointer-events: none; visibility: hidden; }
+
+.aic-filter-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  margin: 2px 4px 6px;
+  border-radius: 9999px;
+  background: var(--filter-track-bg);
+  border: 1px solid var(--filter-track-border);
+}
+.aic-filter-pill {
+  flex: 1;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: color 0.16s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.aic-filter-pill:hover { color: var(--text-primary); }
+.aic-filter-pill.active { color: var(--text-primary); background: var(--filter-active-bg); border-color: var(--filter-active-border); box-shadow: var(--filter-active-shadow); }
+
+.aic-model-row {
+  height: 36px;
+  padding: 0 10px 0 6px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.14s ease;
+}
+.aic-model-row:hover, .aic-model-row:focus-visible { background: var(--model-row-hover); }
+
+.aic-star {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), color 0.16s ease;
+}
+.aic-star:hover { color: #facc15; transform: scale(1.16); }
+.aic-star.starred { color: #facc15; }
+
+.aic-switch {
+  width: 40px;
+  height: 23px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 9999px;
+  background: var(--switch-off-bg);
+  padding: 2.5px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.aic-switch.on { background: var(--accent-blue); }
+.aic-switch-thumb { width: 18px; height: 18px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+.aic-switch.on .aic-switch-thumb { transform: translateX(17px); }
+
+.aic-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 9999px; font-size: 12px; background: var(--chip-bg); border: 1px solid var(--chip-border); }
+.aic-chip button { padding: 0; border: none; background: none; color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aic-root *, .aic-root *::before { transition-duration: 0.01ms !important; }
+  .aic-recording-dot { animation: none; }
+}
