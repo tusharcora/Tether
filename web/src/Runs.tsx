@@ -15,7 +15,6 @@ import type { WorkspaceRow } from './home/workspaces';
 import { RunList } from './runs/RunList';
 import { cn } from './ui/cn';
 import { useNotify } from './ui/notify';
-import { EmptyState } from './ui/studio/EmptyState';
 import { InlineError } from './ui/studio/InlineError';
 import { BELOW_WIDE, PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './runs/runs.css';
@@ -89,31 +88,14 @@ export function Runs(props: RunsProps) {
     }
   };
 
-  const latest = list.data?.[0];
-  const listPane = <RunList poll={list} probes={probes} onProbes={setProbes} selected={props.selected} onSelect={props.onSelect} onStart={props.onStart} project={props.project} />;
-  const placeholder =
-    props.selected && error ? (
-      <InlineError message={error} onRetry={retry} />
-    ) : props.selected ? (
-      <Loading loading lines={4} label="Loading run" />
-    ) : (
-      <EmptyState
-        title="No run selected"
-        description="Select a run to follow it live."
-        action={
-          latest ? (
-            <Button variant="secondary" size="sm" onClick={() => props.onSelect(latest.id)}>
-              Open latest run
-            </Button>
-          ) : undefined
-        }
-      />
-    );
+  const listPane = <RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} />;
+  // no run open: the list alone, full width (spec §7: no "No run selected" pane)
+  if (!props.selected) return <div className="runs-list-page">{listPane}</div>;
+  const placeholder = error ? <InlineError message={error} onRetry={retry} /> : <Loading loading lines={4} label="Loading run" />;
   const inspector = run ? <Inspector run={run} events={events} selected={selNode} pane={props.pane} onAct={act} onOpenFile={props.onOpenFile && ((f) => props.onOpenFile!(run.repo, f))} /> : null;
   const centre = run ? <RunCentre run={run} selected={selNode} onSelect={pick} onAct={act} /> : null;
 
   if (phone) {
-    if (!props.selected) return <div className="runs stacked">{listPane}</div>;
     return (
       <div className="runs stacked">
         <section className="run-detail">

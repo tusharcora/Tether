@@ -5,60 +5,39 @@ import { SegmentedControl } from '../components/beui/kit/controls';
 import { DataTable, type Column } from '../components/beui/kit/DataTable';
 import { Switch } from '../components/beui/kit/fields';
 import { Loading } from '../components/Loading';
-import { isFinished, runTitle } from '../home/runText';
+import { isFinished, taskTitle } from '../home/runText';
 import type { WorkspaceRow } from '../home/workspaces';
 import { runsIn } from '../projects/projects';
 import type { Poll } from '../hooks';
-import { EmptyState } from '../ui/studio/EmptyState';
 import { InlineError } from '../ui/studio/InlineError';
-import { StatusChip, toneFor } from '../ui/studio/StatusChip';
-import { ProgressRing } from './ProgressRing';
+import { ScreenHeader } from '../ui/studio/ScreenHeader';
+import { QuietLine, Tag } from '../ui/studio/Section';
+import { badgeFor, rowDesc } from '../ui/studio/status';
+import { StatusBadge, StatusGlyph } from '../ui/studio/StatusBadge';
 
 export type RunFilter = 'all' | 'live' | 'done';
 /** Live is the server's `live` flag; Done is a finished status (the one shared copy in src/runLabels). */
 export const filterRuns = (rows: RunRow[], f: RunFilter): RunRow[] => (f === 'live' ? rows.filter((r) => r.live) : f === 'done' ? rows.filter((r) => isFinished(r.status)) : rows);
 
-/** The run's name column: progress ring, title and badges, then its task line. A selected live run gets the moving border. */
-function RunCell({ r, selected }: { r: RunRow; selected: boolean }) {
-  const done = r.steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
-  const active = r.status === 'running' || r.status === 'paused';
-  const waiting = active && (r.pending > 0 || r.planReady);
-  return (
-    <div className="run-row-cell">
-      {selected && r.live ? (
-        <svg className="run-live-border" aria-hidden="true">
-          {/* rx: fallback only; runs.css sets it from var(--radius-panel) (an SVG attribute can't take a var) */}
-          <rect x="0.5" y="0.5" rx="9.5" />
-        </svg>
-      ) : null}
-      <ProgressRing done={done} total={r.steps.length} live={r.live && r.status === 'running'} />
-      <span className="run-row-main">
-        <span className="run-row-title">
-          <b>{runTitle(r)}</b>
-          {r.kind === 'team' ? <StatusChip tone="neutral" label="Team" /> : null}
-          {r.probe ? (
-            <span title="Evolve probe replay">
-              <StatusChip tone="neutral" label="probe" />
-            </span>
-          ) : null}
-          {waiting ? (
-            <span title={r.planReady ? 'A plan is waiting for your approval' : 'A question is waiting for you'}>
-              <StatusChip tone="needs" label={r.planReady ? 'plan' : `? ${r.pending}`} />
-            </span>
-          ) : null}
-        </span>
-        <span className="run-row-task">{r.task.split('\n')[0]!.slice(0, 60)}</span>
-      </span>
-    </div>
-  );
-}
-
 /** Live and waiting runs first when sorted by status, then by when they started (newest first). */
 const STATUS_ORDER: Record<string, number> = { running: 0, paused: 1, error: 2, done: 3 };
 const byStatus = (a: RunRow, b: RunRow) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) || b.startedAt - a.startedAt;
 
-const columns = (selected: string | undefined): Column<RunRow>[] => [
-  { id: 'run', header: 'Run', sort: (a, b) => runTitle(a).localeCompare(runTitle(b)), cell: (r) => <RunCell r={r} selected={selected === r.id} /> },
+/** One line per run: glyph, task title, kind tag (and probe); then the badge and cost · when. */
+const columns: Column<RunRow>[] = [
+  {
+    id: 'run',
+    header: 'Run',
+    sort: (a, b) => taskTitle(a).localeCompare(taskTitle(b)),
+    cell: (r) => (
+      <span className="run-row-cell">
+        <StatusGlyph desc={rowDesc(r)} />
+        <b className="run-row-title">{taskTitle(r)}</b>
+        <Tag>{r.kind === 'team' ? 'Team' : r.pipeline}</Tag>
+        {r.probe ? <Tag title="Evolve probe replay">probe</Tag> : null}
+      </span>
+    ),
+  },
   {
     id: 'status',
     header: 'Status',
@@ -66,7 +45,7 @@ const columns = (selected: string | undefined): Column<RunRow>[] => [
     sort: byStatus,
     cell: (r) => (
       <span className="run-row-side">
-        <StatusChip tone={toneFor(r.status)} label={r.status} pulse={r.live && r.status === 'running'} />
+        <StatusBadge desc={rowDesc(r)} />
         <span className="sl-meta">
           {fmtUsd(r.costUsd)} · {ago(r.startedAt)}
         </span>
@@ -79,7 +58,6 @@ export function RunList(props: {
   poll: Poll<RunRow[]>;
   probes: boolean;
   onProbes: (on: boolean) => void;
-  selected?: string;
   onSelect: (id: string) => void;
   /** The empty list's one action (F14): go and start a run. */
   onStart?: () => void;
@@ -93,9 +71,9 @@ export function RunList(props: {
   const rows = filterRuns(scoped ? runsIn(data ?? [], scoped) : (data ?? []), filter);
   const none = [filter === 'live' ? 'live' : filter === 'done' ? 'finished' : '', 'runs', scoped ? `in ${scoped.name}` : ''].filter(Boolean).join(' ');
   return (
-    <aside className="run-list" aria-label="Runs">
-      <div className="run-list-head">
-        <h2>Runs</h2>
+    <section className="run-list" aria-label="Runs">
+      <ScreenHeader title="Runs" />
+      <div className="run-list-filters" title="Evolve probe replays are experiments and are hidden by default; tether probes --clean deletes finished ones">
         <SegmentedControl
           label="Filter runs"
           options={[
@@ -106,8 +84,6 @@ export function RunList(props: {
           value={filter}
           onValueChange={(v) => setFilter(v as RunFilter)}
         />
-      </div>
-      <div className="run-list-probes" title="Evolve probe replays are experiments and are hidden by default; tether probes --clean deletes finished ones">
         <Switch label="show probe replays" checked={props.probes} onCheckedChange={(c) => props.onProbes(c === true)} />
         {props.project ? <Switch label={`only ${props.project.name}`} checked={mine} onCheckedChange={(c) => setMine(c === true)} /> : null}
       </div>
@@ -127,28 +103,24 @@ export function RunList(props: {
                   </Button>
                 </div>
               ) : (
-                <EmptyState
-                  title="No runs yet"
-                  description="Start a run from Home, or build a workflow and press Run."
-                  action={
-                    props.onStart ? (
-                      <Button variant="secondary" size="sm" onClick={props.onStart}>
-                        Start a run
-                      </Button>
-                    ) : undefined
-                  }
-                />
+                <div className="run-list-none">
+                  <QuietLine>No runs yet.</QuietLine>
+                  {props.onStart ? (
+                    <Button variant="secondary" size="sm" onClick={props.onStart}>
+                      Start a run
+                    </Button>
+                  ) : null}
+                </div>
               )
             ) : (
               <DataTable<RunRow>
                 bare
                 className="run-rows"
                 aria-label="Run list"
-                columns={columns(props.selected)}
+                columns={columns}
                 rows={rows}
                 rowKey={(r) => r.id}
-                rowLabel={(r) => `${runTitle(r)}, ${r.status}`}
-                currentKey={props.selected ?? null}
+                rowLabel={(r) => `${taskTitle(r)}, ${badgeFor(rowDesc(r)).label}`}
                 onRowClick={(r) => props.onSelect(r.id)}
                 rowClassName={() => 'run-row'}
               />
@@ -156,6 +128,6 @@ export function RunList(props: {
           </>
         )}
       </Loading>
-    </aside>
+    </section>
   );
 }

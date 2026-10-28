@@ -34,7 +34,14 @@ describe('Runs', () => {
     renderApp(<Runs onSelect={onSelect} />);
     fireEvent.click(await screen.findByText('Second task'));
     expect(onSelect).toHaveBeenCalledWith('r2');
-    expect(screen.getByText('? 1')).toBeTruthy();
+    expect(screen.getByText('Second task').closest('tr')!.querySelector('[data-status="warning"]')!.textContent).toContain('needs you');
+  });
+
+  it('shows the list alone, full width, when no run is open', async () => {
+    const { container } = renderApp(<Runs onSelect={() => {}} />);
+    expect(await screen.findByText('Second task')).toBeTruthy();
+    expect(container.querySelector('.runs-list-page > .run-list')).toBeTruthy();
+    expect(screen.queryByText('No run selected')).toBeNull();
   });
 
   it('shows a failed run list inline with a retry', async () => {
@@ -170,12 +177,6 @@ describe('Runs', () => {
     expect(onSelectNode).toHaveBeenLastCalledWith('code');
   });
 
-  it('offers the latest run when none is selected (F14)', async () => {
-    const onSelect = vi.fn();
-    renderApp(<Runs onSelect={onSelect} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open latest run' }));
-    expect(onSelect).toHaveBeenCalledWith('r1');
-  });
   it('says so when the route names a step that is not in the run', async () => {
     renderApp(<Runs selected="r1" node="ghost" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun()));

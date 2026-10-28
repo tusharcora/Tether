@@ -2,31 +2,26 @@
 .runs.mid { grid-template-columns: 280px minmax(0, 1fr); }
 .runs.stacked { display: block; height: auto; min-height: 100%; }
 .runs.stacked .run-list { border-right: 0; }
-.run-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; padding: 14px 10px; background: var(--s1); border-right: 1px solid var(--line); }
-.run-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
-.run-list-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
-.run-list-probes { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; font-size: 12px; color: var(--mut); }
-.run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 4px; }
-/* The runs list is a data table (beui's sortable table look): two sortable columns, the run and its status. A row is one run. */
+/* #/runs: the list alone, full width; a row is one line (the demo's .list) */
+.runs-list-page { min-height: 100%; }
+.run-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 0 24px 32px; }
+.run-list > .sl-screen-header { padding: 20px 0 0; }
+@media (max-width: 899px) { .run-list { padding: 0 12px 24px; } }
+/* the run page's left column, until the run page goes full width */
+.runs .run-list { min-height: 0; overflow: auto; padding: 14px 10px; background: var(--s1); border-right: 1px solid var(--line); }
+.run-list-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 12px; color: var(--mut); }
+.run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; }
+/* a data table (beui's sortable table) in one bordered box: two sortable columns, the run and its status */
+.run-rows { border: 1px solid var(--line); border-radius: 10px; background: var(--s1); }
 .run-rows table { table-layout: auto; }
-.run-rows th { padding: 4px 8px 6px; }
+.run-rows th { padding: 6px 14px; }
 .run-rows th button { font-weight: 500; }
-.run-row { position: relative; }
-.run-row > td { padding: 8px; vertical-align: middle; }
-.run-row[aria-current="true"] { box-shadow: inset 0 0 0 1px var(--line2); }
-.run-row-cell { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; text-align: left; }
-.run-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.run-row-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
-.run-row-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }
-.run-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-/* a live selected run's border marches (static under reduced motion: the root rule stops the loop) */
-.run-live-border { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-/* rx follows the row's radius, less the half-pixel inset (RunList keeps rx="9.5" as the fallback where CSS rx isn't supported) */
-.run-live-border rect { rx: calc(var(--radius-panel) - .5px); width: calc(100% - 1px); height: calc(100% - 1px); fill: none; stroke: var(--acc); stroke-width: 1; stroke-dasharray: 6 4; animation: run-march 1s linear infinite; }
-@keyframes run-march { to { stroke-dashoffset: -10; } }
-.ring-track { fill: none; stroke: var(--s3); stroke-width: 2.5; }
-.ring-fill { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; }
-.prog-ring.live .ring-fill { stroke: var(--acc); }
+.run-row > td { padding: 11px 14px; vertical-align: middle; }
+/* the run column takes the rest of the row, so a long title ellipsises instead of widening the table */
+.run-row > td:first-child { width: 100%; max-width: 0; }
+.run-row-cell { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; }
+.run-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
+.run-row-side { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
 .run-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
 .run-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 20px 10px; }
 .run-head-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

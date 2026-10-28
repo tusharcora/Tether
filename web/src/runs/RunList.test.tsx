@@ -8,13 +8,13 @@ import { filterRuns, RunList } from './RunList';
 const poll = (data?: RunRow[], error?: string): Poll<RunRow[]> => ({ data, error, fails: 0, refresh: vi.fn(async () => {}) });
 const rows = [
   makeRow({ id: 'r1', pipeline: 'ship', live: true, steps: [{ id: 'a', status: 'done', bot: 'coder' }, { id: 'b', status: 'running', bot: 'coder' }, { id: 'c', status: 'queued', bot: 'tester' }] }),
-  makeRow({ id: 'r2', task: 'Second task', kind: 'team', status: 'running', live: true, pending: 2 }),
+  makeRow({ id: 'r2', task: 'Second task', kind: 'team', status: 'running', live: true, pending: 2, startedAt: Date.now() - 120_000 }),
   makeRow({ id: 'r3', status: 'done', live: false, task: 'Finished one' }),
   makeRow({ id: 'r4', status: 'error', live: false, probe: true, task: 'Probe replay' }),
 ];
-const setup = (o: { data?: RunRow[]; selected?: string; probes?: boolean } = {}) => {
+const setup = (o: { data?: RunRow[]; probes?: boolean } = {}) => {
   const p = { onSelect: vi.fn(), onProbes: vi.fn() };
-  render(<RunList poll={poll(o.data ?? rows)} probes={o.probes ?? false} selected={o.selected} {...p} />);
+  render(<RunList poll={poll(o.data ?? rows)} probes={o.probes ?? false} {...p} />);
   return p;
 };
 
@@ -44,28 +44,43 @@ describe('RunList', () => {
     expect(screen.getByText('Second task')).toBeTruthy();
   });
 
-  it('shows a progress ring, status, title, badges, task, cost and age per row', () => {
-    const { container } = render(<RunList poll={poll(rows)} probes={false} onProbes={() => {}} onSelect={() => {}} />);
-    expect(container.querySelector('[data-progress="1/3"]')).toBeTruthy();
-    expect(screen.getByText('ship')).toBeTruthy();
-    expect(screen.getByText('? 2')).toBeTruthy();
-    expect(screen.getAllByText('Team').length).toBeGreaterThan(0);
-    expect(screen.getByText('probe')).toBeTruthy();
-    expect(screen.getAllByText(/\$0\.12 · /).length).toBe(4);
+  it('titles rows by task text with a kind tag, a badge and cost · when', async () => {
+    setup({ data: [makeRow({ task: 'Add rate limiting\nmore' }), makeRow({ id: 'r2', task: 'Second task', kind: 'team', pending: 1 })] });
+    expect(await screen.findByText('Add rate limiting')).toBeTruthy();
+    expect(screen.getByText('plan-code-review').className).toBe('sl-tag');
+    expect(screen.getByText('Team').className).toBe('sl-tag');
+    const r2 = screen.getByText('Second task').closest('tr')!;
+    expect(r2.querySelector('[data-status="warning"]')!.textContent).toContain('needs you');
+    expect(screen.queryByText('? 1')).toBeNull();
+    expect(screen.getAllByText(/\$0\.12 · /).length).toBe(2);
   });
 
-  it('selects a run and draws the moving border only on a selected live run', () => {
-    const { container, rerender } = render(<RunList poll={poll(rows)} probes={false} onProbes={() => {}} selected="r1" onSelect={() => {}} />);
-    expect(container.querySelector('.run-row[aria-current="true"] .run-live-border')).toBeTruthy();
-    rerender(<RunList poll={poll(rows)} probes={false} onProbes={() => {}} selected="r3" onSelect={() => {}} />);
-    expect(container.querySelector('.run-live-border')).toBeNull();
+  it('draws a failed run with the failed glyph', () => {
+    const { container } = render(<RunList poll={poll([makeRow({ status: 'error', live: false, steps: [{ id: 'a', status: 'done', bot: 'x' }] })])} probes={false} onProbes={() => {}} onSelect={() => {}} />);
+    expect(screen.getByRole('img', { name: 'Failed' })).toBeTruthy();
+    expect(container.querySelector('.prog-ring')).toBeNull();
+  });
+
+  it('tags probe replays', () => {
+    setup();
+    expect(screen.getByText('probe').getAttribute('title')).toBe('Evolve probe replay');
+  });
+
+  it('keeps the filters in one compact row under the page title', async () => {
+    setup();
+    expect(screen.getByRole('heading', { level: 1, name: 'Runs' })).toBeTruthy();
+    const row = (await screen.findByRole('group', { name: 'Filter runs' })).closest('.run-list-filters')!;
+    expect(within(row as HTMLElement).getByLabelText('show probe replays')).toBeTruthy();
+  });
+
+  it('selects a run from its row', () => {
     const p = setup({ data: rows });
     fireEvent.click(screen.getAllByText('Second task').at(-1)!);
     expect(p.onSelect).toHaveBeenCalledWith('r2');
   });
 
-  it('is a table of runs: sortable by run and by status, a row opens a run from the keyboard, the open one is current', () => {
-    const p = setup({ data: rows, selected: 'r3' });
+  it('is a table of runs: sortable by run and by status, a row opens a run from the keyboard', () => {
+    const p = setup({ data: rows });
     const table = screen.getByRole('table', { name: 'Run list' });
     const order = () => within(table).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'));
     expect(order()).toHaveLength(4);
@@ -80,8 +95,6 @@ describe('RunList', () => {
     expect(within(table).getByRole('columnheader', { name: /Status/ }).getAttribute('aria-sort')).toBe('ascending');
     expect(order()).not.toEqual(before.slice().reverse());
     expect(order()[0]).toMatch(/running/);
-    const current = within(table).getAllByRole('row').find((r) => r.getAttribute('aria-current') === 'true')!;
-    expect(current.getAttribute('aria-label')).toMatch(/done/);
     const first = within(table).getAllByRole('row')[1]!;
     first.focus();
     fireEvent.keyDown(first, { key: 'ArrowDown' });
@@ -98,7 +111,7 @@ describe('RunList', () => {
 
   it('says when there are no runs at all, or none for the filter', () => {
     setup({ data: [] });
-    expect(screen.getByText('No runs yet')).toBeTruthy();
+    expect(screen.getByText('No runs yet.').className).toBe('sl-quiet');
   });
 
   it('says so when a filter matches nothing', () => {
