@@ -27,10 +27,10 @@ export function TriggerFlow(p: { t: Trigger; workspace?: Workspace; onTestFire: 
       notify.fail(e);
     }
   };
-  const link = <span className="tf-link" aria-hidden="true" />;
+  const link = <span className="tgf-link" aria-hidden="true" />;
   return (
-    <section className="tf" aria-label={`${t.id} flow`}>
-      <ol className="tf-flow">
+    <section className="tgf" aria-label={`${t.id} flow`}>
+      <ol className="tgf-flow">
         <li>
           <ActionNode
             compact
