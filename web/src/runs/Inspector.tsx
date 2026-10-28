@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { stepLabel } from '../../../src/runLabels';
 import { api, describeEvent, type RunView, type StoredEvent } from '../api';
-import { JsonViewer } from '../components/arc/json-viewer/json-viewer';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/arc/tabs/tabs';
-import { Timeline, type TimelineEvent } from '../components/arc/timeline/timeline';
+import { JsonViewer } from '../components/kept/json-viewer/json-viewer';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/beui/kit/controls';
+import { Timeline, type TimelineEvent } from '../components/kept/timeline/timeline';
 import { Loading } from '../components/Loading';
 import type { RunAct } from '../Runs';
 import { Diff } from '../ui/Diff';

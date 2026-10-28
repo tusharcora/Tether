@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ago, fmtUsd, type RunRow } from '../api';
-import { Button } from '../components/arc/button/button';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Switch } from '../components/arc/switch/switch';
+import { Button } from '../components/beui/kit/Button';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Switch } from '../components/beui/kit/fields';
 import { Loading } from '../components/Loading';
 import { isFinished, runTitle } from '../home/runText';
 import type { WorkspaceRow } from '../home/workspaces';

@@ -1,10 +1,10 @@
 import './api.css';
 import { useState } from 'react';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { Input } from '../components/arc/input/input';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Input } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { useNotify } from '../ui/notify';
 import { httpApi, type ImportBody, type ImportPreview } from './client';
 

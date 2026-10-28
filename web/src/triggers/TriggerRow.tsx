@@ -1,6 +1,6 @@
 import { ago } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Switch } from '../components/arc/switch/switch';
+import { Button } from '../components/beui/kit/Button';
+import { Switch } from '../components/beui/kit/fields';
 import { cn } from '../ui/cn';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { StatusChip } from '../ui/studio/StatusChip';

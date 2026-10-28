@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Bundle, Skipped } from '../../../src/wsexport';
 import { api } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { EmptyState } from '../components/arc/empty-state/empty-state';
-import { Select } from '../components/arc/select/select';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { EmptyState } from '../components/kept/empty-state/empty-state';
+import { Select } from '../components/beui/kit/fields';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { usePoll, useUnloadWarning } from '../hooks';
 import { useNotify } from '../ui/notify';
 import { httpApi, newRequest, type HistoryRow, type HttpRequestFile, type HttpTree, type SendOutput, type VarInfo } from './client';

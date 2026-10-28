@@ -132,3 +132,5 @@
 .shell-loading { padding: 26px 30px; }
 /* main takes focus only as a landing spot (after the command menu closes with no opener left), so no ring */
 .shell-main:focus { outline: none; }
+
+.sl-settings-theme { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

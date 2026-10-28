@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ago, api, type AttentionAction, type AttentionItem } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import type { Poll, Route } from '../hooks';
 import { useNotify } from '../ui/notify';

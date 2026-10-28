@@ -1,10 +1,10 @@
 import type { Pipeline, PipelineNode } from '../../../src/types';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Select } from '../components/arc/select/select';
-import { Switch } from '../components/arc/switch/switch';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Input } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Select } from '../components/beui/kit/fields';
+import { Switch } from '../components/beui/kit/fields';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
 import { RequestGateFields } from '../RequestGateFields';

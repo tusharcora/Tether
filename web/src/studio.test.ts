@@ -38,7 +38,7 @@ const setTheme = (t: 'light' | 'dark') => {
 
 beforeAll(() => {
   // studio.css goes in FIRST: its blocks must win by specificity, not by coming after foundation.css
-  for (const css of [studio, read('./studio-arc.css'), read('./components/arc/foundation.css')]) {
+  for (const css of [studio, read('./studio-arc.css'), read('./components/kept/foundation.css')]) {
     const s = document.createElement('style');
     s.textContent = css;
     document.head.appendChild(s);

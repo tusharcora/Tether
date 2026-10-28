@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { fmtDur, fmtUsd, type RunView } from '../api';
-import { Button } from '../components/arc/button/button';
-import { CodeBlock } from '../components/arc/code-block/code-block';
-import { Input } from '../components/arc/input/input';
+import { Button } from '../components/beui/kit/Button';
+import { CodeBlock } from '../components/beui/agents/code-block';
+import { Input } from '../components/beui/kit/fields';
 import { crewFor, useCrew } from '../crewStore';
 import { Face, moodFor } from '../Face';
 import type { RunAct } from '../Runs';
@@ -71,13 +71,13 @@ export function StepPane(p: { run: RunView; nodeId: string; diff?: ReactNode; no
           <h5>
             Gate · {pnode.command} · {node.gate.ok ? 'passed' : `failed (exit ${node.gate.exitCode})`}
           </h5>
-          <CodeBlock code={node.gate.output || '(no output)'} filename={pnode.command} language="text" maxLines={40} />
+          <CodeBlock code={node.gate.output || '(no output)'} filename={pnode.command} language="text" status="complete" maxHeight={480} />
         </>
       ) : null}
       {node.output && pnode.kind === 'agent' ? (
         <>
           <h5>Output</h5>
-          <CodeBlock code={node.output} language="text" maxLines={40} />
+          <CodeBlock code={node.output} language="text" status="complete" maxHeight={480} />
         </>
       ) : null}
       {node.commit && p.diff ? (

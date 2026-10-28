@@ -1,6 +1,6 @@
-import { Button } from '../components/arc/button/button';
-import { SearchField } from '../components/arc/search-field/search-field';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
+import { Button } from '../components/beui/kit/Button';
+import { SearchField } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
 import { NONE } from '../ui/cn';
 import type { HistoryRow, HttpTree, TreeCollection, TreeRequest } from './client';
 

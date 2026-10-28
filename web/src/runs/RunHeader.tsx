@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { fmtUsd, type RunView } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { runTitle } from '../home/runText';
 import type { RunAct } from '../Runs';
 import { StatusChip, toneFor } from '../ui/studio/StatusChip';

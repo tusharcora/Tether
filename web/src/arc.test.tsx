@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, it } from 'vitest';
-import { Button } from './components/arc/button/button';
-import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
+import { Button } from './components/beui/kit/Button';
+import { Tabs, TabsList, TabsTrigger } from './components/beui/kit/controls';
 
 it('renders Arc components under jsdom', () => {
   function Demo() {

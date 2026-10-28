@@ -1,10 +1,10 @@
 import { Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { Drawer, DrawerContent } from '../components/arc/drawer/drawer';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Drawer, DrawerContent } from '../components/beui/kit/overlays';
+import { SegmentedControl } from '../components/beui/kit/controls';
 import { Loading } from '../components/Loading';
 import type { WorkspaceRow } from '../home/workspaces';
 import { useUnloadWarning } from '../hooks';

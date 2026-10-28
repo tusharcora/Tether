@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
-import { Button } from './components/arc/button/button';
+import { Button } from './components/beui/kit/Button';
 import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { Deliveries } from './triggers/Deliveries';

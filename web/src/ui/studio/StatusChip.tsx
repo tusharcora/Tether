@@ -1,3 +1,4 @@
+import { AnimatedBadge } from '../../components/beui/motion/animated-badge';
 import { cn } from '../cn';
 import './parts.css';
 
@@ -20,12 +21,24 @@ export function toneFor(status?: string): Tone {
   }
 }
 
-/** Label + dot on a tinted fill with the status colour as text. `pulse` only for live states; the text label always stays. */
+const TONE_CLASS: Record<Tone, string> = {
+  live: 'border-transparent bg-[var(--accBg)] text-[var(--accInk)]',
+  needs: 'border-transparent bg-warning-bg text-warning',
+  done: 'border-transparent bg-success-bg text-success',
+  failed: 'border-transparent bg-danger-bg text-destructive',
+  neutral: 'border-transparent bg-muted text-muted-foreground',
+};
+
+/** Label + dot on a tinted fill with the status colour as text (beui's animated badge: a changed status rolls its label). `pulse` only for live states; the text label always stays. */
 export function StatusChip(props: { tone: Tone; label: string; pulse?: boolean; className?: string }) {
   return (
-    <span className={cn('sl-chip', `t-${props.tone}`, props.className)}>
-      <span className={cn('sl-dot', { pulse: !!props.pulse })} aria-hidden="true" />
+    <AnimatedBadge
+      status="neutral"
+      size="sm"
+      icon={<span className={cn('sl-dot', { pulse: !!props.pulse })} aria-hidden="true" />}
+      className={cn('sl-chip h-[20px] gap-1.5 rounded-md px-2 text-[11px]', `t-${props.tone}`, TONE_CLASS[props.tone], props.className)}
+    >
       {props.label}
-    </span>
+    </AnimatedBadge>
   );
 }

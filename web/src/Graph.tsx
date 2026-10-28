@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ago, api, ApiError, type VaultGraph, type VaultNote } from './api';
-import { Button } from './components/arc/button/button';
-import { SearchField } from './components/arc/search-field/search-field';
+import { Button } from './components/beui/kit/Button';
+import { SearchField } from './components/beui/kit/fields';
 import { Loading, useReducedMotionPref } from './components/Loading';
 import { GraphBoard, type BoardHandle } from './graph/GraphBoard';
 import { adjacency, GLYPH, matchLocal, neighbourhood, TYPE_LABEL, TYPES, typeOf, type GraphType } from './graph/graphModel';

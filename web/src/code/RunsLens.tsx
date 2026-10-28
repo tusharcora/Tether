@@ -1,5 +1,5 @@
 import { ago } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import { cn } from '../ui/cn';
 import { Diff } from '../ui/Diff';

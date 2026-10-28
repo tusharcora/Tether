@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Input } from '../components/beui/kit/fields';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { Loading } from '../components/Loading';
 import type { Poll } from '../hooks';
 import { ConfirmButton } from '../ui/ConfirmButton';

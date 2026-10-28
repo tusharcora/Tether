@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
-import { Accordion } from './components/arc/accordion/accordion';
-import { Button } from './components/arc/button/button';
-import { ChatThread } from './components/arc/chat-thread/chat-thread';
-import { RadioCards } from './components/arc/radio-cards/radio-cards';
-import { Select } from './components/arc/select/select';
-import SegmentedControl from './components/arc/segmented-control/segmented-control';
-import { Textarea } from './components/arc/textarea/textarea';
+import { Accordion } from './components/beui/kit/fields';
+import { Button } from './components/beui/kit/Button';
+import { RadioCards } from './components/beui/kit/RadioCards';
+import { Select } from './components/beui/kit/fields';
+import { SegmentedControl } from './components/beui/kit/controls';
+import { Textarea } from './components/kept/textarea/textarea';
 import { Face } from './Face';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { ListRow } from './ui/studio/ListRow';
@@ -277,7 +276,16 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
             items={[
               {
                 title: `Dialogue so far (${n} answer${n === 1 ? '' : 's'})`,
-                content: <ChatThread participants={participants} currentUserId="user" messages={messages} composer={false} label="Planning dialogue" />,
+                content: (
+                  <ol className="tm-thread" aria-label="Planning dialogue">
+                    {messages.map((m) => (
+                      <li key={m.id} className="tm-thread-row" data-author={m.authorId}>
+                        <span className="tm-thread-who">{participants.find((x) => x.id === m.authorId)?.name ?? m.authorId}</span>
+                        <span className="tm-thread-text">{m.text}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ),
               },
             ]}
           />

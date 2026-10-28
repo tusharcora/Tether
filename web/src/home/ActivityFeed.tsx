@@ -1,7 +1,7 @@
 import { AsciiReveal } from 'ascii-reveal';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ago, api, type ActivityLine } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { Loading, useReducedMotionPref } from '../components/Loading';
 import { Face } from '../Face';
 import { pollLoop, type Route } from '../hooks';

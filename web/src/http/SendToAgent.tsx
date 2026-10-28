@@ -1,8 +1,8 @@
 import './api.css';
 import { useState, type KeyboardEvent } from 'react';
-import { Button } from '../components/arc/button/button';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { useCrew } from '../crewStore';
 import { Face } from '../Face';
 import { useNotify } from '../ui/notify';

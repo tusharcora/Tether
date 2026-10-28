@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { CopyButton } from '../../components/arc/copy-button/copy-button';
-import { Drawer, DrawerContent } from '../../components/arc/drawer/drawer';
-import SegmentedControl from '../../components/arc/segmented-control/segmented-control';
-import { Switch } from '../../components/arc/switch/switch';
+import { CopyButton } from '../../components/beui/kit/CopyButton';
+import { Drawer, DrawerContent } from '../../components/beui/kit/overlays';
+import { SegmentedControl } from '../../components/beui/kit/controls';
+import { Switch } from '../../components/beui/kit/fields';
 import type { Poll } from '../../hooks';
 import { Accounts } from '../../settings/Accounts';
 import type { AccountsView } from '../../settings/accountsApi';
 import { McpServers, type McpServerView } from '../../settings/McpServers';
-import { THEME_LABEL, type ThemeChoice } from '../../theme';
+import { ThemeToggle } from '../../components/beui/motion/theme-toggle';
+import { resolveTheme, THEME_LABEL, type ThemeChoice } from '../../theme';
 import { ToolsStrip, type Tools } from '../../welcome/ToolsStrip';
 import { CONNECTION_LABEL, type Connection } from './connection';
 import { Glyph } from './Glyph';
@@ -16,8 +17,8 @@ import './shell.css';
 
 const TONE: Record<Connection, Tone> = { connecting: 'neutral', connected: 'done', reconnecting: 'needs', offline: 'failed' };
 const CHOICES: ThemeChoice[] = ['light', 'dark', 'system'];
-/** Still in the page and not hidden (`checkVisibility` where the browser has it). */
-const focusable = (el: HTMLElement) => el.isConnected && el.checkVisibility?.() !== false;
+/** Still in the page, not hidden (`checkVisibility` where the browser has it) and not inside a layer that is leaving (beui marks it inert). */
+const focusable = (el: HTMLElement) => el.isConnected && !el.closest('[inert]') && el.checkVisibility?.() !== false;
 
 /** Settings, opened over the current screen (which stays mounted): accounts, theme, vault, why loopback, connection, tools, about. `section` scrolls one into view (the sidebar's account row opens Accounts). */
 export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; home?: string; connection: Connection; /** The agent tools found on the server's PATH (shown when given). */ tools?: Poll<Tools>; /** Connected accounts (shown when given). */ accounts?: Poll<AccountsView>; /** Code Mode's MCP servers (shown when given). */ mcp?: Poll<{ servers: McpServerView[] }>; section?: string; /** Tether.app's notifications switch (shown when given). */ notifications?: { on: boolean; onChange: (on: boolean) => void }; returnFocus?: () => HTMLElement | null | undefined }) {
@@ -58,7 +59,11 @@ export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: 
         ) : null}
         <section className="sl-settings-group" aria-labelledby="set-theme">
           <h3 id="set-theme">Theme</h3>
-          <SegmentedControl label="Theme" options={CHOICES.map((c) => ({ value: c, label: THEME_LABEL[c] }))} value={p.choice} onValueChange={(v) => p.onChoice(v as ThemeChoice)} />
+          <div className="sl-settings-theme">
+            <SegmentedControl label="Theme" options={CHOICES.map((c) => ({ value: c, label: THEME_LABEL[c] }))} value={p.choice} onValueChange={(v) => p.onChoice(v as ThemeChoice)} />
+            {/* beui's toggle repaints the page from a circle (View Transition API); it flips the theme in force and pins that choice */}
+            <ThemeToggle variant="circle" start="center" theme={resolveTheme(p.choice)} onThemeChange={(t) => p.onChoice(t)} className="size-9 flex-none rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted" iconClassName="size-4" />
+          </div>
         </section>
         <section className="sl-settings-group" aria-labelledby="set-vault">
           <h3 id="set-vault">Vault</h3>

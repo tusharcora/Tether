@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ago } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Select } from '../components/arc/select/select';
+import { Button } from '../components/beui/kit/Button';
+import { Select } from '../components/beui/kit/fields';
 import type { Poll } from '../hooks';
 import { NONE, cn, fromNone } from '../ui/cn';
 import { InlineError } from '../ui/studio/InlineError';

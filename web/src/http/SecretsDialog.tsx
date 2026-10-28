@@ -1,8 +1,8 @@
 import './api.css';
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { Input } from '../components/arc/input/input';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Input } from '../components/beui/kit/fields';
 import { Loading } from '../components/Loading';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';

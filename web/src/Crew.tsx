@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
-import { Button } from './components/arc/button/button';
-import { Dialog, DialogContent } from './components/arc/dialog/dialog';
-import { Drawer, DrawerContent, useDrawerItem } from './components/arc/drawer/drawer';
-import { SearchField } from './components/arc/search-field/search-field';
-import { Tabs, TabsList, TabsTrigger } from './components/arc/tabs/tabs';
+import { Button } from './components/beui/kit/Button';
+import { Dialog, DialogContent } from './components/beui/kit/overlays';
+import { Drawer, DrawerContent, useDrawerItem } from './components/beui/kit/overlays';
+import { SearchField } from './components/beui/kit/fields';
+import { Tabs, TabsList, TabsTrigger } from './components/beui/kit/controls';
 import { Loading } from './components/Loading';
 import { BotEditor } from './crew/BotEditor';
 import { CrewCard } from './crew/CrewCard';

@@ -1,8 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Button } from '../components/arc/button/button';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/arc/tabs/tabs';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/beui/kit/controls';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { ChecksEditor } from './ChecksEditor';
 import { METHODS, VAR_IN_TEXT, type Body, type HttpRequestFile, type KV, type Method, type VarInfo, type VarSource } from './client';
 import { KvTable } from './KvTable';

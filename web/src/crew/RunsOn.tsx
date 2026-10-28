@@ -1,9 +1,9 @@
 import { useId } from 'react';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Select } from '../components/arc/select/select';
-import { Switch } from '../components/arc/switch/switch';
+import { Button } from '../components/beui/kit/Button';
+import { Input } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Select } from '../components/beui/kit/fields';
+import { Switch } from '../components/beui/kit/fields';
 import { NONE, fromNone } from '../ui/cn';
 import { SectionHeading } from '../ui/studio/SectionHeading';
 import { StatusChip } from '../ui/studio/StatusChip';

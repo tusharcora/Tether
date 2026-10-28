@@ -1,8 +1,8 @@
 import './api.css';
 import { useMemo, useState } from 'react';
 import { describeActual, describeCheck } from '../../../src/http/describe';
-import { JsonViewer } from '../components/arc/json-viewer/json-viewer';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
+import { JsonViewer } from '../components/kept/json-viewer/json-viewer';
+import { SegmentedControl } from '../components/beui/kit/controls';
 import { Loading } from '../components/Loading';
 import type { SendOutput } from './client';
 

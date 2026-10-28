@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useToastStack } from '../components/arc/toast-stack/toast-stack';
+import { useToastStack } from '../components/beui/kit/toast';
 
 /** Toasts for action results. Load failures are shown inline by the screen instead. */
 export function useNotify() {

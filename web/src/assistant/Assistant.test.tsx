@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ToastStackProvider } from '../components/arc/toast-stack/toast-stack';
+import { ToastStackProvider } from '../components/beui/kit/toast';
 import { Assistant } from './Assistant';
 import { cssRule } from '../test/css';
 import { contextLine, contextOf } from './context';

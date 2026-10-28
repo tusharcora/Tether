@@ -1,5 +1,5 @@
 import type { RunRow } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import type { Poll, Route } from '../hooks';
 import { EmptyState } from '../ui/studio/EmptyState';

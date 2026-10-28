@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
-import { Accordion } from './components/arc/accordion/accordion';
-import { Button } from './components/arc/button/button';
-import { Checkbox } from './components/arc/checkbox/checkbox';
+import { Accordion } from './components/beui/kit/fields';
+import { Button } from './components/beui/kit/Button';
+import { Checkbox } from './components/beui/kit/fields';
 import { cn } from './ui/cn';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { SectionHeading } from './ui/studio/SectionHeading';

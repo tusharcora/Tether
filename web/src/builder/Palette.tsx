@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { PipelineNode } from '../../../src/types';
-import { SearchField } from '../components/arc/search-field/search-field';
+import { SearchField } from '../components/beui/kit/fields';
 import { SectionHeading } from '../ui/studio/SectionHeading';
 
 export type EccSkill = { name: string; description: string; source: string; kind?: string };

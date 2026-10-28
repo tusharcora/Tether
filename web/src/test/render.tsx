@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
-import { ToastStack, ToastStackProvider } from '../components/arc/toast-stack/toast-stack';
+import { ToastStack, ToastStackProvider } from '../components/beui/kit/toast';
 
 function Providers({ children }: { children: ReactNode }) {
   return (

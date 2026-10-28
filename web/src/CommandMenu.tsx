@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { runTitle } from '../../src/runLabels';
 import type { RunRow } from './api';
 import { codeApi } from './code/codeApi';
-import { CommandPalette, type CommandItem } from './components/arc/command-palette/command-palette';
-import { Dialog, DialogContent } from './components/arc/dialog/dialog';
+import { CommandPalette, type CommandItem } from './components/beui/motion/command-palette';
 import { SCREENS, TAB_LABEL, usePoll, type Route, type Screen } from './hooks';
 import { THEME_LABEL, type ThemeChoice } from './theme';
 import { goHint } from './ui/studio/nav';
@@ -38,49 +37,36 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (o: boolean) =
   const flows = usePoll<{ name: string }[]>(props.open ? '/api/pipelines' : null, 30_000);
   const [q, setQ] = useState('');
   const files = useFileHits(props.open ? props.ws : undefined, q);
-  const items = useMemo<CommandItem[]>(
-    () => [
-      // each screen shows its Linear-style shortcut (G then a letter), so the menu doubles as the shortcut help
-      ...SCREENS.map((s) => ({ id: `go:${s}`, label: `Go to ${TAB_LABEL[s]}`, description: goHint(s), group: 'Go to' })),
-      { id: 'open:settings', label: 'Open Settings', description: '⌘,', group: 'Go to' },
-      ...THEMES.map((c) => ({ id: `theme:${c}`, label: `Theme: ${THEME_LABEL[c]}`, group: 'Theme' })),
-      ...(runs.data ?? []).slice(0, 10).map((r) => ({
-        id: `run:${r.id}`,
-        label: r.task.split('\n')[0]!.slice(0, 80),
-        description: `${runTitle(r)} · ${r.status}`,
-        group: 'Recent runs',
-        keywords: [r.id],
-      })),
-      ...(flows.data ?? []).map((f) => ({ id: `flow:${f.name}`, label: f.name, description: 'Open in Builder', group: 'Workflows' })),
-      // fuzzy name matches: the typed text rides along as a keyword so the palette's own filter keeps them
-      ...files.paths.map((path) => ({ id: `file:${path}`, label: path, description: 'Open in Code', group: 'Files', keywords: [files.query] })),
-    ],
-    [runs.data, flows.data, files],
-  );
   // focus goes back to the opener; when there was none (⌘K from the page) or it is gone, to the screen, never the body
   const refocus = () =>
     setTimeout(() => {
       if (!document.activeElement || document.activeElement === document.body) document.querySelector<HTMLElement>('.shell-main')?.focus({ preventScroll: true });
     });
-  const pick = (item: CommandItem) => {
-    const i = item.id.indexOf(':');
-    const kind = item.id.slice(0, i);
-    const value = item.id.slice(i + 1);
-    props.onOpenChange(false);
+  const pick = (id: string) => {
+    const i = id.indexOf(':');
+    const kind = id.slice(0, i);
+    const value = id.slice(i + 1);
     if (kind === 'go') props.onGo({ tab: value as Screen });
     else if (kind === 'open') props.onSettings();
     else if (kind === 'theme') props.onTheme(value as ThemeChoice);
     else if (kind === 'run') props.onGo({ tab: 'runs', id: value });
     else if (kind === 'file') props.onGo({ tab: 'code', id: value });
     else props.onGo({ tab: 'builder', id: value });
+    refocus();
   };
-  return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      {props.open ? (
-        <DialogContent title="Jump to" description="Screens, settings, recent runs, saved workflows and files" onCloseAutoFocus={refocus}>
-          <CommandPalette items={items} autoFocus label="Jump to" placeholder="Search screens, runs, workflows, files" onSelect={pick} onClose={() => props.onOpenChange(false)} onQueryChange={setQ} />
-        </DialogContent>
-      ) : null}
-    </Dialog>
-  );
+  const items = useMemo<CommandItem[]>(() => {
+    const it = (id: string, label: string, group: string, extra: Partial<CommandItem> = {}): CommandItem => ({ id, label, group, onSelect: () => pick(id), ...extra });
+    return [
+      // each screen shows its Linear-style shortcut (G then a letter), so the menu doubles as the shortcut help
+      ...SCREENS.map((s) => it(`go:${s}`, `Go to ${TAB_LABEL[s]}`, 'Go to', { hint: goHint(s) })),
+      it('open:settings', 'Open Settings', 'Go to', { hint: '⌘,' }),
+      ...THEMES.map((c) => it(`theme:${c}`, `Theme: ${THEME_LABEL[c]}`, 'Theme')),
+      ...(runs.data ?? []).slice(0, 10).map((r) => it(`run:${r.id}`, r.task.split('\n')[0]!.slice(0, 80), 'Recent runs', { description: `${runTitle(r)} · ${r.status}`, keywords: [r.id] })),
+      ...(flows.data ?? []).map((f) => it(`flow:${f.name}`, f.name, 'Workflows', { description: 'Open in Builder' })),
+      // fuzzy name matches: the typed text rides along as a keyword so the palette's own filter keeps them
+      ...files.paths.map((path) => it(`file:${path}`, path, 'Files', { description: 'Open in Code', keywords: [files.query] })),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs.data, flows.data, files, props.onGo, props.onSettings, props.onTheme]);
+  return <CommandPalette items={items} open={props.open} onOpenChange={props.onOpenChange} shortcut={null} label="Jump to" placeholder="Search screens, runs, workflows, files" onQueryChange={setQ} />;
 }

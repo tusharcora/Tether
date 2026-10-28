@@ -1,9 +1,9 @@
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, type RunRow, type RunView } from './api';
-import { Button } from './components/arc/button/button';
-import { Drawer, DrawerContent } from './components/arc/drawer/drawer';
-import SegmentedControl from './components/arc/segmented-control/segmented-control';
+import { Button } from './components/beui/kit/Button';
+import { Drawer, DrawerContent } from './components/beui/kit/overlays';
+import { SegmentedControl } from './components/beui/kit/controls';
 import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { useRunStream } from './runStream';

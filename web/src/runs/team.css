@@ -16,3 +16,10 @@
 .tm-assign { --row-lead: 36px; }
 .tm-assign-goal { color: var(--ink); }
 .tm-dialogue { min-width: 0; }
+
+/* Read-only planning dialogue: who said it, then what */
+.tm-thread { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tm-thread-row { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 8px; }
+.tm-thread-row[data-author='user'] { background: var(--s2); }
+.tm-thread-who { color: var(--mut); font-size: 12px; font-weight: 600; }
+.tm-thread-text { font-size: 13px; line-height: 1.45; }

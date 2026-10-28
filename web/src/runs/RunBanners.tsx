@@ -1,6 +1,6 @@
 import { stepLabel } from '../../../src/runLabels';
 import type { RunView } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import type { RunAct } from '../Runs';
 import { InlineError } from '../ui/studio/InlineError';
 

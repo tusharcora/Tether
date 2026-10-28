@@ -1,5 +1,5 @@
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 
 /** Asks before unsaved work is dropped (leaving a screen, switching project, closing a file). Open while `text` is set. */
 export function LeaveDialog(p: { text: string | undefined; onKeep: () => void; onDiscard: () => void }) {

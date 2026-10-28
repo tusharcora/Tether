@@ -1,9 +1,9 @@
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import { Select } from '../components/arc/select/select';
-import { Slider } from '../components/arc/slider/slider';
-import { Switch } from '../components/arc/switch/switch';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Input } from '../components/beui/kit/fields';
+import { Select } from '../components/beui/kit/fields';
+import { Slider } from '../components/beui/kit/fields';
+import { Switch } from '../components/beui/kit/fields';
+import { Textarea } from '../components/kept/textarea/textarea';
 import type { BotDef, FaceLook } from '../crewStore';
 import { Face } from '../Face';
 import { DEFAULT_HUE, isEcc } from './types';
