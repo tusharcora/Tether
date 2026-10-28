@@ -7,18 +7,12 @@ import { InlineError } from '../ui/studio/InlineError';
 import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { RunTouch } from './codeApi';
 
-/** "Changed by runs": the runs whose commits touched the open file. Picking one marks its lines in the editor and shows its diff. */
-export function RunsLens(p: { idle?: boolean; runs?: RunTouch[]; error?: string; onRetry: () => void; selected?: string; onSelect: (runId?: string) => void; onOpenRun: (runId: string) => void }) {
+/** The runs whose commits touched the open file (in Code's dock, which names it). Picking one marks its lines in the editor and shows its diff. */
+export function RunsLens(p: { runs?: RunTouch[]; error?: string; onRetry: () => void; selected?: string; onSelect: (runId?: string) => void; onOpenRun: (runId: string) => void }) {
   const sel = p.runs?.find((r) => r.runId === p.selected);
   return (
-    <section className="code-lens" aria-labelledby="code-lens-title">
-      <div className="code-lens-head">
-        <h2 id="code-lens-title">Changed by runs</h2>
-        {p.runs ? <span className="sl-meta">{p.runs.length}</span> : null}
-      </div>
-      {p.idle ? (
-        <p className="code-lens-none">Open a file to see which runs changed it.</p>
-      ) : p.error ? (
+    <div className="code-lens">
+      {p.error ? (
         <InlineError message={p.error} onRetry={p.onRetry} />
       ) : (
         <Loading loading={!p.runs} lines={3} label="Loading the runs that changed this file">
@@ -56,6 +50,6 @@ export function RunsLens(p: { idle?: boolean; runs?: RunTouch[]; error?: string;
           <RunDiff text={sel.patch} />
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

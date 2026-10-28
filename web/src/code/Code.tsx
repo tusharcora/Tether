@@ -13,7 +13,7 @@ import { useNotify } from '../ui/notify';
 import { EmptyState } from '../ui/studio/EmptyState';
 import { InlineError } from '../ui/studio/InlineError';
 import { Kbd } from '../ui/studio/Kbd';
-import { ScreenHeader } from '../ui/studio/ScreenHeader';
+import { Dock, FloatBar, ToolScreen } from '../ui/studio/ToolFrame';
 import { PHONE, useMediaQuery } from '../ui/studio/useMediaQuery';
 import { codeApi, type CodeFile, type RunLock, type RunTouch, type TextHit } from './codeApi';
 import { Editor } from './Editor';
@@ -54,8 +54,9 @@ const lineCount = (text: string) => text.split('\n').length - (text.endsWith('\n
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
 
 /**
- * The Code screen: the project's tree (or search results), the open files in CodeMirror (View by default, Edit to change,
- * ⌘S to save), and the runs that changed the open file. Tree and runs become drawers on a phone.
+ * The Code screen in the tool frame: the project's tree (or search results) docks on the left, the open files sit in one
+ * floating editor card (View by default, Edit to change, ⌘S to save), and the runs that changed the open file dock on the
+ * right when asked. On a phone the tree is a drawer and the dock a bottom sheet.
  */
 export function Code(p: CodeProps) {
   const ws = p.project.id;
@@ -79,7 +80,8 @@ export function Code(p: CodeProps) {
   const [search, setSearch] = useState<{ q: string; result?: { hits: TextHit[]; truncated: boolean }; error?: string }>();
   const [runs, setRuns] = useState<{ path: string; data?: RunTouch[]; error?: string }>();
   const [run, setRun] = useState<string>();
-  const [drawer, setDrawer] = useState<'files' | 'runs'>();
+  const [drawer, setDrawer] = useState<'files'>();
+  const [runsOpen, setRunsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const tab = tabs.find((t) => t.path === cur);
@@ -238,11 +240,11 @@ export function Code(p: CodeProps) {
   const onExpand = (dir: string) => (byChanged ? setClosedChanged((s) => new Set([...s].filter((d) => d !== dir))) : void tree.expand(dir).catch(notify.fail));
   const onCollapse = (dir: string) => (byChanged ? setClosedChanged((s) => new Set(s).add(dir)) : tree.collapse(dir));
 
-  const meta = [p.project.path, git && tree.info?.files !== undefined ? `${tree.info.files} files` : '', git ? `${tree.changed.length} changed by runs` : ''].filter(Boolean).join(' · ');
+  const facts = [tree.info?.files !== undefined ? `${tree.info.files} files` : '', `${tree.changed.length} changed by runs`].filter(Boolean).join(' · ');
   const root = tree.dirs[''];
 
   const treePanel = (
-    <div className="code-tree">
+    <aside className="code-tree" aria-label="Project files">
       {git ? (
         <div className="code-filter">
           <SegmentedControl label="Show" options={[{ value: 'all', label: 'All files' }, { value: 'changed', label: 'Changed by runs' }]} value={filter} onValueChange={(v) => setFilter(v as 'all' | 'changed')} />
@@ -266,10 +268,24 @@ export function Code(p: CodeProps) {
           </Loading>
         )}
       </div>
-    </div>
+      {git ? (
+        <p className="code-legend">
+          <span className="code-run-dot" aria-hidden="true" />
+          changed by a run in 30 days
+        </p>
+      ) : null}
+    </aside>
   );
 
-  const lensPanel = <RunsLens idle={!cur} runs={runs?.data} error={runs?.error} onRetry={() => cur && void loadRuns(cur)} selected={run} onSelect={setRun} onOpenRun={p.onOpenRun} />;
+  const touched = runs?.data?.length ?? 0;
+  const runsChip =
+    touched || runs?.error ? (
+      <button type="button" className="code-runs-chip" aria-expanded={runsOpen} onClick={() => setRunsOpen(!runsOpen)}>
+        <span className="code-run-dot" aria-hidden="true" />
+        {runs?.error ? 'Runs did not load' : `${touched} ${touched === 1 ? 'run' : 'runs'} touched it`}
+      </button>
+    ) : null;
+  const docked = runsOpen && !!cur && !!git;
 
   const body = !tab ? null : tab.error ? (
     <div className="code-pad">
@@ -334,6 +350,7 @@ export function Code(p: CodeProps) {
               <span>{LANGS[file.lang].label}</span>
               {!file.tooLarge && !file.binary ? <span>{lineCount(tab.edit ?? file.text)} lines</span> : null}
               <span className="code-filebar-note">{isDirty(tab) ? 'unsaved changes' : readOnly && !file.secret ? 'read-only' : ''}</span>
+              {runsChip}
             </div>
           ) : null}
           <div className="code-editor-wrap">{body}</div>
@@ -345,48 +362,46 @@ export function Code(p: CodeProps) {
   );
 
   return (
-    <div className="code">
-      <ScreenHeader
-        meta={meta}
-        title="Code"
-        actions={
-          <>
-            {phone ? (
-              <>
-                <Button size="sm" variant="secondary" onClick={() => setDrawer('files')}>
-                  Files
-                </Button>
-                {git ? (
-                  <Button size="sm" variant="secondary" onClick={() => setDrawer('runs')}>
-                    Runs
-                  </Button>
-                ) : null}
-              </>
-            ) : null}
-            <label className="code-search">
-              <Search size={13} aria-hidden="true" />
-              <input ref={searchRef} aria-label="Search code" placeholder="Search code" value={q} spellCheck={false} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
-              <Kbd mod>⇧F</Kbd>
-            </label>
-          </>
-        }
-      />
-      <div className={cn('code-grid', { 'no-lens': !git, phone })}>
-        {phone ? null : treePanel}
-        {editorPanel}
-        {!phone && git ? lensPanel : null}
-      </div>
+    <ToolScreen className={cn('code', { docked })}>
+      <FloatBar at="left">
+        <h1 className="code-title">Code</h1>
+        <span className="code-chip" title={p.project.path}>
+          {p.project.name}
+        </span>
+        {git ? <span className="code-fact">{facts}</span> : null}
+        {phone ? (
+          <Button size="sm" variant="secondary" onClick={() => setDrawer('files')}>
+            Files
+          </Button>
+        ) : null}
+      </FloatBar>
+      <FloatBar at="right" className="code-searchbar">
+        <label className="code-search">
+          <Search size={13} aria-hidden="true" />
+          <input ref={searchRef} aria-label="Search code" placeholder="Search code" value={q} spellCheck={false} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+          <Kbd mod>⇧F</Kbd>
+        </label>
+      </FloatBar>
+      {phone ? null : treePanel}
+      {editorPanel}
+      {docked ? (
+        <Dock
+          label="Runs on this file"
+          head={
+            <>
+              <h2 className="code-dock-title">Runs on this file</h2>
+              <span className="code-chip">{nameOf(cur!)}</span>
+            </>
+          }
+          onClose={() => setRunsOpen(false)}
+        >
+          <RunsLens runs={runs?.data} error={runs?.error} onRetry={() => cur && void loadRuns(cur)} selected={run} onSelect={setRun} onOpenRun={p.onOpenRun} />
+        </Dock>
+      ) : null}
       {phone ? (
         <Drawer open={drawer === 'files'} onOpenChange={(o) => setDrawer(o ? 'files' : undefined)}>
           <DrawerContent side="left" title="Files" className="code-drawer">
             {treePanel}
-          </DrawerContent>
-        </Drawer>
-      ) : null}
-      {phone && git ? (
-        <Drawer open={drawer === 'runs'} onOpenChange={(o) => setDrawer(o ? 'runs' : undefined)}>
-          <DrawerContent side="right" title="Changed by runs" className="code-drawer">
-            {lensPanel}
           </DrawerContent>
         </Drawer>
       ) : null}
@@ -408,6 +423,6 @@ export function Code(p: CodeProps) {
         ) : null}
       </Dialog>
       <LeaveDialog text={closing ? `${nameOf(closing)} has edits that are not saved.` : undefined} onKeep={() => setClosing(undefined)} onDiscard={() => (closing && closeNow(closing), setClosing(undefined))} />
-    </div>
+    </ToolScreen>
   );
 }

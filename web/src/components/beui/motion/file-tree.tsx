@@ -1,7 +1,8 @@
 /**
  * From beui.dev (github.com/starc007/ui-components) `components/motion/file-tree.tsx`. MIT License, Copyright (c) 2026 Saurabh Chauhan;
  * the full notice is components/beui/LICENSE. Adapted for Tether: relative imports, Studio tokens through tw.css, and a
- * `trailing` slot on folders and files (rendered after the label inside the row button) for badges.
+ * `trailing` slot on folders and files (rendered after the label inside the row button) for badges, and a guide line
+ * for every ancestor level (upstream draws the parent's only).
  */
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronRight, File, Folder, FolderOpen } from "lucide-react";
@@ -379,17 +380,19 @@ export function FileTree({
                 )}
                 style={{ paddingLeft: 8 + row.depth * indent }}
               >
-                {row.depth > 0 ? (
+                {/* Tether: a guide for every ancestor level, so each level's line runs unbroken past deeper rows */}
+                {Array.from({ length: row.depth }, (_, level) => (
                   <motion.span
+                    key={level}
                     aria-hidden="true"
                     initial={reduce ? false : { opacity: 0, scaleY: 0 }}
                     animate={{ opacity: 1, scaleY: 1 }}
                     exit={{ opacity: 0, scaleY: 0 }}
                     transition={reduce ? { duration: 0 } : BRANCH_DRAW}
                     className="absolute top-0 bottom-0 w-px origin-top bg-border/70"
-                    style={{ left: 16 + (row.depth - 1) * indent }}
+                    style={{ left: 16 + level * indent }}
                   />
-                ) : null}
+                ))}
 
                 <motion.span
                   aria-hidden="true"
