@@ -11,7 +11,23 @@ import type { Assistant } from './useAssistant';
 export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void }) {
   const { chat } = p;
   const [draft, setDraft] = useState('');
-  const [model, setModel] = useState<string>();
+  // the picked model is kept per project (the panel remounts when it docks), and defaults to the bound agent's model
+  const mkey = `tether.assistant.model.${p.project ?? '_'}`;
+  const [model, setModelState] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(mkey) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const setModel = (m: string) => {
+    setModelState(m);
+    try {
+      localStorage.setItem(mkey, m);
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [attach, setAttach] = useState(false);
   const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
   const log = useRef<HTMLDivElement>(null);
@@ -31,13 +47,14 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
     setFiles([]);
     setAttach(false);
     pinned.current = true;
-    void chat.send(t, { context: p.context, ...(m || model ? { model: m ?? model } : {}), ...(attachments.length ? { attachments } : {}) });
+    void chat.send(t, { context: p.context, ...(m || picked ? { model: m ?? picked } : {}), ...(attachments.length ? { attachments } : {}) });
   };
   const read = async (list: File[]) => {
     const next = await Promise.all(list.map(async (f) => ({ name: f.name, text: (await f.text()).slice(0, ATTACH_MAX_BYTES) })));
     setFiles((cur) => [...cur, ...next].slice(0, ATTACH_MAX_FILES));
   };
   const models = chat.models.map((m) => ({ value: m, label: m }));
+  const picked = model && chat.models.includes(model) ? model : undefined;
 
   return (
     <>
@@ -76,7 +93,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
           minRows={1}
           maxRows={5}
           models={models.length > 1 ? models : undefined}
-          model={model ?? chat.model ?? models[0]?.value}
+          model={picked ?? chat.model ?? models[0]?.value}
           onModelChange={setModel}
           loading={!!chat.streaming}
           onStop={chat.stop}

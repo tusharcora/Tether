@@ -22,7 +22,7 @@ export function Panel(p: { mode: 'float' | 'docked'; context: string; canDock: b
       transition={{ duration: float ? 0.28 : 0.26, ease: [0.2, 0.8, 0.2, 1] }}
     >
       <header className="tether-head">
-        <TetherFace size={24} within=".tether-panel" />
+        <TetherFace size={30} eyeScale={1.15} within=".tether-panel" />
         <div className="tether-head-text">
           <div className="tether-head-title">Tether</div>
           <div className="tether-head-ctx">{p.context}</div>

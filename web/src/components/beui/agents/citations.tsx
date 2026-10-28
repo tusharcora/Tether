@@ -52,6 +52,8 @@ export interface CitationProps {
    * the index so voice control users can say the number they see.
    */
   label?: string;
+  /** Tether: opens the source inside the app, the same one its row in Sources opens. */
+  onOpen?: () => void;
   className?: string;
 }
 
@@ -76,11 +78,13 @@ export function Citation({
   index,
   idPrefix,
   label,
+  onOpen,
   className,
 }: CitationProps) {
   return (
     <a
       href={`#${citationTargetId(idPrefix, citationId)}`}
+      onClick={onOpen ? (e) => (e.preventDefault(), onOpen()) : undefined}
       aria-label={label ?? `View citation ${index}`}
       className={cn(
         "mx-0.5 inline-flex min-w-4 -translate-y-0.5 items-center justify-center rounded-md bg-muted/60 px-1 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground no-underline outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",

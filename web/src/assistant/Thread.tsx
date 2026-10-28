@@ -8,6 +8,7 @@ import { StreamingResponse } from '../components/beui/agents/streaming-response'
 import { ToolResult } from '../components/beui/agents/tool-result';
 import type { ChatMessage, Cite, ToolRun } from './api';
 import type { Assistant } from './useAssistant';
+import { Markdown } from './Markdown';
 import { AskCardView, ProposalCard, ToolAskCard } from './cards';
 
 /** Where a citation goes: file:line opens Code, a run opens its page, a note opens the Graph. */
@@ -73,9 +74,9 @@ function TetherMessage({ m, chat, onGo }: { m: ChatMessage; chat: Assistant; onG
           sources={m.cites?.length ? citationItems(m.cites, onGo) : undefined}
           feedback={m.feedback ?? null}
           onFeedbackChange={(v) => chat.feedback(m.id, v)}
-          contentClassName="whitespace-pre-wrap"
+          sourceIdPrefix={`src-${m.id}`}
         >
-          {text}
+          <Markdown text={text} cites={new Set((m.cites ?? []).map((c) => c.n))} idPrefix={`src-${m.id}`} onCite={(n) => { const c = m.cites?.find((x) => x.n === n); if (c) onGo(routeOf(c)); }} />
           {m.error ? <p className="m-0 mt-2 text-danger">{m.error}</p> : null}
         </StreamingResponse>
       ) : null}
@@ -112,8 +113,8 @@ export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route
       {live ? (
         <div className="max-w-[92%]" data-role="tether">
           {live.tools.length ? <Tools tools={live.tools} running /> : null}
-          <StreamingResponse status="streaming" announce={false} contentClassName="whitespace-pre-wrap">
-            {visibleText(live.text)}
+          <StreamingResponse status="streaming" announce={false}>
+            <Markdown text={visibleText(live.text)} />
           </StreamingResponse>
         </div>
       ) : null}

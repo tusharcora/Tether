@@ -32,7 +32,7 @@ export const tetherTheme = EditorView.theme({
   '.cm-tooltip': { backgroundColor: 'var(--s1)', color: 'var(--ink)', border: '1px solid var(--line2)' },
   '.cm-run-line': { backgroundColor: 'color-mix(in srgb, var(--ok) 8%, transparent)' },
   '.cm-gutterElement.cm-run-gutter': { color: 'var(--ok)', boxShadow: 'inset -3px 0 0 var(--ok)' },
-  '.cm-flash': { backgroundColor: 'var(--s3)' },
+  '.cm-flash': { backgroundColor: 'color-mix(in srgb, var(--ink) 16%, transparent)', boxShadow: 'inset 3px 0 0 var(--ink)' },
 });
 
 export const tetherHighlight = HighlightStyle.define([
