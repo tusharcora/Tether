@@ -6,6 +6,8 @@ import { useNotify } from '../ui/notify';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
 import { ActivityFeed, useActivity } from './ActivityFeed';
 import { CrewStrip } from './CrewStrip';
+import { GoalsNeedYou } from '../goals/GoalsNeedYou';
+import type { GoalView } from '../goals/goalsApi';
 import { NeedsYou } from './NeedsYou';
 import { Recent } from './Recent';
 import { Running } from './Running';
@@ -24,7 +26,7 @@ export const IDLE_MS = 10_000;
  * columns (each stacks on its own, so a short one leaves no gap) at 1200 px; below that the columns dissolve into one stack
  * in the same DOM order.
  */
-export function Home(props: { onGo: (r: Route) => void }) {
+export function Home(props: { onGo: (r: Route) => void; goals?: GoalView[]; onGoal?: (g: GoalView) => void }) {
   const notify = useNotify();
   const workspaces = usePoll<WorkspaceRow[]>(WORKSPACES_PATH, WORKSPACES_MS);
   const [ms, setMs] = useState(IDLE_MS);
@@ -68,6 +70,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
       />
       <div className="home-grid">
         <div className="home-col home-main">
+          <GoalsNeedYou goals={props.goals} onGo={props.onGo} onDone={(g) => props.onGoal?.(g)} />
           <NeedsYou poll={attention} refreshing={refreshing} onGo={props.onGo} onChanged={refetch} />
           <StartRun
             workspaces={workspaces}

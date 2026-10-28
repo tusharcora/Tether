@@ -37,3 +37,17 @@
 @media (prefers-reduced-motion: reduce) {
   .nod-act, .nod-host:hover > .nod-fan > .nod-act, .nod-host:focus-within > .nod-fan > .nod-act, .nod-host[data-fan-open] > .nod-fan > .nod-act { transition-duration: 0.01ms; transition-delay: 0s; }
 }
+
+/* the compact card: 300 px wide, a mark with its status dot, a title and one line; content from the caller goes under it */
+.nod-compact { width: 300px; max-width: 100%; box-sizing: border-box; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.nod-head { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 8px; }
+.nod-mark { position: relative; flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--s2); color: var(--ink2); }
+.nod-mark svg { width: 18px; height: 18px; }
+.nod-dot { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--s1); background: var(--mut); box-sizing: border-box; }
+.nod-dot.t-live { background: var(--acc); }
+.nod-dot.t-needs { background: var(--warn); }
+.nod-dot.t-done { background: var(--ok); }
+.nod-dot.t-failed { background: var(--bad); }
+.nod-text { display: flex; flex-direction: column; min-width: 0; }
+.nod-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; color: var(--ink); }
+.nod-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }

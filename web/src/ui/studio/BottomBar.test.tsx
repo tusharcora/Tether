@@ -14,7 +14,7 @@ describe('BottomBar', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(more);
     expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Graph', 'Triggers', 'Settings']);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Goals', 'Graph', 'Triggers', 'Settings']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     expect(onGo).toHaveBeenCalledWith('graph');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -59,10 +59,10 @@ describe('BottomBar', () => {
   it('focuses the first menu item on open and moves through the menu with arrows, Home and End', () => {
     render(<BottomBar active="home" onGo={() => {}} onSettings={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
-    const [code, graph, , settings] = screen.getAllByRole('menuitem');
+    const [code, goals, , , settings] = screen.getAllByRole('menuitem');
     expect(document.activeElement).toBe(code);
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(graph);
+    expect(document.activeElement).toBe(goals);
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
     expect(document.activeElement).toBe(settings);
