@@ -12,7 +12,7 @@ const bundle = { v: 1, workspace: { name: 'API' }, notes: '', http: { files: { '
 const plan = { dir: '/code/new', create: ['.aorch/http/runs/list.req.json'], overwrite: ['.aorch/workspace.json'], secrets: ['tok'], overwriteSecrets: [] as string[] };
 const pick = async (text: string) => {
   const file = new File([text], 'api.aorch.json', { type: 'application/json' });
-  await act(async () => fireEvent.change(screen.getByLabelText('Export file'), { target: { files: [file] } }));
+  await act(async () => fireEvent.change(screen.getByTestId('dropzone-input'), { target: { files: [file] } }));
 };
 const into = (v: string) => fireEvent.change(screen.getByLabelText('Into folder (absolute path)'), { target: { value: v } });
 beforeEach(() => {

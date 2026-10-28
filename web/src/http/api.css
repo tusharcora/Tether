@@ -101,7 +101,6 @@
 .dialog-body .spacer { flex: 1; }
 .dialog-body input[type="checkbox"] { accent-color: var(--ink); }
 .import-preview { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--s1); }
-.file-pick { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--mut); }
 .secret-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .secret-list .kv-input { width: 160px; }
 .secret-add { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
