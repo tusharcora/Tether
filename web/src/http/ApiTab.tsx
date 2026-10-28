@@ -4,11 +4,14 @@ import type { Bundle, Skipped } from '../../../src/wsexport';
 import { api } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { SegmentedControl } from '../components/beui/kit/controls';
 import { EmptyState } from '../components/kept/empty-state/empty-state';
-import { Select } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
 import { usePoll, useUnloadWarning } from '../hooks';
+import { cn } from '../ui/cn';
 import { useNotify } from '../ui/notify';
+import { QuietLine } from '../ui/studio/Section';
+import { Dock, FloatBar, MenuButton, ToolScreen, type MenuItem } from '../ui/studio/ToolFrame';
 import { httpApi, newRequest, type HistoryRow, type HttpRequestFile, type HttpTree, type SendOutput, type VarInfo } from './client';
 import { EnvDialog } from './EnvDialog';
 import { ImportDialog } from './ImportDialog';
@@ -16,7 +19,7 @@ import { RequestEditor } from './RequestEditor';
 import { ResponseView } from './ResponseView';
 import { SecretsDialog } from './SecretsDialog';
 import { SendToAgent } from './SendToAgent';
-import { Tree } from './Tree';
+import { History, Tree } from './Tree';
 import { WorkspaceDialog } from './WorkspaceDialog';
 import { storedWorkspace as readWs, storeWorkspace } from '../home/workspaces';
 import './api.css';
@@ -70,6 +73,9 @@ export function ApiTab(props: ApiTabProps) {
   const [shownHistory, setShownHistory] = useState<number>();
   const [dialog, setDialog] = useState<DialogName>(null);
   const [envName, setEnvName] = useState<string>();
+  /** The response card shows the last exchange or the send history; Send to agent docks on the right. */
+  const [respTab, setRespTab] = useState<'response' | 'history'>('response');
+  const [agentOpen, setAgentOpen] = useState(false);
   const [pending, setPending] = useState<null | (() => void)>(null);
   const dirty = !!file && JSON.stringify(file) !== saved;
 
@@ -266,23 +272,8 @@ export function ApiTab(props: ApiTabProps) {
     setOutput(fromHistory(h));
     setSendError(undefined);
     setShownHistory(h.id);
+    setRespTab('response');
   };
-
-  const wsBar = (
-    <div className="api-ws">
-      {workspaces.data?.length ? (
-        <Select label="Workspace" options={workspaces.data.map((w) => ({ value: w.id, label: w.name }))} value={ws ?? tree?.workspace ?? workspaces.data.find((w) => w.isDefault)?.id ?? workspaces.data[0]!.id} onValueChange={setWs} />
-      ) : null}
-      <div className="row">
-        <Button size="sm" variant="ghost" onClick={exportWs} disabled={!tree}>
-          Export
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setDialog('workspace')}>
-          Import workspace
-        </Button>
-      </div>
-    </div>
-  );
 
   if (treeError === 'no workspace')
     return (
@@ -292,53 +283,115 @@ export function ApiTab(props: ApiTabProps) {
     );
 
   const total = countRequests(tree);
+  const wsId = ws ?? tree?.workspace ?? workspaces.data?.find((w) => w.isDefault)?.id ?? workspaces.data?.[0]?.id;
+  const envs = tree?.environments ?? [];
+  const active = tree?.activeEnv ?? null;
+  const envItems: (MenuItem | 'rule')[] = [
+    { label: 'No env', current: !active, onSelect: () => void setEnv(null) },
+    ...envs.map((e) => ({ label: e, current: e === active, onSelect: () => void setEnv(e) })),
+    'rule',
+    ...(active ? [{ label: `Edit ${active}…`, onSelect: () => (setEnvName(active), setDialog('env')) }] : []),
+    { label: 'New environment…', onSelect: () => (setEnvName(undefined), setDialog('env')) },
+  ];
   return (
-    <div className="api-tab">
-      <aside className="api-left" aria-label="Collections">
-        {wsBar}
-        <Tree tree={tree} selected={openId} filter={filter} onFilter={setFilter} onOpen={open} onNew={fresh} onImport={() => setDialog('import')} onSecrets={() => setDialog('secrets')} onEnv={setEnv} onEditEnv={(n) => (setEnvName(n), setDialog('env'))} history={history} historyError={historyError} shownHistory={shownHistory} onHistory={showHistory} />
+    <ToolScreen className={cn('api-tab', { docked: agentOpen })}>
+      <FloatBar at="left">
+        <h1 className="api-title">API client</h1>
+        {workspaces.data?.length ? (
+          <MenuButton title="Workspace" variant="secondary" label={`${workspaces.data.find((w) => w.id === wsId)?.name ?? wsId} ▾`} items={workspaces.data.map((w) => ({ label: w.name, current: w.id === wsId, onSelect: () => setWs(w.id) }))} />
+        ) : null}
+        <MenuButton title="Environment" variant="secondary" label={`env · ${active ?? 'none'} ▾`} items={envItems} />
+      </FloatBar>
+      <FloatBar at="right">
+        <Button size="sm" variant="secondary" onClick={() => setDialog('secrets')}>
+          Secrets
+        </Button>
+        <MenuButton
+          title="Import · Export"
+          variant="secondary"
+          align="end"
+          label="Import · Export ▾"
+          items={[
+            { label: 'Import requests…', onSelect: () => setDialog('import') },
+            { label: 'Import workspace…', onSelect: () => setDialog('workspace') },
+            { label: 'Export workspace', disabled: !tree, onSelect: () => void exportWs() },
+          ]}
+        />
+        <Button size="sm" variant="primary" onClick={fresh}>
+          + New request
+        </Button>
+      </FloatBar>
+
+      <aside className="api-dock" aria-label="Requests">
+        <Tree tree={tree} selected={openId} filter={filter} onFilter={setFilter} onOpen={open} onNew={fresh} />
         {treeError ? (
           <p className="resp-error tree-error" role="alert">
             {treeError}
           </p>
         ) : null}
       </aside>
-      <main className="api-center">
+      <div className="api-center">
         {invalid ? (
-          <section className="req-editor">
+          <section className="api-card req-editor">
             <p className="resp-error" role="alert">{`${invalid.id}: ${invalid.error}`}</p>
             <Textarea label="File contents (read-only)" readOnly rows={14} className="mono" value={invalid.raw ?? ''} />
           </section>
         ) : file ? (
-          <RequestEditor key={openId ?? 'new'} file={file} vars={vars} dirty={dirty} sending={sending} onChange={setFile} onSend={send} onSave={save} />
-        ) : tree && !total ? (
-          <EmptyState
-            title="No saved requests"
-            description="Import a cURL command, an OpenAPI document or a Postman collection, or start a new request."
-            action={
-              <div className="row">
-                <Button variant="primary" onClick={() => setDialog('import')}>
-                  Import
-                </Button>
-                <Button variant="secondary" onClick={fresh}>
-                  New request
-                </Button>
-              </div>
-            }
-          />
+          <div className="api-card">
+            <RequestEditor key={openId ?? 'new'} file={file} vars={vars} dirty={dirty} sending={sending} onChange={setFile} onSend={send} onSave={save} />
+          </div>
         ) : (
-          <EmptyState title="Pick a request" description="Open a saved request on the left, or start a new one." />
+          <div className="api-card">
+            {tree && !total ? (
+              <>
+                <QuietLine>No saved requests yet. Import a cURL command, an OpenAPI document or a Postman collection, or start a new request.</QuietLine>
+                <div className="row">
+                  <Button size="sm" variant="primary" onClick={() => setDialog('import')}>
+                    Import
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={fresh}>
+                    New request
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <QuietLine>Pick a request on the left, or start a new one.</QuietLine>
+            )}
+          </div>
         )}
-        {file || output ? (
-          <>
-            {shownHistory !== undefined && output ? (
-              <p className="hint from-history">{`From history · ${output.request.method} ${output.request.url}`}</p>
-            ) : null}
-            <ResponseView output={output} sending={sending} error={sendError} />
-          </>
+        {file || output || history.length || historyError ? (
+          <section className="api-card api-resp" aria-label="Response and history">
+            <div className="api-resp-bar">
+              <SegmentedControl
+                label="Response or history"
+                options={[
+                  { value: 'response', label: 'Response' },
+                  { value: 'history', label: 'History' },
+                ]}
+                value={respTab}
+                onValueChange={(v) => setRespTab(v === 'history' ? 'history' : 'response')}
+              />
+              <span className="spacer" />
+              <Button size="sm" variant="secondary" aria-pressed={agentOpen} onClick={() => setAgentOpen(!agentOpen)}>
+                Send to agent
+              </Button>
+            </div>
+            {respTab === 'history' ? (
+              <History history={history} historyError={historyError} shownHistory={shownHistory} onHistory={showHistory} />
+            ) : (
+              <>
+                {shownHistory !== undefined && output ? <p className="hint from-history">{`From history · ${output.request.method} ${output.request.url}`}</p> : null}
+                <ResponseView output={output} sending={sending} error={sendError} />
+              </>
+            )}
+          </section>
         ) : null}
-      </main>
-      <SendToAgent ws={ws} output={output} requestId={openId && !dirty ? openId : undefined} env={tree?.activeEnv} onStarted={props.onStarted} onUseAsGate={props.onUseAsGate} />
+      </div>
+      {agentOpen ? (
+        <Dock label="Send to agent" head={<h2 className="api-dock-title">Send to agent</h2>} onClose={() => setAgentOpen(false)}>
+          <SendToAgent ws={ws} output={output} requestId={openId && !dirty ? openId : undefined} env={tree?.activeEnv} onStarted={props.onStarted} onUseAsGate={props.onUseAsGate} />
+        </Dock>
+      ) : null}
 
       <ImportDialog ws={ws} open={dialog === 'import'} onOpenChange={(o) => setDialog(o ? 'import' : null)} onImported={() => (setDialog(null), void refresh())} />
       <SecretsDialog ws={ws} open={dialog === 'secrets'} onOpenChange={(o) => setDialog(o ? 'secrets' : null)} />
@@ -366,6 +419,6 @@ export function ApiTab(props: ApiTabProps) {
           </DialogContent>
         ) : null}
       </Dialog>
-    </div>
+    </ToolScreen>
   );
 }

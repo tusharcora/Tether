@@ -56,7 +56,7 @@
 .port.out { right: -7px; cursor: crosshair; }
 .port:hover { border-color: var(--acc); background: var(--acc); }
 /* zoom: a small floating bar at the bottom-left (the add-step bar holds the bottom centre) */
-.zoom { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px; background: var(--s1); box-shadow: 0 0 0 1px var(--line2), 0 10px 30px -10px rgb(0 0 0 / .25); }
+.zoom { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px; background: var(--s1); box-shadow: var(--tf-float); }
 .zoom button {
   display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 7px; border: 0;
   background: none; color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);

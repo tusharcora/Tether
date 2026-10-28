@@ -8,7 +8,7 @@ span.bl-name { width: auto; overflow: hidden; text-overflow: ellipsis; white-spa
 .bl-issues {
   position: absolute; z-index: 6; top: 64px; left: 16px; max-width: min(560px, calc(100% - 32px)); max-height: 180px; overflow: auto;
   list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; border-radius: 12px; background: var(--s1);
-  box-shadow: 0 0 0 1px var(--line2), 0 10px 30px -10px rgb(0 0 0 / .25); font-size: 13px;
+  box-shadow: var(--tf-float); font-size: 13px;
 }
 .bl-issues li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .bl-issue-node { padding: 0 6px; border: 1px solid var(--line2); border-radius: 5px; background: var(--s2); color: var(--ink); font-family: var(--font-code); font-size: 11px; cursor: pointer; }

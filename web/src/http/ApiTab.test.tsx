@@ -51,6 +51,9 @@ describe('latency strip', () => {
   });
 });
 
+const history = () => fireEvent.click(within(screen.getByRole('group', { name: 'Response or history' })).getByRole('button', { name: 'History' }));
+const agentDock = () => fireEvent.click(screen.getByRole('button', { name: 'Send to agent' }));
+
 describe('ApiTab', () => {
   it('follows the current project, opens a requested request once its workspace is shown, and reports what is open', async () => {
     const onOpenRequest = vi.fn();
@@ -73,7 +76,7 @@ describe('ApiTab', () => {
   it('offers Import or New when there are no requests', async () => {
     routeApi({ ...routes, 'GET /api/http/tree': { ...tree, root: { path: '', name: '', requests: [], collections: [] } } });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
-    expect(await screen.findByText('No saved requests')).toBeTruthy();
+    expect(await screen.findByText(/^No saved requests yet/)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Import' }).length).toBeGreaterThan(0);
   });
 
@@ -84,8 +87,11 @@ describe('ApiTab', () => {
     fireEvent.change(screen.getByLabelText('Filter requests'), { target: { value: 'start' } });
     expect(screen.queryByRole('button', { name: 'GET List runs' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Filter requests'), { target: { value: '' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'stage' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Environment' }));
+    expect(screen.getByRole('menuitem', { name: 'local' }).getAttribute('aria-current')).toBe('true');
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'stage' })));
     expect(calls('PUT', '/api/http/active-env')[0]![2]).toEqual({ name: 'stage' });
+    history();
     expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(3);
   });
 
@@ -94,11 +100,11 @@ describe('ApiTab', () => {
     const list = await screen.findByRole('button', { name: 'GET List runs' });
     await act(async () => fireEvent.click(list));
     expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('List runs');
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send(?! to)/ })));
     expect(calls('POST', '/api/http/send')[0]![2]).toEqual({ id: 'runs/list' });
     expect(await screen.findByText('200 OK')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Request name'), { target: { value: 'List all runs' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send(?! to)/ })));
     expect(calls('POST', '/api/http/send')[1]![2]).toMatchObject({ id: 'runs/list', draft: { name: 'List all runs' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Save/ })));
     expect(calls('PUT', '/api/http/requests/runs%2Flist')[0]![2]).toMatchObject({ name: 'List all runs' });
@@ -139,11 +145,15 @@ describe('ApiTab', () => {
     routeApi({ ...routes, 'GET /api/http/history': [past], 'POST /api/http/send-to-agent': { runId: 'r7' }, 'GET /api/crew': { bots: [] } });
     const started = vi.fn();
     renderApp(<ApiTab onStarted={started} onUseAsGate={() => {}} />);
-    const bar = await screen.findByRole('button', { name: 'GET 200 · 1500 ms' });
-    await act(async () => fireEvent.click(bar));
+    await screen.findByRole('button', { name: 'GET List runs' });
+    history();
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'GET 200 · 1500 ms' })));
+    // the pick shows that exchange on the Response tab
     expect(screen.getByText('200 OK')).toBeTruthy();
     expect(screen.getByText('1500 ms', { selector: '.resp-head .mono' })).toBeTruthy();
-    expect(bar.getAttribute('aria-pressed')).toBe('true');
+    history();
+    expect(screen.getByRole('button', { name: 'GET 200 · 1500 ms' }).getAttribute('aria-pressed')).toBe('true');
+    agentDock();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Start run with/ })));
     expect(calls('POST', '/api/http/send-to-agent')[0]![2]).toMatchObject({ historyId: 3 });
     expect(started).toHaveBeenCalledWith('r7');
@@ -153,6 +163,8 @@ describe('ApiTab', () => {
     const past = (id: number, ms: number, status: number, url: string) => ({ ...hist(ms, status, id), url, data: { request: out.request, response: { ...out.result, status, ms }, checks: [] } });
     routeApi({ ...routes, 'GET /api/http/history': [past(9, 40, 200, 'http://h/api/runs'), past(8, 900, 404, 'http://h/api/orders?x=1')] });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    history();
     const table = await screen.findByRole('table', { name: 'Send history' });
     const order = () => within(table).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'));
     expect(order()).toEqual(['GET /api/runs, 200', 'GET /api/orders?x=1, 404']);
@@ -167,6 +179,9 @@ describe('ApiTab', () => {
   it('says so when the history cannot be loaded, instead of an empty strip', async () => {
     routeApi({ ...routes, 'GET /api/http/history': new Error('database is locked') });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Response or history' })).toBeTruthy());
+    history();
     expect((await screen.findByText(/database is locked/)).textContent).toContain('History');
   });
 
@@ -196,13 +211,14 @@ describe('ApiTab', () => {
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     const list = await screen.findByRole('button', { name: 'GET List runs' });
     await act(async () => fireEvent.click(list));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
-    expect(screen.getByRole('button', { name: /^Send/ }).getAttribute('aria-busy')).toBe('true');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send(?! to)/ })));
+    expect(screen.getByRole('button', { name: /^Send(?! to)/ }).getAttribute('aria-busy')).toBe('true');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'POST Start run' })));
     expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('Start run');
     await act(async () => finish(structuredClone(out)));
     expect(screen.queryByText('200 OK')).toBeNull();
-    expect(screen.getByRole('button', { name: /^Send/ }).getAttribute('aria-busy')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Send(?! to)/ }).getAttribute('aria-busy')).toBeNull();
+    agentDock();
     expect((screen.getByRole('button', { name: /^Start run with/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -249,7 +265,8 @@ describe('ApiTab', () => {
     });
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     await screen.findByRole('button', { name: 'GET List runs' });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Export' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Import · Export' }));
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Export workspace' })));
     expect(calls('GET', '/api/workspaces/api/export')).toHaveLength(1);
     expect(JSON.parse(await created[0]!.text())).toEqual({ v: 1, workspace: { name: 'API' }, notes: '', http: { files: {} } });
     expect(names).toEqual(['api-server.aorch.json']);
@@ -260,10 +277,11 @@ describe('ApiTab', () => {
     click.mockRestore();
   });
 
-  it('opens the workspace import dialog from the workspace bar', async () => {
+  it('opens the workspace import dialog from the Import · Export menu', async () => {
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     await screen.findByRole('button', { name: 'GET List runs' });
-    fireEvent.click(screen.getByRole('button', { name: 'Import workspace' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import · Export' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import workspace…' }));
     expect(await screen.findByText('Import a workspace')).toBeTruthy();
   });
 
@@ -278,9 +296,10 @@ describe('ApiTab', () => {
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     const list = await screen.findByRole('button', { name: 'GET List runs' });
     await act(async () => fireEvent.click(list));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send/ })));
-    fireEvent.click(screen.getByRole('combobox', { name: 'Workspace' }));
-    await act(async () => fireEvent.click(await screen.findByRole('option', { name: 'B' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send(?! to)/ })));
+    fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'B' })));
+    history();
     await waitFor(() => expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(1));
     const oldHistory = () => calls('GET', '/api/http/history?limit=20').length;
     const before = oldHistory();
@@ -288,6 +307,42 @@ describe('ApiTab', () => {
     expect(oldHistory()).toBe(before);
     expect(screen.getByLabelText('Last 20 sends').querySelectorAll('.lat')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'GET 200 · 40 ms' })).toBeTruthy();
+  });
+});
+
+describe('ApiTab in the tool frame', () => {
+  it('keeps the request tree in a left dock with New request at its foot, and the screen actions on top', async () => {
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const dock = await screen.findByRole('complementary', { name: 'Requests' });
+    expect(within(dock).getByRole('navigation', { name: 'Saved requests' })).toBeTruthy();
+    expect(within(dock).getByRole('button', { name: 'New request' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'API client' })).toBeTruthy();
+    for (const name of ['Workspace', 'Environment', 'Secrets', 'Import · Export', '+ New request']) expect(screen.getByRole('button', { name })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Secrets' }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
+  it('opens Send to agent in the dock from the response card, and Esc closes it', async () => {
+    routeApi({ ...routes, 'GET /api/crew': { bots: [] } });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const list = await screen.findByRole('button', { name: 'GET List runs' });
+    await act(async () => fireEvent.click(list));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Send(?! to)/ })));
+    expect(screen.queryByRole('complementary', { name: 'Send to agent' })).toBeNull();
+    agentDock();
+    const dock = screen.getByRole('complementary', { name: 'Send to agent' });
+    expect((within(dock).getByRole('button', { name: /^Start run with/ }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Send to agent' })).toBeNull();
+  });
+
+  it('edits the active environment and adds one from the Environment menu', async () => {
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    fireEvent.click(screen.getByRole('button', { name: 'Environment' }));
+    expect(screen.getByRole('menuitem', { name: 'Edit local…' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New environment…' }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 });
 
