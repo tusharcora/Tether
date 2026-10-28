@@ -138,7 +138,7 @@ describe('run page', () => {
   it('puts the approval bar on the page and opens the run changes from Review diff', async () => {
     open(makeAwaitingRun());
     fireEvent.click(await screen.findByRole('button', { name: 'Review diff' }));
-    expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
+    expect(await screen.findByRole('complementary', { name: 'Run details' })).toBeTruthy();
   });
   it('keeps the team plan inside the page width', () => expect(cssRule('runs/runs.css', '.run-disclosure')).toContain('min-width: 0'));
 });

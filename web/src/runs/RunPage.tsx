@@ -1,17 +1,17 @@
+import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import type { RunView, StoredEvent } from '../api';
-import { Drawer, DrawerContent } from '../components/beui/kit/overlays';
 import type { RunAct } from '../Runs';
 import { dialogueCount, PlanningDialogue, TeamPanel } from '../Team';
 import { Disclosure, QuietLine } from '../ui/studio/Section';
 import { StepTodos } from '../ui/studio/StepTodos';
 import { ApprovalBar } from './ApprovalBar';
-import { Inspector } from './Inspector';
 import { OutputLog } from './OutputLog';
 import { RunFiles } from './RunFiles';
 import { RunGraph } from './RunGraph';
 import { RunHeader } from './RunHeader';
 import { RunNotices } from './RunNotices';
+import { StepInspector } from './StepInspector';
 
 export type InspectorTarget = { mode: 'step'; node: string } | { mode: 'run'; tab: 'changes' | 'timeline' };
 
@@ -45,46 +45,49 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
   const teamPlan = r.kind === 'team' && hasNodes;
 
   return (
-    <div className="run-page">
-      <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} onDetails={() => openRun('changes')} />
-      <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
-      <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} />
-      {r.kind === 'team' ? <TeamPanel run={r} send={(path, body) => p.onAct(path, body)} /> : null}
-      {planning ? <QuietLine>Tether is planning…</QuietLine> : null}
-      {hasNodes ? (
-        <div className="run-split">
-          <OutputLog run={r} events={p.events} onPick={openStep} />
-          <RunFiles run={r} onOpen={() => openRun('changes')} />
-        </div>
-      ) : null}
-      {talk || teamPlan ? (
-        <div className="run-disclosures">
-          {talk ? (
-            <Disclosure label="Planning" meta={`${talk} answer${talk === 1 ? '' : 's'}`} className="run-disclosure">
-              <PlanningDialogue run={r} />
-            </Disclosure>
-          ) : null}
-          {teamPlan ? (
-            <Disclosure label="Team plan" meta={`${done} of ${steps.length}`} className="run-disclosure">
-              <StepTodos steps={steps} title="Steps" className="run-todos" />
-            </Disclosure>
-          ) : null}
-        </div>
-      ) : null}
-      <ApprovalBar run={r} onAct={p.onAct} onReviewDiff={() => openRun('changes')} />
-      {/* shortcut: the old Inspector in a drawer, until the step inspector slide-over (Task 11) replaces it */}
-      <Drawer open={!!target} onOpenChange={(o) => !o && close()}>
-        <DrawerContent side="right" title="Inspector">
-          <Inspector
+    <div className="run-view">
+      <div className="run-page">
+        <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} onDetails={() => openRun('changes')} />
+        <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
+        <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} />
+        {r.kind === 'team' ? <TeamPanel run={r} send={(path, body) => p.onAct(path, body)} /> : null}
+        {planning ? <QuietLine>Tether is planning…</QuietLine> : null}
+        {hasNodes ? (
+          <div className="run-split">
+            <OutputLog run={r} events={p.events} onPick={openStep} />
+            <RunFiles run={r} onOpen={() => openRun('changes')} />
+          </div>
+        ) : null}
+        {talk || teamPlan ? (
+          <div className="run-disclosures">
+            {talk ? (
+              <Disclosure label="Planning" meta={`${talk} answer${talk === 1 ? '' : 's'}`} className="run-disclosure">
+                <PlanningDialogue run={r} />
+              </Disclosure>
+            ) : null}
+            {teamPlan ? (
+              <Disclosure label="Team plan" meta={`${done} of ${steps.length}`} className="run-disclosure">
+                <StepTodos steps={steps} title="Steps" className="run-todos" />
+              </Disclosure>
+            ) : null}
+          </div>
+        ) : null}
+        <ApprovalBar run={r} onAct={p.onAct} onReviewDiff={() => openRun('changes')} />
+      </div>
+      <AnimatePresence>
+        {target ? (
+          <StepInspector
+            key="insp"
             run={r}
             events={p.events}
-            selected={target?.mode === 'step' ? target.node : undefined}
-            pane={target?.mode === 'run' ? (target.tab === 'timeline' ? 'timeline' : 'branch') : undefined}
+            target={target}
+            onTarget={(t) => (t.mode === 'step' ? openStep(t.node) : setTarget(t))}
+            onClose={close}
             onAct={p.onAct}
             onOpenFile={p.onOpenFile}
           />
-        </DrawerContent>
-      </Drawer>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

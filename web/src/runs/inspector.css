@@ -1,0 +1,48 @@
+/* The step inspector (approved mockup docs/design/StepInspector.html .insp): a 440 px panel over the run. Tokens only. */
+.insp-scrim { position: absolute; inset: 0; z-index: 20; background: rgb(0 0 0 / .12); }
+.insp {
+  position: absolute; top: 8px; right: 8px; bottom: 8px; z-index: 21; display: flex; flex-direction: column; width: 440px; max-width: calc(100% - 16px);
+  overflow: hidden; border-radius: 14px; background: var(--bg); outline: none;
+  /* a soft shadow that lifts the panel, not a glow */
+  box-shadow: 0 0 0 1px var(--line), -24px 0 60px -20px rgb(0 0 0 / .25);
+}
+@media (max-width: 899px) { .insp { inset: 0; width: auto; max-width: none; border-radius: 0; } }
+.insp-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.insp-nav, .insp-close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line2); border-radius: 7px; background: var(--s1); color: var(--ink2); cursor: pointer; }
+.insp-nav:hover:not(:disabled), .insp-close:hover { background: var(--s2); color: var(--ink); }
+.insp-nav:disabled { opacity: .35; cursor: default; }
+.insp-close { margin-left: auto; border-color: transparent; background: none; color: var(--mut); }
+.insp-dots { display: flex; gap: 5px; margin: 0 6px; }
+.insp-dot { width: 6px; height: 6px; padding: 0; border: 0; border-radius: 3px; background: var(--s3); cursor: pointer; transition: width var(--t-slow) var(--ease), background-color var(--t-slow) var(--ease); }
+.insp-dot[aria-current="step"] { width: 18px; background: var(--ink); }
+.insp-count { font-family: var(--font-code); font-size: 11.5px; color: var(--mut); }
+.insp-keys { display: flex; gap: 3px; margin-left: 8px; }
+@media (max-width: 899px) { .insp-keys { display: none; } }
+.insp-title { display: flex; flex-direction: column; min-width: 0; }
+.insp-title b { font-size: 14px; font-weight: 600; }
+.insp-stage { position: relative; flex: 1; min-height: 0; overflow: auto; }
+.insp-page { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.insp-step { display: flex; flex-direction: column; gap: 12px; }
+.insp-who { display: flex; gap: 12px; align-items: center; }
+.insp-who-main { min-width: 0; }
+.insp-who-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.insp-who h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.insp-sub { margin: 2px 0 0; font-family: var(--font-code); font-size: 11.5px; color: var(--mut); overflow-wrap: anywhere; }
+.insp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.insp-stats > div { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--side); }
+.insp-stats dt { font-size: 11px; color: var(--mut); }
+.insp-stats dd { margin: 0; font-family: var(--font-code); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.insp-body { padding-top: 12px; }
+.insp-out { margin: 0; font-family: var(--font-code); font-size: 12px; line-height: 1.75; color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chk { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.chk:first-child { border-top: 0; }
+.chk-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.insp-rate { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line); }
+.insp-rate-q { flex: 1; min-width: 140px; font-size: 12.5px; color: var(--ink2); }
+.insp-saved { margin-left: 6px; color: var(--mut); }
+.insp-thumb { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); color: var(--ink2); cursor: pointer; transition: transform var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease); }
+.insp-thumb:hover { transform: translateY(-1px); }
+.insp-thumb[aria-pressed="true"] { border-color: var(--ink); background: var(--s2); color: var(--ink); }
+.insp-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; width: 100%; }
+.insp-note > :first-child { flex: 1; min-width: 180px; }
+@media (prefers-reduced-motion: reduce) { .insp-thumb:hover { transform: none; } }

@@ -1,4 +1,5 @@
-/* #/runs/<id>: one full-width scroller (the demo's run screen); the inspector sits over it */
+/* #/runs/<id>: one full-width scroller (the demo's run screen); the inspector sits over it in the non-scrolling frame */
+.run-view { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .run-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: auto; padding: 22px 24px 24px; }
 @media (max-width: 899px) { .run-page { padding: 16px 12px 20px; } }
 /* output left, files right; one column under 1100 px */
@@ -58,9 +59,6 @@ button.out-line:hover .out-text { text-decoration: underline; text-underline-off
 .run-approve-q { display: flex; flex: 1; flex-direction: column; min-width: 200px; }
 .run-approve-q b { font-size: 14px; font-weight: 500; color: var(--ink); }
 .run-approve-q span { font-size: 12px; color: var(--mut); }
-.step-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-.step-head-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.step-head h4 { margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); overflow-wrap: anywhere; }
 .step-why { margin: 6px 0; display: flex; flex-direction: column; gap: 2px; }
 .caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--acc); animation: caret-blink 1s steps(1) infinite; }
 @keyframes caret-blink { 50% { opacity: 0; } }

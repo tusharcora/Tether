@@ -95,9 +95,11 @@ describe('Runs', () => {
     const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', run));
     fireEvent.click((await waitFor(() => container.querySelector('.rg [data-id="plan"]')))!);
-    fireEvent.change(await screen.findByLabelText('Why (optional)'), { target: { value: 'clear plan' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Good' })));
-    expect(calls('POST', '/api/runs/r1/feedback')[0]![2]).toEqual({ node: 'plan', rating: 'up', note: 'clear plan' });
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Good' })));
+    expect(calls('POST', '/api/runs/r1/feedback')[0]![2]).toEqual({ node: 'plan', rating: 'up' });
+    fireEvent.change(screen.getByLabelText('Why (optional)'), { target: { value: 'clear plan' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save note' })));
+    expect(calls('POST', '/api/runs/r1/feedback')[1]![2]).toEqual({ node: 'plan', rating: 'up', note: 'clear plan' });
     expect((screen.getByLabelText('Why (optional)') as HTMLInputElement).value).toBe('');
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bad' })));
     expect(await screen.findByText('feedback store is read-only')).toBeTruthy();
@@ -150,7 +152,7 @@ describe('Runs', () => {
     const onSelectNode = vi.fn();
     const { container } = renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} onSelectNode={onSelectNode} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun({ status: 'done', live: false })));
-    expect(await screen.findByLabelText('Why (optional)')).toBeTruthy();
+    expect(await screen.findByText('How did Scout do?')).toBeTruthy();
     fireEvent.click(container.querySelector('.rg [data-id="code"]')!);
     expect(onSelectNode).toHaveBeenLastCalledWith('code');
   });
