@@ -1,5 +1,5 @@
 /* The expanded run's flow: compact action nodes left to right on the dot grid. Tokens only; only live parts move. */
-.rf { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 28px 32px 40px; background-color: var(--bg); }
+.rf { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 64px 72px 40px; background-color: var(--bg); }
 .rf::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
 .rf-world { position: relative; }
 .rf-edges { position: absolute; left: 0; top: 0; pointer-events: none; }

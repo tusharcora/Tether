@@ -3,6 +3,8 @@
  * Adapted for Tether: Studio tokens, opaque fills, CSS transitions.
  */
 .nod-card { position: relative; background: var(--s1); border: 1px solid var(--line2); }
+/* the open card rises over its neighbours so its fan isn't painted under the next node */
+.nod-host:hover, .nod-host:focus-within, .nod-host[data-fan-open] { z-index: 4; }
 
 /* the fan hangs off the host's top-right corner, a zero-size anchor the buttons are placed from */
 .nod-fan { position: absolute; top: 0; right: 0; width: 0; height: 0; pointer-events: none; z-index: 3; }

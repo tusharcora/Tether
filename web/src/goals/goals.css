@@ -37,7 +37,7 @@
 .gd-limit .mono { font-size: 12px; color: var(--ink); }
 
 /* the dot grid, cut from a solid fill by a mask (no gradient fill), as the pipeline canvas draws it */
-.gd-grid { position: relative; display: flex; justify-content: center; padding: 28px 24px 48px; border: 1px solid var(--line); border-radius: var(--radius-panel); background-color: var(--bg); overflow: hidden; }
+.gd-grid { position: relative; display: flex; justify-content: center; padding: 64px 72px 48px; border: 1px solid var(--line); border-radius: var(--radius-panel); background-color: var(--bg); }
 .gd-grid::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
 .goal-flow { position: relative; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 0; list-style: none; max-width: 100%; }
 .goal-flow > li { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
