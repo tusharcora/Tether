@@ -1,6 +1,6 @@
-import type { Answer, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
+import type { Answer, Edge, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
 
-export type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
+export type { Answer, Edge, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
 export type { ActivityLine, AttentionAction, AttentionItem, Pin, RosterPreview, RunStep, VaultActivityItem } from '../../src/types.js';
 export type RunView = RunState & { live: boolean };
 export interface RunRow extends RunRowExtras {
