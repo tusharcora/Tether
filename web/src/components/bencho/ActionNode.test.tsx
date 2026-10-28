@@ -1,0 +1,71 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { ActionNode, DOT, fanSpots, ride } from './ActionNode';
+
+// Read from disk: vitest blanks CSS imports. The base goes through a variable so Vite leaves the URL alone.
+const here = import.meta.url;
+
+describe('the action node fan', () => {
+  it('rides the card outline: along the top edge, round the corner, down the right edge, always the same distance out', () => {
+    const corner = 12, off = 22;
+    // left of the corner arc: straight along the top edge, `off` above it
+    expect(ride(-30, corner, off)).toMatchObject({ x: -corner - 30, y: -off, nx: 0, ny: -1 });
+    // past the arc: down the right edge, `off` to its right
+    const len = ((corner + off) * Math.PI) / 2;
+    expect(ride(len + 30, corner, off)).toMatchObject({ x: off, y: corner + 30, nx: 1, ny: 0 });
+    // on the arc: exactly corner + off from the arc's centre
+    const p = ride(len / 2, corner, off);
+    expect(Math.hypot(p.x + corner, p.y - corner)).toBeCloseTo(corner + off, 5);
+  });
+
+  it('spreads the buttons a button and a gap apart, symmetrically about the corner', () => {
+    const spots = fanSpots(4, 12);
+    expect(spots).toHaveLength(4);
+    for (let i = 1; i < spots.length; i++) expect(Math.hypot(spots[i]!.x - spots[i - 1]!.x, spots[i]!.y - spots[i - 1]!.y)).toBeGreaterThan(DOT);
+    // the first button is over the top edge, the last beside the right edge
+    expect(spots[0]!.y).toBeLessThan(0);
+    expect(spots[3]!.x).toBeGreaterThan(0);
+  });
+
+  it('is a toolbar of named buttons that run their action without leaking the click, and skips disabled ones with the arrows', () => {
+    const run = vi.fn(), del = vi.fn(), outer = vi.fn();
+    render(
+      <div onClick={outer}>
+        <ActionNode
+          label="Step actions"
+          tabbable
+          actions={[
+            { id: 'a', label: 'Run from here', icon: <i />, onSelect: run },
+            { id: 'b', label: 'Edit step', icon: <i />, onSelect: () => {}, disabled: true },
+            { id: 'c', label: 'Delete step', icon: <i />, danger: true, onSelect: del },
+          ]}
+        >
+          <p>card</p>
+        </ActionNode>
+      </div>,
+    );
+    const bar = screen.getByRole('toolbar', { name: 'Step actions' });
+    expect(bar.querySelectorAll('button').length).toBe(3);
+    const first = screen.getByRole('button', { name: 'Run from here' });
+    first.focus();
+    fireEvent.keyDown(bar, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Delete step' }));
+    fireEvent.click(document.activeElement!);
+    expect(del).toHaveBeenCalledTimes(1);
+    fireEvent.click(first);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(outer).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: 'Edit step' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('opens on hover, focus and the host flag, folds in reverse order, and draws opaque buttons from tokens', () => {
+    const css = readFileSync(new URL('./ActionNode.css', here), 'utf8');
+    expect(css).toMatch(/\.nod-host:hover > \.nod-fan > \.nod-act/);
+    expect(css).toMatch(/\.nod-host:focus-within > \.nod-fan > \.nod-act/);
+    expect(css).toMatch(/\.nod-host\[data-fan-open\] > \.nod-fan > \.nod-act/);
+    expect(css).toMatch(/calc\(\(var\(--n\) - 1 - var\(--i\)\) \* 24ms\)/);
+    expect(css).toContain('background: var(--s1)');
+    expect(css.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+  });
+});
