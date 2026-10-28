@@ -13,6 +13,7 @@ describe('RunsOn', () => {
     const fns = h();
     const { rerender, container } = render(<RunsOn row={row()} agents={agents} draft={b('claude')} dirty={false} {...fns} />);
     expect(screen.getByRole('region', { name: 'Runs on' })).toBeTruthy();
+    expect(screen.getByText('Local models (Ollama, LM Studio, llama.cpp) appear in Agent when their server is running.')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Save agent' }) as HTMLButtonElement).disabled).toBe(true);
     expect([...container.querySelectorAll('datalist option')].map((o) => o.getAttribute('value'))).toEqual(['opus']);
     fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'opus' } });

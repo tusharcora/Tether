@@ -1,25 +1,24 @@
+import { Ellipsis } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCreateIntent } from './ui/useCreateIntent';
-import { api } from './api';
+import { api, type RunRow } from './api';
 import { Button } from './components/beui/kit/Button';
 import { Dialog, DialogContent, Drawer, DrawerContent, useDrawerItem } from './components/beui/kit/overlays';
-import { SearchField } from './components/beui/kit/fields';
-import { Tabs, TabsList, TabsTrigger } from './components/beui/kit/controls';
 import { Loading } from './components/Loading';
+import { Bench } from './crew/Bench';
 import { BotEditor } from './crew/BotEditor';
-import { CrewCard } from './crew/CrewCard';
+import { Slot } from './crew/Lineup';
 import { RunsOn } from './crew/RunsOn';
-import { isEcc, sourceOf, type AgentInfo, type Binding, type CrewReply, type Filter, type ImportReply, type Meta, type Pack, type Row } from './crew/types';
+import type { AgentInfo, Binding, CrewReply, Filter, ImportReply, Meta, Pack, Row } from './crew/types';
 import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
 import { EvolvePanel } from './Evolve';
 import { Face } from './Face';
-import { ConfirmButton } from './ui/ConfirmButton';
+import { busyBots } from './home/runText';
+import { usePoll } from './hooks';
+import { cn } from './ui/cn';
 import { useNotify } from './ui/notify';
-import { EmptyState } from './ui/studio/EmptyState';
 import { InlineError } from './ui/studio/InlineError';
-import { ScreenHeader } from './ui/studio/ScreenHeader';
-import { SectionHeading } from './ui/studio/SectionHeading';
-import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
+import { Dock, FloatBar, MenuButton, ToolScreen, type MenuItem } from './ui/studio/ToolFrame';
 import './crew/crew.css';
 
 /** Face colours for a new bot. Faces are identity art, exempt from the no-purple rule (see rules.test.ts). */
@@ -31,7 +30,6 @@ const bindingOf = (b: Row['binding']): Binding => ({ agent: b?.agent ?? '', mode
 
 export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** The Create menu asked for a new bot (a counter). */ create?: number }) {
   const notify = useNotify();
-  const phone = useMediaQuery(PHONE);
   const [rows, setRows] = useState<Row[]>([]);
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
   const [draft, setDraft] = useState<Record<string, Binding>>({});
@@ -40,7 +38,6 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
   // after one good load a failed refresh keeps the board and shows a compact retry above it
   const [loaded, setLoaded] = useState(false);
   const gridRef = useRef<HTMLElement>(null);
-  const emptyRef = useRef<HTMLParagraphElement>(null);
   const [refocus, setRefocus] = useState(0);
   const [meta, setMeta] = useState<Meta>({ kinds: [], packs: [], ecc: null, eccDefault: '' });
   const [defs, setDefs] = useState<BotDef[]>([]);
@@ -61,8 +58,12 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
   const [evo, setEvo] = useState<Record<string, { version: number; open: number }>>({});
   const [evolving, setEvolving] = useState<Row | null>(null);
   const [pending, setPending] = useState<null | (() => void)>(null);
-  // the drawers keep showing their last item while they slide out
-  const shown = useDrawerItem(edit);
+  const [library, setLibrary] = useState(true);
+  const [packsOpen, setPacksOpen] = useState(false);
+  const [removingEcc, setRemovingEcc] = useState(false);
+  /** Who is working now: bots of running steps in live runs (read only, as Home's crew strip). */
+  const runs = usePoll<RunRow[]>('/api/runs', 5000);
+  // the Evolve drawer keeps showing its last bot while it slides out
   const evolveShown = useDrawerItem(evolving);
   const dirty = !!edit && JSON.stringify(edit) !== base.current;
 
@@ -153,7 +154,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
     if (d) open(d);
     else setEdit(null);
   };
-  const closeDrawer = () =>
+  const closeCard = () =>
     guard(() => {
       setEdit(null);
       setSel(undefined);
@@ -178,10 +179,9 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
     setEdit(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.bot]);
-  // after Delete / Reset closes the editor, focus goes to the first card or the empty panel, not the page body
+  // after Delete / Reset closes the card, focus goes to the first role, not the page body
   useEffect(() => {
-    if (!refocus) return;
-    (gridRef.current?.querySelector<HTMLElement>('.cw-card') ?? emptyRef.current)?.focus();
+    if (refocus) gridRef.current?.querySelector<HTMLElement>('.cw-slot-main')?.focus();
   }, [refocus]);
   const missing = props.bot && !loading && loaded && !defs.some((d) => d.id === props.bot) ? props.bot : undefined;
 
@@ -274,21 +274,19 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
     }
   }
 
-  const defOf = (r: Row) => defs.find((d) => d.id === r.role);
-  const counts: Record<Filter, number> = { all: rows.length, builtin: 0, custom: 0, ecc: 0 };
-  for (const r of rows) counts[sourceOf(defOf(r))]++;
-  const hasEcc = defs.some(isEcc);
-  const view: Filter = filter === 'ecc' && !hasEcc ? 'all' : filter;
-  const needle = q.trim().toLowerCase();
-  const shownRows = rows
-    .filter((r) => view === 'all' || sourceOf(defOf(r)) === view)
-    .filter((r) => {
-      if (!needle) return true;
-      const d = defOf(r);
-      return `${r.name} ${r.title} ${r.role} ${d?.whenToUse ?? ''} ${d?.persona ?? ''}`.toLowerCase().includes(needle);
-    });
   const selRow = rows.find((r) => r.role === sel);
   const evolvable = !!selRow && (selRow.kind === 'agent' || selRow.kind === 'verdict');
+  const builtins = defs.filter((d) => d.builtin);
+  const bench = defs.filter((d) => !d.builtin);
+  const busy = busyBots(runs.data ?? []);
+  const working = builtins.filter((d) => busy.has(d.id)).length;
+  const actions: (MenuItem | 'rule')[] = [
+    { label: 'Crew packs…', onSelect: () => setPacksOpen(true) },
+    { label: 'Evolve…', disabled: !evolvable, onSelect: () => selRow && setEvolving(selRow) },
+    'rule',
+    { label: meta.ecc ? 'Update ECC…' : 'Import ECC…', onSelect: () => setImporting(true) },
+    ...(meta.ecc ? [{ label: 'Remove ECC…', danger: true, onSelect: () => setRemovingEcc(true) }] : []),
+  ];
 
   const editorFor = (b: BotDef) => (
     <>
@@ -322,104 +320,56 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
           }}
         />
       ) : null}
+      {!isNew && evolvable ? (
+        <div className="cw-actions">
+          <Button variant="secondary" size="sm" onClick={() => setEvolving(selRow)}>
+            {evo[selRow.role]?.open ? `Evolve · ${evo[selRow.role]!.open} open proposal${evo[selRow.role]!.open === 1 ? '' : 's'}` : 'Evolve'}
+          </Button>
+        </div>
+      ) : null}
     </>
   );
 
   return (
-    <div className="cw-page">
-      <ScreenHeader
-        meta={`crew · ${counts.builtin} built-in · ${counts.custom} yours${meta.ecc ? ` · ${counts.ecc} from ECC ${meta.ecc.ref}` : ''}`}
-        title="Crew"
-        summary="Each bot's look, persona and the agent it runs on. Changes apply to the next run you start."
-        actions={
-          <>
-            <SearchField label="Find a bot" value={q} onValueChange={setQ} placeholder="Name or when to use" />
-            <Button variant="secondary" onClick={() => document.getElementById('crew-packs')?.scrollIntoView({ block: 'start' })}>
-              Crew packs
-            </Button>
-            <Button variant="secondary" disabled={!evolvable} title={evolvable ? 'Proposals, lessons and harness versions' : 'Select an agent or verdict bot'} onClick={() => selRow && setEvolving(selRow)}>
-              Evolve
-            </Button>
-            <Button variant="secondary" onClick={() => setImporting(true)}>
-              {meta.ecc ? 'Update ECC…' : 'Import ECC…'}
-            </Button>
-            {meta.ecc ? <ConfirmButton label="Remove ECC" prompt="Remove every ECC bot and the vendored checkout?" confirmLabel="Remove" onConfirm={removeEcc} /> : null}
-            <Button variant="primary" onClick={newBot}>
-              + New bot
-            </Button>
-          </>
-        }
-      />
-      {loadErr && !loaded ? <InlineError message={loadErr} onRetry={() => void load()} /> : null}
-      <Loading loading={loading} lines={6} label="Checking which agents are installed">
-        {loadErr && !loaded ? null : (
-          <div className="cw-body">
-            <div className="cw-main">
-              <Tabs value={view} onValueChange={(v) => setFilter(v as Filter)}>
-                <TabsList aria-label="Bot source">
-                  <TabsTrigger value="all">{`All ${counts.all}`}</TabsTrigger>
-                  <TabsTrigger value="builtin">{`Built-in ${counts.builtin}`}</TabsTrigger>
-                  <TabsTrigger value="custom">{`Yours ${counts.custom}`}</TabsTrigger>
-                  {hasEcc ? <TabsTrigger value="ecc">{`ECC ${counts.ecc}`}</TabsTrigger> : null}
-                </TabsList>
-              </Tabs>
-              {loadErr ? <InlineError compact message={loadErr} onRetry={() => void load()} /> : null}
-              {missing ? (
-                <p className="sl-note" role="status">
-                  No bot called “{missing}”.
-                </p>
-              ) : null}
-              {shownRows.length ? (
-                <section ref={gridRef} className="cw-grid" aria-label="Bots">
-                  {shownRows.map((r) => {
-                    const b = r.binding ? agents[r.binding.agent] : undefined;
-                    return <CrewCard key={r.role} row={r} def={defOf(r)} evo={evo[r.role]} agentMissing={!!b && !b.ok} selected={sel === r.role} onPick={() => pick(r.role)} />;
-                  })}
-                </section>
-              ) : (
-                <EmptyState title="No bots match" description="Try another name, or another source." />
-              )}
-              <section id="crew-packs" className="cw-packs" aria-labelledby="crew-packs-h">
-                <SectionHeading id="crew-packs-h" title="Crew packs" count={meta.packs.length} />
-                <div className="cw-pack-grid">
-                  {meta.packs.map((k) => (
-                    <div key={k.id} className="sl-panel cw-pack">
-                      <h3>{k.name}</h3>
-                      <p className="sl-summary">{k.blurb}</p>
-                      <div className="cw-pack-faces">
-                        {k.bots.map((b) => (
-                          <span key={b.id} title={`${b.name}: ${b.persona}`}>
-                            <Face id={b.id} size={34} label={b.name} />
-                          </span>
-                        ))}
-                      </div>
-                      <p className="sl-meta">{k.bots.map((b) => b.name).join(' · ')}</p>
-                      <div>
-                        <Button variant="secondary" size="sm" onClick={() => void addPack(k)}>
-                          Add to my crew
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-              <p className="sl-meta">Local models (Ollama, LM Studio, llama.cpp) appear here when their server is running.</p>
-            </div>
-            {phone ? null : (
-              <aside className="cw-side" aria-label="Edit bot">
-                {edit ? editorFor(edit) : <p ref={emptyRef} tabIndex={-1} className="cw-side-empty">Select a bot to change its look, persona and agent, or add a new one.</p>}
-              </aside>
-            )}
-          </div>
-        )}
+    <ToolScreen className={cn('cw-screen', { docked: !!edit, lib: library })}>
+      <Loading className="cw-load" loading={loading} lines={6} label="Checking which agents are installed">
+        <div className="cw-lineup">
+          {loadErr ? <InlineError compact={loaded} message={loadErr} onRetry={() => void load()} /> : null}
+          {missing ? (
+            <p className="sl-note" role="status">
+              No bot called “{missing}”.
+            </p>
+          ) : null}
+          {loadErr && !loaded ? null : (
+            <section ref={gridRef} className="cw-slots" aria-label="Roles">
+              {builtins.map((d) => {
+                const row = rows.find((r) => r.role === d.id);
+                const a = row?.binding ? agents[row.binding.agent] : undefined;
+                return <Slot key={d.id} def={d} row={row} busy={busy.has(d.id)} proposals={evo[d.id]?.open ?? 0} agentMissing={!!a && !a.ok} selected={sel === d.id} onPick={() => pick(d.id)} />;
+              })}
+            </section>
+          )}
+        </div>
       </Loading>
 
-      {phone ? (
-        <Drawer open={!!edit} onOpenChange={(o) => !o && closeDrawer()}>
-          <DrawerContent side="right" title={isNew ? 'New bot' : `Edit ${shown?.name ?? ''}`}>
-            {shown ? <div className="cw-side">{editorFor(shown)}</div> : null}
-          </DrawerContent>
-        </Drawer>
+      <FloatBar at="left">
+        <h1 className="cw-title">Crew</h1>
+        <span className="cw-fact">{`${builtins.length} role${builtins.length === 1 ? '' : 's'} · ${working} working`}</span>
+      </FloatBar>
+      <FloatBar at="right">
+        <Button variant="secondary" size="sm" aria-pressed={library} onClick={() => setLibrary(!library)}>
+          Library <span className="cw-count">{bench.length}</span>
+        </Button>
+        <MenuButton title="More crew actions" align="end" label={<Ellipsis size={16} aria-hidden="true" />} items={actions} />
+        <Button variant="primary" size="sm" onClick={newBot}>
+          + New bot
+        </Button>
+      </FloatBar>
+      {library && !loading && !(loadErr && !loaded) ? <Bench bots={bench} filter={filter} onFilter={setFilter} q={q} onQ={setQ} selected={sel} onPick={pick} /> : null}
+      {edit ? (
+        <Dock label="Bot card" onClose={closeCard}>
+          {editorFor(edit)}
+        </Dock>
       ) : null}
 
       <Drawer open={!!evolving} onOpenChange={(o) => !o && setEvolving(null)}>
@@ -445,6 +395,45 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
         </DialogContent>
       </Dialog>
 
+      <Dialog open={packsOpen} onOpenChange={setPacksOpen}>
+        <DialogContent title="Crew packs" description="Ready-made sets of bots to add to your crew.">
+          <div className="cw-pack-grid">
+            {meta.packs.map((k) => (
+              <div key={k.id} className="sl-panel cw-pack">
+                <h3>{k.name}</h3>
+                <p className="sl-summary">{k.blurb}</p>
+                <div className="cw-pack-faces">
+                  {k.bots.map((b) => (
+                    <span key={b.id} title={`${b.name}: ${b.persona}`}>
+                      <Face id={b.id} size={34} label={b.name} />
+                    </span>
+                  ))}
+                </div>
+                <p className="sl-meta">{k.bots.map((b) => b.name).join(' · ')}</p>
+                <div>
+                  <Button variant="secondary" size="sm" onClick={() => void addPack(k)}>
+                    Add to my crew
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={removingEcc} onOpenChange={setRemovingEcc}>
+        <DialogContent title="Remove ECC?" description="Remove every ECC bot and the vendored checkout?">
+          <div className="cw-actions">
+            <Button variant="secondary" onClick={() => setRemovingEcc(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => (setRemovingEcc(false), void removeEcc())}>
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <DialogContent title={`Discard your changes to ${edit?.name || 'the new bot'}?`} description="They are not saved.">
           <div className="cw-actions">
@@ -464,6 +453,6 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </ToolScreen>
   );
 }

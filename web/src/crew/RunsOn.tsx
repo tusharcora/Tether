@@ -34,6 +34,7 @@ export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: 
         />
         <Input label="Model" list={`models-${p.row.role}`} value={p.draft.model} placeholder="adapter default" spellCheck={false} onChange={(e) => p.onChange({ model: e.target.value })} />
       </div>
+      <p className="sl-meta">Local models (Ollama, LM Studio, llama.cpp) appear in Agent when their server is running.</p>
       <datalist id={`models-${p.row.role}`}>
         {(chosen?.models ?? []).map((m) => (
           <option key={m} value={m} />

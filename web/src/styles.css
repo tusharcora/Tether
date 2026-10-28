@@ -46,7 +46,7 @@ main { flex: 1; min-height: 0; }
 span.face > svg { width: 100%; height: 100%; }
 /* animate="hover" wakes the face anywhere over its tile, not only over the drawn blob (mirrors blobatar/motion.css .mo-root:hover) */
 span.face:hover .mo-root { --mo-amp: 1; transition-duration: calc(.4s * var(--mo-rate, 1)), calc(.22s * var(--mo-rate, 1)), var(--mo-md); transform: translateY(-1.5px) scale(1.04); }
-.cw-card:hover span.face .mo-root, .cw-card:focus-visible span.face .mo-root { --mo-amp: 1; transition-duration: calc(.4s * var(--mo-rate, 1)), calc(.22s * var(--mo-rate, 1)), var(--mo-md); transform: translateY(-1.5px) scale(1.04); }
+.cw-slot:hover span.face .mo-root, .cw-slot:focus-within span.face .mo-root { --mo-amp: 1; transition-duration: calc(.4s * var(--mo-rate, 1)), calc(.22s * var(--mo-rate, 1)), var(--mo-md); transform: translateY(-1.5px) scale(1.04); }
 @media not ((hover: hover) and (pointer: fine)) {
-  span.face:hover .mo-root:not(.mo-always), .cw-card:hover span.face .mo-root:not(.mo-always) { --mo-amp: 0; transform: none; }
+  span.face:hover .mo-root:not(.mo-always), .cw-slot:hover span.face .mo-root:not(.mo-always) { --mo-amp: 0; transform: none; }
 }
