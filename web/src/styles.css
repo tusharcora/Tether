@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
-code, pre, .cmd, .chip { font-family: var(--mono); }
+code, pre, .chip { font-family: var(--mono); }
 code { font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 h3, h4, h5 { margin: 0 0 6px; }
 h4 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

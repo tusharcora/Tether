@@ -1,5 +1,5 @@
 /* The pipeline canvas: Builder edits it, Runs shows a run on it. Tokens only; only live parts move. */
-.canvas { position: relative; overflow: hidden; outline: none; touch-action: none; user-select: none; cursor: grab; background-color: var(--bg); }
+.canvas { position: relative; overflow: hidden; outline: none; touch-action: none; user-select: none; cursor: grab; background-color: var(--side); }
 /* The dot grid: a solid --grid fill cut into dots by a mask (no gradient fill). Canvas.tsx moves it with pan and zoom. */
 .canvas::before {
   content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid);
@@ -25,7 +25,7 @@
 @keyframes canvas-flow { to { stroke-dashoffset: -12; } }
 @keyframes canvas-loop { to { stroke-dashoffset: -22; } }
 
-/* Step cards: face, title and mono chips on a surface; selection is a 3px tint ring (no blur, so not a glow). */
+/* Step cards: face, title, "bot · kind" and a two-line preview on a surface; selection is a 3px tint ring (no blur, so not a glow). */
 .node {
   position: absolute; display: flex; flex-direction: column; background: var(--s1); border: 1px solid var(--line2); border-radius: 12px;
   transition: border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
@@ -40,16 +40,13 @@
 .node.s-error { border-color: var(--bad); }
 .node.s-done { border-color: var(--ok); }
 .node.s-skipped { opacity: .6; }
-.node-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px 8px; cursor: move; min-width: 0; }
+.node-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; cursor: move; min-width: 0; }
 .node-head .face { border-radius: 8px; flex: none; }
-.node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
-.node-body { padding: 0 10px 8px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.node .chip { font-family: var(--font-code); font-size: 10.5px; line-height: 16px; padding: 0 6px; border-radius: 5px; border: 0; background: var(--s2); color: var(--mut); white-space: nowrap; }
-.node .chip.agent { color: var(--ink); }
-.meta { display: flex; gap: 4px; flex-wrap: wrap; }
-.flags { display: flex; gap: 4px; flex-wrap: wrap; }
-.flags span { font-family: var(--font-code); font-size: 10.5px; line-height: 16px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--line2); color: var(--mut); }
-.cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); font-family: var(--font-code); font-size: 11px; }
+.node-names { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.node-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
+.node-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.node-body { padding: 0 12px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.node-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 11.5px; line-height: 1.45; color: var(--mut); overflow-wrap: anywhere; }
 .run-line { display: flex; gap: 8px; align-items: center; color: var(--mut); font-family: var(--font-code); font-size: 11px; }
 .port {
   position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--s1); border: 2px solid var(--edge);
@@ -58,11 +55,12 @@
 .port.in { left: -7px; }
 .port.out { right: -7px; cursor: crosshair; }
 .port:hover { border-color: var(--acc); background: var(--acc); }
-.zoom { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+/* zoom: a small floating bar at the bottom-left (the add-step bar holds the bottom centre) */
+.zoom { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px; background: var(--s1); box-shadow: 0 0 0 1px var(--line2), 0 10px 30px -10px rgb(0 0 0 / .25); }
 .zoom button {
-  display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; border: 1px solid var(--edge);
-  background: var(--s1); color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 7px; border: 0;
+  background: none; color: var(--ink); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
 }
 .zoom button:hover { background: var(--s2); }
-.canvas-hint { position: absolute; left: 14px; right: 64px; bottom: 14px; font-size: 12px; color: var(--mut); pointer-events: none; }
+.canvas-hint { position: absolute; left: 60px; right: 16px; bottom: 16px; font-size: 12px; color: var(--mut); pointer-events: none; }
 .empty-hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--mut); pointer-events: none; }

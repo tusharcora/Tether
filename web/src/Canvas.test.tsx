@@ -17,6 +17,27 @@ describe('Canvas', () => {
     expect(container.textContent).toContain('$ npm test');
   });
 
+  it('shows a readable card: face, title, bot · kind and a two-line preview', () => {
+    const { container } = render(<Canvas nodes={nodes} edges={edges} />);
+    const code = container.querySelector('[data-id="code"]')!;
+    expect(code.querySelector('.node-title')!.textContent).toBe('coder');
+    expect(code.querySelector('.node-sub')!.textContent).toBe('bolt · agent');
+    expect(code.querySelector('.node-preview')!.textContent).toBe('Default instructions for the coder.');
+    expect(container.querySelector('[data-id="gate"] .node-preview')!.textContent).toBe('$ npm test');
+    expect(container.querySelector('.chip.id')).toBeNull();
+    expect(cssRule('canvas.css', '.node-preview')).toContain('-webkit-line-clamp: 2');
+  });
+
+  it('labels a fix loop with where it goes back to', () => {
+    const { container } = render(<Canvas nodes={nodes} edges={edges} />);
+    expect(container.querySelector('.loop text')!.textContent).toBe('if it fails · back to coder ×2');
+  });
+
+  it('floats the zoom controls at the bottom-left, on the canvas backdrop colour', () => {
+    expect(cssRule('canvas.css', '.zoom')).toContain('left: 16px');
+    expect(cssRule('canvas.css', '.canvas')).toContain('background-color: var(--side)');
+  });
+
   it('hovering a step tints its border without moving it off its ports', () => {
     expect(cssRule('canvas.css', '.node:hover')).toContain('border-color: var(--edge)');
     expect(cssRule('canvas.css', '.node:hover')).not.toContain('transform');

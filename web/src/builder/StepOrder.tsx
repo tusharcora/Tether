@@ -1,6 +1,7 @@
 import type { Pipeline, PipelineNode } from '../../../src/types';
 import { SortableList, SortableListGroup, SortableListHandle, SortableListItem, SortableListItemContent } from '../components/beui/motion/sortable-list';
 import { SectionHeading } from '../ui/studio/SectionHeading';
+import { stepTitle } from './stepText';
 
 /** The steps in the order a straight chain runs them (each step has at most one before it and one after), or undefined when the workflow is a graph. */
 export function chainOrder(pl: Pick<Pipeline, 'nodes' | 'edges' | 'mode'>): string[] | undefined {
@@ -32,8 +33,6 @@ export function rechain(pl: Pipeline, order: string[]): void {
   pl.nodes = order.map((id) => byId.get(id)).filter((n): n is PipelineNode => !!n);
 }
 
-const label = (n: PipelineNode) => n.title ?? n.role ?? n.kind;
-
 /**
  * "Step order": a workflow that is a straight chain lists its steps in run order, and a step can be dragged (or moved with its
  * handle's arrow keys) to run earlier or later; the connections and the canvas follow. A workflow with branches is a graph
@@ -55,14 +54,14 @@ export function StepOrder({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline) =
   return (
     <div className="bl-order">
       <SectionHeading title="Step order" count={items.length} />
-      <SortableList items={items} label="Step order" getItemLabel={(x) => label(x.node)} showUndo={false} className="max-w-none" onItemsChange={(next) => mut((p) => rechain(p, next.map((x) => x.id)))}>
+      <SortableList items={items} label="Step order" getItemLabel={(x) => stepTitle(x.node)} showUndo={false} className="max-w-none" onItemsChange={(next) => mut((p) => rechain(p, next.map((x) => x.id)))}>
         {(rows) => (
           <SortableListGroup className="bl-order-list space-y-0">
             {rows.map((x, i) => (
               <SortableListItem key={x.id} id={x.id} className="rounded-lg p-2">
                 <SortableListHandle />
                 <SortableListItemContent>
-                  <span className="bl-order-n">{i + 1}</span> <span className="bl-order-name">{label(x.node)}</span> <code className="bl-order-id">{x.id}</code>
+                  <span className="bl-order-n">{i + 1}</span> <span className="bl-order-name">{stepTitle(x.node)}</span> <code className="bl-order-id">{x.id}</code>
                 </SortableListItemContent>
               </SortableListItem>
             ))}

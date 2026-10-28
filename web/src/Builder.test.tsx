@@ -270,7 +270,7 @@ describe('Builder', () => {
     fireEvent.click(within(palette).getByRole('button', { name: /^Webhook/ }));
     expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
     // the new gate is selected: its card holds the curl to the webhook
-    expect(document.querySelector('.node.selected .cmd')?.textContent).toContain('$WEBHOOK_URL');
+    expect(document.querySelector('.node.selected .node-preview')?.textContent).toContain('$WEBHOOK_URL');
     fireEvent.pointerDown(document.querySelector('[data-node][data-id="plan"] .node-title') as HTMLElement);
     fireEvent.click(within(palette).getByRole('button', { name: 'Add HTTP request after plan' }));
     expect(screen.getByText('workflows / plan-code-review · 5 steps · 1 fix loop')).toBeTruthy();
