@@ -1,7 +1,8 @@
 import type { RunView } from '../api';
 import { Canvas } from '../Canvas';
 import type { RunAct } from '../Runs';
-import { TeamPanel } from '../Team';
+import { dialogueCount, PlanningDialogue, TeamPanel } from '../Team';
+import { Disclosure } from '../ui/studio/Section';
 import { StepTodos } from '../ui/studio/StepTodos';
 import { StepTrack } from '../ui/studio/StepTrack';
 
@@ -15,6 +16,11 @@ export function RunCentre({ run: r, selected, onSelect, onAct }: { run: RunView;
       {r.kind === 'team' ? (
         <div className="run-team">
           <TeamPanel run={r} send={(path, body) => onAct(path, body)} />
+          {dialogueCount(r) ? (
+            <Disclosure label="Planning" meta={`${dialogueCount(r)} answers`}>
+              <PlanningDialogue run={r} />
+            </Disclosure>
+          ) : null}
         </div>
       ) : null}
       {planning ? (

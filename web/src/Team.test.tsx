@@ -1,7 +1,7 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Question } from './api';
-import { TeamPanel } from './Team';
+import { dialogueCount, TeamPanel, TeamQuestions } from './Team';
 import { makeRun } from './test/fixtures';
 import { cssText } from './test/css';
 import { renderApp } from './test/render';
@@ -10,6 +10,9 @@ const q = (id: string, from?: string): Question => ({
   id, ask: `Question ${id}?`, recommended: 'a', allowOther: true, ...(from ? { from } : {}),
   options: [{ id: 'a', label: `Option A of ${id}`, detail: 'the safe one' }, { id: 'b', label: `Option B of ${id}` }],
 });
+const qi = (i: number): Question => ({ id: `q${i}`, ask: `q${i}?`, recommended: 'o1', options: [{ id: 'o1', label: `first option of q${i}` }, { id: 'o2', label: `second option of q${i}` }] });
+const teamRunWith = (n: number) => makeRun({ kind: 'team', status: 'running', planning: true, pipeline: { ...makeRun().pipeline, nodes: [], edges: [] }, nodes: {}, pending: Array.from({ length: n }, (_, i) => qi(i + 1)) });
+const teamRunWithAnswers = (n: number) => ({ ...teamRunWith(0), cards: Array.from({ length: n }, (_, i) => qi(i + 1)), answers: Array.from({ length: n }, (_, i) => ({ question: `q${i + 1}`, option: 'o1', by: 'user' as const })) });
 const teamRun = (o = {}) => makeRun({ kind: 'team', planning: true, pipeline: { ...makeRun().pipeline, nodes: [], edges: [] }, nodes: {}, ...o });
 
 describe('TeamPanel', () => {
@@ -100,14 +103,14 @@ describe('TeamPanel', () => {
     await waitFor(() => expect(send).toHaveBeenCalledWith('swap', { assignment: 0, bot: 'go-reviewer' }));
   });
 
-  it('shows the run state, write access and the plan with Studio chips', () => {
+  it('shows write access as tags and no duplicate status pills', () => {
     const send = vi.fn().mockResolvedValue(true);
     const plan = { goal: 'Ship', success: ['429 with Retry-After'], assignments: [{ bot: 'coder', goal: 'write it', mode: 'write' as const, expected: 'a passing gate' }], limits: { allowWrites: true }, answers: [] };
     const { container } = renderApp(<TeamPanel run={teamRun({ planning: false, plan })} send={send} />);
-    expect(container.querySelector('.tm-bar [data-status]')!.getAttribute('data-status')).toBe('loading');
+    expect(container.querySelector('.tm-bar [data-status]')).toBeNull();
     const region = screen.getByRole('region', { name: "The team's plan" });
-    expect(region.querySelector('[data-status="warning"]')!.textContent).toBe('waits for you');
-    expect(screen.getByText('can edit files').closest('.sl-badge')).toBeTruthy();
+    expect(region.querySelector('[data-status]')).toBeNull();
+    expect(screen.getByText('can edit files').className).toBe('sl-tag');
     expect(screen.getByText('expects: a passing gate')).toBeTruthy();
     expect(region.querySelectorAll('li.sl-row')).toHaveLength(1);
   });
@@ -117,6 +120,30 @@ describe('TeamPanel', () => {
     expect(screen.getAllByText('recommended')).toHaveLength(2);
     expect(screen.getByText('1 of 2')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Question q1?' })).toBeTruthy();
+  });
+
+  it('pages through questions with Previous and Next and sends them together', async () => {
+    const send = vi.fn(async () => true);
+    render(<TeamQuestions run={teamRunWith(2)} send={send} paged />);
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /first option of q1/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('2 of 2')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Send answers' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    // RadioCards are role="radio" buttons: the pick reads from aria-checked
+    expect(screen.getByRole('radio', { name: /first option of q1/ }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('radio', { name: /first option of q2/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith('answers', { answers: [{ question: 'q1', option: expect.any(String) }, { question: 'q2', option: expect.any(String) }] }));
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the planning dialogue', () => {
+    expect(dialogueCount(teamRunWithAnswers(5))).toBe(5);
+    expect(dialogueCount(teamRunWith(1))).toBe(0);
   });
 
   it('is styled from tokens in its own stylesheet', () => {

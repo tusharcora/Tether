@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ToolApproval } from './components/beui/agents/tool-approval';
 import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
-import { Accordion } from './components/beui/kit/fields';
 import { Button } from './components/beui/kit/Button';
 import { RadioCards } from './components/beui/kit/RadioCards';
 import { Picker } from './components/bencho/Picker';
@@ -10,8 +9,8 @@ import { Textarea } from './components/kept/textarea/textarea';
 import { Face } from './Face';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { ListRow } from './ui/studio/ListRow';
+import { Tag } from './ui/studio/Section';
 import { SectionHeading } from './ui/studio/SectionHeading';
-import { StatusChip } from './ui/studio/StatusChip';
 import './runs/team.css';
 
 /** One pick per card: an option id, or the person's own words. */
@@ -114,14 +113,42 @@ function QuestionCard(props: { q: Question; index: number; total: number; pick: 
 /**
  * Everything a team run needs from the person: the pending banner, the question cards, the finished plan and the
  * live/autonomous switch. `send` posts to the run (answers, plan, mode, swap) and shows any error on the run page.
+/** Posts to a team run (answers, plan, mode, swap); resolves false when it failed (the caller shows the error). */
+export type TeamSend = (path: 'answers' | 'plan' | 'mode' | 'swap', body: unknown) => Promise<boolean>;
+
+const isActive = (r: RunView) => r.status === 'running' || r.status === 'paused';
+
+/** The live/autonomous switch and what it means, while the run is active. */
+export function ModeBar(props: { run: RunView; send: TeamSend }) {
+  const [busy, setBusy] = useState(false);
+  const r = props.run;
+  if (!isActive(r)) return null;
+  const pick = async (m: TeamMode) => {
+    setBusy(true);
+    try {
+      await props.send('mode', { mode: m });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="tm-bar">
+      <ModeToggle mode={r.mode} disabled={busy} onPick={(m) => void pick(m)} />
+      <span className="sl-meta">{MODES.find((m) => m.id === r.mode)!.hint}</span>
+    </div>
+  );
+}
+
+/**
+ * The team's pending questions: planning cards are answered in one batch, a worker's question on its own. `paged` shows one
+ * card at a time with Previous / Next (picks are kept across pages; Send answers sits next to Next).
  */
-export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan' | 'mode' | 'swap', body: unknown) => Promise<boolean> }) {
+export function TeamQuestions(props: { run: RunView; send: TeamSend; paged?: boolean }) {
   const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [busy, setBusy] = useState(false);
-  // the reject question is open: Approve hides until it is answered (as in the Solid panel)
-  const [rejecting, setRejecting] = useState(false);
+  const [page, setPage] = useState(0);
   const r = props.run;
-  const pending = r.status === 'running' || r.status === 'paused' ? r.pending : [];
+  const pending = isActive(r) ? r.pending : [];
   const askerOf = (q: Question) => {
     const id = q.from;
     const n = id ? r.pipeline.nodes.find((x) => x.id === id) : undefined;
@@ -130,11 +157,11 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
   // picks belong to one run: another run may reuse the same question ids
   useEffect(() => {
     setPicks({});
-    setRejecting(false);
+    setPage(0);
   }, [r.id]);
-  const ready = pending.length > 0 && pending.every((q) => !!(picks[q.id]?.option || picks[q.id]?.text?.trim()));
-  const planReady = r.status === 'running' && !r.planning && !!r.plan && r.pipeline.nodes.length === 0 && pending.length === 0;
-  const active = r.status === 'running' || r.status === 'paused';
+  if (!pending.length) return null;
+  const ready = pending.every((q) => !!(picks[q.id]?.option || picks[q.id]?.text?.trim()));
+  const at = Math.min(page, pending.length - 1);
 
   const setPick = (id: string, p: Pick | undefined) =>
     setPicks((cur) => {
@@ -170,6 +197,52 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
   }
   const mine = (): Reply[] => pending.map((q) => ({ question: q.id, ...picks[q.id]! }));
   const recommendations = (): Reply[] => pending.map((q) => ({ question: q.id, option: q.recommended }));
+  const shown = props.paged ? [pending[at]!] : pending;
+
+  return (
+    <>
+      <p className="sl-note" role="status">
+        <b>{pending.length === 1 ? 'The team has a question for you.' : `The team has ${pending.length} questions for you.`}</b>{' '}
+        {r.planning ? 'Planning continues once you answer.' : 'The asking step is paused until you answer.'}
+      </p>
+      <section className="tm-questions" aria-label="Questions from the team">
+        {shown.map((q) => {
+          const i = pending.indexOf(q);
+          return <QuestionCard key={q.id} q={q} index={i} total={pending.length} asker={askerOf(q)} pick={picks[q.id]} onPick={(p) => setPick(q.id, p)} />;
+        })}
+        <div className="tm-actions">
+          <Button variant="secondary" disabled={busy} onClick={() => void submit(recommendations())} title="Answer every question with the option marked recommended">
+            Use recommendations
+          </Button>
+          {props.paged ? (
+            <>
+              <Button variant="secondary" disabled={at === 0} onClick={() => setPage(at - 1)}>
+                Previous
+              </Button>
+              <Button variant="secondary" disabled={at === pending.length - 1} onClick={() => setPage(at + 1)}>
+                Next
+              </Button>
+            </>
+          ) : null}
+          <Button variant="primary" loading={busy} disabled={busy || !ready} onClick={() => void submit(mine())}>
+            Send answers
+          </Button>
+        </div>
+      </section>
+    </>
+  );
+}
+
+/** The finished plan, while it waits for the person: goal, done-when, who does what (swap a bot), limits, Reject / Approve. */
+export function PlanReview(props: { run: RunView; send: TeamSend }) {
+  const [busy, setBusy] = useState(false);
+  // the reject question is open: Approve hides until it is answered (as in the Solid panel)
+  const [rejecting, setRejecting] = useState(false);
+  const r = props.run;
+  useEffect(() => setRejecting(false), [r.id]);
+  const plan = r.plan;
+  const planReady = r.status === 'running' && !r.planning && !!plan && r.pipeline.nodes.length === 0 && r.pending.length === 0;
+  if (!planReady || !plan) return null;
 
   async function decide(approved: boolean) {
     setBusy(true);
@@ -180,147 +253,110 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
     }
   }
 
-  const plan = r.plan;
-  const showDialogue = (r.cards?.length ?? 0) > 0 && r.answers.length > 0;
-  const participants = [
-    { id: 'tether', name: 'Tether' },
-    { id: 'user', name: 'You' },
-    { id: 'default', name: 'Recommended (auto)' },
-  ];
-  const messages = showDialogue
-    ? r.answers.flatMap((a, i) => {
-        const card = r.cards?.find((c) => c.id === a.question);
-        const said = a.text ?? card?.options.find((o) => o.id === a.option)?.label ?? a.option ?? '';
-        const at = r.startedAt + i * 2;
-        return [
-          { id: `q-${i}`, authorId: 'tether', text: card?.ask ?? a.question, createdAt: at },
-          { id: `a-${i}`, authorId: a.by === 'user' ? 'user' : a.by === 'tether' || a.by === 'maestro' ? 'tether' : 'default', text: said, createdAt: at + 1 },
-        ];
-      })
-    : [];
-  const n = r.answers.length;
+  return (
+    <section className="sl-panel tm-plan" aria-label="The team's plan">
+      <SectionHeading title="Plan ready for your approval" />
+      <p className="tm-goal">{plan.goal}</p>
+      {plan.success.length ? (
+        <div className="tm-block">
+          <h3>Done when</h3>
+          <ul className="tm-done">
+            {plan.success.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="tm-block">
+        <h3>Who does what</h3>
+        <ul className="sl-list tm-assign">
+          {plan.assignments.map((a, i) => (
+            <ListRow
+              key={`${a.bot}-${i}`}
+              lead={<Face id={a.bot} size={32} animate="hover" />}
+              title={a.bot}
+              meta={a.expected ? `expects: ${a.expected}` : undefined}
+              extra={
+                <>
+                  <span className="tm-assign-goal">{a.goal}</span>
+                  {a.why ? <span className="sl-meta">Why: {a.why}</span> : null}
+                </>
+              }
+              actions={
+                <>
+                  <Tag>{a.mode === 'write' ? 'can edit files' : 'read only'}</Tag>
+                  {a.swapped ? <Tag>swapped by you</Tag> : null}
+                  {plan.roster?.length ? (
+                    // the current bot is always first so the shown value exists among the options
+                    <Picker
+                      label="Bot"
+                      options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ id: b, name: b, lead: <Face id={b} size={28} /> }))}
+                      value={[a.bot]}
+                      onChange={([b]) => b && b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
+                      disabled={busy}
+                    />
+                  ) : null}
+                </>
+              }
+            />
+          ))}
+        </ul>
+      </div>
+      <p className="sl-meta">
+        Writes {plan.limits.allowWrites ? 'allowed' : 'off'}
+        {plan.limits.maxCostUsd ? ` · budget ${fmtUsd(plan.limits.maxCostUsd)} in all` : ''}
+        {plan.limits.maxCostUsd && r.costUsd > 0 ? ` (planning spent ${fmtUsd(r.costUsd)}, ${fmtUsd(Math.max(0, plan.limits.maxCostUsd - r.costUsd))} left)` : ''}
+        {plan.limits.wallClockMs ? ` · ${Math.round(plan.limits.wallClockMs / 60_000)} min limit` : ''}
+      </p>
+      <div className="tm-actions">
+        {/* keyed by run so a half-asked reject does not carry over to another run */}
+        <ConfirmButton key={r.id} label="Reject" prompt="Cancel this run?" confirmLabel="Yes, reject" cancelLabel="Keep plan" disabled={busy} onAskingChange={setRejecting} onConfirm={() => decide(false)} />
+        {rejecting ? null : (
+          <Button variant="primary" disabled={busy} onClick={() => void decide(true)}>
+            Approve and start
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
 
+/** How many answers the planning dialogue holds (0 when there is nothing to show). */
+export const dialogueCount = (r: RunView): number => ((r.cards?.length ?? 0) > 0 ? r.answers.length : 0);
+
+const PARTICIPANTS: Record<string, string> = { tether: 'Tether', user: 'You', default: 'Recommended (auto)' };
+
+/** The planning dialogue so far, read-only: each question Tether asked, then who answered and what. */
+export function PlanningDialogue(props: { run: RunView }) {
+  const r = props.run;
+  if (!dialogueCount(r)) return null;
+  const messages = r.answers.flatMap((a, i) => {
+    const card = r.cards?.find((c) => c.id === a.question);
+    const said = a.text ?? card?.options.find((o) => o.id === a.option)?.label ?? a.option ?? '';
+    return [
+      { id: `q-${i}`, authorId: 'tether', text: card?.ask ?? a.question },
+      { id: `a-${i}`, authorId: a.by === 'user' ? 'user' : a.by === 'tether' || a.by === 'maestro' ? 'tether' : 'default', text: said },
+    ];
+  });
+  return (
+    <ol className="tm-thread" aria-label="Planning dialogue">
+      {messages.map((m) => (
+        <li key={m.id} className="tm-thread-row" data-author={m.authorId}>
+          <span className="tm-thread-who">{PARTICIPANTS[m.authorId] ?? m.authorId}</span>
+          <span className="tm-thread-text">{m.text}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Everything a team run needs from the person, inline: the mode bar, the question cards and the plan review. */
+export function TeamPanel(props: { run: RunView; send: TeamSend }) {
   return (
     <div className="tm-panel">
-      {active ? (
-        <div className="tm-bar">
-          <StatusChip tone={r.status === 'running' ? 'live' : 'needs'} label={r.status === 'running' ? 'Team run' : 'Team run · paused'} pulse={r.status === 'running' && r.live} />
-          <ModeToggle mode={r.mode} disabled={busy} onPick={(m) => void props.send('mode', { mode: m })} />
-          <span className="sl-meta">{MODES.find((m) => m.id === r.mode)!.hint}</span>
-        </div>
-      ) : null}
-
-      {pending.length > 0 ? (
-        <>
-          <p className="sl-note" role="status">
-            <b>{pending.length === 1 ? 'The team has a question for you.' : `The team has ${pending.length} questions for you.`}</b>{' '}
-            {r.planning ? 'Planning continues once you answer.' : 'The asking step is paused until you answer.'}
-          </p>
-          <section className="tm-questions" aria-label="Questions from the team">
-            {pending.map((q, i) => (
-              <QuestionCard key={q.id} q={q} index={i} total={pending.length} asker={askerOf(q)} pick={picks[q.id]} onPick={(p) => setPick(q.id, p)} />
-            ))}
-            <div className="tm-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => void submit(recommendations())} title="Answer every question with the option marked recommended">
-                Use recommendations
-              </Button>
-              <Button variant="primary" loading={busy} disabled={busy || !ready} onClick={() => void submit(mine())}>
-                Send answers
-              </Button>
-            </div>
-          </section>
-        </>
-      ) : null}
-
-      {planReady && plan ? (
-        <section className="sl-panel tm-plan" aria-label="The team's plan">
-          <SectionHeading title="Plan ready for your approval" action={<StatusChip tone="needs" label="waits for you" />} />
-          <p className="tm-goal">{plan.goal}</p>
-          {plan.success.length ? (
-            <div className="tm-block">
-              <h3>Done when</h3>
-              <ul className="tm-done">
-                {plan.success.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <div className="tm-block">
-            <h3>Who does what</h3>
-            <ul className="sl-list tm-assign">
-              {plan.assignments.map((a, i) => (
-                <ListRow
-                  key={`${a.bot}-${i}`}
-                  lead={<Face id={a.bot} size={32} animate="hover" />}
-                  title={a.bot}
-                  meta={a.expected ? `expects: ${a.expected}` : undefined}
-                  extra={
-                    <>
-                      <span className="tm-assign-goal">{a.goal}</span>
-                      {a.why ? <span className="sl-meta">Why: {a.why}</span> : null}
-                    </>
-                  }
-                  actions={
-                    <>
-                      <StatusChip tone="neutral" label={a.mode === 'write' ? 'can edit files' : 'read only'} />
-                      {a.swapped ? <StatusChip tone="neutral" label="swapped by you" /> : null}
-                      {plan.roster?.length ? (
-                        // the current bot is always first so the shown value exists among the options
-                        <Picker
-                          label="Bot"
-                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ id: b, name: b, lead: <Face id={b} size={28} /> }))}
-                          value={[a.bot]}
-                          onChange={([b]) => b && b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
-                          disabled={busy}
-                        />
-                      ) : null}
-                    </>
-                  }
-                />
-              ))}
-            </ul>
-          </div>
-          <p className="sl-meta">
-            Writes {plan.limits.allowWrites ? 'allowed' : 'off'}
-            {plan.limits.maxCostUsd ? ` · budget ${fmtUsd(plan.limits.maxCostUsd)} in all` : ''}
-            {plan.limits.maxCostUsd && r.costUsd > 0 ? ` (planning spent ${fmtUsd(r.costUsd)}, ${fmtUsd(Math.max(0, plan.limits.maxCostUsd - r.costUsd))} left)` : ''}
-            {plan.limits.wallClockMs ? ` · ${Math.round(plan.limits.wallClockMs / 60_000)} min limit` : ''}
-          </p>
-          <div className="tm-actions">
-            {/* keyed by run so a half-asked reject does not carry over to another run */}
-            <ConfirmButton key={r.id} label="Reject" prompt="Cancel this run?" confirmLabel="Yes, reject" cancelLabel="Keep plan" disabled={busy} onAskingChange={setRejecting} onConfirm={() => decide(false)} />
-            {rejecting ? null : (
-              <Button variant="primary" disabled={busy} onClick={() => void decide(true)}>
-                Approve and start
-              </Button>
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {showDialogue ? (
-        <div className="tm-dialogue">
-          <Accordion
-            defaultOpen={-1}
-            items={[
-              {
-                title: `Dialogue so far (${n} answer${n === 1 ? '' : 's'})`,
-                content: (
-                  <ol className="tm-thread" aria-label="Planning dialogue">
-                    {messages.map((m) => (
-                      <li key={m.id} className="tm-thread-row" data-author={m.authorId}>
-                        <span className="tm-thread-who">{participants.find((x) => x.id === m.authorId)?.name ?? m.authorId}</span>
-                        <span className="tm-thread-text">{m.text}</span>
-                      </li>
-                    ))}
-                  </ol>
-                ),
-              },
-            ]}
-          />
-        </div>
-      ) : null}
+      <ModeBar run={props.run} send={props.send} />
+      <TeamQuestions run={props.run} send={props.send} />
+      <PlanReview run={props.run} send={props.send} />
     </div>
   );
 }
