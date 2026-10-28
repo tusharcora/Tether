@@ -44,6 +44,9 @@
   --color-live: var(--acc);
   --color-live-foreground: var(--accInk);
   --color-surface-3: var(--s3);
+  --color-success-bg: var(--okBg);
+  --color-warning-bg: var(--warnBg);
+  --color-danger-bg: var(--badBg);
 
   --font-sans: var(--font-ui);
   --font-mono: var(--font-code);
