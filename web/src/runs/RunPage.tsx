@@ -49,7 +49,7 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
       <div className="run-page">
         <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} onDetails={() => openRun('changes')} />
         <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
-        <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} />
+        <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} onAct={p.onAct} onViewDiff={() => openRun('changes')} />
         {r.kind === 'team' ? <TeamPanel run={r} send={(path, body) => p.onAct(path, body)} /> : null}
         {planning ? <QuietLine>Tether is planning…</QuietLine> : null}
         {hasNodes ? (

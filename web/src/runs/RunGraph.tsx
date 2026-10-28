@@ -1,7 +1,10 @@
+import { FileDiff, FileText, Pause, Play, RotateCcw } from 'lucide-react';
 import type { RunView } from '../api';
+import { NodeActions } from '../components/bencho/ActionNode';
 import { useReducedMotionPref } from '../components/Loading';
 import { crewFor, useCrew } from '../crewStore';
 import { Face, moodFor } from '../Face';
+import type { RunAct } from '../Runs';
 import { badgeFor, stepDesc } from '../ui/studio/status';
 import { CARD_H, CARD_W, edgeState, layersOf, placeCards } from './graphModel';
 import './graph.css';
@@ -10,7 +13,8 @@ import './graph.css';
  * The run as crew cards in dependency layers, left to right (the demo's graph). Edges take the colour of their ends'
  * state and a live edge carries a moving dot (none under reduced motion). Wide runs scroll sideways. A card selects its step.
  */
-export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: string) => void }) {
+export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: string) => void; /** Gives each card its fan: Open logs, Retry from here, View diff, Pause or Resume. */ onAct?: RunAct; onViewDiff?: () => void }) {
+  const runLive = p.run.live && p.run.status === 'running';
   const { crew } = useCrew();
   const reduced = useReducedMotionPref();
   const { nodes, edges } = p.run.pipeline;
@@ -50,22 +54,28 @@ export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: st
           const name = crew[bot]?.name ?? bot;
           const sub = n.kind === 'gate' ? (n.command ?? 'gate') : n.kind === 'approval' ? 'you approve' : `${n.role ?? 'agent'} · ${n.agent ?? 'claude'}`;
           return (
-            <button
-              key={n.id}
-              type="button"
-              className={`rg-card s-${look.state}`}
-              data-id={n.id}
-              aria-label={`${name}, ${look.label}`}
-              aria-pressed={p.selected === n.id}
-              style={{ left: pos[n.id]!.x, top: pos[n.id]!.y, width: CARD_W, height: CARD_H }}
-              onClick={() => p.onSelect(n.id)}
-            >
-              <Face id={bot} size={26} mood={moodFor(s?.status)} animate={s?.status === 'running' ? 'always' : undefined} />
-              <span className="rg-text">
-                <span className="rg-name">{name}</span>
-                <span className="rg-sub">{sub}</span>
-              </span>
-            </button>
+            <div key={n.id} className="rg-node nod-host" style={{ left: pos[n.id]!.x, top: pos[n.id]!.y, width: CARD_W, height: CARD_H }}>
+              <button type="button" className={`rg-card s-${look.state}`} data-id={n.id} aria-label={`${name}, ${look.label}`} aria-pressed={p.selected === n.id} onClick={() => p.onSelect(n.id)}>
+                <Face id={bot} size={26} mood={moodFor(s?.status)} animate={s?.status === 'running' ? 'always' : undefined} />
+                <span className="rg-text">
+                  <span className="rg-name">{name}</span>
+                  <span className="rg-sub">{sub}</span>
+                </span>
+              </button>
+              {p.onAct ? (
+                <NodeActions
+                  corner={10}
+                  tabbable={p.selected === n.id}
+                  label={`${name} actions`}
+                  actions={[
+                    { id: 'logs', label: 'Open logs', icon: <FileText />, onSelect: () => p.onSelect(n.id) },
+                    { id: 'retry', label: 'Retry from here', icon: <RotateCcw />, onSelect: () => void p.onAct!('resume', { retryFailed: true }), disabled: s?.status !== 'error' || runLive },
+                    { id: 'diff', label: 'View diff', icon: <FileDiff />, onSelect: () => p.onViewDiff?.() },
+                    runLive ? { id: 'pause', label: 'Pause run', icon: <Pause />, onSelect: () => void p.onAct!('stop') } : { id: 'resume', label: 'Resume run', icon: <Play />, onSelect: () => void p.onAct!('resume'), disabled: p.run.status === 'done' },
+                  ]}
+                />
+              ) : null}
+            </div>
           );
         })}
       </div>

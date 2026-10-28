@@ -1,4 +1,4 @@
-import { Bot, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Workflow, Zap } from 'lucide-react';
+import { Bot, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { Screen } from '../../hooks';
@@ -73,7 +73,7 @@ export interface SidebarProps {
   /** A new workflow, bot, trigger or request, from the Create menu. */
   onCreate: (what: Exclude<CreateKind, 'run'>) => void;
   /** Inbox: items that need you (amber). Runs: live runs (blue). */
-  counts: { needs: number; live: number };
+  counts: { needs: number; live: number; goals: number };
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
   projects: ProjectsProps;
@@ -136,8 +136,8 @@ export function Sidebar(p: SidebarProps) {
       Icon={n.Icon}
       page
       current={page(n.id)}
-      count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : undefined}
-      hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) ? undefined : goHint(n.id)}
+      count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : n.id === 'goals' ? { n: p.counts.goals } : undefined}
+      hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) || (n.id === 'goals' && p.counts.goals) ? undefined : goHint(n.id)}
       onClick={() => p.onGo(n.id)}
       rail={tipFor(n.id, n.long ?? n.label)}
     />
@@ -158,6 +158,7 @@ export function Sidebar(p: SidebarProps) {
               { id: 'bot', label: 'New bot', icon: <Bot size={15} strokeWidth={1.8} /> },
               { id: 'trigger', label: 'New trigger', icon: <Zap size={15} strokeWidth={1.8} /> },
               { id: 'request', label: 'New request', icon: <Send size={15} strokeWidth={1.8} /> },
+              { id: 'goal', label: 'New goal', icon: <Target size={15} strokeWidth={1.8} /> },
             ]}
             onSelect={(id) => (id === 'run' ? p.onCompose() : p.onCreate(id as Exclude<CreateKind, 'run'>))}
           >

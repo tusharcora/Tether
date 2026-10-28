@@ -14,6 +14,8 @@ import { GithubAccount, ghExec } from './accounts/github.js';
 import { accountsRoute } from './accounts/routes.js';
 import { assistantRoute } from './assistant/routes.js';
 import { codemodeRoute } from './codemode/routes.js';
+import { Goals } from './goals/loop.js';
+import { goalsRoute } from './goals/routes.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -244,6 +246,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
+  const goals = new Goals({ home: cfg.home, store, engine, registry });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
@@ -319,7 +322,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
-    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url);
+    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
+    if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {

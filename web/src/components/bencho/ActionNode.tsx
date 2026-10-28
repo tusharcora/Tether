@@ -106,12 +106,46 @@ export function NodeActions({ actions, corner = 12, tabbable = false, label = 'S
   );
 }
 
-/** A card with its actions folded into the corner: a mark, a name and a line about it, content from the caller. */
-export function ActionNode({ actions, children, className, corner = 12, tabbable, label, inset }: { actions: NodeAction[]; children: ReactNode; className?: string; corner?: number; tabbable?: boolean; label?: string; inset?: boolean }) {
+/** Where a node stands: colour carries meaning only (blue live, amber needs you, green done or met, red failed). */
+export type NodeTone = 'live' | 'needs' | 'done' | 'failed' | 'idle';
+
+interface NodeProps {
+  actions: NodeAction[];
+  children?: ReactNode;
+  className?: string;
+  corner?: number;
+  tabbable?: boolean;
+  label?: string;
+  inset?: boolean;
+  /** The compact card (300 px wide, 16 px corner) with a mark, a title and a line, and a status dot on the mark. */
+  compact?: boolean;
+  mark?: ReactNode;
+  title?: ReactNode;
+  line?: ReactNode;
+  tone?: NodeTone;
+  /** The dot's name for assistive tech (the colour is never the only signal). */
+  toneLabel?: string;
+}
+
+/** A card with its actions folded into the corner: content from the caller, or with `compact` a mark, a title and a line. */
+export function ActionNode({ actions, children, className, corner, tabbable, label, inset, compact, mark, title, line, tone = 'idle', toneLabel }: NodeProps) {
+  const r = corner ?? (compact ? 16 : 12);
   return (
-    <div className={cn('nod-host nod-card', className)} style={{ borderRadius: corner }}>
+    <div className={cn('nod-host nod-card', compact && 'nod-compact', className)} style={{ borderRadius: r }}>
+      {compact ? (
+        <div className="nod-head">
+          <span className="nod-mark">
+            {mark}
+            <span className={cn('nod-dot', `t-${tone}`)} role="img" aria-label={toneLabel ?? tone} />
+          </span>
+          <span className="nod-text">
+            <span className="nod-title">{title}</span>
+            {line ? <span className="nod-line">{line}</span> : null}
+          </span>
+        </div>
+      ) : null}
       {children}
-      <NodeActions actions={actions} corner={corner} tabbable={tabbable} label={label} inset={inset} />
+      <NodeActions actions={actions} corner={r} tabbable={tabbable} label={label} inset={inset} />
     </div>
   );
 }

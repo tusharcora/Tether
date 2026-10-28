@@ -7,6 +7,8 @@ import { ToastStack, ToastStackProvider } from './components/beui/kit/toast';
 import { Crew } from './Crew';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
+import { Goals } from './goals/Goals';
+import { inProject, isOpen, useGoals } from './goals/goalsApi';
 import { Home } from './home/Home';
 import { Inbox } from './home/Inbox';
 import type { WorkspaceRow } from './home/workspaces';
@@ -29,6 +31,7 @@ import { useAppSignals, useNotifyPref } from './useAppSignals';
 import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
 import { MCP_PATH, type McpServerView } from './settings/McpServers';
+import { CONNECTORS_PATH, type ConnectorView } from './settings/Connectors';
 import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
@@ -93,11 +96,13 @@ function Shell() {
   const projects = useProjects();
   const runs = usePoll<RunRow[]>('/api/runs', COUNTS_MS);
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
+  const goals = useGoals();
   const { pins, save: savePins } = usePins();
   const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
   /** Connected accounts: the sidebar's account row, and Settings → Accounts. */
   const accounts = usePoll<AccountsView>(ACCOUNTS_PATH, ACCOUNTS_MS);
   const mcp = usePoll<{ servers: McpServerView[] }>(route.tab === 'settings' ? MCP_PATH : null, 60_000);
+  const connectors = usePoll<{ connectors: ConnectorView[] }>(route.tab === 'settings' ? CONNECTORS_PATH : null, 15_000);
   /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -231,7 +236,7 @@ function Shell() {
               onSettings={openSettings}
               onCompose={compose}
               onCreate={createNew}
-              counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
+              counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
@@ -249,8 +254,8 @@ function Shell() {
             />
           )}
           <main className="shell-main" tabIndex={-1}>
-            {screen.tab === 'home' ? <Home onGo={go} /> : null}
-            {screen.tab === 'inbox' ? <Inbox onGo={go} /> : null}
+            {screen.tab === 'home' ? <Home onGo={go} goals={goals.goals} onGoal={goals.set} /> : null}
+            {screen.tab === 'inbox' ? <Inbox onGo={go} goals={goals.goals} onGoal={goals.set} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (
                 <Suspense fallback={<Loading loading lines={8} label="Loading Code" className="shell-loading" />}>
@@ -296,13 +301,14 @@ function Shell() {
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
+            {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} /> : null}
           </main>
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
           <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
-      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} goals={inProject(goals.goals, projects.current?.id)} onNewGoal={() => createNew('goal')} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog
         project={removing}

@@ -59,6 +59,14 @@ describe('the action node fan', () => {
     expect((screen.getByRole('button', { name: 'Edit step' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('the compact variant is a 16 px corner card with a mark, a title, a line and a named status dot', () => {
+    render(<ActionNode compact tone="needs" toneLabel="Needs you" mark={<i />} title="Next run" line="Fix it" actions={[{ id: 'a', label: 'Duplicate', icon: <i />, onSelect: () => {} }]} />);
+    expect(screen.getByRole('img', { name: 'Needs you' }).className).toContain('t-needs');
+    expect(screen.getByText('Next run')).toBeTruthy();
+    expect(screen.getByRole('toolbar').parentElement!.style.borderRadius).toBe('16px');
+    expect(readFileSync(new URL('./ActionNode.css', here), 'utf8')).toMatch(/\.nod-compact \{ width: 300px/);
+  });
+
   it('opens on hover, focus and the host flag, folds in reverse order, and draws opaque buttons from tokens', () => {
     const css = readFileSync(new URL('./ActionNode.css', here), 'utf8');
     expect(css).toMatch(/\.nod-host:hover > \.nod-fan > \.nod-act/);

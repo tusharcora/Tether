@@ -5,6 +5,8 @@ import { useNotify } from '../ui/notify';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
 import { ActivityFeed, useActivity } from './ActivityFeed';
 import { CrewStrip } from './CrewStrip';
+import { GoalsNeedYou } from '../goals/GoalsNeedYou';
+import type { GoalView } from '../goals/goalsApi';
 import { NeedsYou } from './NeedsYou';
 import { Recent } from './Recent';
 import { Running } from './Running';
@@ -21,7 +23,7 @@ export const IDLE_MS = 10_000;
  * 2 s while any run is live (the server's `live` flag), every 10 s otherwise, and the activity feed every 3 s while the
  * tab is visible. It owns the one /api/workspaces poll.
  */
-export function Home(props: { onGo: (r: Route) => void }) {
+export function Home(props: { onGo: (r: Route) => void; goals?: GoalView[]; onGoal?: (g: GoalView) => void }) {
   const notify = useNotify();
   const workspaces = usePoll<WorkspaceRow[]>(WORKSPACES_PATH, WORKSPACES_MS);
   const [ms, setMs] = useState(IDLE_MS);
@@ -47,6 +49,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
               void refetch();
             }}
           />
+          <GoalsNeedYou goals={props.goals} onGo={props.onGo} onDone={(g) => props.onGoal?.(g)} />
           <NeedsYou poll={attention} onGo={props.onGo} onChanged={refetch} />
           <Running poll={runs} onGo={props.onGo} />
           <Recent poll={runs} onGo={props.onGo} />

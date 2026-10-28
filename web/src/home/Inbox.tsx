@@ -11,6 +11,9 @@ import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
+import { ApproveButton } from '../goals/Goals';
+import { goalMeta, goalsApi, type GoalView } from '../goals/goalsApi';
+import { waitingGoals } from '../goals/GoalsNeedYou';
 import { QuietLine } from '../ui/studio/Section';
 import { StatusBadge } from '../ui/studio/StatusBadge';
 import { ACTION_WORD, groupInbox, nextSelection, type InboxEntry } from './inboxModel';
@@ -92,12 +95,33 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
   );
 }
 
+/** A goal's proposed run: what it will do, and the same Approve run as the Goals list; or skip it. */
+function GoalDetail({ goal: g, onGo, onDone }: { goal: GoalView; onGo: (r: Route) => void; onDone: (g: GoalView) => void }) {
+  const notify = useNotify();
+  return (
+    <div className="inbox-detail">
+      <h2>{g.title}</h2>
+      <p className="sl-meta">{goalMeta(g)}</p>
+      <p>{g.pending?.task}</p>
+      <div className="row">
+        <ApproveButton goal={g} onDone={onDone} />
+        <Button variant="secondary" size="sm" onClick={() => void goalsApi.next(g.id, 'skip').then(onDone, notify.fail)}>
+          Skip
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'goals', id: g.id })}>
+          Open goal
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Inbox (`#/inbox`, the demo's): what needs you on the left, the open item on the right. A run's questions are one entry,
  * answered page by page; a plan is reviewed in full; approvals, paused, interrupted and failed runs act in place. When the
  * open item goes (answered elsewhere, the run moved on), the neighbour opens.
  */
-export function Inbox(props: { onGo: (r: Route) => void }) {
+export function Inbox(props: { onGo: (r: Route) => void; goals?: GoalView[]; onGoal?: (g: GoalView) => void }) {
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', INBOX_MS);
   const reduce = useReducedMotionPref();
   const entries = useMemo(() => groupInbox(attention.data?.items ?? []), [attention.data]);
@@ -109,7 +133,12 @@ export function Inbox(props: { onGo: (r: Route) => void }) {
     prev.current = entries;
     setSelected((s) => nextSelection(before, entries, s));
   }, [entries]);
-  const open = entries.find((e) => e.key === selected);
+  const waiting = waitingGoals(props.goals);
+  /** A goal's proposed run is open on the right instead of a run's entry. */
+  const [goalSel, setGoalSel] = useState<string>();
+  const openGoal = waiting.find((g) => g.id === goalSel);
+  const open = openGoal ? undefined : entries.find((e) => e.key === selected);
+  const none = !entries.length && !waiting.length;
 
   return (
     <div className="home inbox">
@@ -118,15 +147,27 @@ export function Inbox(props: { onGo: (r: Route) => void }) {
         <Loading loading={!attention.data && !attention.error} lines={4} label="Loading the inbox">
           {attention.error && !attention.data ? (
             <InlineError message={attention.error} onRetry={() => void attention.refresh()} />
-          ) : !entries.length ? (
+          ) : none ? (
             <QuietLine>Nothing needs you.</QuietLine>
           ) : (
             <div className="inbox-cols">
               <ul className="sl-rows inbox-list" aria-label="Inbox">
+                {waiting.map((g) => (
+                  <li key={g.id}>
+                    <button type="button" className="inbox-row" aria-current={g.id === goalSel ? 'true' : undefined} onClick={() => setGoalSel(g.id)}>
+                      <span className="sl-dot pulse inbox-dot" aria-hidden="true" />
+                      <span className="inbox-row-main">
+                        <span className="sl-row-title">{g.title}</span>
+                        <span className="sl-row-meta">Goal · next run</span>
+                      </span>
+                      <StatusBadge tone="needs" label="approve run" />
+                    </button>
+                  </li>
+                ))}
                 <AnimatePresence initial={false}>
                   {entries.map((e) => (
                     <motion.li key={e.key} exit={reduce ? undefined : { opacity: 0, height: 0 }} transition={{ duration: 0.18 }}>
-                      <button type="button" className="inbox-row" aria-current={e.key === selected ? 'true' : undefined} onClick={() => setSelected(e.key)}>
+                      <button type="button" className="inbox-row" aria-current={!openGoal && e.key === selected ? 'true' : undefined} onClick={() => (setGoalSel(undefined), setSelected(e.key))}>
                         <span className={cn('sl-dot pulse inbox-dot', { bad: failedKind(e.kind) })} aria-hidden="true" />
                         <span className="inbox-row-main">
                           <span className="sl-row-title">{e.items[0]!.title}</span>
@@ -138,7 +179,7 @@ export function Inbox(props: { onGo: (r: Route) => void }) {
                   ))}
                 </AnimatePresence>
               </ul>
-              {open ? <Detail key={open.key} entry={open} onGo={props.onGo} onChanged={() => attention.refresh()} /> : null}
+              {openGoal ? <GoalDetail goal={openGoal} onGo={props.onGo} onDone={(g) => props.onGoal?.(g)} /> : open ? <Detail key={open.key} entry={open} onGo={props.onGo} onChanged={() => attention.refresh()} /> : null}
             </div>
           )}
         </Loading>
