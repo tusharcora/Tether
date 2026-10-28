@@ -3,9 +3,8 @@ import { ago } from '../api';
 import { ToolResult, ToolResultOutput } from '../components/beui/agents/tool-result';
 import { Button } from '../components/beui/kit/Button';
 import { DataTable, type Column } from '../components/beui/kit/DataTable';
-import { Select } from '../components/beui/kit/fields';
 import type { Poll } from '../hooks';
-import { NONE, fromNone } from '../ui/cn';
+import { MenuButton } from '../ui/studio/ToolFrame';
 import { InlineError } from '../ui/studio/InlineError';
 import { SectionHeading } from '../ui/studio/SectionHeading';
 import { StatusBadge } from '../ui/studio/StatusBadge';
@@ -72,7 +71,7 @@ export function Deliveries(p: { triggers: Trigger[]; logFor: string; onLogFor: (
         }
       />
       <div className="tg-log-tools">
-        <Select label="Show" value={p.logFor || NONE} onValueChange={(v) => p.onLogFor(fromNone(v))} options={[{ value: NONE, label: 'all triggers' }, ...p.triggers.map((t) => ({ value: t.id, label: t.id }))]} />
+        <MenuButton title="Show" variant="secondary" label={`${p.logFor || 'all triggers'} ▾`} items={[{ label: 'all triggers', current: !p.logFor, onSelect: () => p.onLogFor('') }, ...p.triggers.map((t) => ({ label: t.id, current: p.logFor === t.id, onSelect: () => p.onLogFor(t.id) }))]} />
       </div>
       {p.log.error && !p.log.data ? (
         <InlineError message={p.log.error} onRetry={() => void p.log.refresh()} />

@@ -6,13 +6,16 @@ import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { Deliveries } from './triggers/Deliveries';
 import { TriggerForm } from './triggers/TriggerForm';
-import { TriggerRow } from './triggers/TriggerRow';
+import { TriggerCard } from './triggers/TriggerCard';
 import { TriggerTest } from './triggers/TriggerTest';
 import { blank, fromTrigger, split, type Delivery, type Form, type Trigger, type Workspace } from './triggers/types';
 import { WebhookSetup } from './triggers/WebhookSetup';
+import { cn } from './ui/cn';
+import { ConfirmButton } from './ui/ConfirmButton';
 import { useNotify } from './ui/notify';
 import { InlineError } from './ui/studio/InlineError';
-import { ScreenHeader } from './ui/studio/ScreenHeader';
+import { QuietLine } from './ui/studio/Section';
+import { Dock, FloatBar, ToolScreen } from './ui/studio/ToolFrame';
 import './triggers/triggers.css';
 
 const NO_TRIGGERS: Trigger[] = [];
@@ -31,6 +34,8 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
   const [form, setForm] = useState<Form | null>(null);
   const [editing, setEditing] = useState(false);
   const [testId, setTestId] = useState('');
+  /** The dock: an open trigger's form (form), else Setup & test. */
+  const [setupOpen, setSetupOpen] = useState(false);
 
   useEffect(() => {
     void api<Workspace[]>('GET', '/api/workspaces').then(setWorkspaces).catch(() => undefined);
@@ -48,6 +53,7 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
   const openForm = (t?: Trigger) => {
     setForm(t ? fromTrigger(t) : blank());
     setEditing(!!t);
+    setSetupOpen(false);
   };
   useCreateIntent(props.create, true, () => openForm());
   async function save() {
@@ -79,68 +85,87 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
       notify.fail(e);
     }
   }
+  /** Setup & test in the dock (with `id` picked for the dry run), its PR field focused once it is there. */
   const toTest = (id?: string) => {
     if (id) setTestId(id);
-    const field = document.getElementById('tg-pr');
-    field?.scrollIntoView?.({ block: 'center' });
-    field?.focus();
+    setForm(null);
+    setSetupOpen(true);
+    setTimeout(() => document.getElementById('tg-pr')?.focus());
   };
 
+  const on = rows.filter((t) => t.enabled !== false).length;
+  const actions = (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => toTest()}>
+        Setup &amp; test
+      </Button>
+      <Button size="sm" variant="primary" onClick={() => openForm()}>
+        + New trigger
+      </Button>
+    </>
+  );
   return (
-    <div className="tg-page">
-      <div className="tg-wrap">
-        <ScreenHeader
-          meta={`GitHub webhooks · POST /api/webhooks/github · ${rows.length} trigger${rows.length === 1 ? '' : 's'}`}
-          title="Triggers"
-          summary="Start a run when a pull request opens or changes. Pause one to keep it without acting on PRs."
-          actions={
-            <>
-              <Button variant="secondary" onClick={() => toTest()}>
-                Test a trigger
-              </Button>
-              <Button variant="primary" onClick={() => openForm()}>
-                New trigger
-              </Button>
-            </>
-          }
-        />
-        <Loading loading={loading} lines={6} label="Loading triggers">
-          <div className="tg-body">
-            <div className="tg-main-col">
-              <section aria-label="Triggers">
-                {list.error && !list.data ? (
-                  <InlineError message={list.error} onRetry={() => void list.refresh()} />
-                ) : rows.length ? (
-                  <ul className="tg-list">
-                    {rows.map((t) => (
-                      <TriggerRow key={t.id} t={t} onToggle={() => void toggle(t)} onTest={() => toTest(t.id)} onLog={() => setLogFor(t.id)} onEdit={() => openForm(t)} onDelete={() => remove(t.id)} />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="sl-meta">
-                    No triggers yet. Add one, then set up the webhook below (or run <code>tether pr watch</code> to poll instead).
-                  </p>
-                )}
-              </section>
-              <TriggerTest triggers={rows} testId={testId} onTestId={setTestId} onFired={reload} />
-              <WebhookSetup />
+    <ToolScreen className={cn('tg-screen', { docked: !!form || setupOpen })}>
+      <Loading className="tg-load" loading={loading} lines={6} label="Loading triggers">
+        <section className="tg-cards" aria-label="Triggers">
+          {list.error && !list.data ? (
+            <InlineError message={list.error} onRetry={() => void list.refresh()} />
+          ) : rows.length ? (
+            <ul className="tg-list">
+              {rows.map((t) => (
+                <TriggerCard key={t.id} t={t} selected={editing && form?.id === t.id} onOpen={() => openForm(t)} onToggle={() => void toggle(t)} />
+              ))}
+            </ul>
+          ) : (
+            <div className="tg-empty">
+              <QuietLine>
+                No triggers yet. Add one, then set up the webhook (or run <code>tether pr watch</code> to poll instead).
+              </QuietLine>
+              <div className="tg-actions">{actions}</div>
             </div>
-            <aside className="tg-side">
-              <Deliveries triggers={rows} logFor={logFor} onLogFor={setLogFor} log={log} />
-            </aside>
-          </div>
-        </Loading>
-      </div>
-      <TriggerForm
-        form={form}
-        editing={editing}
-        workspaces={workspaces}
-        agents={agents}
-        workflows={workflows}
-        onChange={(p) => setForm((f) => (f ? { ...f, ...p } : f))}
-        onSave={() => void save()}
-        onClose={() => setForm(null)}
-      />
-    </div>
+          )}
+        </section>
+      </Loading>
+      <FloatBar at="left">
+        <h1 className="tg-title">Triggers</h1>
+        <span className="tg-fact">{`${on} on`}</span>
+      </FloatBar>
+      <FloatBar at="right">{actions}</FloatBar>
+      {loading ? null : (
+        <FloatBar at="bottom" className="tf-wide tg-logbar">
+          <Deliveries triggers={rows} logFor={logFor} onLogFor={setLogFor} log={log} />
+        </FloatBar>
+      )}
+      {form ? (
+        <Dock label="Trigger" head={<h2 className="tg-title">{editing ? form.id : 'New trigger'}</h2>} onClose={() => setForm(null)}>
+          <TriggerForm
+            form={form}
+            editing={editing}
+            workspaces={workspaces}
+            agents={agents}
+            workflows={workflows}
+            onChange={(p) => setForm((f) => (f ? { ...f, ...p } : f))}
+            onSave={() => void save()}
+            onClose={() => setForm(null)}
+          />
+          {editing ? (
+            <div className="tg-actions tg-row-actions">
+              <Button variant="ghost" size="sm" onClick={() => toTest(form.id)}>
+                Test
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setLogFor(form.id)}>
+                Log
+              </Button>
+              <ConfirmButton label="Delete" prompt={`Delete ${form.id}?`} confirmLabel="Yes, delete" onConfirm={() => (setForm(null), remove(form.id))} />
+            </div>
+          ) : null}
+        </Dock>
+      ) : setupOpen ? (
+        <Dock label="Setup & test" head={<h2 className="tg-title">Setup &amp; test</h2>} onClose={() => setSetupOpen(false)}>
+          <WebhookSetup />
+          <TriggerTest triggers={rows} testId={testId} onTestId={setTestId} onFired={reload} />
+        </Dock>
+      ) : null}
+    </ToolScreen>
   );
 }

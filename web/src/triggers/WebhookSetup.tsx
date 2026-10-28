@@ -5,6 +5,7 @@ import { CodeBlock } from '../components/beui/agents/code-block';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
+import { Disclosure } from '../ui/studio/Section';
 import { Panel } from '../ui/studio/Panel';
 import type { Setup } from './types';
 
@@ -38,10 +39,12 @@ export function WebhookSetup() {
   const payloadUrl = `https://<your tunnel>${setup?.payloadPath ?? '/api/webhooks/github'}`;
   return (
     <Panel title="Webhook setup" className="tg-setup">
-      <p className="sl-summary">
-        GitHub → repo → Settings → Webhooks → Add webhook. This server only listens on this machine, so expose just the webhook path with a tunnel (<code>cloudflared tunnel --url http://127.0.0.1:4177</code>, ngrok or tailscale
-        funnel). No tunnel? <code>tether pr watch</code> polls instead.
-      </p>
+      <Disclosure label="Expose it with a tunnel">
+        <p className="sl-summary">
+          GitHub → repo → Settings → Webhooks → Add webhook. This server only listens on this machine, so expose just the webhook path with a tunnel (<code>cloudflared tunnel --url http://127.0.0.1:4177</code>, ngrok or tailscale
+          funnel). No tunnel? <code>tether pr watch</code> polls instead.
+        </p>
+      </Disclosure>
       {err ? <InlineError message={err} onRetry={() => void load()} /> : null}
       <dl className="tg-dl">
         <dt>Payload URL</dt>
