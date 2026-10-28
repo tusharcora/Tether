@@ -1,7 +1,5 @@
-import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, type RunRow, type RunView } from './api';
-import { Button } from './components/beui/kit/Button';
 import { Drawer, DrawerContent } from './components/beui/kit/overlays';
 import { SegmentedControl } from './components/beui/kit/controls';
 import { Loading } from './components/Loading';
@@ -99,14 +97,9 @@ export function Runs(props: RunsProps) {
     return (
       <div className="runs stacked">
         <section className="run-detail">
-          <div className="run-back">
-            <Button variant="ghost" size="sm" onClick={() => props.onSelect(undefined)}>
-              <ArrowLeft size={14} aria-hidden="true" /> Runs
-            </Button>
-          </div>
           {run ? (
             <>
-              <RunHeader run={run} onAct={act} />
+              <RunHeader run={run} onAct={act} onBack={() => props.onSelect(undefined)} onDetails={() => setPhoneView('inspector')} />
               <RunBanners run={run} streamError={error} onRetryStream={retry} onAct={act} />
               <div className="run-phone-switch">
                 <SegmentedControl
@@ -135,17 +128,7 @@ export function Runs(props: RunsProps) {
       <section className="run-detail">
         {run ? (
           <>
-            <RunHeader
-              run={run}
-              onAct={act}
-              extra={
-                belowWide ? (
-                  <Button variant="secondary" onClick={() => setDrawer(true)}>
-                    Inspector
-                  </Button>
-                ) : null
-              }
-            />
+            <RunHeader run={run} onAct={act} onBack={() => props.onSelect(undefined)} onDetails={() => setDrawer(true)} />
             <RunBanners run={run} streamError={error} onRetryStream={retry} onAct={act} />
             {centre}
           </>

@@ -4,14 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { Runs } from './Runs';
-import { calls, FakeEventSource, makeRow, makeRun, routeApi } from './test/fixtures';
+import { calls, FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
 const base = makeRun();
-const awaitingRun = makeRun({
-  pipeline: { ...base.pipeline, nodes: [...base.pipeline.nodes, { id: 'ship', kind: 'approval', title: 'Ship it', x: 780, y: 0 }], edges: [...base.pipeline.edges, { from: 'gate', to: 'ship' }] },
-  nodes: { ...base.nodes, gate: { status: 'done', attempts: 1, costUsd: 0, loops: 0 }, ship: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } },
-});
+const awaitingRun = makeAwaitingRun();
 
 beforeEach(() => {
   // a layout case stubs matchMedia; the next case starts wide again
@@ -64,7 +61,7 @@ describe('Runs', () => {
   it('follows the selected run live', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
-    expect(await screen.findByRole('heading', { name: /plan-code-review/ })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' })).toBeTruthy();
     act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'run.started' } }));
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Timeline/ }));
     fireEvent.click(screen.getByRole('tab', { name: /Timeline/ }));
@@ -140,16 +137,16 @@ describe('Runs', () => {
     const gateWaits = makeRun({ nodes: { ...makeRun().nodes, gate: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } } });
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', gateWaits));
-    await screen.findByRole('heading', { name: /plan-code-review/ });
+    await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
-  it('puts the status, an interrupted chip, task, cost of budget and branch in the header', async () => {
+  it('heads the run with its task, a badge that says interrupted, and the mono line with cost of budget', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun({ live: false, pipeline: { ...makeRun().pipeline, settings: { ...makeRun().pipeline.settings, maxCostUsd: 5 } } })));
-    await screen.findByRole('heading', { name: /plan-code-review/ });
-    expect(screen.getByText('interrupted')).toBeTruthy();
-    expect(screen.getByText(/\$0\.12 of \$5\.00 · aorch\/r1/)).toBeTruthy();
+    await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
+    expect(screen.getAllByText('interrupted')).toHaveLength(1);
+    expect(screen.getByText(/^R-R1 · plan-code-review · .+ · \$0\.12 of \$5\.00$/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
   });
 
@@ -193,9 +190,9 @@ describe('Runs', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 1199px)', media: q, addEventListener() {}, removeEventListener() {} }));
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
-    await screen.findByRole('heading', { name: /plan-code-review/ });
+    await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
     expect(screen.queryByRole('tab', { name: 'Branch diff' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Inspector' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run details' }));
     expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Branch diff' })).toBeTruthy();
   });
@@ -207,7 +204,7 @@ describe('Runs', () => {
     expect(await screen.findByText('Second task')).toBeTruthy();
     rerender(<Runs selected="r1" onSelect={onSelect} />);
     act(() => FakeEventSource.all.at(-1)!.emit('state', makeRun()));
-    await screen.findByRole('heading', { name: /plan-code-review/ });
+    await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
     expect(screen.queryByText('Second task')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Inspector' }));
     expect(screen.getByRole('tab', { name: 'Step' })).toBeTruthy();

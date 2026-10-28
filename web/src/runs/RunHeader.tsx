@@ -1,48 +1,50 @@
-import type { ReactNode } from 'react';
-import { fmtUsd, type RunView } from '../api';
+import { fmtDur, fmtUsd, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { runTitle } from '../home/runText';
+import { useNow } from '../home/Elapsed';
+import { fmtClock, taskTitle } from '../home/runText';
 import type { RunAct } from '../Runs';
-import { StatusChip, toneFor } from '../ui/studio/StatusChip';
+import { shortRunId } from '../ui/studio/RunGlyph';
+import { Tag } from '../ui/studio/Section';
+import { viewDesc } from '../ui/studio/status';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 
-/** Title, status, interrupted chip, task, cost of budget and branch; Stop / Resume / Retry failed. */
-export function RunHeader({ run: r, onAct, extra }: { run: RunView; onAct: RunAct; extra?: ReactNode }) {
-  const interrupted = r.status === 'running' && !r.live;
+/** ← Runs; the task as the title with its badge and kind; one mono line (id · kind · time · cost of budget); Run details, Stop / Resume / Retry failed. */
+export function RunHeader({ run: r, onAct, onBack, onDetails }: { run: RunView; onAct: RunAct; onBack: () => void; onDetails: () => void }) {
+  const ticking = r.live && r.status === 'running';
+  const now = useNow(ticking);
+  const ms = (r.finishedAt ?? now) - r.startedAt;
   const cap = r.pipeline.settings.maxCostUsd;
+  // a live clock while the run works; a finished or stalled run reads as a duration (3d 16h)
+  const line = `${shortRunId(r.id)} · ${r.kind === 'team' ? 'team run' : r.pipeline.name} · ${ticking ? fmtClock(ms) : fmtDur(ms)} · ${fmtUsd(r.costUsd)}${cap ? ` of ${fmtUsd(cap)}` : ''}`;
   return (
     <header className="run-head">
-      <div className="run-head-main">
-        <div className="run-head-title">
-          <h2>{runTitle({ kind: r.kind, pipeline: r.pipeline.name })}</h2>
-          <StatusChip tone={toneFor(r.status)} label={r.status} pulse={r.live && r.status === 'running'} />
-          {r.kind === 'team' ? <StatusChip tone="neutral" label="Team" /> : null}
-          {interrupted ? (
-            <span title="No process is driving this run. Resume it.">
-              <StatusChip tone="needs" label="interrupted" />
-            </span>
+      <div>
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          ← Runs
+        </Button>
+      </div>
+      <div className="run-head-row">
+        <h1>{taskTitle({ task: r.task, kind: r.kind, pipeline: r.pipeline.name })}</h1>
+        <StatusBadge desc={viewDesc(r)} />
+        <Tag>{r.kind === 'team' ? 'Team' : r.pipeline.name}</Tag>
+        <div className="run-head-actions">
+          <Button variant="secondary" size="sm" onClick={onDetails}>
+            Run details
+          </Button>
+          {/* a paused run, or a team run waiting on a card or its plan (the server reports it live), can be ended too */}
+          {(r.live && r.status === 'running') || r.status === 'paused' ? (
+            <Button variant="danger" size="sm" onClick={() => void onAct('stop')}>
+              Stop
+            </Button>
+          ) : null}
+          {!r.live && ['stopped', 'running', 'error'].includes(r.status) ? (
+            <Button variant="primary" size="sm" onClick={() => void onAct('resume')}>
+              {r.status === 'error' ? 'Retry failed' : 'Resume'}
+            </Button>
           ) : null}
         </div>
-        <p className="run-head-task">{r.task.split('\n')[0]!.slice(0, 120)}</p>
-        <p className="sl-meta">
-          {fmtUsd(r.costUsd)}
-          {cap ? ` of ${fmtUsd(cap)}` : ''} · {r.branch}
-          {r.notes.length ? ` · ${r.notes.length} vault notes` : ''}
-        </p>
       </div>
-      <div className="run-head-actions">
-        {extra}
-        {/* a paused run, or a team run waiting on a card or its plan (the server reports it live), can be ended too */}
-        {(r.live && r.status === 'running') || r.status === 'paused' ? (
-          <Button variant="danger" onClick={() => void onAct('stop')}>
-            Stop
-          </Button>
-        ) : null}
-        {!r.live && ['stopped', 'running', 'error'].includes(r.status) ? (
-          <Button variant="primary" onClick={() => void onAct('resume')}>
-            {r.status === 'error' ? 'Retry failed' : 'Resume'}
-          </Button>
-        ) : null}
-      </div>
+      <p className="run-head-line">{line}</p>
     </header>
   );
 }
