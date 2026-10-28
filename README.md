@@ -1,4 +1,4 @@
-# Aorch
+# Tether
 
 A durable orchestrator for CLI coding agents. It runs workflows of agents (Claude Code, Codex, OpenCode, local models) in isolated git worktrees, checks their work with gates, and keeps every run as an append-only event log you can resume.
 
