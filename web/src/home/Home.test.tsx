@@ -48,6 +48,13 @@ describe('Home', () => {
     expect(screen.queryByRole('region', { name: /Saved requests/ })).toBeNull();
   });
 
+  it('puts the composer and main sections before the side column in DOM order', async () => {
+    const { container } = renderApp(<Home onGo={() => {}} />);
+    await act(async () => {});
+    expect(container.querySelector('.home-cols > :first-child .composer')).toBeTruthy();
+    expect([...container.querySelectorAll('.sl-sec-title')].map((e) => e.textContent)).toEqual(['Needs you', 'Running', 'Recent', 'Activity', 'Crew']);
+  });
+
   it('has no Pause button and a live dot on Activity', async () => {
     renderApp(<Home onGo={() => {}} />);
     await act(async () => {});

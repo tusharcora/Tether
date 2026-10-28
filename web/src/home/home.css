@@ -6,20 +6,28 @@
 /* Inbox */
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
 @media (max-width: 899px) { .home-cols, .home-grid { padding: 0 12px; } }
-.start-form { display: flex; flex-direction: column; gap: 12px; }
-.start-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Composer (the demo's .composer): a borderless task field that grows, suggestions while it is empty and focused, a chip row */
+.start { display: flex; flex-direction: column; gap: 8px; }
+.start-none { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.composer { padding: 12px 12px 10px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s1); transition: border-color var(--t-fast) var(--ease); }
+/* the field itself draws no outline: the box shows focus */
+.composer:has(textarea:focus-visible) { border-color: var(--edge); }
+.composer textarea { display: block; width: 100%; min-height: 22px; max-height: 40vh; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 22px; field-sizing: content; }
+.composer textarea::placeholder { color: var(--mut); }
+.start-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .start-chip { padding: 2px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
 .start-chip:hover { color: var(--ink); background: var(--s2); }
-.start-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-.start-row > :first-child { flex: 1 1 200px; min-width: 0; }
-/* the mode switch and the Workflow… link share one centred line */
-.start-mode { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
+.composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.composer-anchor { position: relative; }
+.composer-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: var(--s2); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.composer-chip:hover, .composer-chip[aria-expanded="true"] { background: var(--s3); color: var(--ink); }
+.composer-label { font-size: 12px; color: var(--mut); }
+.composer-spacer { flex: 1; }
+.composer-menu { top: calc(100% + 4px); left: 0; min-width: 220px; font-size: 13px; }
+.composer-hint { margin-left: auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
 .start-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; }
 .start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
-.start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
-.s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
-.s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
 /* Activity: the demo's .feed, a 44 px mono time column, then the step's name and what it did in the kind's colour */
 .act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }

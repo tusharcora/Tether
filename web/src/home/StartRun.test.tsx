@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api } from '../api';
+import { cssRule } from '../test/css';
 import { calls, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import { StartRun } from './StartRun';
@@ -14,7 +15,7 @@ const WS = [
 const routes = { 'GET /api/workspaces': WS, 'GET /api/roster/preview': new Error('hidden'), 'POST /api/runs': { id: 'r7' } };
 const taskField = () => screen.findByLabelText('Task') as Promise<HTMLTextAreaElement>;
 const type = async (text: string) => fireEvent.change(await taskField(), { target: { value: text } });
-const start = () => screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+const start = () => screen.getByRole('button', { name: 'Start run' }) as HTMLButtonElement;
 const setup = (p: { onGo?: () => void; onStarted?: (id: string) => void } = {}) => renderApp(<StartRun onGo={p.onGo ?? (() => {})} onStarted={p.onStarted ?? (() => {})} />);
 
 beforeEach(() => {
@@ -34,14 +35,26 @@ describe('Start a run', () => {
     expect((await taskField()).value).toBe('');
   });
 
-  it('starts an autonomous run with Ctrl+Enter, and plain Enter only adds a newline', async () => {
+  it('picks autonomous from the run-kind chip and starts with Ctrl+Enter; plain Enter only adds a newline', async () => {
     setup();
     await type('Write the docs');
-    fireEvent.click(screen.getByRole('button', { name: 'Team · autonomous' }));
+    fireEvent.click(screen.getByRole('button', { name: /Team · live/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Team · autonomous' }));
+    expect(screen.getByRole('button', { name: /Team · autonomous/ })).toBeTruthy();
     fireEvent.keyDown(await taskField(), { key: 'Enter' });
     expect(calls('POST', '/api/runs')).toHaveLength(0);
     await act(async () => fireEvent.keyDown(await taskField(), { key: 'Enter', ctrlKey: true }));
     expect(calls('POST', '/api/runs')[0]![2]).toMatchObject({ mode: 'autonomous', task: 'Write the docs' });
+  });
+
+  it('picks the workspace from the project chip', async () => {
+    setup();
+    await type('Fix it');
+    fireEvent.click(screen.getByRole('button', { name: /API/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Web/ }));
+    expect(screen.getByRole('button', { name: /Web/ })).toBeTruthy();
+    await act(async () => fireEvent.click(start()));
+    expect(calls('POST', '/api/runs')[0]![2]).toMatchObject({ repo: '/p/web' });
   });
 
   it('keeps Start disabled until there is a task', async () => {
@@ -101,7 +114,7 @@ describe('Start a run', () => {
   it('shows the register-a-workspace empty state when none is registered', async () => {
     routeApi({ ...routes, 'GET /api/workspaces': [] });
     setup();
-    expect(await screen.findByText('No workspace yet')).toBeTruthy();
+    expect((await screen.findByText(/No workspace yet/)).className).toBe('sl-quiet');
     expect(screen.getByText(/tether workspace init/)).toBeTruthy();
     expect(screen.queryByLabelText('Task')).toBeNull();
   });
@@ -111,20 +124,38 @@ describe('Start a run', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     routeApi({ ...routes, 'GET /api/workspaces': [] });
     setup();
-    await screen.findByText('No workspace yet');
+    await screen.findByText(/No workspace yet/);
     await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Copy command' })));
     expect(writeText).toHaveBeenCalledWith('tether workspace init');
     expect(await screen.findByText('Command copied')).toBeTruthy();
   });
 
-  it('fills the task from an example and opens the Builder for workflows', async () => {
+  it('shows suggestions only while the empty field is focused', async () => {
+    setup();
+    const task = await taskField();
+    expect(screen.queryByText('Fix the flaky login test')).toBeNull();
+    fireEvent.focus(task);
+    fireEvent.mouseDown(screen.getByText('Fix the flaky login test'));
+    expect(task.value).toBe('Fix the flaky login test');
+    expect(screen.queryByText('Write a README section for the CLI')).toBeNull();
+  });
+
+  it('hands off to the Builder from the run-kind menu', async () => {
     const onGo = vi.fn();
     setup({ onGo });
-    fireEvent.click(await screen.findByRole('button', { name: 'Fix the flaky login test' }));
-    expect((await taskField()).value).toBe('Fix the flaky login test');
-    fireEvent.click(screen.getByRole('button', { name: 'Workflow…' }));
+    await taskField();
+    fireEvent.click(screen.getByRole('button', { name: /Team · live/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Workflow…' }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'builder' });
   });
+
+  it('shows Tether picks the crew as a label, not a control', async () => {
+    setup();
+    await taskField();
+    expect(screen.getByText('Tether picks the crew').closest('button')).toBeNull();
+  });
+
+  it('grows with its content', () => expect(cssRule('home/home.css', '.composer textarea')).toContain('field-sizing: content'));
 
   it('shows Tether’s likely picks as a guess, next to the core crew', async () => {
     routeApi({ ...routes, 'GET /api/roster/preview': { bots: [{ id: 'rag-pipeline-reviewer', name: 'RAG reviewer', why: 'Reviews retrieval' }], core: ['planner', 'coder', 'reviewer', 'architect'] } });
