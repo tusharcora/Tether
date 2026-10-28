@@ -5,6 +5,7 @@ vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), a
 import { api } from './api';
 import { Crew } from './Crew';
 import { calls, makeRow, routeApi } from './test/fixtures';
+import { cssRule } from './test/css';
 import { renderApp } from './test/render';
 
 const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#3fb97c', accent: 'auto' };
@@ -158,6 +159,13 @@ describe('Crew', () => {
     expect(screen.queryByRole('complementary', { name: 'Bot card' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Edit Go Reviewer/ }));
     await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Go Reviewer'));
+  });
+
+  it('lets the lineup fill the screen and keeps Swap… whole on narrow slots', () => {
+    // Loading's wrapper is positioned inline (AsciiReveal): sized to the screen, the absolute lineup inside it fills the screen too
+    expect(cssRule('crew/crew.css', '.cw-load')).toContain('height: 100%');
+    expect(cssRule('crew/crew.css', '.cw-load')).toContain('box-sizing: border-box');
+    expect(cssRule('crew/crew.css', '.cw-slot-swap')).toContain('flex: none');
   });
 
   it('hides and shows the library from Library', async () => {
