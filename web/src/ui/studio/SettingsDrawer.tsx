@@ -6,6 +6,7 @@ import { Switch } from '../../components/beui/kit/fields';
 import type { Poll } from '../../hooks';
 import { Accounts } from '../../settings/Accounts';
 import type { AccountsView } from '../../settings/accountsApi';
+import { Connectors, type ConnectorView } from '../../settings/Connectors';
 import { McpServers, type McpServerView } from '../../settings/McpServers';
 import { ThemeToggle } from '../../components/beui/motion/theme-toggle';
 import { resolveTheme, THEME_LABEL, type ThemeChoice } from '../../theme';
@@ -21,7 +22,7 @@ const CHOICES: ThemeChoice[] = ['light', 'dark', 'system'];
 const focusable = (el: HTMLElement) => el.isConnected && !el.closest('[inert]') && el.checkVisibility?.() !== false;
 
 /** Settings, opened over the current screen (which stays mounted): accounts, theme, vault, why loopback, connection, tools, about. `section` scrolls one into view (the sidebar's account row opens Accounts). */
-export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; home?: string; connection: Connection; /** The agent tools found on the server's PATH (shown when given). */ tools?: Poll<Tools>; /** Connected accounts (shown when given). */ accounts?: Poll<AccountsView>; /** Code Mode's MCP servers (shown when given). */ mcp?: Poll<{ servers: McpServerView[] }>; section?: string; /** Tether.app's notifications switch (shown when given). */ notifications?: { on: boolean; onChange: (on: boolean) => void }; returnFocus?: () => HTMLElement | null | undefined }) {
+export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: ThemeChoice; onChoice: (c: ThemeChoice) => void; vault?: string; home?: string; connection: Connection; /** The agent tools found on the server's PATH (shown when given). */ tools?: Poll<Tools>; /** Connected accounts (shown when given). */ accounts?: Poll<AccountsView>; /** Code Mode's MCP servers (shown when given). */ mcp?: Poll<{ servers: McpServerView[] }>; /** Code Mode's connectors (shown when given). */ connectors?: Poll<{ connectors: ConnectorView[] }>; section?: string; /** Tether.app's notifications switch (shown when given). */ notifications?: { on: boolean; onChange: (on: boolean) => void }; returnFocus?: () => HTMLElement | null | undefined }) {
   // Radix only hands focus back to a DialogTrigger; Settings opens from the rail, the bottom bar, a key or a link, so the drawer remembers its opener.
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -94,6 +95,12 @@ export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: 
           <section className="sl-settings-group" aria-labelledby="set-tools">
             <h3 id="set-tools">Agent tools</h3>
             <ToolsStrip poll={p.tools} />
+          </section>
+        ) : null}
+        {p.connectors ? (
+          <section className="sl-settings-group" aria-labelledby="set-connectors">
+            <h3 id="set-connectors">Connectors</h3>
+            <Connectors poll={p.connectors} />
           </section>
         ) : null}
         {p.mcp ? (

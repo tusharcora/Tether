@@ -31,6 +31,7 @@ import { useAppSignals, useNotifyPref } from './useAppSignals';
 import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
 import { MCP_PATH, type McpServerView } from './settings/McpServers';
+import { CONNECTORS_PATH, type ConnectorView } from './settings/Connectors';
 import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
@@ -101,6 +102,7 @@ function Shell() {
   /** Connected accounts: the sidebar's account row, and Settings → Accounts. */
   const accounts = usePoll<AccountsView>(ACCOUNTS_PATH, ACCOUNTS_MS);
   const mcp = usePoll<{ servers: McpServerView[] }>(route.tab === 'settings' ? MCP_PATH : null, 60_000);
+  const connectors = usePoll<{ connectors: ConnectorView[] }>(route.tab === 'settings' ? CONNECTORS_PATH : null, 15_000);
   /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -305,7 +307,7 @@ function Shell() {
           <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} goals={inProject(goals.goals, projects.current?.id)} onNewGoal={() => createNew('goal')} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog

@@ -322,7 +322,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
-    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url);
+    if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
