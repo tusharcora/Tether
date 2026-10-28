@@ -31,6 +31,24 @@ button.sl-row-title:hover { text-decoration: underline; text-underline-offset: 2
 .sl-row-extra { grid-area: extra; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .sl-age { font-family: var(--font-code); font-size: 11px; color: var(--mut); white-space: nowrap; }
 
+/* Section: a 12 px muted label (count chip, live dot) over one boxed list of hairline rows (the demo's .sec + .list) */
+.sl-sec { display: flex; align-items: center; gap: 8px; margin: 22px 0 8px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--mut); }
+.sl-section:first-child > .sl-sec { margin-top: 0; }
+.sl-sec-count { padding: 0 6px; border-radius: 99px; background: var(--s2); font-family: var(--font-code); font-size: 11px; }
+.sl-sec .sl-dot { background: var(--acc); }
+.sl-sec-action { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.sl-rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--s1); }
+/* row gap 7px: the demo's step track sits 7px under the meta line */
+.sl-rows > .sl-row { grid-template-columns: 18px minmax(0,1fr) auto; gap: 7px 12px; padding: 11px 14px; border-top: 1px solid var(--line); border-radius: 0; }
+.sl-rows > .sl-row:first-child { border-top: 0; }
+.sl-rows .sl-row-meta { font-family: inherit; font-size: 12px; }
+.sl-quiet { margin: 0; padding: 6px 0; font-size: 13px; color: var(--mut); }
+.sl-tag { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 6px; background: var(--s2); color: var(--mut); font-size: 11px; font-weight: 400; line-height: 16px; white-space: nowrap; }
+.sl-disclosure { display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; font-size: 12px; color: var(--mut); text-align: left; cursor: pointer; }
+.sl-disclosure:hover { color: var(--ink); }
+.sl-disclosure-chev { width: 14px; height: 14px; flex: none; transition: transform var(--t-fast) var(--ease); }
+.sl-disclosure[data-state="open"] .sl-disclosure-chev { transform: rotate(90deg); }
+
 /* StatusBadge: beui draws loading in ink; Tether's live colour is the accent. Plain CSS: ui/studio is not a Tailwind source. */
 .sl-badge[data-status="loading"] { border-color: color-mix(in srgb, var(--acc) 35%, transparent); background: var(--accBg); color: var(--accInk); }
 
