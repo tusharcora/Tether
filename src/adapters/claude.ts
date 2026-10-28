@@ -92,6 +92,7 @@ export class ClaudeAdapter implements AgentAdapter {
       ...(req.budgetUsd !== undefined && req.budgetUsd > 0 ? ['--max-budget-usd', req.budgetUsd.toFixed(4)] : []),
       ...(req.resumeSessionId ? ['--resume', req.resumeSessionId] : []),
       ...(req.onDelta ? ['--include-partial-messages'] : []),
+      ...(req.lean ? ['--setting-sources', 'project', '--disable-slash-commands'] : []),
       ...(req.codeMode ? claudeCodeModeArgs(req.codeMode) : []),
     ];
     const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };

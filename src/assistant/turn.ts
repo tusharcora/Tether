@@ -160,6 +160,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       cwd,
       model: body.model || bound,
       readOnly: true,
+      lean: true,
       attempt: 1,
       timeoutMs: 180_000,
       signal,
