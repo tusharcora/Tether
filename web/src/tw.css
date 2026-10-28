@@ -10,6 +10,7 @@
 @source './components/bencho';
 @source './components/aicss';
 @source './components/faces';
+@source './components/composer';
 @source './assistant';
 @source not './**/*.test.{ts,tsx}';
 
