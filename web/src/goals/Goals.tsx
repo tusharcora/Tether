@@ -1,3 +1,4 @@
+import { ListChecks } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, fmtUsd } from '../api';
 import { Button } from '../components/beui/kit/Button';
@@ -115,7 +116,7 @@ export function Goals(p: GoalsProps) {
             <ListRow
               key={g.id}
               className={cn('goal-row', { current: g.id === p.selected })}
-              lead={<RunGlyph state={glyphOf(g)} />}
+              lead={g.kind === 'tracker' ? <ListChecks size={14} strokeWidth={1.6} aria-label="Tracker" role="img" className="goal-tracker-glyph" /> : <RunGlyph state={glyphOf(g)} />}
               title={g.title}
               onOpen={() => p.onSelect(g.id)}
               meta={goalMeta(g)}
@@ -173,7 +174,7 @@ function Detail({ goal: g, set, drop, onGo }: { goal: GoalView; set: (g: GoalVie
       <header className="gd-head">
         <div className="gd-title">
           <h2>{g.title}</h2>
-          <StatusChip tone={TONE[g.status]} label={STATUS_LABEL[g.status]} pulse={g.status === 'active' && g.kind === 'loop'} />
+          <StatusChip tone={g.kind === 'tracker' && g.status === 'active' ? 'neutral' : TONE[g.status]} label={g.kind === 'tracker' && g.status === 'active' ? 'Open' : STATUS_LABEL[g.status]} pulse={g.status === 'active' && g.kind === 'loop'} />
         </div>
         <p className="sl-meta">
           {g.kind === 'loop' ? 'Outcome loop' : 'Tracker'} · {g.workflow === 'team' ? 'Team' : `Workflow ${g.workflow}`}
@@ -332,7 +333,7 @@ function SettingsDialog(p: { open: boolean; goal: GoalView; onClose: () => void;
 }
 
 /** What a run changed: the run's own diff, the same as its page shows. */
-function DiffDialog(p: { run?: string; onClose: () => void }) {
+export function DiffDialog(p: { run?: string; onClose: () => void }) {
   const [text, setText] = useState<string>();
   const [error, setError] = useState<string>();
   useEffect(() => {

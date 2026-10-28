@@ -75,7 +75,7 @@ describe('Runs', () => {
   it('approves an awaiting step and shows the returned state', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
-    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Approve' })));
+    await act(async () => fireEvent.click((await screen.findAllByRole('button', { name: 'Approve' }))[0]!));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: true });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull());
   });
@@ -84,7 +84,7 @@ describe('Runs', () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
     expect((await screen.findAllByText(/Awaiting approval: /)).length).toBeGreaterThan(0);
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reject' })));
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[0]!));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: false });
   });
 
@@ -92,7 +92,7 @@ describe('Runs', () => {
     const run = makeRun({ status: 'done', live: false });
     const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', run));
-    fireEvent.pointerDown((await waitFor(() => container.querySelector('[data-id="plan"] .node-body')))!, { pointerId: 1 });
+    fireEvent.click((await waitFor(() => container.querySelector('[data-id="plan"] .rf-open')))!);
     fireEvent.change(await screen.findByLabelText('Why (optional)'), { target: { value: 'clear plan' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Good' })));
     expect(calls('POST', '/api/runs/r1/feedback')[0]![2]).toEqual({ node: 'plan', rating: 'up', note: 'clear plan' });
@@ -106,7 +106,7 @@ describe('Runs', () => {
     const withCommit = makeRun({ nodes: { ...makeRun().nodes, plan: { ...makeRun().nodes.plan!, commit: 'abc1234' } } });
     const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', withCommit));
-    fireEvent.pointerDown((await waitFor(() => container.querySelector('[data-id="plan"] .node-body')))!, { pointerId: 1 });
+    fireEvent.click((await waitFor(() => container.querySelector('[data-id="plan"] .rf-open')))!);
     await waitFor(() => expect(calls('GET', '/api/runs/r1/diff?node=plan')).toHaveLength(1));
     act(() => FakeEventSource.all[0]!.emit('state', { ...withCommit, costUsd: 0.5 }));
     act(() => FakeEventSource.all[0]!.emit('state', { ...withCommit, costUsd: 0.6 }));
@@ -166,7 +166,7 @@ describe('Runs', () => {
     const { container } = renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} onSelectNode={onSelectNode} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun({ status: 'done', live: false })));
     expect(await screen.findByLabelText('Why (optional)')).toBeTruthy();
-    fireEvent.pointerDown(container.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+    fireEvent.click(container.querySelector('[data-id="code"] .rf-open')!);
     expect(onSelectNode).toHaveBeenLastCalledWith('code');
   });
 
@@ -229,7 +229,7 @@ describe('Runs', () => {
     expect(await screen.findByRole('dialog', { name: 'Inspector' })).toBeTruthy();
     // pick a step in the graph, as a click on the page does
     act(() => {
-      fireEvent.pointerDown(document.querySelector('[data-id="code"] .node-body')!, { pointerId: 1 });
+      fireEvent.click(document.querySelector('[data-id="code"] .rf-open')!);
     });
     expect(await screen.findByRole('heading', { name: /Bolt · coder/ })).toBeTruthy();
     await new Promise((r) => setTimeout(r, 400));

@@ -1,0 +1,18 @@
+/* The expanded run's flow: compact action nodes left to right on the dot grid. Tokens only; only live parts move. */
+.rf { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 28px 32px 40px; background-color: var(--bg); }
+.rf::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
+.rf-world { position: relative; }
+.rf-edges { position: absolute; left: 0; top: 0; pointer-events: none; }
+.rf-edge { fill: none; stroke: var(--edge); stroke-width: 2; }
+.rf-edge.done { stroke: var(--ok); }
+.rf-loop { fill: none; stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 5 6; }
+.rf-loop.live { animation: rf-dash 1.2s linear infinite; }
+@keyframes rf-dash { to { stroke-dashoffset: -22; } }
+.rf-node { position: absolute; }
+.rf-node .nod-compact { width: 100%; }
+.rf-node .rf-sel { border-color: var(--ink); }
+.rf-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.rf-open:hover { text-decoration: underline; text-underline-offset: 2px; }
+.rf-open:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.rf-node .nod-mark { background: none; }
+@media (prefers-reduced-motion: reduce) { .rf-loop.live { animation: none; } }

@@ -1,5 +1,5 @@
 import type { RunView } from '../api';
-import { Canvas } from '../Canvas';
+import { RunFlow } from './RunFlow';
 import type { RunAct } from '../Runs';
 import { TeamPanel } from '../Team';
 import { StepTodos } from '../ui/studio/StepTodos';
@@ -28,7 +28,7 @@ export function RunCentre({ run: r, selected, onSelect, onAct }: { run: RunView;
           <StepTrack steps={steps} className="run-steptrack" />
           {r.kind === 'team' ? <StepTodos steps={steps} title="Team plan" className="run-todos" /> : null}
           <div className="run-graph">
-            <Canvas nodes={r.pipeline.nodes} edges={r.pipeline.edges} statuses={r.nodes} selected={selected} onSelect={onSelect} />
+            <RunFlow run={r} selected={selected} onSelect={onSelect} onAct={onAct} />
           </div>
         </>
       )}

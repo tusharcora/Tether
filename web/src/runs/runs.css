@@ -38,7 +38,7 @@
 .run-planning { display: flex; flex-direction: column; gap: 8px; margin: 0 20px; }
 .run-steptrack { margin: 0 20px; }
 .run-todos { margin: 10px 20px 0; }
-.run-graph { display: flex; height: 320px; flex: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.run-graph { display: flex; height: 380px; flex: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .run-graph .canvas { flex: 1; }
 /* the Team panel, re-housed in the centre pane: Studio surfaces and spacing through tokens */
 .run-team .team-bar { margin: 0 20px; color: var(--mut); }

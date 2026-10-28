@@ -68,3 +68,4 @@
 @media (prefers-reduced-motion: reduce) {
   .goal-bar > span, .gt-bar > span { transition: none; }
 }
+.goal-tracker-glyph { color: var(--ink2); }
