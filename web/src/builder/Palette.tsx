@@ -1,20 +1,18 @@
-import { CornerDownRight, GitPullRequest, Globe, Plus, Webhook } from 'lucide-react';
-import { useState } from 'react';
+import { GitPullRequest, Globe, Plus, Webhook } from 'lucide-react';
 import type { PipelineNode } from '../../../src/types';
-import { ActionNode } from '../components/bencho/ActionNode';
-import { SearchField } from '../components/beui/kit/fields';
-import { SectionHeading } from '../ui/studio/SectionHeading';
+import { CommandPalette, type CommandItem } from '../components/beui/motion/command-palette';
+import { FloatBar } from '../ui/studio/ToolFrame';
 
 export type EccSkill = { name: string; description: string; source: string; kind?: string };
 
-/** The six built-in step kinds. The glyph tile is neutral: colour carries meaning only, and a palette entry has no status. */
-export const PALETTE: { label: string; glyph: string; hint: string; make: () => Partial<PipelineNode> }[] = [
-  { label: 'Planner', glyph: 'P', hint: 'read-only: plans the change', make: () => ({ kind: 'agent', role: 'planner', readOnly: true }) },
-  { label: 'Architect', glyph: 'A', hint: 'read-only: reviews the plan', make: () => ({ kind: 'agent', role: 'architect', readOnly: true }) },
-  { label: 'Coder', glyph: 'C', hint: 'edits files; each attempt is committed', make: () => ({ kind: 'agent', role: 'coder' }) },
-  { label: 'Reviewer', glyph: 'R', hint: 'sees the diff; ends with VERDICT', make: () => ({ kind: 'agent', role: 'reviewer', readOnly: true, verdict: true, includeDiff: true }) },
-  { label: 'Gate', glyph: 'G', hint: 'a command or saved request that must pass', make: () => ({ kind: 'gate', title: 'tests', command: 'npm test', maxLoops: 2 }) },
-  { label: 'Approval', glyph: '✓', hint: 'pauses until a person signs off', make: () => ({ kind: 'approval', title: 'approve' }) },
+/** The six built-in step kinds. */
+export const PALETTE: { label: string; hint: string; make: () => Partial<PipelineNode> }[] = [
+  { label: 'Planner', hint: 'read-only: plans the change', make: () => ({ kind: 'agent', role: 'planner', readOnly: true }) },
+  { label: 'Architect', hint: 'read-only: reviews the plan', make: () => ({ kind: 'agent', role: 'architect', readOnly: true }) },
+  { label: 'Coder', hint: 'edits files; each attempt is committed', make: () => ({ kind: 'agent', role: 'coder' }) },
+  { label: 'Reviewer', hint: 'sees the diff; ends with VERDICT', make: () => ({ kind: 'agent', role: 'reviewer', readOnly: true, verdict: true, includeDiff: true }) },
+  { label: 'Gate', hint: 'a command or saved request that must pass', make: () => ({ kind: 'gate', title: 'tests', command: 'npm test', maxLoops: 2 }) },
+  { label: 'Approval', hint: 'pauses until a person signs off', make: () => ({ kind: 'approval', title: 'approve' }) },
 ];
 
 /**
@@ -38,69 +36,47 @@ export const INTEGRATIONS: { label: string; hint: string; icon: typeof GitPullRe
   },
 ];
 
-/** Steps, integrations and ECC skills to add. A click adds the step and chains it onto the last one (an integration card can also follow the selected step). */
-export function Palette(props: { onAdd: (make: () => Partial<PipelineNode>, after?: string) => void; selected?: string; skills: EccSkill[]; onSkill: (s: EccSkill) => void }) {
-  const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const shown = props.skills.filter((s) => !needle || `${s.name} ${s.description}`.toLowerCase().includes(needle)).slice(0, 30);
+const make = (from: { label: string; make: () => Partial<PipelineNode> }[], label: string) => from.find((x) => x.label === label)!.make;
+
+/** The add-step bar's quick kinds (mockup .cmd): each adds its step at once; Skill opens the menu, where the skills are. */
+export const QUICK: { label: 'Agent' | 'Gate' | 'Approval' | 'Skill' | 'HTTP' | 'Webhook'; make?: () => Partial<PipelineNode> }[] = [
+  { label: 'Agent', make: make(PALETTE, 'Coder') },
+  { label: 'Gate', make: make(PALETTE, 'Gate') },
+  { label: 'Approval', make: make(PALETTE, 'Approval') },
+  { label: 'Skill' },
+  { label: 'HTTP', make: make(INTEGRATIONS, 'HTTP request') },
+  { label: 'Webhook', make: make(INTEGRATIONS, 'Webhook') },
+];
+
+/** Floats at the bottom of the canvas: "+ Add step" opens the menu ("/" does too), a quick kind adds its step. */
+export function AddStepBar(p: { onMenu: () => void; onAdd: (make: () => Partial<PipelineNode>) => void }) {
   return (
-    <aside className="bl-palette" aria-label="Steps palette">
-      <section>
-        <SectionHeading title="Steps" />
-        {PALETTE.map((p) => (
-          <button key={p.label} type="button" className="bl-item" title={p.hint} onClick={() => props.onAdd(p.make)}>
-            <span className="bl-glyph" aria-hidden="true">
-              {p.glyph}
-            </span>
-            <span className="bl-item-text">
-              <span className="bl-item-name">{p.label}</span>
-              <span className="bl-item-hint">{p.hint}</span>
-            </span>
-          </button>
-        ))}
-      </section>
-      <section aria-label="Integrations">
-        <SectionHeading title="Integrations" />
-        {INTEGRATIONS.map((x) => (
-          <ActionNode
-            key={x.label}
-            className="bl-integration"
-            inset
-            corner={10}
-            label={`${x.label} options`}
-            actions={[
-              { id: 'end', label: `Add ${x.label} to the end`, icon: <Plus size={14} aria-hidden="true" />, onSelect: () => props.onAdd(x.make) },
-              { id: 'after', label: props.selected ? `Add ${x.label} after ${props.selected}` : `Add ${x.label} after the selected step`, icon: <CornerDownRight size={14} aria-hidden="true" />, disabled: !props.selected, onSelect: () => props.onAdd(x.make, props.selected) },
-            ]}
-          >
-            <button type="button" className="bl-item bl-item-main" title={x.hint} onClick={() => props.onAdd(x.make)}>
-              <span className="bl-glyph" aria-hidden="true">
-                <x.icon size={15} />
-              </span>
-              <span className="bl-item-text">
-                <span className="bl-item-name">{x.label}</span>
-                <span className="bl-item-hint">{x.hint}</span>
-              </span>
-            </button>
-          </ActionNode>
-        ))}
-      </section>
-      {props.skills.length ? (
-        <section>
-          <SectionHeading title="Skills" count={props.skills.length} />
-          <SearchField label="Find a skill" value={q} onValueChange={setQ} placeholder="ECC skills and commands" />
-          {shown.map((s) => (
-            <button key={s.name} type="button" className="bl-item bl-skill" title={s.description} onClick={() => props.onSkill(s)}>
-              <span className="bl-item-text">
-                <span className="bl-item-name">{s.name}</span>
-                <span className="bl-item-hint">
-                  {s.kind === 'command' ? 'ECC command' : 'ECC skill'} · {s.description}
-                </span>
-              </span>
-            </button>
-          ))}
-        </section>
-      ) : null}
-    </aside>
+    <FloatBar at="bottom" className="bl-add">
+      <button type="button" className="bl-add-main" onClick={p.onMenu}>
+        <Plus size={14} aria-hidden="true" />
+        Add step
+        <kbd className="bl-add-kbd">/</kbd>
+      </button>
+      {QUICK.map((q) => (
+        <button key={q.label} type="button" className="bl-add-quick" onClick={() => (q.make ? p.onAdd(q.make) : p.onMenu())}>
+          {q.label}
+        </button>
+      ))}
+    </FloatBar>
   );
+}
+
+/**
+ * Every step there is to add, searchable: the built-in kinds, the integrations (also after the selected step), and the
+ * ECC skills and commands. A pick adds the step and chains it onto the last one (or the selected one).
+ */
+export function AddStepMenu(p: { open: boolean; onOpenChange: (o: boolean) => void; selected?: string; skills: EccSkill[]; onAdd: (make: () => Partial<PipelineNode>, after?: string) => void; onSkill: (s: EccSkill) => void }) {
+  const sel = p.selected;
+  const items: CommandItem[] = [
+    ...PALETTE.map((x) => ({ id: `step:${x.label}`, label: x.label, group: 'Steps', description: x.hint, onSelect: () => p.onAdd(x.make) })),
+    ...INTEGRATIONS.map((x) => ({ id: `int:${x.label}`, label: x.label, group: 'Integrations', description: x.hint, icon: x.icon, onSelect: () => p.onAdd(x.make) })),
+    ...(sel ? INTEGRATIONS.map((x) => ({ id: `after:${x.label}`, label: `${x.label} after ${sel}`, group: `After ${sel}`, icon: x.icon, onSelect: () => p.onAdd(x.make, sel) })) : []),
+    ...p.skills.map((s) => ({ id: `skill:${s.name}`, label: s.name, group: 'Skills', description: `${s.kind === 'command' ? 'ECC command' : 'ECC skill'} · ${s.description}`, onSelect: () => p.onSkill(s) })),
+  ];
+  return <CommandPalette items={items} open={p.open} onOpenChange={p.onOpenChange} shortcut={null} label="Add a step" placeholder="Find a step, integration or skill" emptyMessage="No step matches." />;
 }

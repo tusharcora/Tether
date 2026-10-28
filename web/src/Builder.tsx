@@ -1,4 +1,4 @@
-import { Copy, Pencil, Play, Trash2 } from 'lucide-react';
+import { ChevronDown, Copy, Pencil, Play, Trash2 } from 'lucide-react';
 import { useCreateIntent } from './ui/useCreateIntent';
 import { useEffect, useRef, useState } from 'react';
 import type { Edge, Pipeline, PipelineNode } from '../../src/types';
@@ -6,18 +6,17 @@ import { api, type Issue } from './api';
 import { Canvas, NODE_H } from './Canvas';
 import type { NodeAction } from './components/bencho/ActionNode';
 import { Button } from './components/beui/kit/Button';
-import { Checkbox, Input, Select } from './components/beui/kit/fields';
+import { Checkbox, Input } from './components/beui/kit/fields';
 import { Dialog, DialogContent } from './components/beui/kit/overlays';
 import { SegmentedControl } from './components/beui/kit/controls';
 import { Textarea } from './components/kept/textarea/textarea';
 import { ModeToggle } from './Team';
-import { NONE } from './ui/cn';
 import { useNotify } from './ui/notify';
-import { Palette, type EccSkill } from './builder/Palette';
-import { SettingsForm, StepForm, type Adapters } from './builder/Inspector';
+import { AddStepBar, AddStepMenu, type EccSkill } from './builder/Palette';
+import { SettingsForm, StepForm, StepHead, type Adapters } from './builder/Inspector';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
-import { ScreenHeader } from './ui/studio/ScreenHeader';
 import { StatusBadge } from './ui/studio/StatusBadge';
+import { Dock, FloatBar, MenuButton, ToolScreen, type MenuItem } from './ui/studio/ToolFrame';
 import './builder/builder.css';
 
 const BLANK: Pipeline = {
@@ -55,6 +54,9 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [savedJson, setSavedJson] = useState(() => JSON.stringify(BLANK));
   const [names, setNames] = useState<{ name: string; nodes: number }[]>([]);
   const [selected, setSelected] = useState<string | undefined>();
+  /** The dock shows the selected step, else (when asked) the workflow settings. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [showIssues, setShowIssues] = useState(false);
   const [adapters, setAdapters] = useState<Adapters>({});
@@ -78,6 +80,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const issueNodes = new Set(issues.filter((i) => i.level === 'error' && i.node).map((i) => i.node!));
   const sel = pl.nodes.find((n) => n.id === selected);
 
+  /** Selecting a step (or nothing) puts the step in the dock instead of the workflow settings. */
+  const select = (id?: string) => (setSelected(id), setSettingsOpen(false));
   /** Run `fn` now, or after the person agrees to drop their unsaved edits. */
   const guard = (fn: () => void) => (dirty ? setPending(() => fn) : fn());
 
@@ -253,7 +257,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   /** The corner actions of a step's card. */
   const nodeActions = (id: string): NodeAction[] => [
     { id: 'run', label: 'Run from here', icon: <Play size={14} aria-hidden="true" />, disabled: errors.length > 0, onSelect: () => (setFromStep(id), setTeamRun(false), setRunOpen(true)) },
-    { id: 'edit', label: 'Edit step', icon: <Pencil size={14} aria-hidden="true" />, onSelect: () => setSelected(id) },
+    { id: 'edit', label: 'Edit step', icon: <Pencil size={14} aria-hidden="true" />, onSelect: () => select(id) },
     { id: 'duplicate', label: 'Duplicate step', icon: <Copy size={14} aria-hidden="true" />, onSelect: () => duplicate(id) },
     { id: 'delete', label: 'Delete step', icon: <Trash2 size={14} aria-hidden="true" />, danger: true, onSelect: () => removeNode(id) },
   ];
@@ -306,54 +310,47 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   }
 
   const saved = names.some((n) => n.name === pl.name);
-  const loops = pl.nodes.filter((n) => n.fixNode).length;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const issueTone = errors.length ? 'failed' : issues.length ? 'needs' : 'done';
   const issueLabel = errors.length ? plural(errors.length, 'error') : issues.length ? plural(issues.length, 'warning') : 'valid';
   const validName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(pl.name);
 
+  const workflows: (MenuItem | 'rule')[] = [...names.map((n) => ({ label: n.name, current: saved && n.name === pl.name, onSelect: () => pick(n.name) })), ...(phone ? [] : ['rule' as const, { label: 'New workflow', onSelect: fresh }])];
+
   return (
-    <div className="bl-page">
-      <ScreenHeader
-        meta={`workflows / ${pl.name || 'untitled'} · ${plural(pl.nodes.length, 'step')} · ${plural(loops, 'fix loop')}`}
-        title={pl.name || 'untitled'}
-        actions={
-          <>
-            <Select
-              label="Workflow"
-              options={[{ value: NONE, label: '— unsaved —' }, ...names.map((n) => ({ value: n.name, label: n.name }))]}
-              value={saved ? pl.name : NONE}
-              onValueChange={(v) => v !== NONE && pick(v)}
-            />
-            {phone ? null : <Input className="bl-name" label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />}
-            <button type="button" className="bl-issues-toggle" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
-              <StatusBadge tone={issueTone} label={issueLabel} />
-            </button>
-            {phone ? null : (
-              <>
-                <span className="bl-saved">{dirty ? 'Unsaved changes' : 'Saved'}</span>
-                <Button variant="secondary" onClick={fresh}>
-                  New
-                </Button>
-                <Button variant="secondary" onClick={save} disabled={!dirty || !validName}>
-                  Save
-                </Button>
-              </>
-            )}
-            <Button variant="primary" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => (setFromStep(undefined), setRunOpen(true))}>
-              Run <Play size={12} aria-hidden="true" />
-            </Button>
-          </>
-        }
+    <ToolScreen className="bl-screen">
+      <h1 className="sl-sr">{pl.name || 'untitled'}</h1>
+      <Canvas
+        editable={!phone}
+        fitKey={opened}
+        hint={phone ? 'Drag to pan · use + / − to zoom' : undefined}
+        nodes={pl.nodes}
+        edges={pl.edges}
+        selected={selected}
+        issueNodes={issueNodes}
+        onSelect={select}
+        onMove={(id, x, y) => patch(id, { x, y })}
+        onConnect={connect}
+        onDeleteEdge={(f, t) => mut((p) => (p.edges = p.edges.filter((e) => !(e.from === f && e.to === t))))}
+        onDeleteNode={removeNode}
+        nodeActions={phone ? undefined : nodeActions}
       />
 
+      <FloatBar at="left">
+        {phone ? <span className="bl-name">{pl.name || 'untitled'}</span> : <input className="bl-name" aria-label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />}
+        <MenuButton title="Workflows" label={<ChevronDown size={14} aria-hidden="true" />} items={workflows} />
+        <span className="bl-saved">{dirty ? 'Unsaved changes' : 'Saved'}</span>
+        <button type="button" className="bl-issues-toggle" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
+          <StatusBadge tone={issueTone} label={issueLabel} />
+        </button>
+      </FloatBar>
       {showIssues && issues.length ? (
         <ul className="bl-issues" aria-label="Preflight issues">
           {issues.map((i, k) => (
             <li key={k}>
               <StatusBadge tone={i.level === 'error' ? 'failed' : 'needs'} label={i.level} />
               {i.node && !phone ? (
-                <button type="button" className="bl-issue-node" onClick={() => setSelected(i.node)}>
+                <button type="button" className="bl-issue-node" onClick={() => select(i.node)}>
                   {i.node}
                 </button>
               ) : null}
@@ -363,36 +360,34 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         </ul>
       ) : null}
 
-      {phone ? <p className="bl-phone-note">Editing needs a wider screen. You can look around and run this workflow.</p> : null}
-      <div className="bl-body">
-        {phone ? null : <Palette onAdd={addNode} selected={selected} skills={skills} onSkill={(s) => void addSkill(s)} />}
-
-        <Canvas
-          editable={!phone}
-          fitKey={opened}
-          hint={phone ? 'Drag to pan · use + / − to zoom' : 'Click a palette step to add it · drag a right port to a left port to connect · Delete removes'}
-          nodes={pl.nodes}
-          edges={pl.edges}
-          selected={selected}
-          issueNodes={issueNodes}
-          onSelect={setSelected}
-          onMove={(id, x, y) => patch(id, { x, y })}
-          onConnect={connect}
-          onDeleteEdge={(f, t) => mut((p) => (p.edges = p.edges.filter((e) => !(e.from === f && e.to === t))))}
-          onDeleteNode={removeNode}
-          nodeActions={phone ? undefined : nodeActions}
-        />
-
+      <FloatBar at="right">
+        {pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
         {phone ? null : (
-          <aside className="bl-inspector" aria-label="Step inspector">
-            {sel ? (
-              <StepForm node={sel} pl={pl} adapters={adapters} patch={patch} onGateKind={setGateKind} onDelete={removeNode} onSettings={() => setSelected(undefined)} />
-            ) : (
-              <SettingsForm pl={pl} mut={mut} />
-            )}
-          </aside>
+          <Button variant="secondary" size="sm" aria-pressed={settingsOpen} onClick={() => (setSelected(undefined), setSettingsOpen(!settingsOpen))}>
+            Settings
+          </Button>
         )}
-      </div>
+        {!phone && dirty ? (
+          <Button variant="secondary" size="sm" onClick={save} disabled={!validName}>
+            Save
+          </Button>
+        ) : null}
+        <Button variant="primary" size="sm" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => (setFromStep(undefined), setRunOpen(true))}>
+          Run <Play size={12} aria-hidden="true" />
+        </Button>
+      </FloatBar>
+
+      {phone ? <p className="bl-phone-note">Editing needs a wider screen. You can look around and run this workflow.</p> : <AddStepBar onMenu={() => setAdding(true)} onAdd={addNode} />}
+      {phone ? null : sel ? (
+        <Dock label="Step editor" head={<StepHead node={sel} />} onClose={() => select(undefined)}>
+          <StepForm node={sel} pl={pl} adapters={adapters} patch={patch} onGateKind={setGateKind} onDelete={removeNode} />
+        </Dock>
+      ) : settingsOpen ? (
+        <Dock label="Workflow settings" head={<h2 className="bl-step-title">Workflow settings</h2>} onClose={() => setSettingsOpen(false)}>
+          <SettingsForm pl={pl} mut={mut} />
+        </Dock>
+      ) : null}
+      <AddStepMenu open={adding} onOpenChange={setAdding} selected={selected} skills={skills} onAdd={addNode} onSkill={(s) => void addSkill(s)} />
 
       <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <DialogContent title="Discard unsaved changes?" description="Your edits to this workflow are not saved.">
@@ -462,6 +457,6 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </ToolScreen>
   );
 }

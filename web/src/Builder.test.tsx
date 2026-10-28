@@ -11,19 +11,23 @@ import { PHONE } from './ui/studio/useMediaQuery';
 const pcr = makeRun().pipeline;
 const other = { ...pcr, name: 'other', nodes: pcr.nodes.slice(0, 1), edges: [] };
 
+const routes = {
+  'GET /api/doctor': { claude: { ok: true }, codex: { ok: false } },
+  'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }, { name: 'other', nodes: 1 }],
+  'GET /api/pipelines/plan-code-review': { pipeline: pcr },
+  'GET /api/pipelines/other': { pipeline: other },
+  'POST /api/preflight': { issues: [] },
+  'POST /api/runs': { id: 'r42' },
+  'GET /api/skills': [{ name: 'tdd-workflow', description: 'TDD', source: 'ecc', kind: 'skill' }],
+  'GET /api/skills/ecc/tdd-workflow': { name: 'tdd-workflow', prompt: 'PROMPT' },
+  'GET /api/http/tree': { workspace: 'api', activeEnv: null, environments: ['local', 'stage'], root: { path: '', name: '', requests: [{ id: 'health', name: 'Health', method: 'GET', url: '{{base}}/h' }], collections: [{ path: 'runs', name: 'runs', collections: [], requests: [{ id: 'runs/list', name: 'List runs', method: 'GET', url: '{{base}}/api/runs' }] }] } },
+};
+const openStep = (id: string) => fireEvent.pointerDown(document.querySelector(`[data-id="${id}"] .node-body`)!, { pointerId: 1 });
+const lastBody = () => calls('POST', '/api/preflight').at(-1)?.[2] as typeof pcr;
+
 beforeEach(() => {
   vi.mocked(api).mockReset();
-  routeApi({
-    'GET /api/doctor': { claude: { ok: true }, codex: { ok: false } },
-    'GET /api/pipelines': [{ name: 'plan-code-review', nodes: 3 }, { name: 'other', nodes: 1 }],
-    'GET /api/pipelines/plan-code-review': { pipeline: pcr },
-    'GET /api/pipelines/other': { pipeline: other },
-    'POST /api/preflight': { issues: [] },
-    'POST /api/runs': { id: 'r42' },
-    'GET /api/skills': [{ name: 'tdd-workflow', description: 'TDD', source: 'ecc', kind: 'skill' }],
-    'GET /api/skills/ecc/tdd-workflow': { name: 'tdd-workflow', prompt: 'PROMPT' },
-    'GET /api/http/tree': { workspace: 'api', activeEnv: null, environments: ['local', 'stage'], root: { path: '', name: '', requests: [{ id: 'health', name: 'Health', method: 'GET', url: '{{base}}/h' }], collections: [{ path: 'runs', name: 'runs', collections: [], requests: [{ id: 'runs/list', name: 'List runs', method: 'GET', url: '{{base}}/api/runs' }] }] } },
-  });
+  routeApi(routes);
 });
 
 describe('Builder', () => {
@@ -58,9 +62,11 @@ describe('Builder', () => {
     // let the load's own validation finish on real timers before faking them
     await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
     // fake only the debounce clock: a faked requestAnimationFrame strands motion's shared frame loop for the later tests
+    fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
+    const menu = await screen.findByRole('dialog', { name: 'Add a step' });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.mocked(api).mockClear();
-    fireEvent.click(screen.getByRole('button', { name: /Reviewer/ }));
+    fireEvent.click(within(menu).getByText('Reviewer'));
     fireEvent.change(screen.getByLabelText('Pipeline name'), { target: { value: 'plan-code-review-2' } });
     await act(() => vi.advanceTimersByTimeAsync(350));
     const pre = calls('POST', '/api/preflight');
@@ -104,10 +110,12 @@ describe('Builder', () => {
     renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));
     fireEvent.change(screen.getByLabelText('Pipeline name'), { target: { value: 'changed' } });
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    const newWorkflow = () => (fireEvent.click(screen.getByRole('button', { name: 'Workflows' })), fireEvent.click(screen.getByRole('menuitem', { name: 'New workflow' })));
+    newWorkflow();
     fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
     expect((screen.getByLabelText('Pipeline name') as HTMLInputElement).value).toBe('changed');
-    fireEvent.click(await screen.findByRole('button', { name: 'New' }));
+    await screen.findByRole('button', { name: 'Workflows' });
+    newWorkflow();
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     expect((screen.getByLabelText('Pipeline name') as HTMLInputElement).value).toBe('untitled');
   });
@@ -136,18 +144,6 @@ describe('Builder', () => {
     expect(within(group).getByRole('button', { name: 'Follow bot' }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('adds an ECC skill as a step', async () => {
-    renderApp(<Builder onStarted={() => {}} />);
-    await waitFor(() => screen.getByDisplayValue('plan-code-review'));
-    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
-    vi.mocked(api).mockClear();
-    fireEvent.change(screen.getByLabelText('Find a skill'), { target: { value: 'tdd' } });
-    await act(async () => fireEvent.click(await screen.findByRole('button', { name: /tdd-workflow/ })));
-    await waitFor(() => {
-      const body = calls('POST', '/api/preflight').at(-1)?.[2] as { nodes: { title?: string; prompt?: string }[] } | undefined;
-      expect(body?.nodes.at(-1)).toMatchObject({ title: 'tdd-workflow', prompt: 'PROMPT' });
-    });
-  });
   it('switches a gate between a command and a saved request', async () => {
     const { container } = renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));
@@ -214,16 +210,71 @@ describe('Builder', () => {
     expect(used).toHaveBeenCalledTimes(1);
   });
 
-  it('puts the workflow, step and loop counts in the header and adds steps from the palette', async () => {
+  it('adds steps from the bar and from the menu: steps, integrations after the selected step, skills', async () => {
     renderApp(<Builder onStarted={() => {}} />);
-    expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
-    expect(screen.getByText('workflows / plan-code-review · 3 steps · 1 fix loop')).toBeTruthy();
+    await screen.findByDisplayValue('plan-code-review');
+    await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
     expect(screen.getByText('Saved')).toBeTruthy();
-    const palette = screen.getByRole('complementary', { name: 'Steps palette' });
-    expect([...palette.querySelectorAll('.bl-item:not(.bl-skill) .bl-item-name')].map((e) => e.textContent)).toEqual(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'Approval', 'GitHub', 'HTTP request', 'Webhook']);
-    fireEvent.click(within(palette).getByRole('button', { name: /Approval/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(document.querySelectorAll('[data-node]')).toHaveLength(4);
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
-    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
+    const menu = await screen.findByRole('dialog', { name: 'Add a step' });
+    expect(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'GitHub', 'HTTP request', 'Webhook'].every((t) => within(menu).queryAllByText(t).length > 0)).toBe(true);
+    // the new Approval step is selected, so the integrations can follow it
+    fireEvent.click(within(menu).getByText('Webhook after approve'));
+    await waitFor(() => expect(lastBody().edges).toContainEqual({ from: 'approve', to: 'gate2' }));
+    fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
+    fireEvent.change(within(await screen.findByRole('dialog', { name: 'Add a step' })).getByRole('combobox'), { target: { value: 'tdd' } });
+    await act(async () => fireEvent.click(await screen.findByText('tdd-workflow')));
+    await waitFor(() => expect(lastBody().nodes.at(-1)).toMatchObject({ title: 'tdd-workflow', prompt: 'PROMPT' }));
+  });
+
+  it('edits a selected step in the dock and closes it with Esc', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    openStep('code');
+    const dock = screen.getByRole('complementary', { name: 'Step editor' });
+    expect(within(dock).getByRole('heading', { level: 2, name: 'coder' })).toBeTruthy();
+    expect(within(dock).getByText('Agent step')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Step editor' })).toBeNull();
+    expect(document.querySelector('.node.selected')).toBeNull();
+  });
+
+  it('opens the workflow settings in the same dock from Settings', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    openStep('code');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.queryByRole('complementary', { name: 'Step editor' })).toBeNull();
+    const dock = screen.getByRole('complementary', { name: 'Workflow settings' });
+    expect(within(dock).getByRole('heading', { level: 2, name: 'Workflow settings' })).toBeTruthy();
+    expect(within(dock).getByLabelText('Step timeout (minutes)')).toBeTruthy();
+    openStep('gate');
+    expect(screen.queryByRole('complementary', { name: 'Workflow settings' })).toBeNull();
+  });
+
+  it('shows Save only with unsaved changes and the spend cap when one is set', async () => {
+    routeApi({ ...routes, 'GET /api/pipelines/plan-code-review': { pipeline: { ...pcr, settings: { ...pcr.settings, maxCostUsd: 5 } } } });
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    expect(screen.getByText('$5 cap')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Pipeline name'), { target: { value: 'pcr-2' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+  });
+
+  it('picks a workflow and starts a new one from the name menu', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
+    expect(screen.getByRole('menuitem', { name: 'plan-code-review' }).getAttribute('aria-current')).toBe('true');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'other' }));
+    await waitFor(() => expect((screen.getByLabelText('Pipeline name') as HTMLInputElement).value).toBe('other'));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New workflow' }));
+    expect((screen.getByLabelText('Pipeline name') as HTMLInputElement).value).toBe('untitled');
   });
 
   it('gives each step card corner actions: edit, duplicate, delete and run from here', async () => {
@@ -238,7 +289,7 @@ describe('Builder', () => {
     // duplicate adds an unconnected copy and selects it
     fireEvent.click(within(bar).getByRole('button', { name: 'Duplicate step' }));
     expect(document.querySelector('[data-node][data-id="plan-copy"]')).toBeTruthy();
-    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+    expect(document.querySelectorAll('[data-node]')).toHaveLength(4);
     // delete removes it again, with its connections
     fireEvent.click(within(document.querySelector('[data-node][data-id="plan-copy"]') as HTMLElement).getByRole('button', { name: 'Delete step' }));
     expect(document.querySelector('[data-node][data-id="plan-copy"]')).toBeNull();
@@ -261,19 +312,20 @@ describe('Builder', () => {
     expect(onStarted).toHaveBeenCalledWith('r42');
   });
 
-  it('offers the GitHub, HTTP request and webhook integrations as ready-made steps, one that follows the selected step', async () => {
+  it('offers the webhook and HTTP request integrations as ready-made steps, one that follows the selected step', async () => {
     renderApp(<Builder onStarted={() => {}} />);
-    await screen.findByRole('heading', { level: 1, name: 'plan-code-review' });
-    const palette = screen.getByRole('complementary', { name: 'Steps palette' });
-    const after = within(palette).getByRole('button', { name: 'Add Webhook after the selected step' }) as HTMLButtonElement;
-    expect(after.disabled).toBe(true);
-    fireEvent.click(within(palette).getByRole('button', { name: /^Webhook/ }));
-    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+    await screen.findByDisplayValue('plan-code-review');
+    fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
+    expect(within(await screen.findByRole('dialog', { name: 'Add a step' })).queryByText(/ after /)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close command palette' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Webhook' }));
+    expect(document.querySelectorAll('[data-node]')).toHaveLength(4);
     // the new gate is selected: its card holds the curl to the webhook
     expect(document.querySelector('.node.selected .node-preview')?.textContent).toContain('$WEBHOOK_URL');
     fireEvent.pointerDown(document.querySelector('[data-node][data-id="plan"] .node-title') as HTMLElement);
-    fireEvent.click(within(palette).getByRole('button', { name: 'Add HTTP request after plan' }));
-    expect(screen.getByText('workflows / plan-code-review · 5 steps · 1 fix loop')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Add step/ }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Add a step' })).getByText('HTTP request after plan'));
+    expect(document.querySelectorAll('[data-node]')).toHaveLength(5);
   });
 
   it('selects the step an issue names', async () => {
@@ -290,7 +342,7 @@ describe('Builder', () => {
     expect(await screen.findByLabelText('Instructions (blank = default for the role)')).toBeTruthy();
   });
 
-  it('edits a step with switches and goes back to the pipeline settings', async () => {
+  it('edits a step with switches and goes to the workflow settings', async () => {
     const { container } = renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));
     await waitFor(() => expect(calls('POST', '/api/preflight').length).toBeGreaterThan(0));
@@ -302,16 +354,18 @@ describe('Builder', () => {
       const body = calls('POST', '/api/preflight').at(-1)?.[2] as typeof pcr;
       expect(body.nodes.find((n) => n.id === 'code')).toMatchObject({ verdict: true });
     });
-    fireEvent.click(screen.getByRole('button', { name: /^Pipeline settings: mode pipeline · 4 parallel read-only · 30 min timeout/ }));
-    expect(screen.getByRole('heading', { level: 2, name: 'Pipeline settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('heading', { level: 2, name: 'Workflow settings' })).toBeTruthy();
   });
 
   it('is view-and-run only at phone width', async () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === PHONE, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }));
     renderApp(<Builder onStarted={() => {}} />);
     expect(await screen.findByRole('heading', { level: 1, name: 'plan-code-review' })).toBeTruthy();
-    expect(screen.queryByRole('complementary', { name: 'Steps palette' })).toBeNull();
-    expect(screen.queryByRole('complementary', { name: 'Step inspector' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add step/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    openStep('code');
+    expect(screen.queryByRole('complementary', { name: 'Step editor' })).toBeNull();
     expect(screen.queryByLabelText('Pipeline name')).toBeNull();
     expect(screen.getByText('Editing needs a wider screen. You can look around and run this workflow.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();

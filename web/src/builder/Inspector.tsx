@@ -9,7 +9,7 @@ import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
 import { RequestGateFields } from '../RequestGateFields';
 import { NONE, fromNone } from '../ui/cn';
-import { SectionHeading } from '../ui/studio/SectionHeading';
+import { stepTitle } from './stepText';
 
 export type Adapters = Record<string, { ok: boolean; version?: string; detail?: string }>;
 
@@ -19,13 +19,9 @@ const KIND_LINE: Record<string, string> = {
   approval: 'Approval · pauses until a person signs off',
 };
 
-export const settingsSummary = (p: Pipeline): string =>
-  `mode ${p.mode} · ${p.settings.parallel} parallel read-only · ${Math.round(p.settings.nodeTimeoutMs / 60000)} min timeout${p.settings.maxCostUsd ? ` · $${p.settings.maxCostUsd} cap` : ''}`;
-
 export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline) => void) => void }) {
   return (
     <div className="bl-form">
-      <SectionHeading title="Pipeline settings" />
       <Select
         label="Mode"
         options={[
@@ -62,6 +58,22 @@ export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline
   );
 }
 
+/** The docked editor's head: the step's bot face, its name, and what kind of step it is. */
+export function StepHead({ node: n }: { node: PipelineNode }) {
+  const { crew } = useCrew();
+  return (
+    <div className="bl-step-head">
+      <Face id={crewFor(n, crew)} size={32} />
+      <div>
+        <h2 className="bl-step-title">{stepTitle(n)}</h2>
+        <p className="bl-step-kind">
+          <span>{KIND_LINE[n.kind] ?? n.kind}</span> · <code>{n.id}</code>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function StepForm(props: {
   node: PipelineNode;
   pl: Pipeline;
@@ -69,7 +81,6 @@ export function StepForm(props: {
   patch: (id: string, v: Partial<PipelineNode>) => void;
   onGateKind: (n: PipelineNode, kind: string) => void;
   onDelete: (id: string) => void;
-  onSettings: () => void;
 }) {
   const { node: n, pl, adapters, patch } = props;
   const { crew } = useCrew();
@@ -83,15 +94,6 @@ export function StepForm(props: {
   );
   return (
     <div className="bl-form">
-      <div className="bl-step-head">
-        <Face id={crewFor(n, crew)} size={44} />
-        <div>
-          <h2 className="bl-step-title">{n.title ?? n.role ?? n.kind}</h2>
-          <p className="bl-step-kind">
-            <span>{KIND_LINE[n.kind] ?? n.kind}</span> · <code>{n.id}</code>
-          </p>
-        </div>
-      </div>
       <Input label="Label" value={n.title ?? ''} onChange={(e) => patch(n.id, { title: e.target.value })} />
       {n.kind === 'agent' ? (
         <>
@@ -165,9 +167,6 @@ export function StepForm(props: {
       <Button variant="danger" onClick={() => props.onDelete(n.id)}>
         Delete step
       </Button>
-      <button type="button" className="bl-settings-line" onClick={props.onSettings}>
-        Pipeline settings: {settingsSummary(pl)}
-      </button>
     </div>
   );
 }
