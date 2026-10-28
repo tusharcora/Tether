@@ -1,43 +1,93 @@
-import { useState } from 'react';
+import { Paperclip, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { PromptInput } from '../components/beui/agents/prompt-input';
+import { UploadDropzone } from '../components/bencho/UploadDropzone';
 import type { Route } from '../hooks';
-import type { AssistantContext } from './api';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
+import { Thread } from './Thread';
 import type { Assistant } from './useAssistant';
 
-/** The conversation inside the panel: the project's messages and a field to write to Tether. */
+/** The conversation inside the panel: the project's thread, a dropzone for text files, and the prompt. */
 export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void }) {
-  const [draft, setDraft] = useState('');
   const { chat } = p;
-  const send = () => {
-    const text = draft.trim();
-    if (!text || chat.streaming) return;
+  const [draft, setDraft] = useState('');
+  const [model, setModel] = useState<string>();
+  const [attach, setAttach] = useState(false);
+  const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
+  const log = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+
+  // follow the reply as it streams, unless the person scrolled up
+  useEffect(() => {
+    const el = log.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [chat.messages, chat.streaming]);
+
+  const send = (text: string, m?: string) => {
+    const t = text.trim().slice(0, MESSAGE_MAX);
+    if (!t || chat.streaming) return;
     setDraft('');
-    void chat.send(text, { context: p.context });
+    const attachments = files;
+    setFiles([]);
+    setAttach(false);
+    pinned.current = true;
+    void chat.send(t, { context: p.context, ...(m || model ? { model: m ?? model } : {}), ...(attachments.length ? { attachments } : {}) });
   };
+  const read = async (list: File[]) => {
+    const next = await Promise.all(list.map(async (f) => ({ name: f.name, text: (await f.text()).slice(0, ATTACH_MAX_BYTES) })));
+    setFiles((cur) => [...cur, ...next].slice(0, ATTACH_MAX_FILES));
+  };
+  const models = chat.models.map((m) => ({ value: m, label: m }));
+
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4" role="log" aria-label="Conversation with Tether" aria-busy={!!chat.streaming}>
-        {chat.loading ? <p className="m-0 text-muted-foreground">Loading the chat…</p> : null}
-        {chat.error ? <p className="m-0 text-danger">{chat.error}</p> : null}
-        {!chat.loading && !chat.messages.length && !chat.streaming ? <p className="m-0 text-muted-foreground">{`Ask about ${p.project ?? 'your work'}: what's running, a run's result, the code.`}</p> : null}
-        {chat.messages.map((m) => (
-          <div key={m.id} className={m.role === 'you' ? 'self-end max-w-[80%] rounded-xl bg-muted px-3 py-2' : 'max-w-[86%]'} data-role={m.role}>
-            {m.text}
-          </div>
-        ))}
-        {chat.streaming ? <div className="max-w-[86%]" data-role="tether">{chat.streaming.text}</div> : null}
-      </div>
-      <form
-        className="flex gap-2 border-t border-border p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
+      <div
+        ref={log}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
+        role="log"
+        aria-label="Conversation with Tether"
+        aria-busy={!!chat.streaming}
       >
-        <textarea className="min-h-9 flex-1 resize-none" aria-label="Message Tether" value={draft} onChange={(e) => setDraft(e.target.value)} rows={1} />
-        <button type="submit" className="primary" disabled={!draft.trim() || !!chat.streaming}>
-          Send
-        </button>
-      </form>
+        <Thread chat={chat} onGo={p.onGo} empty={`Ask about ${p.project ?? 'your work'}: what's running, a run's result, the code.`} />
+      </div>
+      <div className="flex flex-col gap-2 border-t border-border p-3">
+        {attach ? <UploadDropzone maxBytes={ATTACH_MAX_BYTES} maxFiles={ATTACH_MAX_FILES} accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml" onFiles={(f) => void read(f)} /> : null}
+        {files.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {files.map((f) => (
+              <span key={f.name} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
+                {f.name}
+                <button type="button" aria-label={`Remove ${f.name}`} className="grid place-items-center border-0 bg-transparent p-0 text-muted-foreground" onClick={() => setFiles((c) => c.filter((x) => x !== f))}>
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <PromptInput
+          aria-label="Message Tether"
+          placeholder="Ask Tether…"
+          value={draft}
+          onValueChange={setDraft}
+          minRows={1}
+          maxRows={5}
+          models={models.length > 1 ? models : undefined}
+          model={model ?? chat.model ?? models[0]?.value}
+          onModelChange={setModel}
+          loading={!!chat.streaming}
+          onStop={chat.stop}
+          onSubmit={send}
+          leadingAction={
+            <button type="button" className="tether-icon-btn" aria-label="Attach a file" aria-pressed={attach} onClick={() => setAttach((a) => !a)}>
+              <Paperclip size={15} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          }
+        />
+      </div>
     </>
   );
 }
