@@ -1,0 +1,39 @@
+/* The tool screens' frame (mockup docs/design/Round2Screens.html .main/.flt/.dock). Tokens only. */
+.tf-screen { position: relative; height: 100%; min-height: 0; overflow: hidden; background: var(--side); }
+/* the dots: a solid fill cut by a mask (no gradient fill, as canvas.css) */
+.tf-screen::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--line2);
+  -webkit-mask-image: radial-gradient(circle at 1px 1px, black 1px, transparent 1.2px); mask-image: radial-gradient(circle at 1px 1px, black 1px, transparent 1.2px);
+  -webkit-mask-size: 22px 22px; mask-size: 22px 22px;
+}
+
+/* floating toolbars and the dock: a surface lifted by a hairline ring and a soft offset shadow (not a glow) */
+.tf-bar, .tf-dock { background: var(--s1); box-shadow: 0 0 0 1px var(--line2), 0 10px 30px -10px rgb(0 0 0 / .25); }
+.tf-bar { position: absolute; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); padding: 6px 8px; border-radius: 12px; }
+.tf-left { top: 14px; left: 16px; }
+.tf-right { top: 14px; right: 16px; }
+.tf-center { top: 14px; left: 50%; transform: translateX(-50%); }
+.tf-bottom { bottom: 16px; left: 50%; transform: translateX(-50%); }
+
+.tf-dock {
+  position: absolute; z-index: 7; top: 64px; right: 16px; display: flex; flex-direction: column; width: 320px; max-height: calc(100% - 80px);
+  border-radius: 14px; animation: tf-pop .22s var(--ease);
+}
+@keyframes tf-pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.tf-dock-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 8px 4px 14px; }
+.tf-dock-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; padding: 4px 14px 14px; }
+.tf-x { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--mut); cursor: pointer; }
+.tf-x:hover { background: var(--s2); color: var(--ink); }
+
+/* MenuButton: a .sl-menu (shell.css) under its button */
+.tf-menu-anchor { position: relative; display: inline-flex; }
+.tf-menu { top: calc(100% + 6px); left: 0; max-height: 320px; overflow: auto; font-size: 13px; }
+.tf-menu.end { left: auto; right: 0; }
+.tf-menu [role="menuitem"] { padding: 8px 12px; white-space: nowrap; }
+.tf-check { margin-left: auto; color: var(--mut); }
+
+@media (max-width: 899px) {
+  .tf-bar { flex-wrap: wrap; }
+  .tf-center { top: 62px; }
+  .tf-dock { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 70%; }
+}
