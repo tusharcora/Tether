@@ -83,6 +83,9 @@ describe('Code screen', () => {
     setup();
     const tree = await screen.findByRole('tree', { name: 'Files' });
     expect(tree.querySelectorAll('button[role="treeitem"]').length).toBeGreaterThan(0);
+    // beui assumes Tailwind's preflight; without it the rows would take the app's default button box
+    expect(cssRule('code/code.css', '.code-tree-list [role="treeitem"]')).toContain('border: 0');
+    expect(cssRule('code/code.css', '.code-tree-list [role="treeitem"]:not([aria-selected="true"])')).toContain('background-color: transparent');
   });
 
   it('keeps the vendored MIT notice', () => {
