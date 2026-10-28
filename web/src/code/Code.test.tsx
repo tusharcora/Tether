@@ -282,6 +282,7 @@ describe('Code screen', () => {
     expect(screen.getByRole('button', { name: 'Read-only' }).hasAttribute('disabled')).toBe(true);
     await waitFor(() => expect(editorText()).toBe('K=1\n'));
     expect(document.querySelector('.code-status')!.textContent).toContain('read-only');
+    expect(document.querySelector('.code-status')!.textContent).toMatch(/1 line(?!s)/);
   });
 
   it('shows a file over 2 MB as a panel instead of the editor', async () => {

@@ -52,7 +52,11 @@ const LOCK_MS = 5000;
 const SEARCH_MS = 250;
 const nameOf = (path: string) => path.split('/').pop()!;
 const isDirty = (t?: Tab) => !!t?.file && t.edit !== undefined && t.edit !== t.file.text;
-const lineCount = (text: string) => text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+/** "1 line", "3 lines": a trailing newline ends the last line, it does not start one. */
+const lineCount = (text: string) => {
+  const n = text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+  return `${n} ${n === 1 ? 'line' : 'lines'}`;
+};
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
 
 /**
@@ -370,7 +374,7 @@ export function Code(p: CodeProps) {
               {isText ? <span className={cn({ 'code-unsaved': isDirty(tab) })}>{isDirty(tab) ? 'unsaved' : readOnly ? 'read-only' : 'saved'}</span> : null}
               <span className="code-status-r">
                 {isText && cursor ? <span>{`Ln ${cursor.line}, Col ${cursor.col}`}</span> : null}
-                {isText ? <span>{lineCount(tab.edit ?? file.text)} lines</span> : null}
+                {isText ? <span>{lineCount(tab.edit ?? file.text)}</span> : null}
                 <span>{LANGS[file.lang].label}</span>
                 {isText ? <span>UTF-8</span> : null}
               </span>
