@@ -79,6 +79,8 @@ describe('ToolFrame', () => {
     expect(cssRule('ui/studio/toolframe.css', '.tf-screen')).toContain('--tf-launcher: 84px');
     expect(cssRule('ui/studio/toolframe.css', '.tf-wide')).toContain('right: var(--tf-launcher)');
     expect(cssRule('ui/studio/toolframe.css', '.tf-wide')).toContain('transform: none');
+    // the dock stops above the launcher too
+    expect(cssRule('ui/studio/toolframe.css', '.tf-dock')).toContain('max-height: calc(100% - 64px - var(--tf-launcher))');
   });
 
   it('draws the backdrop dots with a mask and turns the dock into a bottom sheet on narrow screens', () => {

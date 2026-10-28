@@ -19,7 +19,7 @@
 .tf-wide { left: 16px; right: var(--tf-launcher); transform: none; }
 
 .tf-dock {
-  position: absolute; z-index: 7; top: 64px; right: 16px; display: flex; flex-direction: column; width: 320px; max-height: calc(100% - 80px);
+  position: absolute; z-index: 7; top: 64px; right: 16px; display: flex; flex-direction: column; width: 320px; max-height: calc(100% - 64px - var(--tf-launcher));
   border-radius: 14px; animation: tf-pop .22s var(--ease);
 }
 @keyframes tf-pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }

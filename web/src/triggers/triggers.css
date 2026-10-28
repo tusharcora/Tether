@@ -51,6 +51,7 @@
 .tg-result p { margin: 0; }
 .tg-dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 12px; margin: 0; font-size: 13px; }
 .tg-dl dt { color: var(--mut); padding-top: 6px; }
+.tf-dock .tg-dl { grid-template-columns: 1fr; }
 .tg-dl dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .tg-code { padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-family: var(--font-code); font-size: 12.5px; }
 .tg-secret { user-select: all; }

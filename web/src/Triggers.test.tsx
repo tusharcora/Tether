@@ -173,6 +173,8 @@ describe('Triggers', () => {
     // AsciiReveal positions the wrapper inline; the absolute card column inside it needs it to fill the screen
     expect(cssRule('triggers/triggers.css', '.tg-load')).toContain('height: 100%');
     expect(cssRule('triggers/triggers.css', '.tg-cards')).toContain('inset: 0');
+    // the webhook setup is one column inside the 320 px dock
+    expect(cssRule('triggers/triggers.css', '.tf-dock .tg-dl')).toContain('grid-template-columns: 1fr');
   });
 
   it('says so in one quiet line when there are no triggers, with New trigger and Setup & test', async () => {
