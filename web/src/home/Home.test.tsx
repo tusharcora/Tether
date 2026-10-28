@@ -48,6 +48,13 @@ describe('Home', () => {
     expect(screen.queryByRole('region', { name: /Saved requests/ })).toBeNull();
   });
 
+  it('has no Pause button and a live dot on Activity', async () => {
+    renderApp(<Home onGo={() => {}} />);
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Activity' }).querySelector('.sl-dot.pulse')).toBeTruthy();
+  });
+
   it('lays out a 270 px side column that stacks under 1100 px', () => {
     expect(cssRule('home/home.css', '.home-cols')).toContain('grid-template-columns: minmax(0,1fr) 270px');
     expect(cssRule('home/home.css', '.home-cols', '@media (max-width: 1099px)')).toContain('grid-template-columns: minmax(0,1fr)');

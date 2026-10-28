@@ -21,17 +21,20 @@
 .s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
-.act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 420px; overflow: auto; }
-.act-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 2px; border-top: 1px solid var(--line); }
-.act-line:first-child { border-top-color: transparent; }
+/* Activity: the demo's .feed, a 44 px mono time column, then the step's name and what it did in the kind's colour */
+.act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+.act-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.act-line:first-child { border-top: 0; }
 .act-line.fresh { animation: act-in var(--t-slow) var(--ease); }
 @keyframes act-in { from { opacity: 0; transform: translateY(-4px); } }
-.act-face { display: grid; place-items: center; }
-.act-dot { width: 8px; height: 8px; background: var(--mut); }
-.act-dot.t-live { background: var(--acc); } .act-dot.t-needs { background: var(--warn); } .act-dot.t-done { background: var(--ok); } .act-dot.t-failed { background: var(--bad); }
-.act-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.act-tm { padding-top: 1px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.act-text { min-width: 0; overflow-wrap: anywhere; }
+.act-who { font-weight: 500; }
+.act-what.k-working { color: var(--accInk); } .act-what.k-needs { color: var(--warn); } .act-what.k-done { color: var(--ok); } .act-what.k-failed { color: var(--bad); }
 .crew-strip { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.crew-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
+.crew-face { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
+/* busy dot on the face's bottom-right corner (the 36 px face is centred in the 56 px cell) */
+.crew-face.busy::after { content: ''; position: absolute; top: 27px; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 2px var(--bg); }
 .crew-face.idle .face { opacity: .45; }
 .crew-name { max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--mut); }
 :root:not([data-theme="dark"]) .crew-face .face { border-radius: 30%; box-shadow: 0 0 0 1px var(--line2); }

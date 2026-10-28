@@ -15,4 +15,9 @@ describe('Crew strip', () => {
     expect(container.querySelectorAll('li.crew-face:not(.idle)')).toHaveLength(1);
     expect(screen.getByText('Lens')).toBeTruthy();
   });
+  it('marks busy bots with a dot', () => {
+    const { container } = render(<CrewStrip runs={[makeRow({ live: true, steps: [{ id: 'code', status: 'running', bot: 'coder' }] })]} />);
+    expect(container.querySelectorAll('.crew-face.busy')).toHaveLength(1);
+    expect(screen.getByRole('img', { name: 'Bolt, busy' }).closest('li')!.className).toContain('busy');
+  });
 });

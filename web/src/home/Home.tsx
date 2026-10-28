@@ -18,7 +18,8 @@ export const IDLE_MS = 10_000;
 /**
  * Home (the demo's home screen): a main column (start a run, what needs you, what is running, recent runs) and a 270 px
  * side column (activity, crew) that stacks under it below 1100 px. It polls (no EventSource): runs and attention every
- * 2 s while any run is live (the server's `live` flag), every 10 s otherwise. It owns the one /api/workspaces poll.
+ * 2 s while any run is live (the server's `live` flag), every 10 s otherwise, and the activity feed every 3 s while the
+ * tab is visible. It owns the one /api/workspaces poll.
  */
 export function Home(props: { onGo: (r: Route) => void }) {
   const notify = useNotify();
@@ -28,8 +29,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', ms);
   const anyLive = !!runs.data?.some((r) => r.live);
   useEffect(() => setMs(anyLive ? LIVE_MS : IDLE_MS), [anyLive]);
-  const [paused, setPaused] = useState(false);
-  const feed = useActivity(paused);
+  const feed = useActivity(false);
   const { refresh: refreshRuns } = runs;
   const { refresh: refreshAttention } = attention;
   const refetch = useCallback(() => Promise.all([refreshAttention(), refreshRuns()]), [refreshAttention, refreshRuns]);
@@ -52,7 +52,7 @@ export function Home(props: { onGo: (r: Route) => void }) {
           <Recent poll={runs} onGo={props.onGo} />
         </div>
         <div className="home-side">
-          <ActivityFeed feed={feed} paused={paused} onPause={setPaused} refreshing={false} onGo={props.onGo} />
+          <ActivityFeed feed={feed} />
           <CrewStrip runs={runs.data} />
         </div>
       </div>
