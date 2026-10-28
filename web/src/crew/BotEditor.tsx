@@ -1,8 +1,5 @@
 import { Button } from '../components/beui/kit/Button';
-import { Input } from '../components/beui/kit/fields';
-import { Select } from '../components/beui/kit/fields';
-import { Slider } from '../components/beui/kit/fields';
-import { Switch } from '../components/beui/kit/fields';
+import { Input, Select, Slider, Switch } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
 import type { BotDef, FaceLook } from '../crewStore';
 import { Face } from '../Face';

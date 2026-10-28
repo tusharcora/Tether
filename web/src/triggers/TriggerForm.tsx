@@ -1,8 +1,6 @@
 import { Button } from '../components/beui/kit/Button';
-import { Checkbox } from '../components/beui/kit/fields';
+import { Checkbox, Input, Select } from '../components/beui/kit/fields';
 import { Drawer, DrawerContent, useDrawerItem } from '../components/beui/kit/overlays';
-import { Input } from '../components/beui/kit/fields';
-import { Select } from '../components/beui/kit/fields';
 import { NONE, fromNone } from '../ui/cn';
 import { EVENTS, type Form, type Workspace } from './types';
 import './triggers.css';

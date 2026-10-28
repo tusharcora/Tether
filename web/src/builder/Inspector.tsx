@@ -1,9 +1,7 @@
 import type { Pipeline, PipelineNode } from '../../../src/types';
 import { Button } from '../components/beui/kit/Button';
-import { Input } from '../components/beui/kit/fields';
+import { Input, Select, Switch } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
-import { Select } from '../components/beui/kit/fields';
-import { Switch } from '../components/beui/kit/fields';
 import { Picker } from '../components/bencho/Picker';
 import { StepOrder } from './StepOrder';
 import { Textarea } from '../components/kept/textarea/textarea';

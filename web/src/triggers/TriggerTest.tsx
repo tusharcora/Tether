@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { Input } from '../components/beui/kit/fields';
-import { Select } from '../components/beui/kit/fields';
+import { Input, Select } from '../components/beui/kit/fields';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { Panel } from '../ui/studio/Panel';
 import { StatusChip } from '../ui/studio/StatusChip';

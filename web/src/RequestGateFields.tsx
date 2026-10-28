@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { MAX_REPEAT, type HttpGate, type HttpTree, type TreeCollection, type TreeRequest } from '../../src/http/types';
 import { api } from './api';
-import { Input } from './components/beui/kit/fields';
+import { Input, Select } from './components/beui/kit/fields';
 import { SegmentedControl } from './components/beui/kit/controls';
-import { Select } from './components/beui/kit/fields';
 import { NONE, fromNone } from './ui/cn';
 
 export const flattenTree = (c: TreeCollection): TreeRequest[] => [...c.requests, ...c.collections.flatMap(flattenTree)];
