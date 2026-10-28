@@ -104,7 +104,8 @@ stacked toggles. No permanent "No run selected" pane.
 5. **Live output and changed files** side by side (output left, files with +/− bars right), as in the demo.
 6. **Planning and plan details** (today's "Dialogue so far" and the Team plan list) become collapsed disclosure rows
    below the output ("Planning · 5 answers", "Team plan · 4 of 7"). Fix the Team plan's right-edge overflow.
-7. **Approval bar** at the end for a waiting approval step: question, gate summary, Review diff, Approve.
+7. **Approval bar** for a waiting approval step: question, gate summary, Review diff, Reject, Approve. It is sticky at the
+   bottom of the run view while the approval waits, so it is never below the fold (§14.8).
 
 ### 7.1 Step inspector (approved mockup `docs/design/StepInspector.html`)
 
@@ -116,7 +117,8 @@ stacked toggles. No permanent "No run selected" pane.
 - **Identity:** the bot's face, name, `StatusBadge`, role · agent · model.
 - **Three figures:** attempts, cost, time. Cost and time tick while the step runs.
 - **Tabs** with a sliding highlight: **Output** (streams, with a caret while live), **Changes** (files; each opens to
-  its diff), **Checks** (for gate steps: results filling in and the fix-loop count; for verdict steps: the verdict),
+  its diff), **Checks** (for gate steps: one row per gate run with pass/fail, exit code and the fix-loop count, output
+  expandable, see §14.4; for verdict steps: the verdict),
   **Timeline** (the step's events). These carry today's Step, Branch diff and Timeline content; nothing is dropped.
 - **Rating:** "How did <bot> do?" with thumbs up and down, which opens the optional note and saves through the existing
   feedback path (the one that feeds Evolve). Gate (the person) shows no rating.
@@ -148,9 +150,9 @@ and picks the badge state and label. Mapping:
 
 | Tether status | Badge state | Label |
 |---|---|---|
-| running, planning, writing, testing, retrying | loading | the live verb |
+| running, planning, writing, reading, testing, retrying | loading | the live verb (§14.3) |
 | waiting for approval, question pending | warning | needs you |
-| done, passed, merged, PASS verdict | success | done / passed |
+| done, passed, PASS verdict | success | done / passed |
 | failed, error, FAIL verdict, budget or time exhausted | danger | failed / error |
 | queued, skipped, stopped, paused | neutral | as named |
 
@@ -179,3 +181,40 @@ runs list are presented; animation timings within the mockup's feel.
 - Checked in Chrome against a real `~/.aorch` copy: a finished team run, a failed run, and a run waiting for
   approval; the inspector opens from a card and from a `#/runs/<id>/<node>` link; ← →, Esc and rating work.
 - Tests and typecheck pass.
+
+## 14. Questions from the builder check, settled
+
+A reviewer read this document as a builder would. Their questions and the answers. Answers marked **(my call)** were
+decided by Claude, not the owner, under "behaviour stays the same"; the owner can overturn any of them.
+
+1. **Run titles.** A run's title is the first line of its task text, truncated with an ellipsis by CSS (the sidebar
+   already shows task text). The kind (Team, workflow name) becomes a small tag next to it. `runTitle` keeps working for
+   places outside this round; `VaultActivityItem` keeps its "never task text" rule. **(my call)**
+2. **Run-wide Timeline and Branch diff.** The inspector has a **run mode** besides step mode: opened by a "Run details"
+   button in the run header, by Review diff, and by clicking the files panel. Run mode has the tabs Changes (whole-branch
+   diff) and Timeline (all events). `#/runs/<id>?pane=timeline` opens run mode on Timeline, so `NeedsYou.linkFor` keeps
+   working. **(my call)**
+3. **Badge verbs.** `StatusBadge` takes a small descriptor, not just a status string: status, plus kind, read-only,
+   attempts, live flag and gate result where known. Steps: agent running → "writing" (or "reading" if read-only), gate
+   running → "testing", attempts > 1 → "retrying", gate ok → "passed", otherwise the status word. Runs: running and live →
+   "running"; running but not live → "interrupted" (warning); paused with an approval or question waiting → "needs you"
+   (warning); paused otherwise → "paused" (neutral). "Merged" is not a state and is not used. **(my call)**
+4. **Checks tab.** No test-output parser. The mockup's per-test grid becomes one row per gate run (attempt, pass/fail,
+   exit code, duration) with its output expandable and the fix-loop count; a new row appears as each gate run finishes.
+   **(my call; the owner saw a per-test grid in the mockup, so this is called out to them)**
+5. **Live output pane.** Built from the event stream: one line per event, prefixed by the bot's name, in time order, as in
+   the demo. Parallel steps interleave naturally. Clicking a line opens that step in the inspector. **(my call)**
+6. **Inbox coverage.** All seven attention kinds stay Inbox rows (plan ready, question, approval, planning error, paused,
+   interrupted, failed). The detail shows the matching card: the existing team plan review in full (assignments, bot
+   swap, limits, Reject with confirm), question cards, approval card, or Retry / Resume for the others. Questions are
+   grouped per run with Previous / Next, and answering keeps today's behaviour: answers are collected, can be changed, and
+   are sent together; "Use recommendations" stays. The detail fetches the run as needed. **(follows "behaviour stays the
+   same")**
+7. **Composer chips.** They expose only what exists today: the project / workspace, live or autonomous, and a menu item
+   that hands off to the Builder for a workflow. "Tether picks the crew" and the branch are labels, not pickers.
+   **(follows "behaviour stays the same")**
+8. **Approval bar.** Plain Approve and Reject, as today; no "approve when gates pass". Sticky at the bottom of the run
+   view while waiting. Review diff opens the inspector in run mode on Changes. **(follows "behaviour stays the same")**
+9. **Coach findings.** The finding's suggestion is shown as muted text after it, not a link, because it has no target.
+   Dismissing hides it for the current session only (in memory), with no stored state. **(my call)**
+
