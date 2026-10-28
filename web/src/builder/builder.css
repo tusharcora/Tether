@@ -22,6 +22,37 @@ span.bl-name { width: auto; overflow: hidden; text-overflow: ellipsis; white-spa
 .bl-add-quick { background: none; color: var(--mut); }
 .bl-add-quick:hover { background: var(--s2); color: var(--ink); }
 
+/* Outline mode (mockup .outline/.paper/.flow/.blk): a numbered document; the right padding keeps it clear of the dock */
+.bl-outline { position: absolute; inset: 0; overflow: auto; padding: 76px 352px 40px 40px; }
+.bl-paper { max-width: 600px; margin: 0 auto; }
+.bl-paper h2 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.035em; color: var(--ink); }
+.bl-desc { margin: 6px 0 22px; font-size: 14px; color: var(--mut); }
+.bl-flow { position: relative; margin: 0; padding: 0 0 0 28px; list-style: none; }
+.bl-flow::before { content: ''; position: absolute; left: 10px; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--line2); }
+.bl-flow li { margin-bottom: 10px; }
+.bl-blk {
+  position: relative; display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--s1); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.bl-blk:hover { border-color: var(--line2); }
+.bl-blk[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 3px var(--accBg); }
+.bl-blk.issue { border-color: var(--bad); }
+.bl-blk-n {
+  position: absolute; left: -28px; top: 12px; display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid var(--line2); border-radius: 50%;
+  background: var(--bg); color: var(--mut); font: 600 10px var(--font-code);
+}
+.bl-blk[aria-pressed="true"] .bl-blk-n { border-color: var(--ink); color: var(--ink); }
+.bl-blk-t { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bl-blk-t b { font-size: 14px; font-weight: 600; }
+.bl-blk-t .face { border-radius: 8px; }
+.bl-blk-who { font-size: 13px; color: var(--mut); }
+.bl-blk-p { font-size: 13px; color: var(--mut); overflow-wrap: anywhere; }
+.bl-blk-loop { font-size: 12.5px; color: var(--warn); }
+.bl-slash { display: flex; align-items: center; gap: 8px; padding: 2px 12px 12px; border: 0; background: none; color: var(--mut); font: inherit; font-size: 12.5px; cursor: pointer; }
+.bl-slash:hover { color: var(--ink); }
+@media (max-width: 899px) { .bl-outline { padding: 150px 16px 40px; } }
+
 /* the docked editor */
 .bl-form { display: flex; flex-direction: column; gap: 12px; }
 .bl-step-head { display: flex; align-items: center; gap: 10px; min-width: 0; }

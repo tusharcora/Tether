@@ -385,4 +385,61 @@ describe('Builder', () => {
     expect(screen.getByText('no gate after plan')).toBeTruthy();
     expect(document.querySelector('.bl-issue-node')).toBeNull();
   });
+
+  // The view is remembered for the page session (a module variable), so these run in order and end back on Canvas.
+  const view = (m: 'Canvas' | 'Outline') => fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', { name: m }));
+
+  it('switches between Canvas and Outline, keeping the selected step and its editor', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    openStep('code');
+    view('Outline');
+    expect(document.querySelector('.canvas')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add step/ })).toBeNull();
+    expect(document.querySelector('.bl-blk[aria-pressed="true"]')!.textContent).toContain('coder');
+    expect(screen.getByRole('complementary', { name: 'Step editor' })).toBeTruthy();
+  });
+
+  it('outlines the workflow: numbered blocks in run order, bot, chips, preview and the loop sentence', async () => {
+    renderApp(<Builder onStarted={() => {}} />); // still Outline: the session remembers it
+    await screen.findByDisplayValue('plan-code-review');
+    expect(screen.getByRole('heading', { level: 2, name: 'plan-code-review' })).toBeTruthy();
+    expect(screen.getByText('3 steps · Scout → Bolt → Probe')).toBeTruthy();
+    const blocks = [...document.querySelectorAll('.bl-blk')];
+    expect(blocks.map((b) => b.querySelector('.bl-blk-n')!.textContent)).toEqual(['1', '2', '3']);
+    expect(blocks[0]!.textContent).toContain('read-only');
+    expect(blocks[2]!.textContent).toContain('$ npm test');
+    expect(blocks[2]!.textContent).toContain('If it fails, the output goes back to coder, up to 2 times.');
+    fireEvent.click(blocks[0]!);
+    expect(within(screen.getByRole('complementary', { name: 'Step editor' })).getByRole('heading', { level: 2, name: 'planner' })).toBeTruthy();
+    view('Canvas');
+  });
+
+  it('outlines an empty and a branching workflow', async () => {
+    const branchy = { ...pcr, name: 'other', nodes: [...pcr.nodes, { id: 'docs', kind: 'agent' as const, role: 'planner', x: 520, y: 200 }], edges: [...pcr.edges, { from: 'code', to: 'docs' }] };
+    routeApi({ ...routes, 'GET /api/pipelines/other': { pipeline: branchy } });
+    renderApp(<Builder pipeline="other" onStarted={() => {}} />);
+    await screen.findByDisplayValue('other');
+    view('Outline');
+    expect(document.querySelectorAll('.bl-blk')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New workflow' }));
+    expect(screen.getByText('No steps yet')).toBeTruthy();
+    expect(document.querySelectorAll('.bl-blk')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: /type \/ to add a step/ }));
+    expect(screen.getByRole('dialog', { name: 'Add a step' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close command palette' }));
+    view('Canvas');
+  });
+
+  it('"/" opens the add-step menu, but types a slash in fields', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    fireEvent.keyDown(screen.getByLabelText('Pipeline name'), { key: '/' });
+    expect(screen.queryByRole('dialog', { name: 'Add a step' })).toBeNull();
+    fireEvent.keyDown(document.body, { key: '/', metaKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Add a step' })).toBeNull();
+    fireEvent.keyDown(document.body, { key: '/' });
+    expect(screen.getByRole('dialog', { name: 'Add a step' })).toBeTruthy();
+  });
 });

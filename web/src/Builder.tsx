@@ -14,6 +14,8 @@ import { ModeToggle } from './Team';
 import { useNotify } from './ui/notify';
 import { AddStepBar, AddStepMenu, type EccSkill } from './builder/Palette';
 import { SettingsForm, StepForm, StepHead, type Adapters } from './builder/Inspector';
+import { Outline, type BuilderMode } from './builder/Outline';
+import { isTyping } from './ui/studio/useGoKeys';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import { StatusBadge } from './ui/studio/StatusBadge';
 import { Dock, FloatBar, MenuButton, ToolScreen, type MenuItem } from './ui/studio/ToolFrame';
@@ -41,6 +43,9 @@ function wouldCycle(edges: Edge[], from: string, to: string): boolean {
   return false;
 }
 
+/** The last Canvas/Outline choice, kept for this page session only (spec §6: nothing is stored). */
+let lastMode: BuilderMode = 'canvas';
+
 const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kind === 'approval' ? 'approve' : (n.role ?? 'step').slice(0, 6));
 
 /**
@@ -57,6 +62,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   /** The dock shows the selected step, else (when asked) the workflow settings. */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [mode, setModeNow] = useState<BuilderMode>(lastMode);
+  const setMode = (m: BuilderMode) => ((lastMode = m), setModeNow(m));
   const [issues, setIssues] = useState<Issue[]>([]);
   const [showIssues, setShowIssues] = useState(false);
   const [adapters, setAdapters] = useState<Adapters>({});
@@ -172,6 +179,18 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
     }, 300);
     return () => clearTimeout(h);
   }, [pl]);
+
+  // "/" adds a step in either view (⌘K stays the app's Jump to menu); typed into a field it is a slash
+  useEffect(() => {
+    if (phone) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      setAdding(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phone]);
 
   // ECC skills and commands, offered as ready-made steps (an empty list hides the section)
   const [skills, setSkills] = useState<EccSkill[]>([]);
@@ -320,21 +339,25 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   return (
     <ToolScreen className="bl-screen">
       <h1 className="sl-sr">{pl.name || 'untitled'}</h1>
-      <Canvas
-        editable={!phone}
-        fitKey={opened}
-        hint={phone ? 'Drag to pan · use + / − to zoom' : undefined}
-        nodes={pl.nodes}
-        edges={pl.edges}
-        selected={selected}
-        issueNodes={issueNodes}
-        onSelect={select}
-        onMove={(id, x, y) => patch(id, { x, y })}
-        onConnect={connect}
-        onDeleteEdge={(f, t) => mut((p) => (p.edges = p.edges.filter((e) => !(e.from === f && e.to === t))))}
-        onDeleteNode={removeNode}
-        nodeActions={phone ? undefined : nodeActions}
-      />
+      {mode === 'canvas' ? (
+        <Canvas
+          editable={!phone}
+          fitKey={opened}
+          hint={phone ? 'Drag to pan · use + / − to zoom' : undefined}
+          nodes={pl.nodes}
+          edges={pl.edges}
+          selected={selected}
+          issueNodes={issueNodes}
+          onSelect={select}
+          onMove={(id, x, y) => patch(id, { x, y })}
+          onConnect={connect}
+          onDeleteEdge={(f, t) => mut((p) => (p.edges = p.edges.filter((e) => !(e.from === f && e.to === t))))}
+          onDeleteNode={removeNode}
+          nodeActions={phone ? undefined : nodeActions}
+        />
+      ) : (
+        <Outline pl={pl} selected={selected} issueNodes={issueNodes} onSelect={select} onAdd={phone ? undefined : () => setAdding(true)} />
+      )}
 
       <FloatBar at="left">
         {phone ? <span className="bl-name">{pl.name || 'untitled'}</span> : <input className="bl-name" aria-label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />}
@@ -360,6 +383,17 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         </ul>
       ) : null}
 
+      <FloatBar at="center">
+        <SegmentedControl
+          label="View"
+          options={[
+            { value: 'canvas', label: 'Canvas' },
+            { value: 'outline', label: 'Outline' },
+          ]}
+          value={mode}
+          onValueChange={(v) => setMode(v as BuilderMode)}
+        />
+      </FloatBar>
       <FloatBar at="right">
         {pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
         {phone ? null : (
@@ -377,7 +411,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         </Button>
       </FloatBar>
 
-      {phone ? <p className="bl-phone-note">Editing needs a wider screen. You can look around and run this workflow.</p> : <AddStepBar onMenu={() => setAdding(true)} onAdd={addNode} />}
+      {phone ? <p className="bl-phone-note">Editing needs a wider screen. You can look around and run this workflow.</p> : mode === 'canvas' ? <AddStepBar onMenu={() => setAdding(true)} onAdd={addNode} /> : null}
       {phone ? null : sel ? (
         <Dock label="Step editor" head={<StepHead node={sel} />} onClose={() => select(undefined)}>
           <StepForm node={sel} pl={pl} adapters={adapters} patch={patch} onGateKind={setGateKind} onDelete={removeNode} />
