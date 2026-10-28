@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tether — chat with beui.dev agent components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.sl{--page:#000;--bg:#0b0b0d;--side:#111113;--card:#141417;--s2:#1b1b1f;--s3:#26262b;--slab:#2a2a30;--ink:#f1f1f3;--ink2:#a7a7ae;--mut:#74747c;--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.13);--ring:rgba(255,255,255,.22);--acc:#3b82f6;--accInk:#93c5fd;--accBg:rgba(59,130,246,.16);--warn:#fbbf24;--warnBg:rgba(251,191,36,.13);--ok:#34d399;--okBg:rgba(52,211,153,.12);--bad:#f87171;--badBg:rgba(248,113,113,.12);--str:#86efac;--num:#fcd34d}
+.sl.light{--page:#e7e7e4;--bg:#ffffff;--side:#f7f7f6;--card:#ffffff;--s2:#f3f3f1;--s3:#e6e6e3;--slab:#e2e2df;--ink:#18181b;--ink2:#56565c;--mut:#8b8b92;--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.13);--ring:rgba(0,0,0,.2);--accInk:#1d4ed8;--accBg:rgba(37,99,235,.1);--warn:#b45309;--warnBg:#fdf1d8;--ok:#047857;--okBg:#e7f6ef;--bad:#b91c1c;--badBg:#fdecec;--str:#047857;--num:#a16207}
+.in{animation:in .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.roll{animation:rl .26s cubic-bezier(.2,.9,.25,1.2) both}
+@keyframes rl{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.slide{animation:sd .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes sd{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+.spin{animation:sp .9s linear infinite;transform-origin:center}
+@keyframes sp{to{transform:rotate(360deg)}}
+.caret::after{content:'';display:inline-block;width:7px;height:14px;margin-left:2px;vertical-align:-2px;background:var(--ink);animation:cr 1s steps(2) infinite}
+@keyframes cr{50%{opacity:0}}
+.blink{animation:bk 4.2s infinite;transform-origin:center;transform-box:fill-box}
+@keyframes bk{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+.b{transition:background .15s,border-color .15s,transform .12s,color .15s}
+.b:active{transform:scale(.97)}
+.hov:hover{background:var(--s2)}
+.m-off *{animation:none !important;transition:none !important}
+@media (prefers-reduced-motion: reduce){.sl *{animation:none !important;transition:none !important}}
+</style>
+</helmet>
+<div class="sl {{themeCls}} {{motionCls}}" onPointerMove="{{look}}" style="min-height: 900px; padding: 18px 22px 22px; box-sizing: border-box; background: var(--page); font-family: Geist, -apple-system, system-ui, sans-serif; font-size: 14px; color: var(--ink); display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 10px">
+    <b style="font-size: 15px">Tether chat · beui.dev agent components</b>
+    <span style="font-size: 12.5px; color: var(--mut)">Press Play to run one turn end to end — or answer the cards yourself.</span>
+    <span style="flex-grow: 1"></span>
+    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink2)"><input type="checkbox" checked="{{auto}}" onChange="{{flipAuto}}">auto-answer</label>
+    <button class="b" type="button" onClick="{{play}}" style="height: 32px; padding: 0 14px; border-radius: 9px; border: none; background: var(--ink); color: var(--bg); font: inherit; font-weight: 500; cursor: pointer">{{playLabel}}</button>
+  </div>
+
+  <div style="height: 830px; display: flex; border-radius: 14px; overflow: hidden; background: var(--bg); border: 1px solid var(--line)">
+    <!-- left: context (run page lite) -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line)">
+      <div style="height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink2)"><span>orders-api</span><span style="color: var(--mut)">/</span><span style="color: var(--ink)">Runs</span><span style="color: var(--mut)">/</span><span style="color: var(--ink)">Fix flaky login test</span></div>
+      <div style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+        <div style="display: flex; align-items: center; gap: 12px"><img width="72" height="72" src="{{faceLg}}" alt="Tether" style="display: block"><div><div style="font-size: 22px; font-weight: 650; letter-spacing: -0.02em">Tether</div><div style="font-size: 12.5px; color: var(--mut)">your crew's lead · eyes follow your pointer · blinks · click to poke</div></div></div>
+        <div style="font-size: 12px; font-weight: 600; color: var(--mut); margin-top: 6px">Component map</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+          <sc-for list="{{legend}}" as="l" hint-placeholder-count="12"><div style="{{l.style}}"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{l.dot}}; flex: none"></span><span style="flex-grow: 1"><b style="font-weight: 500">{{l.name}}</b><span style="display: block; font-size: 11.5px; color: var(--mut)">{{l.where}}</span></span></div></sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- right: docked Tether chat -->
+    <section aria-label="Tether" style="width: 560px; flex: none; display: flex; flex-direction: column; background: var(--side); min-height: 0">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line)"><img width="30" height="30" src="{{faceSm}}" alt="" style="display: block"><div style="flex-grow: 1"><div style="font-weight: 600">Tether</div><div style="font-size: 11.5px; color: var(--mut)">{{status}}</div></div><button class="b hov" type="button" title="New chat" onClick="{{reset}}" style="width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--ink2); cursor: pointer">＋</button></div>
+
+      <div style="flex-grow: 1; overflow: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 14px">
+        <sc-for list="{{items}}" as="it" hint-placeholder-count="8">
+          <div class="in">
+            <!-- user -->
+            <sc-if value="{{it.isUser}}" hint-placeholder-val="{{false}}"><div style="display: flex; justify-content: flex-end"><div style="max-width: 80%; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--s3); font-size: 13.5px; line-height: 1.5">{{it.text}}</div></div></sc-if>
+
+            <!-- streaming response + citations -->
+            <sc-if value="{{it.isStream}}" hint-placeholder-val="{{false}}"><div style="display: flex; gap: 10px"><img width="24" height="24" src="{{faceXs}}" alt="" style="flex: none; display: block"><div style="flex-grow: 1; min-width: 0">
+              <div class="{{it.caret}}" style="font-size: 13.5px; line-height: 1.65"><sc-for list="{{it.parts}}" as="p" hint-placeholder-count="5"><span>{{p.t}}</span><sc-if value="{{p.n}}" hint-placeholder-val="{{false}}"><button class="b" type="button" title="{{p.tip}}" style="margin: 0 2px; min-width: 18px; height: 17px; padding: 0 4px; border: none; border-radius: 5px; background: var(--accBg); color: var(--accInk); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; vertical-align: 1px">{{p.n}}</button></sc-if></sc-for></div>
+              <sc-if value="{{it.done}}" hint-placeholder-val="{{false}}"><div class="in">
+                <button class="b" type="button" onClick="{{it.flipSrc}}" style="margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line2); background: transparent; color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer">{{it.srcArrow}} 3 sources</button>
+                <sc-if value="{{it.srcOpen}}" hint-placeholder-val="{{false}}"><div class="roll" style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px"><sc-for list="{{it.sources}}" as="s" hint-placeholder-count="3"><div class="hov" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; font-size: 12.5px"><span style="width: 18px; height: 18px; border-radius: 5px; background: var(--s3); font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{s.n}}</span><span style="flex-grow: 1">{{s.title}}</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--mut)">{{s.kind}}</span></div></sc-for></div></sc-if>
+                <div style="display: flex; gap: 2px; margin-top: 8px"><sc-for list="{{it.acts}}" as="a" hint-placeholder-count="5"><button class="b hov" type="button" title="{{a.t}}" onClick="{{a.go}}" style="height: 26px; min-width: 26px; padding: 0 6px; border: none; border-radius: 6px; background: transparent; color: {{a.c}}; cursor: pointer; font-size: 12.5px">{{a.g}}</button></sc-for></div>
+              </div></sc-if>
+            </div></div></sc-if>
+
+            <!-- approval card: questions mode -->
+            <sc-if value="{{it.isQuestions}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <sc-if value="{{it.qDone}}" hint-placeholder-val="{{false}}"><div class="roll" style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px"><span style="color: var(--ok)">✓</span><span style="flex-grow: 1">{{it.qResult}}</span><span style="font-size: 11.5px; color: var(--mut)">answered</span></div></sc-if>
+              <sc-if value="{{it.qOpen}}" hint-placeholder-val="{{true}}"><div>
+                <div style="display: flex; align-items: center; gap: 8px; padding: 12px 14px 0"><span style="font-size: 11.5px; font-weight: 600; color: var(--warn)">NEEDS YOUR ANSWER</span><span style="flex-grow: 1"></span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--mut)">{{it.qStepLabel}}</span></div>
+                <div class="slide" style="padding: 8px 14px 12px"><div style="font-weight: 600; font-size: 14px">{{it.q.title}}</div><div style="font-size: 12.5px; color: var(--mut); margin-top: 2px">{{it.q.desc}}</div>
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 10px"><sc-for list="{{it.q.opts}}" as="o" hint-placeholder-count="3"><button class="b" type="button" onClick="{{o.go}}" style="{{o.style}}"><span style="{{o.mark}}">{{o.markText}}</span><span style="flex-grow: 1; text-align: left"><span style="display: block; font-weight: 500">{{o.label}}</span><span style="display: block; font-size: 12px; color: var(--mut)">{{o.desc}}</span></span></button></sc-for></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line)"><button class="b" type="button" onClick="{{it.qPrev}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; cursor: pointer; opacity: {{it.prevOp}}">Previous</button><span style="flex-grow: 1"></span><button class="b" type="button" onClick="{{it.qNext}}" style="height: 30px; padding: 0 14px; border-radius: 8px; border: none; background: var(--ink); color: var(--bg); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{it.qNextLabel}}</button></div>
+              </div></sc-if>
+            </div></sc-if>
+
+            <!-- todo list -->
+            <sc-if value="{{it.isTodo}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); padding: 10px 12px">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 13px"><b style="font-weight: 600">Plan</b><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--mut)" class="roll">{{it.count}}</span><span style="flex-grow: 1"></span><span style="font-size: 11.5px; color: var(--mut)">▾</span></div>
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px"><sc-for list="{{it.todos}}" as="t" hint-placeholder-count="4"><div style="display: flex; align-items: center; gap: 9px; font-size: 13px; color: {{t.color}}"><img width="16" height="16" src="{{t.mark}}" alt="{{t.state}}" style="flex: none; display: block"><span style="text-decoration: {{t.strike}}">{{t.label}}</span></div></sc-for></div>
+            </div></sc-if>
+
+            <!-- tool approval -->
+            <sc-if value="{{it.isToolApproval}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--s3)">Bash</span><span style="font-size: 13px; flex-grow: 1">Run the login tests</span><span class="roll" style="{{it.taBadge}}">{{it.taStatus}}</span></div>
+              <div style="padding: 0 12px 10px"><div style="font-family: 'Geist Mono', monospace; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--s2); color: var(--ink2)">$ npm test -- test/login.test.ts --repeat 20</div><div style="display: flex; gap: 14px; margin-top: 6px; font-size: 11.5px; color: var(--mut)"><span>cwd · run worktree</span><span>timeout · 120 s</span><span>network · off</span></div></div>
+              <sc-if value="{{it.taPending}}" hint-placeholder-val="{{true}}"><div style="display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line)"><button class="b" type="button" onClick="{{it.allowOnce}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: none; background: var(--ink); color: var(--bg); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Allow once</button><button class="b" type="button" onClick="{{it.allowAlways}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer">Always allow</button><span style="flex-grow: 1"></span><button class="b" type="button" onClick="{{it.deny}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--bad); font: inherit; font-size: 12.5px; cursor: pointer">Deny</button></div></sc-if>
+            </div></sc-if>
+
+            <!-- tool result (terminal) -->
+            <sc-if value="{{it.isTerm}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <div class="hov" onClick="{{it.flipTerm}}" style="display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer"><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--s3)">terminal</span><span style="font-size: 13px; flex-grow: 1">npm test — login</span><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--mut)">{{it.termMeta}}</span><span class="roll" style="{{it.termBadge}}"><sc-if value="{{it.termRunning}}" hint-placeholder-val="{{false}}"><img width="14" height="14" src="{{spinner}}" alt="running"></sc-if>{{it.termText}}</span></div>
+              <sc-if value="{{it.termOpen}}" hint-placeholder-val="{{true}}"><div style="max-height: 160px; overflow: auto; padding: 8px 12px 10px; background: var(--s2); font-family: 'Geist Mono', monospace; font-size: 12px; line-height: 1.6"><sc-for list="{{it.lines}}" as="ln" hint-placeholder-count="4"><div style="color: {{ln.c}}; white-space: pre">{{ln.t}}</div></sc-for></div></sc-if>
+            </div></sc-if>
+
+            <!-- file diff -->
+            <sc-if value="{{it.isDiff}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line)"><span style="font-family: 'Geist Mono', monospace; font-size: 12.5px; flex-grow: 1">src/auth/session.ts</span><span class="roll" style="font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--ok)">+{{it.add}}</span><span class="roll" style="font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--bad)">−{{it.del}}</span></div>
+              <div style="font-family: 'Geist Mono', monospace; font-size: 12px; line-height: 1.6; padding: 6px 0"><sc-for list="{{it.rows}}" as="r" hint-placeholder-count="5"><div class="in" style="display: flex; background: {{r.bg}}"><span style="width: 34px; text-align: right; padding-right: 8px; color: var(--mut); flex: none">{{r.o}}</span><span style="width: 34px; text-align: right; padding-right: 8px; color: var(--mut); flex: none">{{r.n}}</span><span style="width: 14px; color: {{r.c}}; flex: none">{{r.s}}</span><span style="white-space: pre; color: {{r.c}}">{{r.t}}</span></div></sc-for></div>
+            </div></sc-if>
+
+            <!-- code block -->
+            <sc-if value="{{it.isCode}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 7px 10px 7px 12px; border-bottom: 1px solid var(--line)"><span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--mut); flex-grow: 1">typescript · test/login.test.ts</span><button class="b hov" type="button" onClick="{{it.copy}}" style="height: 24px; padding: 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--ink2); font: inherit; font-size: 11.5px; cursor: pointer">{{it.copyLabel}}</button></div>
+              <div style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 12px; line-height: 1.65"><sc-for list="{{it.code}}" as="c" hint-placeholder-count="4"><div style="display: flex; background: {{c.hl}}"><span style="width: 32px; text-align: right; padding-right: 12px; color: var(--mut); flex: none">{{c.n}}</span><span style="white-space: pre"><sc-for list="{{c.toks}}" as="k" hint-placeholder-count="3"><span style="color: {{k.c}}; font-weight: {{k.w}}">{{k.t}}</span></sc-for></span></div></sc-for></div>
+            </div></sc-if>
+
+            <!-- approval card: review mode -->
+            <sc-if value="{{it.isReview}}" hint-placeholder-val="{{false}}"><div style="margin-left: 34px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); overflow: hidden">
+              <sc-if value="{{it.rDone}}" hint-placeholder-val="{{false}}"><div class="roll" style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px"><span style="color: {{it.rColor}}">{{it.rIcon}}</span><span style="flex-grow: 1">{{it.rResult}}</span></div></sc-if>
+              <sc-if value="{{it.rOpen}}" hint-placeholder-val="{{true}}"><div>
+                <div style="padding: 12px 14px 4px"><div style="font-size: 11.5px; font-weight: 600; color: var(--warn)">REVIEW AND APPROVE</div><div style="font-weight: 600; font-size: 14px; margin-top: 4px">Merge the fix into main?</div><div style="font-size: 12.5px; color: var(--mut); margin-top: 2px">Lens reviewed: PASS · 20/20 repeats green · 1 file, +6 −3</div></div>
+                <div style="margin: 8px 14px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12.5px"><span style="color: var(--mut)">branch</span><span style="font-family: 'Geist Mono', monospace">aorch/r-0145</span><span style="color: var(--mut)">cost</span><span>$0.31 · 3m 40s</span><span style="color: var(--mut)">gates</span><span style="color: var(--ok)">typecheck ✓ · tests ✓</span></div>
+                <div style="display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line)"><button class="b" type="button" onClick="{{it.approve}}" style="height: 30px; padding: 0 14px; border-radius: 8px; border: none; background: var(--ink); color: var(--bg); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Approve</button><button class="b" type="button" onClick="{{it.changes}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer">Request changes</button><span style="flex-grow: 1"></span><button class="b" type="button" onClick="{{it.reject}}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--bad); font: inherit; font-size: 12.5px; cursor: pointer">Reject</button></div>
+              </div></sc-if>
+            </div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- prompt input -->
+      <div style="padding: 10px 14px 14px; position: relative">
+        <sc-if value="{{menu}}" hint-placeholder-val="{{false}}"><div class="roll" style="position: absolute; left: 14px; bottom: 112px; width: 260px; padding: 6px; border-radius: 12px; background: var(--card); border: 1px solid var(--line2); box-shadow: 0 16px 40px rgba(0,0,0,.35); z-index: 5"><sc-for list="{{menuItems}}" as="m" hint-placeholder-count="4"><div class="hov" onClick="{{m.go}}" style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 7px; font-size: 13px; cursor: pointer"><span style="width: 18px; text-align: center; color: var(--ink2)">{{m.g}}</span><span style="flex-grow: 1">{{m.t}}</span><span style="font-size: 11.5px; color: var(--mut)">{{m.k}}</span></div></sc-for></div></sc-if>
+        <sc-if value="{{drop}}" hint-placeholder-val="{{false}}"><div class="roll" onClick="{{dropFile}}" style="margin-bottom: 8px; border-radius: 12px; border: 1.5px dashed var(--ring); background: var(--s2); padding: 14px; text-align: center; font-size: 12.5px; color: var(--ink2); cursor: pointer">{{dropLabel}}<sc-if value="{{dropPct}}" hint-placeholder-val="{{false}}"><div style="height: 4px; border-radius: 2px; background: var(--s3); margin-top: 8px; overflow: hidden"><div style="height: 100%; width: {{dropPct}}; background: var(--ok); transition: width .2s"></div></div></sc-if></div></sc-if>
+        <div style="border-radius: 14px; border: 1px solid var(--line2); background: var(--card); padding: 10px 10px 8px 12px">
+          <sc-if value="{{attach}}" hint-placeholder-val="{{false}}"><div style="display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 3px 8px; border-radius: 7px; background: var(--s3); font-size: 12px">▤ {{attach}}<span onClick="{{unattach}}" style="cursor: pointer; color: var(--mut)">×</span></div></sc-if>
+          <textarea aria-label="Message Tether" rows="2" placeholder="Ask Tether, or tell it what to run…" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" style="width: 100%; box-sizing: border-box; resize: none; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.5"></textarea>
+          <div style="display: flex; align-items: center; gap: 6px">
+            <button class="b" type="button" aria-label="Actions" onClick="{{flipMenu}}" style="width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink); cursor: pointer; font-size: 16px; transform: rotate({{plusRot}}deg); transition: transform .2s">＋</button>
+            <button class="b hov" type="button" onClick="{{cycleModel}}" style="height: 30px; padding: 0 10px; border-radius: 8px; border: none; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; cursor: pointer">{{model}} ⌄</button>
+            <span style="font-size: 11.5px; color: var(--mut)">Code Mode</span>
+            <span style="flex-grow: 1"></span>
+            <button class="b" type="button" aria-label="{{sendLabel}}" onClick="{{sendOrStop}}" style="width: 32px; height: 32px; border-radius: 9px; border: none; background: var(--ink); color: var(--bg); cursor: pointer; font-size: 14px">{{sendGlyph}}</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"motion":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = this.fresh(); this.state.auto = true; this.state.eye = [0, 0]; }
+  fresh() { return { stage: 0, streamN: 0, q: { step: 0, a: [null, []], done: false }, todo: 0, ta: 'pending', termN: 0, termOpen: true, diffN: 0, review: 'pending', srcOpen: false, copied: false, menu: false, drop: false, dropPct: '', attach: '', draft: '', model: 'Claude Sonnet', loading: false, fb: '' }; }
+  componentWillUnmount() { clearInterval(this.iv); clearTimeout(this.to); }
+  later(fn, ms) { clearTimeout(this.to); this.to = setTimeout(fn, ms); }
+  // ---- script
+  start(text) {
+    clearInterval(this.iv);
+    this.setState({ ...this.fresh(), auto: this.state.auto, eye: this.state.eye, stage: 1, userText: text || 'The login test keeps failing in CI. Fix it.', loading: true });
+    this.iv = setInterval(() => { const s = this.state; if (s.streamN < this.STREAM.length) this.setState({ streamN: s.streamN + 3 }); else { clearInterval(this.iv); this.setState({ stage: 2 }); if (this.state.auto) this.autoQ(); } }, 28);
+  }
+  autoQ() { this.later(() => { this.answer(0, 'race'); this.later(() => { this.answer(1, ['regress']); this.later(() => this.qNext(), 700); }, 800); }, 900); }
+  answer(i, v) { const s = this.state, a = s.q.a.slice(); a[i] = v; this.setState({ q: { ...s.q, a, step: i === 0 ? 1 : s.q.step } }); }
+  qNext() { const s = this.state; if (s.q.step === 0) return this.setState({ q: { ...s.q, step: 1 } }); this.setState({ q: { ...s.q, done: true }, stage: 3 }); this.runTodos(); }
+  runTodos() { this.setState({ todo: 1 }); this.later(() => { this.setState({ stage: 4 }); if (this.state.auto) this.later(() => this.allow('once'), 1100); }, 900); }
+  allow(kind) { if (this.state.ta !== 'pending') return; this.setState({ ta: kind === 'deny' ? 'denied' : kind === 'always' ? 'always' : 'allowed' }); if (kind === 'deny') return this.setState({ loading: false }); this.setState({ stage: 5, todo: 2 }); clearInterval(this.iv); this.iv = setInterval(() => { const s = this.state; if (s.termN < this.TERM.length) this.setState({ termN: s.termN + 1 }); else { clearInterval(this.iv); this.later(() => { this.setState({ termOpen: false, stage: 6, todo: 3 }); this.streamDiff(); }, 600); } }, 240); }
+  streamDiff() { clearInterval(this.iv); this.iv = setInterval(() => { const s = this.state; if (s.diffN < this.DIFF.length) this.setState({ diffN: s.diffN + 1 }); else { clearInterval(this.iv); this.later(() => { this.setState({ stage: 7, todo: 4 }); if (this.state.auto) this.later(() => this.decide('approved'), 1600); }, 500); } }, 180); }
+  decide(r) { if (this.state.review !== 'pending') return; this.setState({ review: r, stage: 8, loading: false }); }
+  renderVals() {
+    const s = this.state, dark = this.props.dark ?? true, motion = this.props.motion ?? true;
+    this.STREAM = 'Found it. test/login.test.ts fails about 1 run in 7 because the session refresh resolves after the assertion [1]. src/auth/session.ts starts the refresh without awaiting it [2] — the same race r-0131 hit in checkout last week [3]. Two quick choices before I fix it:';
+    this.TERM = [['$ npm test -- test/login.test.ts --repeat 20', 'var(--ink2)'], ['  ✓ login › redirects after sign-in (x20)', 'var(--ok)'], ['  ✓ login › keeps the session after refresh (x20)', 'var(--ok)'], ['  ✓ login › rejects a bad password (x20)', 'var(--ok)'], ['', ''], ['Tests  60 passed (60) · 4.81 s', 'var(--ink)']];
+    this.DIFF = [[41, 41, ' ', 'export async function refresh(s: Session) {'], [42, '', '-', '  void api.refresh(s.token);'], [43, '', '-', '  s.expiresAt = Date.now() + TTL;'], ['', 42, '+', '  const next = await api.refresh(s.token);'], ['', 43, '+', '  s.token = next.token;'], ['', 44, '+', '  s.expiresAt = next.expiresAt;'], [44, 45, ' ', '  return s;'], [45, 46, ' ', '}']];
+    // concrete colours: SVGs below are images, so they can't read the page's CSS variables
+    const C = dark ? { slab: '#2a2a30', ink: '#f1f1f3', ok: '#34d399', acc: '#3b82f6', s3: '#26262b', ring: 'rgba(255,255,255,.3)', onOk: '#04130c' } : { slab: '#dededb', ink: '#18181b', ok: '#047857', acc: '#2563eb', s3: '#e6e6e3', ring: 'rgba(0,0,0,.25)', onOk: '#ffffff' };
+    const anim = motion ? '<style>.blink{animation:bk 4.2s infinite;transform-origin:center;transform-box:fill-box}@keyframes bk{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}.spin{animation:sp .9s linear infinite;transform-origin:8px 8px}@keyframes sp{to{transform:rotate(360deg)}}</style>' : '';
+    const uri = (inner, vb) => 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + vb + '">' + anim + inner + '</svg>');
+    // ---- face (eye tracker): soft cube, slanted eyes that follow the pointer, blink
+    const face = (px, idle) => { const [ex, ey] = idle ? [0, 0] : s.eye, dx = (ex * px * 0.07).toFixed(2), dy = (ey * px * 0.06).toFixed(2), w = px * 0.13, h = px * 0.24;
+      return uri('<rect x="' + px * 0.04 + '" y="' + px * 0.04 + '" width="' + px * 0.92 + '" height="' + px * 0.92 + '" rx="' + px * 0.3 + '" fill="' + C.slab + '"/><rect x="' + px * 0.04 + '" y="' + px * 0.04 + '" width="' + px * 0.92 + '" height="' + px * 0.46 + '" rx="' + px * 0.3 + '" fill="#fff" opacity=".05"/><g transform="translate(' + dx + ' ' + dy + ')"><rect class="blink" x="' + (px * 0.34 - w / 2) + '" y="' + (px * 0.5 - h / 2) + '" width="' + w + '" height="' + h + '" rx="' + w / 2 + '" fill="' + C.ink + '" transform="rotate(-8 ' + px * 0.34 + ' ' + px * 0.5 + ')"/><rect class="blink" x="' + (px * 0.66 - w / 2) + '" y="' + (px * 0.5 - h / 2) + '" width="' + w + '" height="' + h + '" rx="' + w / 2 + '" fill="' + C.ink + '" transform="rotate(8 ' + px * 0.66 + ' ' + px * 0.5 + ')"/></g>', '0 0 ' + px + ' ' + px); };
+    const MARK = {
+      done: uri('<circle cx="8" cy="8" r="7" fill="' + C.ok + '"/><path d="M5 8.2l2 2 4-4.2" stroke="' + C.onOk + '" stroke-width="1.6" fill="none" stroke-linecap="round"/>', '0 0 16 16'),
+      doing: uri('<circle cx="8" cy="8" r="6.2" fill="none" stroke="' + C.s3 + '" stroke-width="1.6"/><path class="spin" d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" stroke="' + C.acc + '" stroke-width="1.6" fill="none" stroke-linecap="round"/>', '0 0 16 16'),
+      todo: uri('<circle cx="8" cy="8" r="6.2" fill="none" stroke="' + C.ring + '" stroke-width="1.4"/>', '0 0 16 16'),
+    };
+    const items = [];
+    if (s.stage >= 1) items.push({ isUser: true, text: s.userText });
+    if (s.stage >= 1) { const txt = this.STREAM.slice(0, s.streamN); const parts = txt.split(/(\[\d\])/).map((t) => /^\[\d\]$/.test(t) ? { t: '', n: t.slice(1, 2), tip: ['test/login.test.ts:18', 'src/auth/session.ts:42', 'run r-0131 · checkout race'][+t[1] - 1] } : { t, n: '' });
+      items.push({ isStream: true, parts, caret: s.stage === 1 ? 'caret' : '', done: s.stage >= 2, srcOpen: s.srcOpen, srcArrow: s.srcOpen ? '▾' : '▸', flipSrc: () => this.setState({ srcOpen: !s.srcOpen }),
+        sources: [['1', 'test/login.test.ts · lines 12–31', 'code'], ['2', 'src/auth/session.ts · line 42', 'code'], ['3', 'r-0131 · Fix checkout race', 'run']].map(([n, title, kind]) => ({ n, title, kind })),
+        acts: [['⧉', 'Copy'], ['↻', 'Retry'], ['👍', 'Good'], ['👎', 'Bad'], ['▶', 'Turn into a run']].map(([g, t]) => ({ g, t, c: s.fb === t ? 'var(--accInk)' : 'var(--ink2)', go: () => this.setState({ fb: t }) })) }); }
+    if (s.stage >= 2) { const Q = [{ title: 'Which fix?', desc: 'Pick one — single choice moves on by itself.', key: 0, opts: [['race', 'Await the refresh', 'Smallest change; fixes the race at the source'], ['retry', 'Retry the assertion', 'Hides the race; not recommended'], ['mock', 'Mock the clock in the test', 'Test-only; prod keeps the race']] }, { title: 'Also do', desc: 'Choose any.', key: 1, opts: [['regress', 'Add a regression test', 'Repeats the flow 20×'], ['note', 'Write a vault lesson', 'So future runs remember'], ['pr', 'Open a PR', 'After review passes']] }];
+      const st = s.q.step, cur = Q[st];
+      items.push({ isQuestions: true, qDone: s.q.done, qOpen: !s.q.done, qStepLabel: (st + 1) + ' / 2', qResult: 'Await the refresh · + regression test', prevOp: st ? 1 : .4,
+        qPrev: () => this.setState({ q: { ...s.q, step: 0 } }), qNext: () => this.qNext(), qNextLabel: st ? 'Submit response' : 'Next',
+        q: { title: cur.title, desc: cur.desc, opts: cur.opts.map(([v, label, desc]) => { const on = st === 0 ? s.q.a[0] === v : s.q.a[1].includes(v);
+          return { label, desc, markText: on ? (st ? '✓' : '●') : '', go: () => st === 0 ? this.answer(0, v) : this.answer(1, on ? s.q.a[1].filter((x) => x !== v) : [...s.q.a[1], v]),
+            mark: 'width: 18px; height: 18px; flex: none; border-radius: ' + (st ? 5 : 9) + 'px; border: 1.5px solid ' + (on ? 'var(--ink)' : 'var(--ring)') + '; background: ' + (on ? 'var(--ink)' : 'transparent') + '; color: var(--bg); font-size: 10px; display: flex; align-items: center; justify-content: center',
+            style: 'display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); border: 1px solid ' + (on ? 'var(--ring)' : 'var(--line)') + '; background: ' + (on ? 'var(--s2)' : 'transparent') }; }) } }); }
+    if (s.stage >= 3) { const T = ['Read the session code and the failing test', 'Await the refresh in session.ts', 'Run the login tests 20×', 'Add a regression test', 'Ask you to review']; const doneN = Math.min(s.todo, T.length);
+      items.push({ isTodo: true, count: doneN + ' of ' + T.length, todos: T.map((label, i) => { const st = i < doneN ? 'done' : i === doneN ? 'doing' : 'todo';
+        return { label, state: st, color: st === 'todo' ? 'var(--mut)' : 'var(--ink)', strike: st === 'done' ? 'line-through' : 'none', mark: MARK[st] }; }) }); }
+    if (s.stage >= 4) { const label = { pending: 'waiting for you', allowed: 'allowed once', always: 'always allowed', denied: 'denied' }[s.ta];
+      items.push({ isToolApproval: true, taPending: s.ta === 'pending', taStatus: label, taBadge: 'font-size: 11.5px; padding: 2px 8px; border-radius: 999px; ' + (s.ta === 'pending' ? 'background: var(--warnBg); color: var(--warn)' : s.ta === 'denied' ? 'background: var(--badBg); color: var(--bad)' : 'background: var(--okBg); color: var(--ok)'),
+        allowOnce: () => this.allow('once'), allowAlways: () => this.allow('always'), deny: () => this.allow('deny') }); }
+    if (s.stage >= 5) { const run = s.termN < this.TERM.length;
+      items.push({ isTerm: true, termOpen: s.termOpen, flipTerm: () => this.setState({ termOpen: !s.termOpen }), termMeta: run ? 'running…' : '4.81 s', lines: this.TERM.slice(0, s.termN).map(([t, c]) => ({ t: t || ' ', c: c || 'var(--ink)' })),
+        termRunning: run, termText: run ? '' : '✓ success', termBadge: 'font-size: 11.5px; padding: 2px 8px; border-radius: 999px; display: inline-flex; align-items: center; ' + (run ? '' : 'background: var(--okBg); color: var(--ok)') }); }
+    if (s.stage >= 6) { const rows = this.DIFF.slice(0, s.diffN);
+      items.push({ isDiff: true, add: rows.filter((r) => r[2] === '+').length, del: rows.filter((r) => r[2] === '-').length,
+        rows: rows.map(([o, n, sg, t]) => ({ o, n, s: sg === ' ' ? '' : sg, t, c: sg === '+' ? 'var(--ok)' : sg === '-' ? 'var(--bad)' : 'var(--ink2)', bg: sg === '+' ? 'var(--okBg)' : sg === '-' ? 'var(--badBg)' : 'transparent' })) }); }
+    if (s.stage >= 7) { const KW = /\b(it|await|expect|const|async|for|let)\b/;
+      const src = ["it('keeps the session after refresh', async () => {", '  for (let i = 0; i < 20; i++) {', '    const s = await signIn(user);', '    await refresh(s);', "    expect(s.token).not.toBe('');", '  }', '});'];
+      items.push({ isCode: true, copyLabel: s.copied ? 'Copied ✓' : 'Copy', copy: () => { this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1200); },
+        code: src.map((ln, i) => ({ n: i + 18, hl: i === 3 ? 'var(--accBg)' : 'transparent', toks: ln.split(/('[^']*'|\b\d+\b|\b\w+\b)/).filter(Boolean).map((t) => ({ t, c: /^'/.test(t) ? 'var(--str)' : /^\d+$/.test(t) ? 'var(--num)' : KW.test(t) && t.match(KW)[0] === t ? 'var(--ink)' : 'var(--ink2)', w: KW.test(t) && t.match(KW)[0] === t ? 600 : 400 })) })) });
+      const rr = { approved: ['✓', 'var(--ok)', 'Approved — merging aorch/r-0145 into main'], 'changes-requested': ['↺', 'var(--warn)', 'Changes requested — Tether will revise'], rejected: ['✕', 'var(--bad)', 'Rejected — branch kept, nothing merged'] }[s.review] || [];
+      items.push({ isReview: true, rDone: s.review !== 'pending', rOpen: s.review === 'pending', rIcon: rr[0], rColor: rr[1], rResult: rr[2], approve: () => this.decide('approved'), changes: () => this.decide('changes-requested'), reject: () => this.decide('rejected') }); }
+
+    const LEG = [['Eye-tracker face', 'Tether bot avatar · bencho', 'var(--ink)'], ['Prompt input', '＋ menu, model, send ↔ stop · beui', 'var(--ink)'], ['Streaming response', 'caret, then copy/retry/👍/👎/run · beui', 'var(--acc)'], ['Citations', '[1] chips → code, runs, notes · beui', 'var(--acc)'], ['Approval card · Questions', 'multi-step, auto-advance · beui', 'var(--warn)'], ['To-do list', 'morphing marks, n of m · beui', 'var(--acc)'], ['Tool approval', 'Allow once / Always / Deny · beui', 'var(--warn)'], ['Tool result', 'terminal streams then collapses · beui', 'var(--ok)'], ['File diff', 'rows stream, live +/− · beui', 'var(--ok)'], ['Code block', 'highlight, line focus, copy · beui', 'var(--ink)'], ['Approval card · Review', 'Approve / Request changes / Reject · beui', 'var(--warn)'], ['Upload dropzone', '＋ → Attach files · bencho', 'var(--ink)']];
+    const statusTxt = s.stage === 0 ? 'idle · knows orders-api' : s.stage < 8 ? (s.ta === 'pending' && s.stage === 4 ? 'waiting for your approval' : s.stage === 2 && !s.q.done ? 'waiting for your answer' : 'working · Code Mode') : 'done';
+    return {
+      themeCls: dark ? '' : 'light', motionCls: motion ? '' : 'm-off', auto: s.auto, flipAuto: () => this.setState({ auto: !s.auto }),
+      faceLg: face(72, false), faceSm: face(30, false), faceXs: face(24, true), spinner: MARK.doing,
+      look: (e) => { const r = e.currentTarget.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width * 2 - 1, y = (e.clientY - r.top) / r.height * 2 - 1; this.setState({ eye: [Math.max(-1, Math.min(1, x * 1.4)), Math.max(-1, Math.min(1, y * 1.4))] }); },
+      play: () => this.start(), playLabel: s.stage === 0 || s.stage === 8 ? '▶ Play' : '↻ Restart',
+      reset: () => { clearInterval(this.iv); clearTimeout(this.to); this.setState({ ...this.fresh(), auto: s.auto, eye: s.eye }); },
+      status: statusTxt, items,
+      legend: LEG.map(([name, where, dot]) => ({ name, where, dot, style: 'display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); font-size: 12.5px' })),
+      menu: s.menu, plusRot: s.menu ? 45 : 0, flipMenu: () => this.setState({ menu: !s.menu }),
+      menuItems: [['▤', 'Attach files', '', () => this.setState({ menu: false, drop: true, dropLabel: 'Drop files here or click to pick — up to 5 MB each', dropPct: '' })], ['@', 'Mention a file, run or bot', '@'], ['▶', 'Run a workflow', '/run'], ['⌕', 'Search the codebase', '/find']].map(([g, t, k, go]) => ({ g, t, k, go: go || (() => this.setState({ menu: false })) })),
+      drop: s.drop, dropLabel: s.dropLabel, dropPct: s.dropPct,
+      dropFile: () => { let p = 0; this.setState({ dropLabel: 'ci-log.txt · uploading…', dropPct: '0%' }); const iv = setInterval(() => { p += 20; this.setState({ dropPct: p + '%' }); if (p >= 100) { clearInterval(iv); setTimeout(() => this.setState({ drop: false, attach: 'ci-log.txt · 38 KB' }), 300); } }, 160); },
+      attach: s.attach, unattach: () => this.setState({ attach: '' }),
+      draft: s.draft, onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (s.draft.trim()) this.start(s.draft.trim()); } },
+      model: s.model, cycleModel: () => { const M = ['Claude Sonnet', 'Claude Opus', 'qwen2.5-coder (local)']; this.setState({ model: M[(M.indexOf(s.model) + 1) % M.length] }); },
+      sendGlyph: s.loading ? '■' : '↑', sendLabel: s.loading ? 'Stop' : 'Send',
+      sendOrStop: () => { if (s.loading) { clearInterval(this.iv); clearTimeout(this.to); this.setState({ loading: false }); } else this.start(s.draft.trim() || undefined); },
+    };
+  }
+}
+</script>
+</body>
+</html>

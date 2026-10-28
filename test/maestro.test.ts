@@ -14,7 +14,7 @@ const setup = () => {
   return { home, repo, registry: defaultRegistry({}, {}) };
 };
 
-describe('Maestro chat', () => {
+describe('Tether chat', () => {
   it('plain prose is just a reply', () => {
     const o = setup();
     expect(interpret('Sure, ask away.', o)).toMatchObject({ text: 'Sure, ask away.' });

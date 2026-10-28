@@ -228,7 +228,7 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
                     ref={(el) => {
                       edgeEls.current[i] = el;
                     }}
-                    className={cn('gb-edge', { hot, flow, close, dim: p.hits.size > 0 || (p.near.size > 0 && !close), hidden: hiddenIds.has(e.from) || hiddenIds.has(e.to) })}
+                    className={cn('gb-edge', { hot, flow, close, dim: p.hits.size > 0 || (p.near.size > 0 && !close), 'is-hidden': hiddenIds.has(e.from) || hiddenIds.has(e.to) })}
                     x1={a.x.toFixed(1)}
                     y1={a.y.toFixed(1)}
                     x2={b.x.toFixed(1)}
@@ -254,7 +254,7 @@ export const GraphBoard = forwardRef<BoardHandle, GraphBoardProps>(function Grap
                       else nodeEls.current.delete(n.id);
                     }}
                     data-gn={n.id}
-                    className={cn('gb-node', `t-${t}`, { sel, near: near && !sel, hit, dim: dimFor(n.id), hidden })}
+                    className={cn('gb-node', `t-${t}`, { sel, near: near && !sel, hit, dim: dimFor(n.id), 'is-hidden': hidden })}
                     transform={at(pt)}
                     role="button"
                     tabIndex={!hidden && (sel || near) ? 0 : -1}

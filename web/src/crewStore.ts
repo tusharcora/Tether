@@ -19,7 +19,7 @@ export interface CrewEntry { name: string; title: string; hue: string; face?: Fa
 export interface CrewState { crew: Record<string, CrewEntry> }
 
 const BUILTIN: Record<string, CrewEntry> = {
-  orchestrator: { name: 'Maestro', title: 'orchestrator', hue: '#9b7bff' },
+  orchestrator: { name: 'Tether', title: 'orchestrator', hue: '#9b7bff' },
   planner: { name: 'Scout', title: 'planner', hue: '#5b9dff' },
   architect: { name: 'Brick', title: 'architect', hue: '#38c5d6' },
   coder: { name: 'Bolt', title: 'coder', hue: '#3fb97c' },

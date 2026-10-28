@@ -126,7 +126,7 @@ describe('Start a run', () => {
     expect(onGo).toHaveBeenCalledWith({ tab: 'builder' });
   });
 
-  it('shows Maestro’s likely picks as a guess, next to the core crew', async () => {
+  it('shows Tether’s likely picks as a guess, next to the core crew', async () => {
     routeApi({ ...routes, 'GET /api/roster/preview': { bots: [{ id: 'rag-pipeline-reviewer', name: 'RAG reviewer', why: 'Reviews retrieval' }], core: ['planner', 'coder', 'reviewer', 'architect'] } });
     setup();
     await type('fix the RAG retriever');
@@ -135,10 +135,10 @@ describe('Start a run', () => {
     expect(screen.getByText('core crew (planner, coder, reviewer…) always available')).toBeTruthy();
   });
 
-  it('says Maestro will use the core crew when it would pick no specialist', async () => {
+  it('says Tether will use the core crew when it would pick no specialist', async () => {
     routeApi({ ...routes, 'GET /api/roster/preview': { bots: [], core: ['planner', 'coder'] } });
     setup();
     await type('tidy the readme file');
-    await waitFor(() => expect(screen.getByText('Maestro will use the core crew')).toBeTruthy(), { timeout: 2000 });
+    await waitFor(() => expect(screen.getByText('Tether will use the core crew')).toBeTruthy(), { timeout: 2000 });
   });
 });

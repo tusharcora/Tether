@@ -22,8 +22,8 @@ const EXAMPLES = ['Add rate limiting to the public API', 'Fix the flaky login te
 function PreviewRow({ preview }: { preview: RosterPreview }) {
   const core = `${preview.core.slice(0, 3).join(', ')}${preview.core.length > 3 ? '…' : ''}`;
   return (
-    <div className="start-preview" aria-label="Maestro would pick">
-      <span className="sl-meta">Maestro would pick · a guess</span>
+    <div className="start-preview" aria-label="Tether would pick">
+      <span className="sl-meta">Tether would pick · a guess</span>
       {preview.bots.length ? (
         <>
           <ul className="sl-list start-picks">
@@ -38,7 +38,7 @@ function PreviewRow({ preview }: { preview: RosterPreview }) {
           <span className="sl-meta">core crew ({core}) always available</span>
         </>
       ) : (
-        <span>Maestro will use the core crew</span>
+        <span>Tether will use the core crew</span>
       )}
     </div>
   );

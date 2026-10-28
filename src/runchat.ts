@@ -1,5 +1,5 @@
 /**
- * Maestro inside one run's conversation: explain what went wrong, offer options with a recommended one,
+ * Tether inside one run's conversation: explain what went wrong, offer options with a recommended one,
  * and carry out the one the person picks. A model only *proposes* options; every option is an action from a
  * fixed list, validated against the real run before it is shown, and only executed on a person's say-so.
  */
@@ -12,7 +12,7 @@ import type { Choice, RunAction, Turn } from './sessions.js';
 import type { NodeState, RunState } from './types.js';
 
 export interface Choices {
-  /** What Maestro says: what went wrong, or the answer. */
+  /** What Tether says: what went wrong, or the answer. */
   text: string;
   options: Choice[];
   /** Index into `options`. */
@@ -31,7 +31,7 @@ export function failureKey(s: RunState): string {
   return `${s.id}|${failed}|${clip(s.error ?? '', 60)}`;
 }
 
-/** Everything Maestro needs to talk about this run: the steps, where each stands, and what went wrong. */
+/** Everything Tether needs to talk about this run: the steps, where each stands, and what went wrong. */
 export function runDetail(s: RunState): string {
   const lines = [`Run ${s.id} · workflow "${s.pipeline.name}" · status: ${s.status} · cost $${s.costUsd.toFixed(2)}`, `Task: ${clip(s.task.split('\n')[0]!, 240)}`, `Repo: ${s.repo}  ·  worktree: ${s.workdir}  ·  branch: ${s.branch}`, 'Steps:'];
   for (const n of s.pipeline.nodes) {
@@ -45,7 +45,7 @@ export function runDetail(s: RunState): string {
   }
   if (s.error) lines.push(`Run error: ${clip(s.error.split('\n')[0]!, 200)}`);
   const acts = s.actions.slice(-3).map((a) => `${a.action}${a.node ? ' ' + a.node : ''}: ${clip(a.detail, 100)}`);
-  if (acts.length) lines.push(`Maestro already tried: ${acts.join(' ; ')}`);
+  if (acts.length) lines.push(`Tether already tried: ${acts.join(' ; ')}`);
   return lines.join('\n');
 }
 
@@ -102,7 +102,7 @@ async function ask(prompt: string, o: { registry: AdapterRegistry; agent?: strin
   const agent = o.agent ?? 'claude';
   if (!o.registry.has(agent)) throw new Error(`agent "${agent}" is not set up`);
   let text = '';
-  const res = await o.registry.get(agent).run({ runId: 'maestro', nodeId: 'run-chat', prompt, cwd: o.cwd, model: o.model, readOnly: true, attempt: 1, timeoutMs: o.timeoutMs ?? 120_000, signal: o.signal ?? new AbortController().signal, onChunk: (t) => (text += t), onSession: () => {} });
+  const res = await o.registry.get(agent).run({ runId: 'tether', nodeId: 'run-chat', prompt, cwd: o.cwd, model: o.model, readOnly: true, attempt: 1, timeoutMs: o.timeoutMs ?? 120_000, signal: o.signal ?? new AbortController().signal, onChunk: (t) => (text += t), onSession: () => {} });
   if (res.exitCode !== 0 || res.error) throw new Error(res.error ?? `agent exited ${res.exitCode}`);
   return extractJson(res.output || text);
 }
@@ -119,7 +119,7 @@ export interface RunChatOpts {
 /** Explain a failure and offer ways forward. Never throws: without a model it falls back to rules. */
 export async function diagnose(s: RunState, o: RunChatOpts): Promise<Choices> {
   const agents = o.registry.ids().filter((i) => i !== 'mock');
-  const prompt = `You are Maestro, supervising a team of coding agents. This run failed. Work out what went wrong and what the person can do about it. Do NOT modify any files.
+  const prompt = `You are Tether, supervising a team of coding agents. This run failed. Work out what went wrong and what the person can do about it. Do NOT modify any files.
 
 ${runDetail(s)}
 
@@ -143,8 +143,8 @@ In "reply", say in one to three plain sentences what went wrong and the most lik
 /** One message from the person inside a run's conversation. */
 export async function chatAboutRun(message: string, s: RunState, history: Turn[], o: RunChatOpts): Promise<{ text: string; choices?: Choices; command?: { command: string; why?: string } }> {
   const agents = o.registry.ids().filter((i) => i !== 'mock');
-  const hist = history.slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Maestro'}: ${clip(t.text, 400)}`).join('\n');
-  const prompt = `You are Maestro, supervising a team of coding agents, in a conversation about ONE run. Answer the user's message in one to three plain sentences. If they want something changed, or the run needs action, include options. Do NOT modify any files.
+  const hist = history.slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Tether'}: ${clip(t.text, 400)}`).join('\n');
+  const prompt = `You are Tether, supervising a team of coding agents, in a conversation about ONE run. Answer the user's message in one to three plain sentences. If they want something changed, or the run needs action, include options. Do NOT modify any files.
 
 ${runDetail(s)}
 

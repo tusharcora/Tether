@@ -65,7 +65,7 @@ export interface BotDef {
   look: Look;
   /** Set on bots imported from a library, e.g. "ecc@v2.2.3". Re-imports only touch bots with this prefix. */
   source?: string;
-  /** One line on when Maestro should pick this bot. */
+  /** One line on when Tether should pick this bot. */
   whenToUse?: string;
   /** Model to use when the bot runs on the claude agent and nothing else sets one. */
   modelHint?: 'opus' | 'sonnet';
@@ -78,7 +78,7 @@ export interface BotDef {
 const look = (body: string, eyes: string, mouth: string, top: string, side: string, pattern: string, color: string, accent = 'auto'): Look => ({ body, eyes, mouth, top, side, pattern, color, accent, guard: true });
 
 export const BUILTIN_BOTS: BotDef[] = [
-  { id: 'orchestrator', name: 'Maestro', title: 'orchestrator', kind: 'orchestrator', persona: 'Turns a plain request into a workflow: picks the crew, the order and the checks.', look: look('pebble', 'dots', 'smile', 'crown', 'none', 'none', '#9b7bff') },
+  { id: 'orchestrator', name: 'Tether', title: 'orchestrator', kind: 'orchestrator', persona: 'Your assistant: answers from your runs and code, turns a plain request into a workflow (the crew, the order, the checks) and acts only when you approve.', look: look('pebble', 'dots', 'smile', 'crown', 'none', 'none', '#9b7bff') },
   { id: 'planner', name: 'Scout', title: 'planner', kind: 'agent', readOnly: true, persona: 'Reads the repo and writes the plan. Never edits files.', look: look('pebble', 'tall', 'flat', 'antenna', 'none', 'none', '#5b9dff') },
   { id: 'architect', name: 'Brick', title: 'architect', kind: 'agent', readOnly: true, persona: 'Designs structure and interfaces before anyone writes code.', look: look('square', 'dots', 'flat', 'cap', 'none', 'none', '#38c5d6', '#f2c14e') },
   { id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: 'Writes the change in the run worktree, small steps, tests alongside.', look: look('wide', 'dots', 'smile', 'none', 'arms', 'none', '#3fb97c') },
@@ -88,6 +88,9 @@ export const BUILTIN_BOTS: BotDef[] = [
   { id: 'approval', name: 'Gate', title: 'approver', kind: 'approval', persona: 'A person. Pauses the run until someone says yes.', look: look('blob', 'dots', 'flat', 'none', 'none', 'badge', '#9aa6b8', '#6d4aff') },
 ];
 export const BUILTIN_IDS = new Set(BUILTIN_BOTS.map((b) => b.id));
+/** Tether, the orchestrator bot, was Maestro until 2026-10-26: either name, typed by a person, means its id. */
+export const BOT_ALIASES: Readonly<Record<string, string>> = { tether: 'orchestrator', maestro: 'orchestrator' };
+export const canonicalBotId = (id: string): string => BOT_ALIASES[id.trim().toLowerCase()] ?? id;
 export const BOT_ID_RE = /^[a-z][a-z0-9_-]{0,23}$/;
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 

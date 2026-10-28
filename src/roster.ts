@@ -1,4 +1,4 @@
-/** Who Maestro may pick from: built-ins and your bots, plus imported specialists that fit the repo and the task. */
+/** Who Tether may pick from: built-ins and your bots, plus imported specialists that fit the repo and the task. */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUILTIN_IDS, type BotDef, type BotKind } from './crew.js';

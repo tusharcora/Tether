@@ -33,7 +33,7 @@ export const httpApi = {
   deleteSecret: (ws: string | undefined, key: string) => api<{ keys: string[] }>('DELETE', `/api/http/secrets/${enc(key)}${q(ws)}`),
   importPreview: (ws: string | undefined, body: ImportBody) => api<ImportPreview>('POST', `/api/http/import${q(ws)}`, body),
   importApply: (ws: string | undefined, body: ImportBody) => api<{ created: string[] }>('POST', `/api/http/import/apply${q(ws)}`, { ...body, confirm: true }),
-  sendToAgent: (ws: string | undefined, body: { historyId: number; target: { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'maestro' }; note: string }) => api<{ runId: string }>('POST', `/api/http/send-to-agent${q(ws)}`, body),
+  sendToAgent: (ws: string | undefined, body: { historyId: number; target: { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'tether' }; note: string }) => api<{ runId: string }>('POST', `/api/http/send-to-agent${q(ws)}`, body),
 };
 
 export const newRequest = (): HttpRequestFile => ({ v: 1, name: 'New request', method: 'GET', url: '{{base}}/', query: [], headers: [], body: { kind: 'none' }, vars: {}, checks: [] });

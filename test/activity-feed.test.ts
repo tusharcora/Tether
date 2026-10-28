@@ -69,7 +69,7 @@ describe('activity lines', () => {
   it('names who and which face from the pipeline nodes', () => {
     expect(line({ type: 'node.started', node: 'code', attempt: 1 })).toMatchObject({ id: 'r1:1', who: 'Implement', bot: 'coder' });
     expect(line({ type: 'run.started', pipeline: s.state('r1')!.pipeline, task: 't', repo: '/r', workdir: '/w', baseSha: 'a', branch: 'b' })).toMatchObject({ who: 'ship' });
-    expect(line({ type: 'plan.ready', plan: { goal: 'g', success: [], assignments: [], limits: { allowWrites: false }, answers: [] } })).toMatchObject({ who: 'Maestro', bot: 'orchestrator' });
+    expect(line({ type: 'plan.ready', plan: { goal: 'g', success: [], assignments: [], limits: { allowWrites: false }, answers: [] } })).toMatchObject({ who: 'Tether', bot: 'orchestrator' });
     expect(line({ type: 'node.started', node: 'ghost', attempt: 1 })).toMatchObject({ who: 'ghost', text: 'ghost started' });
     const t = Store.open(':memory:');
     seedRun(t, 't1', { kind: 'team' });

@@ -21,7 +21,7 @@ const css = sources.filter((s) => s.path.endsWith('.css'));
  */
 const FACE_ALLOW = [
   { path: 'Crew.tsx', value: '#b58bff' }, // face editor swatch
-  { path: 'crewStore.ts', value: '#9b7bff' }, // built-in look: Maestro
+  { path: 'crewStore.ts', value: '#9b7bff' }, // built-in look: Tether
 ];
 
 type RGB = [number, number, number];
@@ -98,6 +98,43 @@ describe('no gradient decoration and no glow', () => {
   });
   it('draws no glow (a zero-offset blurred shadow)', () => {
     expect(css.filter((s) => /box-shadow:\s*0 0 [1-9]\d*px/.test(s.text)).map((s) => s.path)).toEqual([]);
+  });
+});
+
+describe('beui, bencho and aicss components keep the rules', () => {
+  const VENDORED = ['components/beui/', 'components/bencho/', 'components/aicss/', 'components/faces/'];
+  const vendored = sources.filter((s) => VENDORED.some((d) => s.path.startsWith(d)));
+  /** Tether's own files in those folders (no MIT header: nothing was copied). */
+  const OWN = ['components/beui/lib/highlight.ts'];
+  it('paints no gradient: no Tailwind gradient utilities and no gradient values', () => {
+    const bad = vendored.filter((s) => /\bbg-(gradient|linear|radial|conic)-|\b(from|via|to)-(violet|purple|indigo|fuchsia)|-gradient\(/.test(s.text)).map((s) => s.path);
+    expect(bad).toEqual([]);
+  });
+  it('draws no glow: no zero-offset blurred shadow utilities or values, no drop-shadow glow', () => {
+    const bad = vendored.filter((s) => /shadow-\[0_0_[1-9]|box-shadow:\s*0 0 [1-9]|boxShadow:\s*['"]0 0 [1-9]|\bglow\b/i.test(s.text)).map((s) => s.path);
+    expect(bad).toEqual([]);
+  });
+  it('names no purple accent and ships no metallic or magnetic button', () => {
+    expect(vendored.filter((s) => /\b(violet|purple|indigo|fuchsia)\b|--color-violet|--neon/i.test(s.text)).map((s) => s.path)).toEqual([]);
+    expect(vendored.filter((s) => /\b(Metallic|Magnetic)(Button)?\b/.test(s.text)).map((s) => s.path)).toEqual([]);
+  });
+  it('switches dark mode through our variant only (no .dark class selectors)', () => {
+    expect(vendored.filter((s) => /\.dark\b|classList\.(add|contains)\(['"]dark/.test(s.text)).map((s) => s.path)).toEqual([]);
+  });
+  it('gives no global class the name of a bare Tailwind utility (unlayered utilities would restyle it)', () => {
+    const BARE = 'hidden|block|inline|inline-block|inline-flex|inline-grid|flex|grid|table|contents|flow-root|list-item|ring|outline|border|shadow|rounded|container|collapse|visible|invisible|static|fixed|absolute|relative|sticky|italic|underline|overline|line-through|truncate|uppercase|lowercase|capitalize|grow|shrink|transition|transform|filter|blur|resize|isolate|sr-only|antialiased|ordinal|invert|grayscale|sepia|ease-in|ease-out|ease-linear|ease-in-out';
+    const re = new RegExp(`\\.(${BARE})(?![\\w-])`, 'g');
+    const bad = css.filter((s) => !s.path.endsWith('.module.css')).flatMap((s) => [...s.text.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(re)].map((m) => `${s.path}: ${m[0]}`));
+    expect(bad).toEqual([]);
+  });
+  it('keeps the MIT notice in every copied file', () => {
+    const NOTICE = { 'components/beui/': 'Copyright (c) 2026 Saurabh Chauhan', 'components/bencho/': 'Copyright (c) 2026 Lorenzo Cabra', 'components/faces/': 'Copyright (c) 2026 Lorenzo Cabra', 'components/aicss/': 'Copyright (c) 2026 AICSS' };
+    const missing = vendored
+      .filter((s) => !OWN.includes(s.path))
+      .filter((s) => !s.text.includes('MIT License') || !s.text.includes(Object.entries(NOTICE).find(([d]) => s.path.startsWith(d))![1]))
+      .map((s) => s.path);
+    expect(missing).toEqual([]);
+    for (const d of Object.keys(NOTICE)) if (vendored.some((s) => s.path.startsWith(d))) expect(read(`${d}LICENSE`)).toContain('Permission is hereby granted');
   });
 });
 

@@ -628,7 +628,7 @@ export interface ProposeOpts {
   home: string;
   bot: BotDef;
   registry: AdapterRegistry;
-  /** Editor agent and model; default: the Maestro (orchestrator) binding, else claude. */
+  /** Editor agent and model; default: the Tether (orchestrator) binding, else claude. */
   agent?: string;
   model?: string;
   /** Only lessons updated on or after this date. */

@@ -1,6 +1,6 @@
 /**
- * Commands Maestro may propose. A model never runs anything by itself: each command is shown, and runs
- * only if you allow it once, always allow it, or Settings says Maestro may run commands without asking.
+ * Commands Tether may propose. A model never runs anything by itself: each command is shown, and runs
+ * only if you allow it once, always allow it, or Settings says Tether may run commands without asking.
  * A short list of plainly destructive patterns is refused even then.
  */
 import { spawn } from 'node:child_process';
@@ -51,7 +51,7 @@ const BLOCKED: [RegExp, string][] = [
 ];
 
 /**
- * Commands that change or spend on a bot's harness (aorch evolve: propose, probe, accept, reject; aorch harness … rollback). Maestro may
+ * Commands that change or spend on a bot's harness (aorch evolve: propose, probe, accept, reject; aorch harness … rollback). Tether may
  * offer them, but each one needs the person's approval every time: never run because Settings says "always", never remembered as
  * "always allow". A reason, or undefined.
  */

@@ -11,7 +11,7 @@ import { LANGS } from './langs';
 export type Hunk = { start: number; lines: number };
 
 /** How long a line opened from search or a link keeps its highlight before it fades. */
-export const FLASH_MS = 1200;
+export const FLASH_MS = 2400;
 
 const setMarks = StateEffect.define<Hunk[]>();
 const setFlash = StateEffect.define<number | null>();

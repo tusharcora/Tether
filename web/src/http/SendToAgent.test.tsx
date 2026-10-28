@@ -24,7 +24,7 @@ describe('SendToAgent', () => {
   it('is disabled until there is a response', () => {
     renderApp(<SendToAgent onStarted={() => {}} onUseAsGate={() => {}} />);
     expect((screen.getByRole('button', { name: /Start run with/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Ask Maestro' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Ask Tether' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Send the request first/)).toBeTruthy();
   });
 
@@ -42,11 +42,11 @@ describe('SendToAgent', () => {
     expect(onStarted).toHaveBeenCalledWith('r9');
   });
 
-  it('asks Maestro, or as a team run, and hands the request over as a gate', async () => {
+  it('asks Tether, or as a team run, and hands the request over as a gate', async () => {
     const onUseAsGate = vi.fn();
     renderApp(<SendToAgent output={output} requestId="runs/list" env="local" onStarted={() => {}} onUseAsGate={onUseAsGate} />);
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Ask Maestro' })));
-    expect(calls('POST', '/api/http/send-to-agent')[0]![2]).toEqual({ historyId: 7, target: { kind: 'maestro' }, note: '' });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Ask Tether' })));
+    expect(calls('POST', '/api/http/send-to-agent')[0]![2]).toEqual({ historyId: 7, target: { kind: 'tether' }, note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Team' }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Start run with/ })));
     expect((calls('POST', '/api/http/send-to-agent')[1]![2] as { target: unknown }).target).toEqual({ kind: 'run', bot: 'coder', mode: 'team' });
@@ -76,7 +76,7 @@ describe('SendToAgent', () => {
 
   it('offers only bots that can take a hand-off and shows a network error instead of a status', () => {
     renderApp(<SendToAgent output={{ ...output, result: { ...output.result, status: 0, error: { kind: 'refused', message: 'connect ECONNREFUSED' } } }} onStarted={() => {}} onUseAsGate={() => {}} />);
-    expect(screen.queryByRole('button', { name: /^Maestro/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Tether/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Gate/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Probe/ })).toBeNull();
     expect(screen.getByText('refused')).toBeTruthy();

@@ -27,7 +27,7 @@ export function CrewCard(p: { row: Row; def?: BotDef; evo?: { version: number; o
         <span className="cw-chip mono" title={d?.source}>
           {isEcc(d) ? 'ECC' : d?.builtin ? 'built-in' : 'yours'}
         </span>
-        {d?.readOnly ? <span className="cw-chip outline">read-only</span> : null}
+        {d?.readOnly ? <span className="cw-chip ghost">read-only</span> : null}
         {p.row.kind !== 'approval' && p.evo ? (
           <span className="cw-chip mono" title="Harness version: persona, guidance and skills">
             v{p.evo.version}

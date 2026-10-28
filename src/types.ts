@@ -64,7 +64,7 @@ export interface PipelineNode {
   model?: string;
   /** Role instructions. Falls back to a default for the role. */
   prompt?: string;
-  /** Extra direction added mid-run (by you or Maestro) after an attempt went wrong. Appended to the prompt. */
+  /** Extra direction added mid-run (by you or Tether) after an attempt went wrong. Appended to the prompt. */
   guidance?: string;
   /** Claude Code permission mode override (default: plan if readOnly else acceptEdits). */
   permissionMode?: string;
@@ -187,7 +187,8 @@ export interface Answer {
   question: string;
   option?: string;
   text?: string;
-  by: 'user' | 'default' | 'maestro';
+  /** Who answered: the person, the recommended default, or Tether (`maestro` in logs written before the rename). */
+  by: 'user' | 'default' | 'tether' | 'maestro';
 }
 
 export interface TeamPlan {
@@ -198,14 +199,14 @@ export interface TeamPlan {
     goal: string;
     expected?: string;
     mode: 'read' | 'write';
-    /** Maestro's reason for this bot. */
+    /** Tether's reason for this bot. */
     why?: string;
     /** The person picked another bot before approving. */
     swapped?: true;
   }[];
   limits: { maxCostUsd?: number; wallClockMs?: number; allowWrites: boolean };
   answers: Answer[];
-  /** The bots Maestro could choose from; a swap may only pick one of these. */
+  /** The bots Tether could choose from; a swap may only pick one of these. */
   roster?: string[];
 }
 
@@ -255,7 +256,7 @@ export type RunEvent =
   /** A background planning step failed; the run stays as it was and the person can try again. */
   | { type: 'team.error'; message: string }
   | { type: 'team.mode'; mode: TeamMode }
-  /** A worker's question for the person. `wait`: the asking step pauses (awaiting) until the answer; `false`: answered at once by Maestro. */
+  /** A worker's question for the person. `wait`: the asking step pauses (awaiting) until the answer; `false`: answered at once by Tether. */
   | { type: 'user.ask'; node: string; question: Question; wait?: boolean }
   | { type: 'user.answer'; question: string; answer: Answer }
   /** A team run's approved plan became its pipeline: replaces the empty placeholder made at start (ignored once the pipeline has steps). */
@@ -488,7 +489,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       const question = { ...e.question, from: e.question.from ?? e.node };
       // absent means waiting (the engine always writes it): the card is pending and its step awaits, never one without the other
       const wait = e.wait !== false;
-      // an ask answered at once by Maestro never shows as a pending card
+      // an ask answered at once by Tether never shows as a pending card
       if (wait) s.pending = [...s.pending, question];
       s.cards = [...(s.cards ?? []), question];
       (s.userAsks ??= []).push({ node: e.node, question, wait });
@@ -670,6 +671,10 @@ export interface AgentRequest {
   mock?: MockScript;
   verdictNode?: boolean;
   onChunk(text: string): void;
+  /** Token-level text as it is written (Claude: `--include-partial-messages`). Adapters that cannot stream ignore it. */
+  onDelta?(text: string): void;
+  /** A lean call (the assistant): skip the user's own settings, plugins, hooks and slash commands; only the project's count. Adapters that cannot ignore it. */
+  lean?: boolean;
   onSession(id: string): void;
 }
 

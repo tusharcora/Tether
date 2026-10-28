@@ -1,4 +1,4 @@
-import { ArrowRight, File, PanelLeftClose, PanelLeftOpen, Play, Plus, Search, Settings, SquarePen, Workflow, type LucideIcon } from 'lucide-react';
+import { ArrowRight, File, PanelLeftClose, Play, Plus, Search, Settings, SquarePen, Workflow, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { Screen } from '../../hooks';
@@ -82,13 +82,17 @@ export interface SidebarProps {
  * The left sidebar (900 px and wider), Linear-style (spec §2): the project switcher (the Tether glyph and the project's
  * name), compose and the collapse button; Search, Home, Inbox and Runs; the Workspace screens with their `G` shortcuts;
  * the project's recent runs with status glyphs; Favorites (pins, drag to reorder); Settings and the account row at the
- * bottom. Collapsed (⌘\ or the panel button) it is a 56 px icon rail: every icon shows its label as a tooltip on hover
- * and focus (Escape dismisses it) and counts become dots.
+ * bottom. Collapsed (⌘\ or the panel button) it is a 56 px icon rail, and the collapse is seamless (spec §6): the markup
+ * does not change, every row keeps an 8 px gutter and a 40 px icon cell, so each icon's centre is the same in both states;
+ * only the width animates while labels fade and clip, section headers become hairlines, and the glyph turns into the
+ * expand control. Every rail icon shows its label as a tooltip on hover and focus (Escape dismisses it), level with the
+ * row's centre; counts become dots.
  */
 export function Sidebar(p: SidebarProps) {
   const [collapsed, toggle] = useSidebarCollapsed();
   const asideRef = useRef<HTMLElement>(null);
-  const [tip, setTip] = useState<{ key: string; label: string; top: number }>();
+  /** Fixed to the viewport: the aside clips its own content while the width animates, so the tip lives outside that box. */
+  const [tip, setTip] = useState<{ key: string; label: string; top: number; left: number }>();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tipId = useId();
   const hideTip = () => {
@@ -112,7 +116,7 @@ export function Sidebar(p: SidebarProps) {
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         const box = el.getBoundingClientRect();
-        setTip({ key, label, top: box.top - (asideRef.current?.getBoundingClientRect().top ?? 0) + box.height / 2 });
+        setTip({ key, label, top: box.top + box.height / 2, left: (asideRef.current?.getBoundingClientRect().right ?? 56) + 6 });
       }, TIP_DELAY_MS);
     };
     return { onPointerEnter: show, onFocus: show, onPointerLeave: hideTip, onBlur: hideTip, 'aria-describedby': tip?.key === key ? tipId : undefined };
@@ -131,17 +135,6 @@ export function Sidebar(p: SidebarProps) {
     p.pins.onReorder(next);
   };
   const mod = isApple() ? '⌘' : 'Ctrl ';
-  const toggleLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  const toggleButton = (
-    <button type="button" className="sl-side-icon-btn sl-side-toggle" aria-label={toggleLabel} title={collapsed ? undefined : `${toggleLabel}  ${mod}\\`} onClick={toggle} {...tipFor('toggle', `${toggleLabel}  ${mod}\\`)}>
-      {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.7} aria-hidden="true" /> : <PanelLeftClose size={16} strokeWidth={1.7} aria-hidden="true" />}
-    </button>
-  );
-  const compose = (
-    <button type="button" className="sl-side-compose" aria-label="New run" title={collapsed ? undefined : `New run  C · ${mod}N`} onClick={p.onCompose} {...tipFor('compose', 'New run')}>
-      <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
-    </button>
-  );
   const navRow = (n: (typeof NAV)[number]) => (
     <SideRow
       key={n.id}
@@ -158,42 +151,32 @@ export function Sidebar(p: SidebarProps) {
 
   return (
     <aside ref={asideRef} className={cn('sl-side', { collapsed })} aria-label="Sidebar">
-      {collapsed ? (
-        <div className="sl-side-head">
-          <ProjectSwitcher {...p.projects} compact />
-          {toggleButton}
-          {compose}
-        </div>
-      ) : (
-        <div className="sl-side-head">
-          <ProjectSwitcher {...p.projects} />
-          {compose}
-          {toggleButton}
-        </div>
-      )}
+      <div className="sl-side-head">
+        <ProjectSwitcher {...p.projects} collapsed={collapsed} onExpand={toggle} rail={tipFor('expand', `Expand sidebar  ${mod}\\`)} />
+        <span className="sl-side-head-actions" inert={collapsed}>
+          <button type="button" className="sl-side-compose" aria-label="New run" title={`New run  C · ${mod}N`} onClick={p.onCompose}>
+            <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+          <button type="button" className="sl-side-icon-btn sl-side-toggle" aria-label="Collapse sidebar" title={`Collapse sidebar  ${mod}\\`} onClick={toggle}>
+            <PanelLeftClose size={16} strokeWidth={1.7} aria-hidden="true" />
+          </button>
+        </span>
+      </div>
 
       <div className="sl-side-scroll">
         <nav className="sl-side-nav" aria-label="Main">
           <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} rail={tipFor('search', 'Search')} />
           {top.map(navRow)}
-          {collapsed ? (
-            <>
-              <div className="sl-side-rule" />
-              {work.map(navRow)}
-            </>
-          ) : (
-            <SideSection id="workspace" title="Workspace">
-              {work.map(navRow)}
-            </SideSection>
-          )}
+          <SideSection id="workspace" title="Workspace" collapsed={collapsed}>
+            {work.map(navRow)}
+          </SideSection>
         </nav>
-        {collapsed ? null : (
-          <>
 
         <SideSection
           id="runs"
           title="Runs"
           label="Recent runs"
+          collapsed={collapsed}
           count={runs.length}
           actions={
             <button type="button" className="sl-side-text-btn" onClick={() => p.onGo('runs')}>
@@ -212,6 +195,7 @@ export function Sidebar(p: SidebarProps) {
               current={p.runs.current === run.id && page('runs')}
               meta={shortRunId(run.id)}
               onClick={() => p.runs.onOpen(run.id)}
+              rail={tipFor(`run:${run.id}`, `${firstLine(run.task)} · ${RUN_STATE_LABEL[state]}`)}
             />
           ))}
         </SideSection>
@@ -219,6 +203,7 @@ export function Sidebar(p: SidebarProps) {
         <SideSection
           id="favorites"
           title="Favorites"
+          collapsed={collapsed}
           actions={
             <button type="button" className="sl-side-icon-btn" aria-label={p.pins.canPin ? 'Pin what is open' : 'Open a run, request, workflow or file to pin it'} title={p.pins.canPin ? 'Pin what is open' : 'Open a run, request, workflow or file to pin it'} disabled={!p.pins.canPin} onClick={p.pins.onPin}>
               <Plus size={14} aria-hidden="true" />
@@ -237,12 +222,11 @@ export function Sidebar(p: SidebarProps) {
               onDragStart={() => setDragging(i)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => move(i)}
+              rail={tipFor(`pin:${i}`, x.label)}
               extra={<SideMenu className="sl-side-row-more" label={`${x.label} options`} items={[{ label: `Unpin ${x.label}`, onPick: () => p.pins.onUnpin(x) }, ...(i > 0 ? [{ label: 'Move up', onPick: () => p.pins.onReorder(swap(p.pins.list, i, i - 1)) }] : []), ...(i < p.pins.list.length - 1 ? [{ label: 'Move down', onPick: () => p.pins.onReorder(swap(p.pins.list, i, i + 1)) }] : [])]} />}
             />
           ))}
         </SideSection>
-          </>
-        )}
       </div>
 
       <div className="sl-side-foot">
@@ -251,7 +235,7 @@ export function Sidebar(p: SidebarProps) {
         <AccountRow {...p.account} rail={tipFor('account', `${p.account.name} · ${p.account.provider ? `${p.account.provider} connected` : 'Connect an account'}`)} />
       </div>
       {tip ? (
-        <div className="sl-side-tip" role="tooltip" id={tipId} style={{ top: tip.top }}>
+        <div className="sl-side-tip" role="tooltip" id={tipId} style={{ top: tip.top, left: tip.left }}>
           {tip.label}
         </div>
       ) : null}

@@ -171,9 +171,9 @@ describe('Sidebar', () => {
     expect(off.textContent).toContain('Connect');
   });
 
-  it('is 244 px wide with dense 28 px rows, a 56 px rail collapsed, and animates its width over 220 ms', () => {
+  it('is 244 px wide with dense 28 px rows, a 56 px rail collapsed, and animates its width over 240 ms', () => {
     expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('width: 244px');
-    expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('transition: width 220ms var(--ease)');
+    expect(cssRule('ui/studio/shell.css', '.sl-side')).toContain('transition: width 240ms var(--ease)');
     expect(cssRule('ui/studio/shell.css', '.sl-side.collapsed')).toContain('width: 56px');
     expect(cssRule('ui/studio/shell.css', '.sl-side-item')).toContain('height: 28px');
     expect(cssRule('ui/studio/shell.css', '.sl-side-item')).toContain('font-size: 13px');
@@ -203,13 +203,17 @@ describe('collapsing to the icon rail', () => {
     const side = document.querySelector('.sl-side')!;
     expect(side.classList.contains('collapsed')).toBe(true);
     expect(localStorage.getItem('tether.sidebar')).toBe('collapsed');
-    // the rail: the glyph, the same icons (labels only as names), no Runs or Favorites lists
-    expect(screen.getByRole('button', { name: 'Project: shop' }).querySelector('.sl-switch-name')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Crew' }).textContent).toBe('');
-    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
-    expect(screen.queryByRole('region', { name: 'Recent runs' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'README.md' })).toBeNull();
+    // the rail is the same markup (spec §6): the same rows, Runs and Favorites included; the glyph is the expand control,
+    // the head's actions and the section headers go inert (they clip under the edge or become hairlines)
+    expect(screen.queryByRole('button', { name: 'Project: shop' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Expand sidebar' }).querySelector('.sl-switch-glyph .sl-glyph')).toBeTruthy();
+    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
+    expect(screen.getByRole('region', { name: 'Recent runs' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'README.md' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+    expect(document.querySelector('.sl-side-head-actions')!.hasAttribute('inert')).toBe(true);
+    expect([...document.querySelectorAll('.sl-side-section-head')].every((h) => h.hasAttribute('inert'))).toBe(true);
+    expect([...document.querySelectorAll('.sl-side-row-extra')].every((h) => h.hasAttribute('inert'))).toBe(true);
     unmount();
     render(<Sidebar {...setupProps()} />);
     expect(document.querySelector('.sl-side.collapsed')).toBeTruthy();
@@ -226,13 +230,15 @@ describe('collapsing to the icon rail', () => {
     expect(document.querySelector('.sl-side.collapsed')).toBeNull();
   });
 
-  it('turns counts into small dots on the rail', () => {
+  it('turns counts into small dots on the rail (the count fades out, its dot fades in, in the icon cell)', () => {
     setup();
     collapse();
-    expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-count')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-dot.needs')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Runs' }).querySelector('.sl-side-dot.live')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-icon .sl-side-dot.needs')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Runs' }).querySelector('.sl-side-icon .sl-side-dot.live')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Builder' }).querySelector('.sl-side-dot')).toBeNull();
+    expect(cssRule('ui/studio/shell.css', '.sl-side-dot')).toContain('opacity: 0');
+    expect(cssRule('ui/studio/shell.css', '.sl-side.collapsed .sl-side-dot')).toContain('opacity: 1');
+    expect(cssRule('ui/studio/shell.css', '.sl-side.collapsed :is(.sl-side-label,.sl-side-meta,.sl-side-count,.sl-side-hint,.sl-side-chip,.sl-switch-name,.sl-switch-chev,.sl-side-head-actions,.sl-side-row-extra,.sl-side-section-head > *,.sl-side-empty)')).toBe('opacity: 0;');
   });
 
   it('shows a label tooltip after hover or focus, linked by aria-describedby, gone on Escape; none while expanded', () => {

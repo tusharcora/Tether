@@ -25,7 +25,7 @@ export interface Prefs {
   diff?: DiffLayout;
   /** Custom colour themes made in the theme editor, by name. Validated on load. */
   themes?: Record<string, unknown>;
-  /** Commands Maestro proposes: ask each time (default), run without asking, or never. */
+  /** Commands Tether proposes: ask each time (default), run without asking, or never. */
   commands?: 'ask' | 'always' | 'off';
   /** API client: the active environment per workspace id (not in the repo, so teammates don't fight over it). */
   httpActiveEnv?: Record<string, string>;

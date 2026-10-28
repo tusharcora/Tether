@@ -1,9 +1,11 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, PanelLeftOpen } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import type { WorkspaceRow } from '../../home/workspaces';
 import { cn } from '../cn';
 import { Glyph } from './Glyph';
 import { InlineError } from './InlineError';
 import { Kbd } from './Kbd';
+import type { TipProps } from './SideParts';
 import './shell.css';
 import { useMenu } from './useMenu';
 
@@ -30,26 +32,40 @@ export interface ProjectsProps {
 
 /**
  * The sidebar's team-style switcher: the Tether glyph (on a transparent ground: blue is for live state only) and the
- * current project's name; on the collapsed rail, the glyph alone. Its menu lists the projects with small neutral initials
- * (a blue dot on one with a live run), then Open folder… ⌘O, Reveal in Finder (Tether.app) and Remove from Tether.
+ * current project's name. Its menu lists the projects with small neutral initials (a blue dot on one with a live run), then
+ * Open folder… ⌘O, Reveal in Finder (Tether.app) and Remove from Tether. On the collapsed rail the glyph stays exactly where
+ * it was and becomes the expand control: the expand icon shows on hover or focus, and a click opens the sidebar.
  */
-export function ProjectSwitcher(p: ProjectsProps & { compact?: boolean }) {
+export function ProjectSwitcher(p: ProjectsProps & { collapsed?: boolean; onExpand?: () => void; rail?: TipProps }) {
   const menu = useMenu();
   const current = p.list.find((w) => w.id === p.current);
   const name = current?.name ?? (p.loading ? 'Loading…' : 'No project');
-  if (p.error && !p.list.length && !p.compact) return <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />;
+  const closeMenu = useRef(menu.close);
+  closeMenu.current = menu.close;
+  useEffect(() => {
+    if (p.collapsed) closeMenu.current();
+  }, [p.collapsed]);
+  if (p.error && !p.list.length && !p.collapsed) return <InlineError compact message={p.error.message} onRetry={p.error.onRetry} />;
   return (
     <span className="sl-switch-anchor">
-      <button ref={menu.triggerRef} type="button" className={cn('sl-switch', { compact: !!p.compact })} aria-label={`Project: ${name}`} title={p.compact ? name : undefined} aria-haspopup="menu" aria-expanded={menu.open} onClick={menu.toggle}>
-        <Glyph size={20} />
-        {p.compact ? null : (
-          <>
-            <span className="sl-switch-name">{name}</span>
-            <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
-          </>
-        )}
+      <button
+        ref={menu.triggerRef}
+        type="button"
+        className="sl-switch"
+        aria-label={p.collapsed ? 'Expand sidebar' : `Project: ${name}`}
+        aria-haspopup={p.collapsed ? undefined : 'menu'}
+        aria-expanded={p.collapsed ? undefined : menu.open}
+        onClick={p.collapsed ? p.onExpand : menu.toggle}
+        {...(p.collapsed ? p.rail : undefined)}
+      >
+        <span className="sl-switch-glyph">
+          <Glyph size={20} />
+          <PanelLeftOpen className="sl-switch-expand" size={16} strokeWidth={1.7} aria-hidden="true" />
+        </span>
+        <span className="sl-switch-name">{name}</span>
+        <ChevronDown className="sl-switch-chev" size={13} strokeWidth={2} aria-hidden="true" />
       </button>
-      {menu.open ? (
+      {menu.open && !p.collapsed ? (
         <div ref={menu.menuRef} className="sl-menu sl-switch-menu" role="menu" aria-label="Projects" onKeyDown={menu.onMenuKey}>
           {p.loading && !p.list.length ? (
             <p className="sl-side-empty" role="status" aria-label="Loading projects">

@@ -80,7 +80,7 @@ describe('sessions', () => {
     s.log.push({ k: 'you', text: 'hi' }, { k: 'choice', title: 't', options: [{ label: 'Retry', action: { type: 'retry' } }], recommended: 0, sel: 0, st: 'pending' });
     s.diagnosed.push('k1');
     saveSession(home, s);
-    saveSession(home, blankSession('main', 'Maestro'));
+    saveSession(home, blankSession('main', 'Tether'));
     rememberLast(home, 'run-abc');
     expect(listSessions(home).map((x) => x.id).sort()).toEqual(['main', 'run-abc']);
     const back = loadSession(home, 'run-abc')!;

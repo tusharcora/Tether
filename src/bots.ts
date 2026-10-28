@@ -20,7 +20,7 @@ export interface BotInfo {
 }
 
 export const CREW: Record<string, BotInfo> = {
-  orchestrator: { name: 'Maestro', title: 'orchestrator', color: () => pal.violet, accent: () => pal.pink },
+  orchestrator: { name: 'Tether', title: 'orchestrator', color: () => pal.violet, accent: () => pal.pink },
   planner: { name: 'Scout', title: 'planner', color: () => pal.blue, accent: () => pal.cyan },
   architect: { name: 'Brick', title: 'architect', color: () => pal.cyan, accent: () => pal.amber },
   coder: { name: 'Bolt', title: 'coder', color: () => pal.green, accent: () => pal.cyan },

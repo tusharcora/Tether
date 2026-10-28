@@ -197,7 +197,7 @@ describe('a per-bot lock around accept, reject and rollback', () => {
 });
 
 // #9
-describe('Maestro commands that change a harness always ask', () => {
+describe('Tether commands that change a harness always ask', () => {
   it('needsApproval matches evolve and harness rollback', () => {
     for (const c of ['aorch evolve --accept coder-0123456789abcdef', 'aorch evolve --reject x', 'npx aorch evolve coder', 'aorch harness coder rollback 1', 'aorch  harness coder   rollback v2']) expect(needsApproval(c), c).toBeTruthy();
     for (const c of ['aorch harness coder log', 'aorch runs', 'git status']) expect(needsApproval(c), c).toBeFalsy();

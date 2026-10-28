@@ -19,8 +19,8 @@ type Pick = { option?: string; text?: string };
 type Reply = { question: string; option?: string; text?: string };
 
 const MODES: { id: TeamMode; label: string; hint: string }[] = [
-  { id: 'live', label: 'Live', hint: 'Maestro reports as the team works and asks you questions' },
-  { id: 'autonomous', label: 'Autonomous', hint: 'Maestro answers for you and reports at the end' },
+  { id: 'live', label: 'Live', hint: 'Tether reports as the team works and asks you questions' },
+  { id: 'autonomous', label: 'Autonomous', hint: 'Tether answers for you and reports at the end' },
 ];
 
 /** Arc's SegmentedControl has no `disabled` prop, so picks are ignored while disabled. */
@@ -154,7 +154,7 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
   const plan = r.plan;
   const showDialogue = (r.cards?.length ?? 0) > 0 && r.answers.length > 0;
   const participants = [
-    { id: 'maestro', name: 'Maestro' },
+    { id: 'tether', name: 'Tether' },
     { id: 'user', name: 'You' },
     { id: 'default', name: 'Recommended (auto)' },
   ];
@@ -164,8 +164,8 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
         const said = a.text ?? card?.options.find((o) => o.id === a.option)?.label ?? a.option ?? '';
         const at = r.startedAt + i * 2;
         return [
-          { id: `q-${i}`, authorId: 'maestro', text: card?.ask ?? a.question, createdAt: at },
-          { id: `a-${i}`, authorId: a.by === 'user' ? 'user' : a.by === 'maestro' ? 'maestro' : 'default', text: said, createdAt: at + 1 },
+          { id: `q-${i}`, authorId: 'tether', text: card?.ask ?? a.question, createdAt: at },
+          { id: `a-${i}`, authorId: a.by === 'user' ? 'user' : a.by === 'tether' || a.by === 'maestro' ? 'tether' : 'default', text: said, createdAt: at + 1 },
         ];
       })
     : [];

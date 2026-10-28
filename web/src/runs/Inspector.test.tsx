@@ -28,14 +28,14 @@ describe('Inspector step pane', () => {
     expect(again.container.querySelector('.out.live .caret')).toBeNull();
   });
 
-  it('says why Maestro picked the bot on team runs only', () => {
+  it('says why Tether picked the bot on team runs only', () => {
     const plan = { goal: 'g', success: [], assignments: [{ bot: 'coder', goal: 'c', mode: 'write' as const, why: 'Bolt knows this code' }], limits: { allowWrites: true }, answers: [] };
     const { unmount } = show(makeRun({ kind: 'team', plan }), 'code');
     expect(screen.getByText('Bolt knows this code')).toBeTruthy();
-    expect(screen.getByText('Why Maestro picked it')).toBeTruthy();
+    expect(screen.getByText('Why Tether picked it')).toBeTruthy();
     unmount();
     show(makeRun({ plan }), 'code');
-    expect(screen.queryByText('Why Maestro picked it')).toBeNull();
+    expect(screen.queryByText('Why Tether picked it')).toBeNull();
   });
 
   it('draws per-file bars for the step’s committed diff', async () => {

@@ -64,12 +64,14 @@ describe('POST /api/http/send-to-agent', () => {
     expect(t.store.events(r.json.runId).map((e) => e.event).find((e) => e.type === 'http.attached')).toEqual({ type: 'http.attached', historyId: sent.json.historyId });
   });
 
-  it('Ask Maestro starts a team run', async () => {
-    const sent = await t.api('POST', '/api/http/send', { id: 'orders/list' });
-    const r = await t.api('POST', '/api/http/send-to-agent', { historyId: sent.json.historyId, target: { kind: 'maestro' }, note: '' });
-    expect(r.status).toBe(201);
-    expect(t.store.state(r.json.runId)!.kind).toBe('team');
-    t.engine.stop(r.json.runId);
+  it('Ask Tether starts a team run, and "maestro" (its old name) still does', async () => {
+    for (const kind of ['tether', 'maestro']) {
+      const sent = await t.api('POST', '/api/http/send', { id: 'orders/list' });
+      const r = await t.api('POST', '/api/http/send-to-agent', { historyId: sent.json.historyId, target: { kind }, note: '' });
+      expect(r.status, kind).toBe(201);
+      expect(t.store.state(r.json.runId)!.kind).toBe('team');
+      t.engine.stop(r.json.runId);
+    }
   });
 
   it('a team run with one bot puts that bot on the roster', async () => {

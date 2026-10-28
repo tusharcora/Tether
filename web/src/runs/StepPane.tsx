@@ -9,7 +9,7 @@ import type { RunAct } from '../Runs';
 import { StatusChip, toneFor } from '../ui/studio/StatusChip';
 
 /**
- * The selected step: its bot's face and name, status, why Maestro picked it (team runs), live output with a caret while
+ * The selected step: its bot's face and name, status, why Tether picked it (team runs), live output with a caret while
  * it runs, gate results, output, the diff it committed (`diff`: the Inspector's loaded diff, error or skeleton) and feedback.
  */
 export function StepPane(p: { run: RunView; nodeId: string; diff?: ReactNode; note: string; onNote: (t: string) => void; onAct: RunAct }) {
@@ -25,7 +25,7 @@ export function StepPane(p: { run: RunView; nodeId: string; diff?: ReactNode; no
     );
   const bot = crewFor(pnode, crew);
   const running = node.status === 'running';
-  // "why Maestro picked it" is the plan assignment's reason, team runs only
+  // "why Tether picked it" is the plan assignment's reason, team runs only
   const why = r.kind === 'team' ? r.plan?.assignments.find((a) => a.bot === pnode.role)?.why : undefined;
   async function feedback(rating: 'up' | 'down') {
     const note = p.note.trim();
@@ -53,7 +53,7 @@ export function StepPane(p: { run: RunView; nodeId: string; diff?: ReactNode; no
       </p>
       {why ? (
         <p className="step-why">
-          <span className="sl-meta">Why Maestro picked it</span> <span>{why}</span>
+          <span className="sl-meta">Why Tether picked it</span> <span>{why}</span>
         </p>
       ) : null}
       {node.error ? <div className="alert error">{node.error}</div> : null}

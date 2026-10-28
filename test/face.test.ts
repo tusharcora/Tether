@@ -285,7 +285,7 @@ describe('header face mood (global, from run state)', () => {
     expect(faceOf(ui)).toBe('▐  ●  ●  ▌  ');
   });
 
-  it('waiting: any run awaiting approval, whatever the screen; working: any live run or Maestro replying', () => {
+  it('waiting: any run awaiting approval, whatever the screen; working: any live run or Tether replying', () => {
     const { ui, set } = make();
     set([row('a', 'paused'), row('b', 'running')]);
     expect(faceOf(ui)).toBe('▐  ◔  ◔  ▌ ?');

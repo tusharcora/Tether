@@ -64,7 +64,7 @@ describe('#1 a resumed session still gets redo instructions after an answered qu
     expect(a[2]!.prompt).toMatch(/<answer>\s*postgres/);
   });
 
-  it('autonomous: Maestro answered at once; the redo still carries the reason', async () => {
+  it('autonomous: Tether answered at once; the redo still carries the reason', async () => {
     const t = mk(new MockAdapter({ resume: true }));
     const id = await approvedRun(t, boss({ a: { output: ASK1 } }, { review: [redo, ACCEPT] }), { mode: 'autonomous' });
     const s = await t.engine.wait(id);

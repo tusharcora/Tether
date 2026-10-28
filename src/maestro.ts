@@ -1,5 +1,5 @@
 /**
- * Talking to Maestro. One chat turn = one read-only agent call that answers in a sentence or two and may
+ * Talking to Tether. One chat turn = one read-only agent call that answers in a sentence or two and may
  * propose a workflow to save, an improved version of an existing one, or a run to start. The agent never
  * writes anything itself: a proposal is validated here and only saved or run when the person confirms.
  */
@@ -18,7 +18,7 @@ export type { Proposal, Turn };
 export interface Reply {
   text: string;
   proposal?: Proposal;
-  /** A shell command Maestro wants to run. Only ever shown to the person; it runs if they allow it. */
+  /** A shell command Tether wants to run. Only ever shown to the person; it runs if they allow it. */
   command?: { command: string; why?: string };
   warnings: string[];
 }
@@ -32,7 +32,7 @@ export interface ChatOpts {
   history?: Turn[];
   /** The workflow the person is looking at right now, if any. */
   current?: string;
-  /** One line per recent run, so Maestro can say what the crew is doing. */
+  /** One line per recent run, so Tether can say what the crew is doing. */
   runs?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -53,8 +53,8 @@ function prompt(message: string, o: ChatOpts, tests: string | undefined): string
     }
   });
   const custom = rosterCustomText(o.repo, message, o.home);
-  const hist = (o.history ?? []).slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Maestro'}: ${t.text.slice(0, 400)}`).join('\n');
-  return `You are Maestro, the orchestrator of a team of coding agents. Talk with the user in one to three plain sentences. You can also design, improve and save workflows (linear pipelines of steps), or start one. Do NOT do any coding task yourself and do not modify any files.
+  const hist = (o.history ?? []).slice(-6).map((t) => `${t.who === 'you' ? 'User' : 'Tether'}: ${t.text.slice(0, 400)}`).join('\n');
+  return `You are Tether, the orchestrator of a team of coding agents. Talk with the user in one to three plain sentences. You can also design, improve and save workflows (linear pipelines of steps), or start one. Do NOT do any coding task yourself and do not modify any files.
 
 ${ws ? contextOf(ws).slice(0, 2500) + '\n' : ''}Saved workflows:
 ${lines.join('\n') || '(none yet)'}
@@ -75,7 +75,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
  "mode":"live" | "autonomous" (only for team),
  "command":{"command":"one shell command","why":"what it tells us"}}
 "command" is optional and at most one: use it only when you need to look at or change something on disk to help (prefer read-only ones such as git status, ls, cat, npm test). The person must approve it first, so say what it is for. Never anything destructive.
-Use "answer" for questions and advice (leave out the other fields). Use "save" to create a new workflow from the user's needs. Use "optimize" to improve a saved workflow (name = that workflow; the steps are the improved version, and your reply says what changed and why). Use "run" to start a saved workflow (name + task). Use "team" (task, optional mode) when the work is open-ended or the user asks to "use a team": a team of bots plans the work with the user, asking questions first, instead of following a fixed pipeline. "live" means Maestro reports as the team works; "autonomous" means Maestro answers for the user and reports at the end. Prefer a saved workflow when the steps are already known. Prefer few steps; always put a coder before tester or reviewer; add approval for risky or user-facing changes.
+Use "answer" for questions and advice (leave out the other fields). Use "save" to create a new workflow from the user's needs. Use "optimize" to improve a saved workflow (name = that workflow; the steps are the improved version, and your reply says what changed and why). Use "run" to start a saved workflow (name + task). Use "team" (task, optional mode) when the work is open-ended or the user asks to "use a team": a team of bots plans the work with the user, asking questions first, instead of following a fixed pipeline. "live" means Tether reports as the team works; "autonomous" means Tether answers for the user and reports at the end. Prefer a saved workflow when the steps are already known. Prefer few steps; always put a coder before tester or reviewer; add approval for risky or user-facing changes.
 Evolve: when the recent runs show the same bot sent back or redone again and again (or the user says a bot keeps making the same mistake), you may offer to run \`aorch evolve <bot>\`, which asks a model (one call, a small cost) to propose edits to that bot's guidance from the lessons learned; nothing changes until the user accepts the proposal. Only offer it: say so in your reply, or put it in "command" so the user can approve it. Never run it yourself and never claim it has run.`;
 }
 
@@ -85,7 +85,7 @@ export function pipelineFromReply(raw: { name?: unknown; steps?: unknown; maxCos
   if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a usable workflow name`);
   if (!Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > 8) throw new Error('a workflow needs 1 to 8 steps');
   const tests = detectTestCommand(o.repo);
-  const allowed = new Set(proposableSteps()); // managers are authored by hand, not proposed by Maestro
+  const allowed = new Set(proposableSteps()); // managers are authored by hand, not proposed by Tether
   const p = blankPipeline(name);
   if (o.base) p.settings = { ...o.base.settings };
   for (const s of raw.steps) {
@@ -118,7 +118,7 @@ export async function chat(message: string, o: ChatOpts): Promise<Reply> {
   try {
     let text = '';
     const res = await o.registry.get(agent).run({
-      runId: 'maestro',
+      runId: 'tether',
       nodeId: 'chat',
       prompt: prompt(message, o, detectTestCommand(o.repo)),
       cwd: o.repo,

@@ -5,7 +5,7 @@
  *     └─ run view      (the crew working through a run; approve, stop, resume)
  *          └─ session  (one agent's live output / events / diff; attach to its agent's own session or open a shell)
  *   workflow editor    (arrange, add, remove steps; edit step settings; save; run)
- *   orchestrator bot   (describe a task, Maestro designs the workflow, you approve it, it runs)
+ *   orchestrator bot   (describe a task, Tether designs the workflow, you approve it, it runs)
  */
 import { alreadyRan, fetchPr, loadSettings, parsePr, saveSettings, startPrRun, type Rule } from './pr.js';
 import { dryRunVerdict, ensureIds, findRule, lastDelivery, parsePrTarget, readDeliveries, triggerStatus, webhookSetupInfo, type Delivery, type TriggerStatus, ago as agoRel } from './triggers.js';
@@ -165,7 +165,7 @@ export interface Fx {
   shake?: boolean;
   /** 0..1: the baton is travelling along the arrow into this step. */
   baton?: number;
-  /** Maestro stepped in on this step (↻ retry, ⇧ escalate). */
+  /** Tether stepped in on this step (↻ retry, ⇧ escalate). */
   tag?: string;
 }
 
@@ -324,9 +324,9 @@ export class Tui {
   private lastRender: string[] = [];
   private avail: Record<string, { ok: boolean; detail?: string; version?: string; models: string[] }> = {};
   private availAt = 0;
-  /** The line at the bottom that talks to Maestro. */
+  /** The line at the bottom that talks to Tether. */
   private cardIn = new CardInput();
-  private talk: { text: string; scroll: number; session: Session } = { text: '', scroll: 0, session: blankSession(MAIN, 'Maestro') };
+  private talk: { text: string; scroll: number; session: Session } = { text: '', scroll: 0, session: blankSession(MAIN, 'Tether') };
   private known = new Map<string, Session>();
   private busyIds = new Set<string>();
   private diagBusy = new Set<string>();
@@ -340,7 +340,7 @@ export class Tui {
     this.registry = makeRegistry(d.cfg);
     this.prefs = loadPrefs(d.cfg.home);
     refreshCrew(d.cfg.home);
-    const main = loadSession(d.cfg.home, MAIN) ?? blankSession(MAIN, 'Maestro');
+    const main = loadSession(d.cfg.home, MAIN) ?? blankSession(MAIN, 'Tether');
     this.known.set(MAIN, main);
     for (const sn of listSessions(d.cfg.home)) this.known.set(sn.id, sn);
     const last = lastSessionId(d.cfg.home);
@@ -645,7 +645,7 @@ export class Tui {
     if (k === 'enter') {
       const msg = t.text.trim();
       if (!msg) return pending ? this.acceptOffer(pending) : undefined;
-      if (this.isBusy() && !msg.startsWith('/')) return this.say('Maestro is still thinking', 'err');
+      if (this.isBusy() && !msg.startsWith('/')) return this.say('Tether is still thinking', 'err');
       t.text = '';
       return msg.startsWith('/') ? this.slash(s, msg) : this.sendTalk(msg);
     }
@@ -712,7 +712,7 @@ export class Tui {
       this.sess.log = [];
       this.sess.history = [];
       t.scroll = 0;
-    } else if (cmd === 'main') this.switchTo(this.session(MAIN) ?? blankSession(MAIN, 'Maestro'));
+    } else if (cmd === 'main') this.switchTo(this.session(MAIN) ?? blankSession(MAIN, 'Tether'));
     else if (cmd === 'sessions' || cmd === 'chats') this.pickSession();
     else if (cmd === 'chat') {
       const id = findRun();
@@ -723,7 +723,7 @@ export class Tui {
       if (!runs.length) note('nothing is running right now');
       for (const r of runs) {
         const st = this.state(r.id);
-        if (st) this.sess.log.push({ k: 'maestro', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
+        if (st) this.sess.log.push({ k: 'tether', text: `${st.pipeline.name} ${r.id.slice(-8)}: ${this.progressLine(st)}` });
       }
     } else if (cmd === 'swap') {
       const sw = parseSwap(line);
@@ -770,7 +770,7 @@ export class Tui {
         note('cleared the list of always-allowed commands');
       } else {
         const list = loadAllowed(this.d.cfg.home);
-        note(`commands: ${this.prefs.commands ?? 'ask'} (Settings → Maestro commands)`);
+        note(`commands: ${this.prefs.commands ?? 'ask'} (Settings → Tether commands)`);
         note(list.length ? `always allowed:  ${list.join('   ')}` : 'no always-allowed commands yet');
       }
     } else if (cmd === 'mouse') {
@@ -803,10 +803,10 @@ export class Tui {
       note('/team <task>                           start a team run (it asks you questions first)');
       note('/mode live|autonomous                  how much a team run talks to you');
       note('/swap <n> <bot>                        give a plan assignment to another bot');
-      note('/allowed [clear]                       commands you always allow for Maestro');
+      note('/allowed [clear]                       commands you always allow for Tether');
       note('/mouse                                 toggle clicking (off lets you select and copy text)');
       note('/providers  /clear  /quit');
-      note('Anything else is a message to Maestro. In a run\'s conversation he can change that run for you.');
+      note('Anything else is a message to Tether. In a run\'s conversation he can change that run for you.');
     } else note(`unknown command /${cmd} (try /help)`);
     t.scroll = 0;
     this.persist();
@@ -814,7 +814,7 @@ export class Tui {
 
   private pickSession() {
     const runs = this.runs();
-    const rows: { label: string; hint: string; value: string }[] = [{ label: '● Maestro', hint: 'the main conversation', value: MAIN }];
+    const rows: { label: string; hint: string; value: string }[] = [{ label: '● Tether', hint: 'the main conversation', value: MAIN }];
     const seen = new Set<string>();
     for (const sn of [...this.known.values()].sort((a, b) => b.updatedAt - a.updatedAt)) {
       if (sn.id === MAIN || !sn.runId) continue;
@@ -823,10 +823,10 @@ export class Tui {
       rows.push({ label: `${sn.id === this.sess.id ? '▸ ' : '  '}${sn.title}`, hint: `${st} · ${ago(sn.updatedAt)}`, value: sn.id });
     }
     for (const r of runs.slice(0, 15)) if (!seen.has(r.id)) rows.push({ label: `  ${r.pipeline} · ${r.id.slice(-8)}`, hint: `${r.status} · no conversation yet`, value: `run:${r.id}` });
-    this.choose('Conversations', rows, (v) => (v.startsWith('run:') ? this.openRunSession(v.slice(4)) : this.switchTo(this.session(v) ?? blankSession(MAIN, 'Maestro'))));
+    this.choose('Conversations', rows, (v) => (v.startsWith('run:') ? this.openRunSession(v.slice(4)) : this.switchTo(this.session(v) ?? blankSession(MAIN, 'Tether'))));
   }
 
-  /** What is running right now, in one line each, so Maestro can answer questions about the crew. */
+  /** What is running right now, in one line each, so Tether can answer questions about the crew. */
   private runsContext(): string {
     return this.runs()
       .slice(0, 5)
@@ -858,8 +858,8 @@ export class Tui {
     const st = sess.runId ? this.state(sess.runId) : undefined;
     if (sess.runId && st) {
       chatAboutRun(msg, st, sess.history.slice(), this.runOpts()).then((r) => {
-        sess.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
-        sess.log.push({ k: 'maestro', text: r.text });
+        sess.history.push({ who: 'you', text: msg }, { who: 'tether', text: r.text });
+        sess.log.push({ k: 'tether', text: r.text });
         if (r.choices) sess.log.push(this.choiceEntry(r.choices.options, r.choices.recommended));
         if (r.command) this.requestCommand(sess, r.command.command, r.command.why, depth);
         done();
@@ -869,8 +869,8 @@ export class Tui {
     const b = this.bindings().orchestrator;
     askMaestro(msg, { home: this.d.cfg.home, repo: process.cwd(), registry: this.registry, agent: b?.agent, model: b?.model, history: sess.history.slice(), runs: this.runsContext() })
       .then((r) => {
-        sess.history.push({ who: 'you', text: msg }, { who: 'maestro', text: r.text });
-        sess.log.push({ k: 'maestro', text: r.text });
+        sess.history.push({ who: 'you', text: msg }, { who: 'tether', text: r.text });
+        sess.log.push({ k: 'tether', text: r.text });
         for (const w of r.warnings) this.note(w, sess);
         if (r.proposal) sess.log.push({ k: 'offer', r, st: 'pending' });
         if (r.command) this.requestCommand(sess, r.command.command, r.command.why, depth);
@@ -888,7 +888,7 @@ export class Tui {
     return (st && existsSync(st.workdir) ? st.workdir : st?.repo) ?? process.cwd();
   }
 
-  /** Maestro wants to run a command: refuse it, run it, or ask, depending on Settings and what you allowed before. */
+  /** Tether wants to run a command: refuse it, run it, or ask, depending on Settings and what you allowed before. */
   private requestCommand(sess: Session, command: string, why: string | undefined, depth: number, explicit = false) {
     const mode = this.prefs.commands ?? 'ask';
     const cmd = normalizeCommand(command);
@@ -902,14 +902,14 @@ export class Tui {
     }
     if (mode === 'off' && !explicit) {
       e.st = 'denied';
-      e.note = 'Maestro commands are off (Settings → Maestro commands)';
+      e.note = 'Tether commands are off (Settings → Tether commands)';
       return this.save(sess);
     }
     const ask = needsApproval(cmd);
     if (ask && !explicit) {
       e.note = ask;
       this.save(sess);
-      if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro wants to run a command. Open /sessions to answer`, 'err');
+      if (this.sess.id !== sess.id) this.say(`${sess.title}: Tether wants to run a command. Open /sessions to answer`, 'err');
       return;
     }
     if (explicit || mode === 'always' || isAllowed(this.d.cfg.home, cmd)) {
@@ -917,7 +917,7 @@ export class Tui {
       return this.execCommand(sess, e, depth);
     }
     this.save(sess);
-    if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro wants to run a command. Open /sessions to answer`, 'err');
+    if (this.sess.id !== sess.id) this.say(`${sess.title}: Tether wants to run a command. Open /sessions to answer`, 'err');
   }
 
   private answerPermit(e: Extract<Entry, { k: 'permit' }>, i: number) {
@@ -947,7 +947,7 @@ export class Tui {
       const report = `Command finished: ${e.command}\nexit code ${r.exit ?? 'none'}${r.timedOut ? ' (timed out)' : ''}\n${r.output.trim().slice(-3000)}`;
       sess.history.push({ who: 'you', text: report });
       this.save(sess);
-      // let Maestro read the result and carry on, a few times at most
+      // let Tether read the result and carry on, a few times at most
       if (depth < 3 && !this.isBusy(sess)) this.sendTalk(`${report}\n\n(This is the output of the command you proposed. Say what it means and what to do next. Only propose another command if you really need to.)`, { hidden: true, depth: depth + 1, sess });
     });
   }
@@ -956,7 +956,7 @@ export class Tui {
     return { k: 'choice', title, options, recommended, sel: recommended, st: 'pending' };
   }
 
-  /** The person picked one of Maestro's options. */
+  /** The person picked one of Tether's options. */
   private takeChoice(e: Extract<Entry, { k: 'choice' }>, i: number) {
     const sess = this.sess;
     const o = e.options[i];
@@ -1002,7 +1002,7 @@ export class Tui {
     this.persist();
   }
 
-  /** The person said yes to what Maestro proposed. */
+  /** The person said yes to what Tether proposed. */
   private acceptOffer(e: Extract<Entry, { k: 'offer' }>) {
     const pr = e.r.proposal!;
     const from = this.sess;
@@ -1071,7 +1071,7 @@ export class Tui {
     if (st.status === 'running' || st.status === 'paused') {
       for (const q of st.pending) if (!rep.includes(`ask:${q.id}`)) {
         rep.push(`ask:${q.id}`);
-        if (this.sess.id !== sess.id) this.say(`${sess.title}: Maestro has a question for you (/sessions)`);
+        if (this.sess.id !== sess.id) this.say(`${sess.title}: Tether has a question for you (/sessions)`);
       }
       if (planWaiting(st) && !rep.includes('plan')) {
         rep.push('plan');
@@ -1084,7 +1084,7 @@ export class Tui {
       lines.push(finalSummary(st));
       err = st.status !== 'done';
     }
-    for (const text of lines) sess.log.push({ k: 'maestro', text });
+    for (const text of lines) sess.log.push({ k: 'tether', text });
     if (lines.length) {
       if (this.sess.id !== sess.id) this.say(`${sess.title}: ${lines.at(-1)}${lines.length > 1 ? ` (+${lines.length - 1} more)` : ''}`, err ? 'err' : 'ok');
       else this.talk.scroll = 0;
@@ -1111,7 +1111,7 @@ export class Tui {
     }
     const active = this.sess.id === sess.id;
     const tell = (text: string, tone: 'ok' | 'err' = 'ok') => {
-      sess.log.push({ k: 'maestro', text });
+      sess.log.push({ k: 'tether', text });
       if (!active) this.say(`${sess.title}: ${text}`, tone);
       else this.talk.scroll = 0;
       rep.splice(0, Math.max(0, rep.length - 200));
@@ -1128,9 +1128,9 @@ export class Tui {
         this.diagBusy.add(sess.runId!);
         diagnose(st, this.runOpts())
           .then((c) => {
-            sess.log.push({ k: 'maestro', text: c.text });
+            sess.log.push({ k: 'tether', text: c.text });
             sess.log.push(this.choiceEntry(c.options, c.recommended));
-            if (this.sess.id !== sess.id) this.say(`${sess.title} failed: Maestro has options (/sessions)`, 'err');
+            if (this.sess.id !== sess.id) this.say(`${sess.title} failed: Tether has options (/sessions)`, 'err');
             else this.talk.scroll = 0;
           })
           .finally(() => {
@@ -1142,7 +1142,7 @@ export class Tui {
       const key = `interrupted:${done}`;
       if (!sess.diagnosed.includes(key) && !this.diagBusy.has(st.id)) {
         sess.diagnosed.push(key);
-        sess.log.push({ k: 'maestro', text: `This run stopped when aorch was closed, ${done} of ${total} steps in. Nothing done so far is lost; it can continue from here.` });
+        sess.log.push({ k: 'tether', text: `This run stopped when aorch was closed, ${done} of ${total} steps in. Nothing done so far is lost; it can continue from here.` });
         sess.log.push(this.choiceEntry([
           { label: 'Resume where it left off', detail: 'continue from the first unfinished step', action: { type: 'resume' } },
           { label: 'Open the run', detail: 'look at what it has done so far', action: { type: 'open' } },
@@ -1164,7 +1164,7 @@ export class Tui {
     add(dim(`  ${sess.runId ? 'run conversation' : 'conversation'}  `) + bold(sess.title) + dim(`   /sessions switch · ${sess.runId ? '/main back' : '/chat open the latest run’s chat'}`));
     if (!sess.log.length) {
       add('');
-      add(`${bot} ${bold('Maestro')}`);
+      add(`${bot} ${bold('Tether')}`);
       para('  ', 'Tell me what you want built or fixed. I will plan a workflow, you confirm it, and the crew runs it right here.');
       add('');
       add(dim('  try: “plan a careful flow for payment code with a human sign-off”'));
@@ -1173,13 +1173,13 @@ export class Tui {
     for (const e of sess.log) {
       add('');
       if (e.k === 'you') {
-        // Your own messages sit on a soft background so they stand out from Maestro's replies.
+        // Your own messages sit on a soft background so they stand out from Tether's replies.
         const bgc = caps.level ? bgCode(mix([[0, 0, 0], pal.slate], 0.55)) : '';
         const from = out.length;
         para(bold(cyan('› ')), e.text);
         if (bgc) for (let i = from; i < out.length; i++) out[i]!.text = bgc + padEnd(out[i]!.text, w - 2).replace(/\x1b\[(?:0|49)m/g, (r) => r + bgc) + '\x1b[0m';
       }
-      else if (e.k === 'maestro') para(bot + ' ', e.text);
+      else if (e.k === 'tether' || e.k === 'maestro') para(bot + ' ', e.text);
       else if (e.k === 'note') para(dim('  ⎿ '), e.text, '    ');
       else if (e.k === 'choice') {
         add(`${bot} ${bold(e.title || 'What would you like to do?')}`);
@@ -1191,7 +1191,7 @@ export class Tui {
         });
         add('  ' + (e.st === 'pending' ? `${cyan('enter')} ${dim('choose')}  ${cyan('↑↓')} ${dim('move')}  ${cyan('1-' + e.options.length)} ${dim('pick')}  ${cyan('esc')} ${dim('skip')}` : e.st === 'failed' ? red('✘ ') + (e.note ?? 'failed') : e.st === 'done' ? dim(e.note ?? 'done') : dim('skipped')));
       } else if (e.k === 'permit') {
-        add(`${bot} ${bold(e.st === 'pending' ? 'Maestro wants to run a command' : 'Command')}`);
+        add(`${bot} ${bold(e.st === 'pending' ? 'Tether wants to run a command' : 'Command')}`);
         add('  ' + bold(paint(pal.amber, '$ ')) + e.command);
         add(dim(`  in ${e.cwd}`));
         if (e.why) para(dim('  why: '), e.why, '       ');
@@ -1251,7 +1251,7 @@ export class Tui {
     }
     if (this.isBusy() || (sess.runId && this.diagBusy.has(sess.runId))) {
       add('');
-      add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim(this.isBusy() ? 'Maestro is thinking…' : 'Maestro is working out what went wrong…')}`);
+      add(`${paint(pal.cyan, SPIN[this.tick % SPIN.length]!)} ${dim(this.isBusy() ? 'Tether is thinking…' : 'Tether is working out what went wrong…')}`);
     }
     return out;
   }
@@ -1294,9 +1294,9 @@ export class Tui {
       const room = Math.max(8, this.cols - 6);
       const shown = t.text.length > room ? '…' + t.text.slice(-(room - 1)) : t.text;
       const hint = this.suggestion();
-      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim(hint?.label ?? (this.sess.runId ? 'Ask about this run, or tell me what to change…' : 'Message Maestro… (/ for commands)'))}${!t.text && hint ? dim('   tab ⇥') : ''}`;
+      return `${bold(paint(pal.cyan, '›'))} ${shown}${cur}${t.text ? '' : dim(hint?.label ?? (this.sess.runId ? 'Ask about this run, or tell me what to change…' : 'Message Tether… (/ for commands)'))}${!t.text && hint ? dim('   tab ⇥') : ''}`;
     }
-    return dim(dash ? '› chat with Maestro  ·  press / to open the chat' : this.screen.kind === 'run' ? '› press / to talk to Maestro about this run' : '› esc back to the home screen to chat with Maestro');
+    return dim(dash ? '› chat with Tether  ·  press / to open the chat' : this.screen.kind === 'run' ? '› press / to talk to Tether about this run' : '› esc back to the home screen to chat with Tether');
   }
 
   private modalKey(k: string) {
@@ -1483,7 +1483,7 @@ export class Tui {
     add('go to', 'Crew', '4', goto('crew'));
     add('go to', 'Triggers', '5', goto('triggers'));
     add('go to', 'Settings', '6', goto('settings'));
-    add('do', 'Ask Maestro to build something', 'o', () => this.orchestrate());
+    add('do', 'Ask Tether to build something', 'o', () => this.orchestrate());
     add('do', 'New workflow', 'n', () => this.newWorkflow());
     add('do', 'New team run', 'T', () => this.askTeam());
     add('do', 'Review a pull request', 'paste a GitHub PR link', () => this.reviewPr());
@@ -1551,14 +1551,14 @@ export class Tui {
     return this.d.store.state(id);
   }
 
-  /** Maestro watches the run: retry, then escalate the failing step, then stop and say why. */
+  /** Tether watches the run: retry, then escalate the failing step, then stop and say why. */
   private superviseRun(id: string, rounds = 2) {
     const b = this.bindings();
     supervise(this.d.engine, id, {
       maxRounds: rounds,
       escalate: b.escalate,
       diagnose: (st) => diagnoseFailure(st, { registry: this.registry, agent: b.orchestrator?.agent, model: b.orchestrator?.model }),
-      onAction: (a) => this.say(`Maestro ${a.action === 'stop' ? 'stops' : a.action}: ${a.detail}`, a.action === 'stop' ? 'err' : 'ok'),
+      onAction: (a) => this.say(`Tether ${a.action === 'stop' ? 'stops' : a.action}: ${a.detail}`, a.action === 'stop' ? 'err' : 'ok'),
     }).catch((e: Error) => this.say(e.message.split('\n')[0]!, 'err'));
   }
 
@@ -1569,7 +1569,7 @@ export class Tui {
       .start({ pipeline, task, repo: r, autoApprove: auto })
       .then((id) => {
         (this.mine.set(id, 'running'), (this.failedAt = 0));
-        this.say(`started ${id}${watch ? '  ·  Maestro is watching' : ''}`);
+        this.say(`started ${id}${watch ? '  ·  Tether is watching' : ''}`);
         if (watch) this.superviseRun(id);
         if (onStarted) return onStarted(id);
         this.stack = [this.stack[0]!, { kind: 'run', runId: id, sel: 0 }];
@@ -1742,7 +1742,7 @@ export class Tui {
     const st = this.d.store.state(id);
     if (!st) return this.say('unknown run');
     this.modal = { kind: 'confirm', title: `Delete run ${id} (${st.pipeline.name}) with its branch, files and chat? This cannot be undone. (y/n)`, onYes: () => {
-      if (this.sess.runId === id) this.talk.session = loadSession(this.d.cfg.home, MAIN) ?? blankSession(MAIN, 'Maestro');
+      if (this.sess.runId === id) this.talk.session = loadSession(this.d.cfg.home, MAIN) ?? blankSession(MAIN, 'Tether');
       this.d.engine.deleteRun(id).then(() => {
         if (this.screen.kind === 'run' && this.screen.runId === id) this.pop();
         this.say(`deleted ${id}`);
@@ -1948,7 +1948,7 @@ export class Tui {
     if (!who && orchs.length > 1) return this.choose('Who plans it?', orchs.map((o) => ({ value: o.id, label: o.name, hint: o.title })), (id) => this.orchestrate(orchs.find((o) => o.id === id)));
     const lead = who ?? orchs[0];
     const custom = lead && lead.id !== 'orchestrator' ? lead : undefined;
-    this.ask(`Tell ${lead?.name ?? 'Maestro'} what you want done:`, (task) => {
+    this.ask(`Tell ${lead?.name ?? 'Tether'} what you want done:`, (task) => {
       if (!task) return;
       this.ask('Repository (a git repo):', (repo) => {
         const r = resolve(repo || process.cwd());
@@ -2034,7 +2034,7 @@ export class Tui {
     }
     else if (k === 'R') this.resumeRun(s.runId, true);
     else if (k === 'm') {
-      if (st.status !== 'error') return this.say(st.status === 'running' ? 'the run is still going; Maestro steps in when it fails' : `nothing to fix: the run is ${st.status}`);
+      if (st.status !== 'error') return this.say(st.status === 'running' ? 'the run is still going; Tether steps in when it fails' : `nothing to fix: the run is ${st.status}`);
       this.superviseRun(s.runId);
     }
     else if (k === 'd') {
@@ -2216,7 +2216,7 @@ export class Tui {
       { label: 'Inline graphics', value: onOff(this.prefs.graphics), hint: 'timeline + cost charts in the run view (needs a colour terminal and 34+ rows)', change: flip('graphics') },
       { label: 'Side pane', value: cyan(this.prefs.split ?? 'auto'), hint: 'run view: diff or events beside the live output (100+ columns)', change: (d) => this.setPref({ split: cycle(['auto', 'diff', 'events', 'off'] as const, this.prefs.split ?? 'auto', d) }) },
       { label: 'Diff layout', value: cyan(this.prefs.diff ?? 'auto'), hint: 'auto = side by side on wide terminals', change: (d) => this.setPref({ diff: cycle(['auto', 'unified', 'split'] as const, this.prefs.diff ?? 'auto', d) }) },
-      { label: 'Maestro commands', value: this.prefs.commands === 'always' ? amber('always run') : this.prefs.commands === 'off' ? dim('off') : green('ask first'), hint: 'ask first: allow once / always allow / deny · always run: no prompt (obvious dangers still refused) · off: never. /allowed lists approvals', change: (d) => this.setPref({ commands: cycle(['ask', 'always', 'off'] as const, this.prefs.commands ?? 'ask', d) }) },
+      { label: 'Tether commands', value: this.prefs.commands === 'always' ? amber('always run') : this.prefs.commands === 'off' ? dim('off') : green('ask first'), hint: 'ask first: allow once / always allow / deny · always run: no prompt (obvious dangers still refused) · off: never. /allowed lists approvals', change: (d) => this.setPref({ commands: cycle(['ask', 'always', 'off'] as const, this.prefs.commands ?? 'ask', d) }) },
       { label: 'LLM providers', value: cyan(`${Object.values(this.avail).filter((a) => a.ok).length} ready`), hint: 'enter: view what is set up, add DeepSeek, OpenRouter, your own server…', change: () => this.providers() },
       { label: 'Theme editor', value: dim('open'), hint: 'edit colours with a live preview', change: () => this.openThemeEditor() },
     ];
@@ -2585,7 +2585,7 @@ export class Tui {
       if (asked) return { mood: 'waiting', text: 'The team needs you: a question to answer or a plan to approve. Press / to open this run\'s chat.' };
       const waiting = st && Object.values(st.nodes).some((n) => n.status === 'awaiting');
       const last = st?.actions[st.actions.length - 1];
-      if (last && st?.status !== 'done') return { mood: last.action === 'stop' ? 'sad' : 'working', text: `Maestro ${last.action === 'stop' ? 'stopped' : last.action}: ${last.detail}` };
+      if (last && st?.status !== 'done') return { mood: last.action === 'stop' ? 'sad' : 'working', text: `Tether ${last.action === 'stop' ? 'stopped' : last.action}: ${last.detail}` };
       if (st && st.status === 'running' && this.prefs.reactions !== false) {
         const ns = st.pipeline.nodes;
         const i = ns.findIndex((n, ix) => (st.nodes[n.id]?.finishedAt ?? 0) > Date.now() - 3000 && st.nodes[n.id]?.status === 'done' && ix < ns.length - 1);
@@ -2617,7 +2617,7 @@ export class Tui {
     });
   }
 
-  /** Header: face + title line, tab line, Maestro's one-line status, then a rule. 4 rows. */
+  /** Header: face + title line, tab line, Tether's one-line status, then a rule. 4 rows. */
   private header(): string[] {
     const w = this.cols;
     const runs = this.runs(); // one scan of the run store per render, shared by the status line and the face
@@ -2672,7 +2672,7 @@ export class Tui {
       : s.kind === 'botedit' ? '↑↓ field · ←→ change · enter edit · r randomize look · s save · esc discard'
       : s.kind === 'evolve' ? (s.st.confirm ? 'y reject · any other key cancels' : '↑↓ proposal · 1-9 pick edits · K pick kept · a accept · r reject · esc back')
       : s.kind === 'theme' ? '↑↓ colour · ←→ hue · -/= lighter · ,/. saturation · enter hex · r reset · s save · esc discard'
-      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · T team run · n new · o ask Maestro · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Maestro · n new workflow · T new team run · s stop · u resume · D delete · P probe replays · tab switch · t theme · q quit' : 'enter link model · e edit look · v evolve · n new bot · D remove/reset · x unlink · o ask Maestro · q quit')
+      : s.kind === 'dash' ? (s.tab === 'workflows' ? 'enter edit · r run · T team run · n new · o ask Tether · tab switch · t theme · q quit' : s.tab === 'runs' ? 'enter open · o ask Tether · n new workflow · T new team run · s stop · u resume · D delete · P probe replays · tab switch · t theme · q quit' : 'enter link model · e edit look · v evolve · n new bot · D remove/reset · x unlink · o ask Tether · q quit')
       : s.kind === 'run' ? '←→ pick agent · enter session · | side pane · g charts · d diff · v metrics · a approve · x reject · + good · - bad · s stop · u resume · D delete · R retry failed · m fix · w shell · esc back'
       : s.kind === 'session' ? (s.pane === 'diff' ? 'n/p hunk · N/P file · s split · A whole run · ↑↓ scroll · 1 output · i attach · w shell · esc back' : '1 output · 2 events · 3 diff · ↑↓ scroll · f follow · i attach to agent session · w shell · esc exit session')
       : s.kind === 'editor' ? '←→ select · [ ] move · a add · k skill · d delete · enter edit step · c cost cap · n rename · s save · r run · esc back'
@@ -2764,7 +2764,7 @@ export class Tui {
 
   private runsBody(s: Extract<Screen, { kind: 'dash' }>, h: number): string[] {
     const runs = this.runs();
-    if (!runs.length) return ['', `  ${dim('No runs yet.')}`, `  ${cyan('o')} ${dim('describe a task and let Maestro build and run a workflow')}`, `  ${cyan('3')} ${dim('pick a saved workflow and press r')}`];
+    if (!runs.length) return ['', `  ${dim('No runs yet.')}`, `  ${cyan('o')} ${dim('describe a task and let Tether build and run a workflow')}`, `  ${cyan('3')} ${dim('pick a saved workflow and press r')}`];
     const listH = Math.max(3, Math.min(runs.length, h - 11));
     const [view, start] = this.window(runs, s.sel.runs, listH);
     const lines = view.map((r, vi) => {
@@ -2783,7 +2783,7 @@ export class Tui {
 
   private flowsBody(s: Extract<Screen, { kind: 'dash' }>, h: number): string[] {
     const flows = this.flows();
-    if (!flows.length) return ['', `  ${dim('No saved workflows. Press')} ${cyan('n')} ${dim('to create one, or')} ${cyan('o')} ${dim('to ask Maestro.')}`];
+    if (!flows.length) return ['', `  ${dim('No saved workflows. Press')} ${cyan('n')} ${dim('to create one, or')} ${cyan('o')} ${dim('to ask Tether.')}`];
     const [view, start] = this.window(flows, s.sel.workflows, Math.max(3, h - 2));
     return view.map((f, vi) => {
       const sel = start + vi === s.sel.workflows;
@@ -2914,7 +2914,7 @@ export class Tui {
     return lines;
   }
 
-  /** Short-lived reactions: cheers, shudders, batons passed on, Maestro stepping in. Off with animations or the setting. */
+  /** Short-lived reactions: cheers, shudders, batons passed on, Tether stepping in. Off with animations or the setting. */
   private fxFor(st: RunState, order: PipelineNode[] = st.pipeline.nodes): ((n: PipelineNode, i: number) => Fx | undefined) | undefined {
     if (this.prefs.reactions === false || this.prefs.animate === false) return undefined;
     const now = Date.now();
@@ -2982,14 +2982,14 @@ export class Tui {
     return out;
   }
 
-  /** A run with no steps yet: a team run while Maestro plans with you, or after a plan that was never approved. */
+  /** A run with no steps yet: a team run while Tether plans with you, or after a plan that was never approved. */
   private emptyRunBody(st: RunState): string[] {
     const cap = st.pipeline.settings.maxCostUsd;
     const head = `${glyph(st.status, this.tick)} ${bold(st.pipeline.name)} ${dim('·')} ${st.status}  ${dim('·')} ${cap ? meter(st.costUsd / cap, 10) + ' ' : ''}${usd(st.costUsd)}${cap ? dim(` / ${usd(cap)}`) : ''}`;
     const lines = [' ' + head, ''];
     if (st.kind === 'team') {
       const n = st.pending.length;
-      const what = st.planning && !n ? 'Maestro is planning' : n ? `${n} question${n === 1 ? '' : 's'} waiting for you` : st.plan && st.status === 'running' ? 'a plan is ready for your approval' : 'no plan was approved';
+      const what = st.planning && !n ? 'Tether is planning' : n ? `${n} question${n === 1 ? '' : 's'} waiting for you` : st.plan && st.status === 'running' ? 'a plan is ready for your approval' : 'no plan was approved';
       lines.push(amber(`  ${what}`), dim('  no steps yet. Press / to open the run chat, where the questions and the plan are.'));
     } else lines.push(dim('  no steps yet.'));
     if (st.error) lines.push('', red('  ' + st.error.split('\n')[0]!));
@@ -3115,7 +3115,7 @@ export class Tui {
     if (s.error) return [...lines, red(` ${s.error}`)];
     if (!s.comp) {
       const dots = '.'.repeat((this.tick >> 2) % 4);
-      return [...lines, ` ${cyan('Maestro is designing a workflow')}${dots}`];
+      return [...lines, ` ${cyan('Tether is designing a workflow')}${dots}`];
     }
     const c = s.comp;
     lines.push(` ${green('✔')} ${bold(c.pipeline.name)} ${dim(c.source === 'bot' ? '· designed by the bot' : '· picked by rules')}`, '');

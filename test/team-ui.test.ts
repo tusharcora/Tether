@@ -101,7 +101,7 @@ function team(over: Partial<RunState> = {}): RunState {
   } as unknown as RunState;
 }
 
-describe('Maestro progress lines', () => {
+describe('Tether progress lines', () => {
   it('live mode reports step start and finish once each', () => {
     const seen: string[] = [];
     const a = progressLines(team(), seen);
@@ -173,7 +173,7 @@ describe('/mode', () => {
   });
 });
 
-describe('Maestro proposes a team', () => {
+describe('Tether proposes a team', () => {
   it('parses a team proposal with a mode', () => {
     const { home, registry } = setup();
     const r = interpret(JSON.stringify({ reply: 'This is open-ended; a team fits.', intent: 'team', task: 'Make the API faster', mode: 'autonomous' }), { home, repo: tmp(), registry });
@@ -366,7 +366,7 @@ describe('Tui chat wiring', () => {
     expect(store.state(id)!.pending).toHaveLength(1);
   });
 
-  it('free text after o never reaches Maestro, even when a permit prompt shows up meanwhile', async () => {
+  it('free text after o never reaches Tether, even when a permit prompt shows up meanwhile', async () => {
     const { ui, store, id } = await boot({ questions: [[card]], plan });
     ui.openRunSession(id);
     const sent = vi.spyOn(ui, 'sendTalk').mockImplementation(() => undefined);
@@ -434,7 +434,7 @@ describe('Tui chat wiring', () => {
     const sess = ui.sess;
     const st = { ...store.state(id)!, status: 'error', error: 'budget exhausted ($5.2000 of $5)' };
     ui.report(sess, st);
-    expect(sess.log.filter((e: any) => e.k === 'maestro').map((e: any) => e.text).join('\n')).toMatch(/budget exhausted/);
+    expect(sess.log.filter((e: any) => e.k === 'tether').map((e: any) => e.text).join('\n')).toMatch(/budget exhausted/);
   });
 });
 

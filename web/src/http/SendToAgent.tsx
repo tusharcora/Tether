@@ -15,7 +15,7 @@ const MODES = [
   { value: 'solo', label: 'Solo' },
   { value: 'team', label: 'Team' },
 ];
-type Target = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'maestro' };
+type Target = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'tether' };
 
 export interface SendToAgentProps {
   ws?: string;
@@ -36,7 +36,7 @@ const pathOf = (url: string): string => {
   }
 };
 
-/** Hand the last response to a bot (a run), to Maestro (a team run), or turn the request into a workflow gate. */
+/** Hand the last response to a bot (a run), to Tether (a team run), or turn the request into a workflow gate. */
 export function SendToAgent(p: SendToAgentProps) {
   const notify = useNotify();
   const { crew } = useCrew();
@@ -94,8 +94,8 @@ export function SendToAgent(p: SendToAgentProps) {
       <Button variant="primary" disabled={!o} loading={busy === 'run'} onClick={() => void go({ kind: 'run', bot, mode })}>
         {`Start run with ${name}`}
       </Button>
-      <Button variant="secondary" disabled={!o} loading={busy === 'maestro'} onClick={() => void go({ kind: 'maestro' })}>
-        Ask Maestro
+      <Button variant="secondary" disabled={!o} loading={busy === 'tether'} onClick={() => void go({ kind: 'tether' })}>
+        Ask Tether
       </Button>
       <Button variant="ghost" disabled={!p.requestId} onClick={() => p.requestId && p.onUseAsGate({ run: p.requestId, ...(p.env ? { env: p.env } : {}) })}>
         Use as gate in a workflow

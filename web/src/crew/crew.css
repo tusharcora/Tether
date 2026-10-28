@@ -20,7 +20,7 @@
 .cw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cw-chip { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 6px; background: var(--s2); color: var(--mut); white-space: nowrap; }
 .cw-chip.mono { font-family: var(--font-code); }
-.cw-chip.outline { background: transparent; border: 1px solid var(--line2); }
+.cw-chip.ghost { background: transparent; border: 1px solid var(--line2); }
 .cw-side { border-left: 1px solid var(--line); background: var(--s1); padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: auto; }
 .cw-side-empty { margin: 0; color: var(--mut); }
 .cw-editor, .cw-runs-on { display: flex; flex-direction: column; gap: 12px; }
