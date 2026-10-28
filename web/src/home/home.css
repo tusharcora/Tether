@@ -18,6 +18,7 @@
 .s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
 .run-now { font-size: 12px; color: var(--mut); }
+.s-running .run-todos { margin: 6px 0 0; }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
 @media (min-width: 1200px) {
   /* two independent stacks: a short Live activity leaves no row gap beside the left column */

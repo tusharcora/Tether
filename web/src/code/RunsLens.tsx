@@ -1,8 +1,8 @@
 import { ago } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import { cn } from '../ui/cn';
-import { Diff } from '../ui/Diff';
+import { RunDiff } from '../ui/RunDiff';
 import { InlineError } from '../ui/studio/InlineError';
 import { StatusChip, toneFor } from '../ui/studio/StatusChip';
 import type { RunTouch } from './codeApi';
@@ -53,7 +53,7 @@ export function RunsLens(p: { idle?: boolean; runs?: RunTouch[]; error?: string;
               Open run
             </Button>
           </div>
-          <Diff text={sel.patch} />
+          <RunDiff text={sel.patch} />
         </div>
       ) : null}
     </section>

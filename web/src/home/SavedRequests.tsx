@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ago, ApiError } from '../api';
-import { Button } from '../components/arc/button/button';
-import { CopyButton } from '../components/arc/copy-button/copy-button';
+import { Button } from '../components/beui/kit/Button';
+import { CopyButton } from '../components/beui/kit/CopyButton';
 import { Loading } from '../components/Loading';
 import { usePoll, type Poll, type Route } from '../hooks';
 import { httpApi, type HistoryRow, type HttpTree, type TreeCollection } from '../http/client';

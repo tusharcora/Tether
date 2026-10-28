@@ -2,13 +2,16 @@ import './api.css';
 import { useState } from 'react';
 import type { BundlePlan } from '../../../src/wsexport';
 import { api } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { Input } from '../components/arc/input/input';
+import { Button } from '../components/beui/kit/Button';
+import { UploadDropzone } from '../components/bencho/UploadDropzone';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Input } from '../components/beui/kit/fields';
 import { Loading } from '../components/Loading';
 import { useNotify } from '../ui/notify';
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** An export holds the workspace's request files and the names of its secrets: well under this. */
+const EXPORT_MAX_BYTES = 8_000_000;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /** Import a workspace export (<name>.aorch.json) into a folder on this machine. Shows what is created or overwritten first. */
@@ -66,10 +69,7 @@ export function WorkspaceDialog(p: { open: boolean; onOpenChange: (o: boolean) =
       {p.open ? (
         <DialogContent className="api-dialog" title="Import a workspace" description="From an export made with Export or tether workspace export. Nothing is written until you confirm.">
           <div className="dialog-body">
-            <label className="file-pick">
-              <span className="hint">Export file</span>
-              <input type="file" accept=".json" aria-label="Export file" onChange={(e) => void pickFile(e.target.files?.[0])} />
-            </label>
+            <UploadDropzone maxFiles={1} maxBytes={EXPORT_MAX_BYTES} accept=".json,application/json" label="Drop an export file here or click to choose" onFiles={(files) => void pickFile(files[0])} />
             <Input label="Into folder (absolute path)" placeholder="/home/you/code/project" value={into} spellCheck={false} onChange={(e) => (setInto(e.target.value), setPlan(undefined))} />
             {error ? (
               <p className="resp-error" role="alert">

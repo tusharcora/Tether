@@ -48,6 +48,27 @@ describe('ImportDialog', () => {
     expect(onImported).toHaveBeenCalledWith(['shop/post-orders']);
   });
 
+  it('takes a dropped Postman file into the text box and previews it', async () => {
+    renderApp(<ImportDialog open onOpenChange={() => {}} onImported={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Postman' }));
+    const collection = '{"info":{"name":"Shop"},"item":[]}';
+    const file = new File([collection], 'shop.postman_collection.json', { type: 'application/json' });
+    await act(async () => fireEvent.change(screen.getByTestId('dropzone-input'), { target: { files: [file] } }));
+    expect((screen.getByLabelText(/Paste/) as HTMLTextAreaElement).value).toBe(collection);
+    expect(screen.getByText('Added shop.postman_collection.json')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Preview' })));
+    expect(calls('POST', '/api/http/import')[0]![2]).toMatchObject({ kind: 'postman', text: collection });
+  });
+
+  it('refuses a file over the limit with a shake and a red message, and reads nothing', async () => {
+    renderApp(<ImportDialog open onOpenChange={() => {}} onImported={() => {}} />);
+    const big = new File(['x'], 'huge.json', { type: 'application/json' });
+    Object.defineProperty(big, 'size', { value: 6_000_000 });
+    await act(async () => fireEvent.change(screen.getByTestId('dropzone-input'), { target: { files: [big] } }));
+    expect(screen.getByRole('alert').textContent).toMatch(/Too big: huge\.json/);
+    expect((screen.getByLabelText(/Paste/) as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('shows a parse error and offers nothing to import', async () => {
     renderApp(<ImportDialog open onOpenChange={() => {}} onImported={() => {}} />);
     fireEvent.change(screen.getByLabelText(/Paste/), { target: { value: 'bad' } });

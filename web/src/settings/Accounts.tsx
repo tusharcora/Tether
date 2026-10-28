@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ago, api } from '../api';
-import { Button } from '../components/arc/button/button';
-import { CopyButton } from '../components/arc/copy-button/copy-button';
-import { Input } from '../components/arc/input/input';
+import { Button } from '../components/beui/kit/Button';
+import { CopyButton } from '../components/beui/kit/CopyButton';
+import { Input } from '../components/beui/kit/fields';
 import { Loading } from '../components/Loading';
 import type { Poll } from '../hooks';
 import { ConfirmButton } from '../ui/ConfirmButton';

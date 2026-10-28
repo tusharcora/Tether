@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
+import { Button } from '../components/beui/kit/Button';
+import { Input } from '../components/beui/kit/fields';
 import './projects.css';
 
 /** Open folder… in a browser, which cannot pick a folder's path: type it. The server registers it (nothing is written into it). */

@@ -1,15 +1,15 @@
-import { Play } from 'lucide-react';
+import { Copy, Pencil, Play, Trash2 } from 'lucide-react';
+import { useCreateIntent } from './ui/useCreateIntent';
 import { useEffect, useRef, useState } from 'react';
 import type { Edge, Pipeline, PipelineNode } from '../../src/types';
 import { api, type Issue } from './api';
-import { Canvas } from './Canvas';
-import { Button } from './components/arc/button/button';
-import { Checkbox } from './components/arc/checkbox/checkbox';
-import { Dialog, DialogContent } from './components/arc/dialog/dialog';
-import { Input } from './components/arc/input/input';
-import SegmentedControl from './components/arc/segmented-control/segmented-control';
-import { Select } from './components/arc/select/select';
-import { Textarea } from './components/arc/textarea/textarea';
+import { Canvas, NODE_H } from './Canvas';
+import type { NodeAction } from './components/bencho/ActionNode';
+import { Button } from './components/beui/kit/Button';
+import { Checkbox, Input, Select } from './components/beui/kit/fields';
+import { Dialog, DialogContent } from './components/beui/kit/overlays';
+import { SegmentedControl } from './components/beui/kit/controls';
+import { Textarea } from './components/kept/textarea/textarea';
 import { ModeToggle } from './Team';
 import { NONE } from './ui/cn';
 import { useNotify } from './ui/notify';
@@ -48,7 +48,7 @@ const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kin
  * `gate`: a saved request handed over from the API tab ("Use as gate in a workflow"); once the first workflow has
  * loaded it is appended as a request gate chained after the last step, and `onGateUsed` is called so the shell can clear it.
  */
-export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void; gate?: { run: string; env?: string }; onGateUsed?: () => void }) {
+export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void; gate?: { run: string; env?: string }; onGateUsed?: () => void; /** The Create menu asked for a new workflow (a counter). */ create?: number }) {
   const notify = useNotify();
   const phone = useMediaQuery(PHONE);
   const [pl, setPl] = useState<Pipeline>(() => structuredClone(BLANK));
@@ -68,6 +68,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [teamMode, setTeamMode] = useState<'live' | 'autonomous'>('live');
   const [pending, setPending] = useState<null | (() => void)>(null);
   const [loaded, setLoaded] = useState(false);
+  // "Run from here": the run dialog is for this step and everything after it
+  const [fromStep, setFromStep] = useState<string | undefined>();
   // a gate's command while it runs a request instead, so switching back to Command restores it
   const parkedCommands = useRef<Record<string, string>>({});
 
@@ -126,6 +128,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       setOpened((n) => n + 1);
     });
 
+  useCreateIntent(props.create, loaded, fresh);
+
   useEffect(() => {
     try {
       setRepo(localStorage.getItem('aorch.repo') ?? '');
@@ -181,16 +185,18 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
     }
   }
 
-  function addNode(make: () => Partial<PipelineNode>) {
+  /** `after`: the step to follow (a click on a palette card's "after the selected step"); by default the new step chains onto the last one. */
+  function addNode(make: () => Partial<PipelineNode>, after?: string) {
     const base = make();
     let id = idBase(base);
     for (let i = 2; pl.nodes.some((n) => n.id === id); i++) id = `${idBase(base)}${i}`;
     mut((p) => {
-      const right = p.nodes.length ? Math.max(...p.nodes.map((n) => n.x)) + 260 : 60;
-      const y = p.nodes.length ? p.nodes.find((n) => n.x === right - 260)!.y : 140;
+      const anchor = after ? p.nodes.find((n) => n.id === after) : undefined;
+      const right = anchor ? anchor.x + 260 : p.nodes.length ? Math.max(...p.nodes.map((n) => n.x)) + 260 : 60;
+      const y = anchor ? anchor.y : p.nodes.length ? p.nodes.find((n) => n.x === right - 260)!.y : 140;
       p.nodes.push({ id, kind: 'agent', x: right, y, ...base } as PipelineNode);
-      // chain onto the previous step by default: the common case, and easy to rewire
-      const prev = p.nodes.length > 1 ? p.nodes[p.nodes.length - 2] : undefined;
+      // chain onto the chosen step, else the previous one: the common case, and easy to rewire
+      const prev = anchor ?? (p.nodes.length > 1 ? p.nodes[p.nodes.length - 2] : undefined);
       if (prev && p.mode === 'pipeline') p.edges.push({ from: prev.id, to: id });
     });
     setSelected(id);
@@ -218,6 +224,39 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       patch(n.id, { http: undefined, command: parkedCommands.current[n.id] ?? 'npm test' });
     }
   }
+
+  /** A copy of a step, a little below it, with the same settings and no connections of its own. */
+  function duplicate(id: string) {
+    const src = pl.nodes.find((n) => n.id === id);
+    if (!src) return;
+    const stem = src.id.replace(/-copy\d*$/, '');
+    let copy = `${stem}-copy`;
+    for (let i = 2; pl.nodes.some((n) => n.id === copy); i++) copy = `${stem}-copy${i}`;
+    mut((p) => {
+      p.nodes.push({ ...structuredClone(src), id: copy, x: src.x + 24, y: src.y + NODE_H + 28 });
+    });
+    setSelected(copy);
+  }
+
+  /** A step and every step that follows it. */
+  const fromHere = (id: string): Pipeline => {
+    const keep = new Set([id]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const e of pl.edges) if (keep.has(e.from) && !keep.has(e.to)) (keep.add(e.to), (grew = true));
+    }
+    const nodes = pl.nodes.filter((n) => keep.has(n.id)).map((n) => (n.fixNode && !keep.has(n.fixNode) ? { ...n, fixNode: undefined } : n));
+    return { ...pl, name: `${pl.name}-from-${id}`.slice(0, 64), nodes, edges: pl.edges.filter((e) => keep.has(e.from) && keep.has(e.to)) };
+  };
+  const stepCount = fromStep ? fromHere(fromStep).nodes.length : 0;
+
+  /** The corner actions of a step's card. */
+  const nodeActions = (id: string): NodeAction[] => [
+    { id: 'run', label: 'Run from here', icon: <Play size={14} aria-hidden="true" />, disabled: errors.length > 0, onSelect: () => (setFromStep(id), setTeamRun(false), setRunOpen(true)) },
+    { id: 'edit', label: 'Edit step', icon: <Pencil size={14} aria-hidden="true" />, onSelect: () => setSelected(id) },
+    { id: 'duplicate', label: 'Duplicate step', icon: <Copy size={14} aria-hidden="true" />, onSelect: () => duplicate(id) },
+    { id: 'delete', label: 'Delete step', icon: <Trash2 size={14} aria-hidden="true" />, danger: true, onSelect: () => removeNode(id) },
+  ];
 
   function connect(from: string, to: string) {
     if (from === to) return;
@@ -256,7 +295,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         /* ignore */
       }
       const off = endpoints ? {} : { endpoints: false };
-      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo, ...off } : { pipeline: pl, task, repo, autoApprove: auto, ...off });
+      const r = await api<{ id: string }>('POST', '/api/runs', teamRun ? { kind: 'team', mode: teamMode, task, repo, ...off } : { pipeline: fromStep ? fromHere(fromStep) : pl, task, repo, autoApprove: auto, ...off });
       setRunOpen(false);
       props.onStarted(r.id);
     } catch (e) {
@@ -301,7 +340,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
                 </Button>
               </>
             )}
-            <Button variant="primary" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => setRunOpen(true)}>
+            <Button variant="primary" disabled={errors.length > 0 || pl.nodes.length === 0} onClick={() => (setFromStep(undefined), setRunOpen(true))}>
               Run <Play size={12} aria-hidden="true" />
             </Button>
           </>
@@ -326,7 +365,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
 
       {phone ? <p className="bl-phone-note">Editing needs a wider screen. You can look around and run this workflow.</p> : null}
       <div className="bl-body">
-        {phone ? null : <Palette onAdd={addNode} skills={skills} onSkill={(s) => void addSkill(s)} />}
+        {phone ? null : <Palette onAdd={addNode} selected={selected} skills={skills} onSkill={(s) => void addSkill(s)} />}
 
         <Canvas
           editable={!phone}
@@ -341,6 +380,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
           onConnect={connect}
           onDeleteEdge={(f, t) => mut((p) => (p.edges = p.edges.filter((e) => !(e.from === f && e.to === t))))}
           onDeleteNode={removeNode}
+          nodeActions={phone ? undefined : nodeActions}
         />
 
         {phone ? null : (
@@ -375,7 +415,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       </Dialog>
 
       <Dialog open={runOpen} onOpenChange={setRunOpen}>
-        <DialogContent title={teamRun ? 'Start a team run' : `Run “${pl.name}”`}>
+        <DialogContent title={teamRun ? 'Start a team run' : fromStep ? `Run “${pl.name}” from ${fromStep}` : `Run “${pl.name}”`}>
           <form
             className="bl-form"
             onSubmit={(e) => {
@@ -383,6 +423,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
               void start();
             }}
           >
+            {fromStep && !teamRun ? <p className="muted small">Runs this step and the {stepCount - 1 === 1 ? '1 step' : `${stepCount - 1} steps`} after it. Earlier steps are skipped, so this step starts without their output.</p> : null}
             <SegmentedControl
               label="Run type"
               options={[
@@ -390,7 +431,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
                 { value: 'team', label: 'Team' },
               ]}
               value={teamRun ? 'team' : 'workflow'}
-              onValueChange={(v) => setTeamRun(v === 'team')}
+              onValueChange={(v) => (setTeamRun(v === 'team'), v === 'team' && setFromStep(undefined))}
             />
             {teamRun ? (
               <>

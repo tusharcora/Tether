@@ -1,7 +1,7 @@
 import { FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 import { bridge, carriesFiles, droppedFolder } from '../bridge';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import type { WorkspaceRow } from '../home/workspaces';
 import { usePoll } from '../hooks';
 import { PathForm } from '../projects/PathForm';

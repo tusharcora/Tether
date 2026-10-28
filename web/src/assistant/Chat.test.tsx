@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ToastStackProvider } from '../components/arc/toast-stack/toast-stack';
+import { ToastStackProvider } from '../components/beui/kit/toast';
 import type { ChatMessage, StreamEvent } from './api';
 import { Chat } from './Chat';
 import { useAssistant } from './useAssistant';

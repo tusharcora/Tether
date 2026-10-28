@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 import type { Edge, NodeState, PipelineNode } from '../../src/types.js';
 import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
+import { NodeActions, type NodeAction } from './components/bencho/ActionNode';
 import { Face, moodFor } from './Face';
 import { StatusChip, toneFor } from './ui/studio/StatusChip';
 import { cn } from './ui/cn';
@@ -27,6 +28,8 @@ export interface CanvasProps {
   onConnect?: (from: string, to: string) => void;
   onDeleteEdge?: (from: string, to: string) => void;
   onDeleteNode?: (id: string) => void;
+  /** What a step's card offers in its corner on hover or focus (bencho's action node): run from here, edit, duplicate, delete. */
+  nodeActions?: (id: string) => NodeAction[];
 }
 
 type Drag =
@@ -73,6 +76,8 @@ export function Canvas(props: CanvasProps) {
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     const t = e.target as HTMLElement;
+    // a press on a card's corner action is a plain click: no selection, no capture
+    if (t.closest('[data-node-action]')) return;
     const root = el.current!;
     root.focus({ preventScroll: true });
     const out = t.closest('[data-port-out]') as HTMLElement | null;
@@ -239,7 +244,7 @@ export function Canvas(props: CanvasProps) {
           return (
             <div
               key={n.id}
-              className={cn('node', `s-${st?.status ?? 'idle'}`, `k-${n.kind}`, { selected: props.selected === n.id, issue: !!props.issueNodes?.has(n.id) })}
+              className={cn('node', props.nodeActions && 'nod-host', `s-${st?.status ?? 'idle'}`, `k-${n.kind}`, { selected: props.selected === n.id, issue: !!props.issueNodes?.has(n.id) })}
               data-node
               data-id={n.id}
               style={{ left: `${n.x}px`, top: `${n.y}px`, width: `${NODE_W}px`, height: `${NODE_H}px` }}
@@ -282,6 +287,7 @@ export function Canvas(props: CanvasProps) {
                 ) : null}
               </div>
               <div className="port out" data-port-out data-id={n.id} />
+              {props.nodeActions ? <NodeActions actions={props.nodeActions(n.id)} tabbable={props.selected === n.id} label={`${n.title ?? n.role ?? n.kind} actions`} /> : null}
             </div>
           );
         })}

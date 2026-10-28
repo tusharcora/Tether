@@ -1,5 +1,5 @@
 import type { WorkspaceRow } from '../home/workspaces';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { PathForm } from './PathForm';
 
 /** The sidebar's + and ⌘O in a browser: type a folder path to open it as a project. */

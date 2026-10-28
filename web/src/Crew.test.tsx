@@ -44,6 +44,10 @@ describe('Crew', () => {
     expect(container.querySelector('[data-ascii-skeleton]')).toBeTruthy();
     expect(screen.queryByText('Checking which agents are installed…')).toBeNull();
   });
+  it('opens a new bot when the Create menu asks for one, once the crew has loaded', async () => {
+    renderApp(<Crew create={1} />);
+    expect(await screen.findByRole('img', { name: 'New bot preview' })).toBeTruthy();
+  });
   it('saves a link only when changed; the default agent unlinks (as in the Solid UI)', async () => {
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));

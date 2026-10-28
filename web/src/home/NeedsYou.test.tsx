@@ -59,6 +59,16 @@ describe('Needs you', () => {
     expect(calls('POST', '/api/runs/r1/approve')).toHaveLength(1);
   });
 
+  it('draws a human gate as an approval card with Approve and Reject, and rejects with approved: false', async () => {
+    setup(poll({ items }));
+    const row = screen.getByText('Ship it waits for approval').closest('li')!;
+    expect(row.querySelector('[data-state="pending"]')).toBeTruthy();
+    expect(within(row).getAllByText('Approval required').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
+    await act(async () => fireEvent.click(within(row).getByRole('button', { name: 'Reject' })));
+    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ok', approved: false });
+  });
+
   it('retries a failed run through resume', async () => {
     setup(poll({ items }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));

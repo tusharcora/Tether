@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import type { KV } from './client';
 
 /** Rows of name → value (params, headers, form fields, variables). Existing rows edit in place; new rows come from the add line. */

@@ -1,4 +1,4 @@
-import { Button } from '../../components/arc/button/button';
+import { Button } from '../../components/beui/kit/Button';
 import './parts.css';
 
 /**

@@ -80,6 +80,14 @@ describe('Runs', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull());
   });
 
+  it('shows an awaiting approval step as an approval card and rejects from it', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
+    expect((await screen.findAllByText(/Awaiting approval: /)).length).toBeGreaterThan(0);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reject' })));
+    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: false });
+  });
+
   it('sends step feedback with its note and toasts failures', async () => {
     const run = makeRun({ status: 'done', live: false });
     const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);

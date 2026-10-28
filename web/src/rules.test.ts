@@ -106,6 +106,8 @@ describe('beui, bencho and aicss components keep the rules', () => {
   const vendored = sources.filter((s) => VENDORED.some((d) => s.path.startsWith(d)));
   /** Tether's own files in those folders (no MIT header: nothing was copied). */
   const OWN = ['components/beui/lib/highlight.ts'];
+  /** Tether's own wrappers over the copied components (kit/): they carry no MIT header but obey every other rule here. */
+  const isOwn = (path: string) => OWN.includes(path) || path.startsWith('components/beui/kit/');
   it('paints no gradient: no Tailwind gradient utilities and no gradient values', () => {
     const bad = vendored.filter((s) => /\bbg-(gradient|linear|radial|conic)-|\b(from|via|to)-(violet|purple|indigo|fuchsia)|-gradient\(/.test(s.text)).map((s) => s.path);
     expect(bad).toEqual([]);
@@ -130,7 +132,7 @@ describe('beui, bencho and aicss components keep the rules', () => {
   it('keeps the MIT notice in every copied file', () => {
     const NOTICE = { 'components/beui/': 'Copyright (c) 2026 Saurabh Chauhan', 'components/bencho/': 'Copyright (c) 2026 Lorenzo Cabra', 'components/faces/': 'Copyright (c) 2026 Lorenzo Cabra', 'components/aicss/': 'Copyright (c) 2026 AICSS' };
     const missing = vendored
-      .filter((s) => !OWN.includes(s.path))
+      .filter((s) => !isOwn(s.path))
       .filter((s) => !s.text.includes('MIT License') || !s.text.includes(Object.entries(NOTICE).find(([d]) => s.path.startsWith(d))![1]))
       .map((s) => s.path);
     expect(missing).toEqual([]);

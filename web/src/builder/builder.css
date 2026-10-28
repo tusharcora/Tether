@@ -44,3 +44,10 @@
 .bl-settings-line:hover { color: var(--ink); }
 .bl-phone-note { margin: 0; padding: 8px 16px; font-size: 13px; color: var(--mut); border-bottom: 1px solid var(--line); }
 .bl-help { margin: -2px 0 0; font-size: 12px; }
+
+/* Step order: beui's sortable list in the settings pane */
+.bl-order { display: flex; flex-direction: column; gap: 6px; }
+.bl-order-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.bl-order-n { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; border-radius: 6px; background: var(--s2); color: var(--mut); font: 600 11px var(--font-code); }
+.bl-order-name { font-size: 13px; font-weight: 500; }
+.bl-order-id { margin-left: 4px; color: var(--mut); font-size: 11px; }

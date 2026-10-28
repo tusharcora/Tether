@@ -1,8 +1,6 @@
-import { Button } from '../components/arc/button/button';
-import { Checkbox } from '../components/arc/checkbox/checkbox';
-import { Drawer, DrawerContent, useDrawerItem } from '../components/arc/drawer/drawer';
-import { Input } from '../components/arc/input/input';
-import { Select } from '../components/arc/select/select';
+import { Button } from '../components/beui/kit/Button';
+import { Checkbox, Input, Select } from '../components/beui/kit/fields';
+import { Drawer, DrawerContent, useDrawerItem } from '../components/beui/kit/overlays';
 import { NONE, fromNone } from '../ui/cn';
 import { EVENTS, type Form, type Workspace } from './types';
 import './triggers.css';

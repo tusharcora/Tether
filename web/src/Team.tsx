@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
+import { ToolApproval } from './components/beui/agents/tool-approval';
 import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
-import { Accordion } from './components/arc/accordion/accordion';
-import { Button } from './components/arc/button/button';
-import { ChatThread } from './components/arc/chat-thread/chat-thread';
-import { RadioCards } from './components/arc/radio-cards/radio-cards';
-import { Select } from './components/arc/select/select';
-import SegmentedControl from './components/arc/segmented-control/segmented-control';
-import { Textarea } from './components/arc/textarea/textarea';
+import { Accordion } from './components/beui/kit/fields';
+import { Button } from './components/beui/kit/Button';
+import { RadioCards } from './components/beui/kit/RadioCards';
+import { Picker } from './components/bencho/Picker';
+import { SegmentedControl } from './components/beui/kit/controls';
+import { Textarea } from './components/kept/textarea/textarea';
 import { Face } from './Face';
 import { ConfirmButton } from './ui/ConfirmButton';
 import { ListRow } from './ui/studio/ListRow';
@@ -35,8 +35,37 @@ export function ModeToggle(props: { mode: TeamMode; onPick: (m: TeamMode) => voi
   );
 }
 
+/** A Code Mode outside-world call: the engine asks "Allow <bot> to <what>?" with the options Allow and Deny. */
+function codeModeAsk(q: Question): { what: string; allow: string; deny: string } | undefined {
+  const m = /^Allow .+? to (.+)\?$/s.exec(q.ask);
+  const allow = q.options.find((o) => o.label.toLowerCase() === 'allow');
+  const deny = q.options.find((o) => o.label.toLowerCase() === 'deny');
+  return m && allow && deny && q.options.length === 2 ? { what: m[1]!, allow: allow.id, deny: deny.id } : undefined;
+}
+
 function QuestionCard(props: { q: Question; index: number; total: number; pick: Pick | undefined; onPick: (p: Pick | undefined) => void; asker?: string }) {
   const { q, pick, onPick } = props;
+  const cm = codeModeAsk(q);
+  if (cm)
+    return (
+      <div className="tm-qcard tm-approval">
+        <ToolApproval
+          tool="run_code"
+          title={q.ask}
+          description={q.why ?? (props.asker ? `Asked by ${props.asker}.` : undefined)}
+          status={pick?.option === cm.allow ? 'approved' : pick?.option === cm.deny ? 'denied' : 'pending'}
+          defaultOpen
+          onApprove={() => onPick({ option: cm.allow })}
+          onDeny={() => onPick({ option: cm.deny })}
+        />
+        {pick ? (
+          <Button variant="ghost" size="sm" onClick={() => onPick(undefined)}>
+            Change my answer
+          </Button>
+        ) : null}
+        {q.recommended === cm.deny && !pick ? <p className="sl-meta">Recommended: Deny.</p> : null}
+      </div>
+    );
   return (
     <div className="sl-panel tm-qcard">
       <div className="tm-qhead">
@@ -238,11 +267,11 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
                       {a.swapped ? <StatusChip tone="neutral" label="swapped by you" /> : null}
                       {plan.roster?.length ? (
                         // the current bot is always first so the shown value exists among the options
-                        <Select
+                        <Picker
                           label="Bot"
-                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ value: b, label: b }))}
-                          value={a.bot}
-                          onValueChange={(b) => b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
+                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ id: b, name: b, lead: <Face id={b} size={28} /> }))}
+                          value={[a.bot]}
+                          onChange={([b]) => b && b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
                           disabled={busy}
                         />
                       ) : null}
@@ -277,7 +306,16 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
             items={[
               {
                 title: `Dialogue so far (${n} answer${n === 1 ? '' : 's'})`,
-                content: <ChatThread participants={participants} currentUserId="user" messages={messages} composer={false} label="Planning dialogue" />,
+                content: (
+                  <ol className="tm-thread" aria-label="Planning dialogue">
+                    {messages.map((m) => (
+                      <li key={m.id} className="tm-thread-row" data-author={m.authorId}>
+                        <span className="tm-thread-who">{participants.find((x) => x.id === m.authorId)?.name ?? m.authorId}</span>
+                        <span className="tm-thread-text">{m.text}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ),
               },
             ]}
           />

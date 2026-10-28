@@ -229,10 +229,10 @@ describe('API tab styles', () => {
     expect(el.hasAttribute('data-slides')).toBe(true);
   });
 
-  it('bridges every accent and control colour the Arc parts used here read, so the root violet accent never shows', () => {
+  it('bridges every accent and control colour the parts kept from Arc read, so the root violet accent never shows', () => {
     const studio = read('../studio.css');
-    for (const part of ['button/button', 'segmented-control/segmented-control', 'tabs/tabs', 'textarea/textarea', 'search-field/search-field', 'select/select', 'empty-state/empty-state', 'dialog/dialog']) {
-      const used = new Set([...read(`../components/arc/${part}.module.css`).matchAll(/var\((--(?:accent|control-(?!height))[a-z-]*)/g)].map((m) => m[1]!));
+    for (const part of ['textarea/textarea', 'empty-state/empty-state']) {
+      const used = new Set([...read(`../components/kept/${part}.module.css`).matchAll(/var\((--(?:accent|control-(?!height))[a-z-]*)/g)].map((m) => m[1]!));
       for (const v of used) expect(studio, `${part} reads ${v}`).toContain(`${v}: var(`);
     }
   });

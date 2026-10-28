@@ -74,7 +74,7 @@ describe('Builder', () => {
     const onStarted = vi.fn();
     renderApp(<Builder onStarted={onStarted} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));
-    fireEvent.click(screen.getByRole('button', { name: /Run/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     fireEvent.change(screen.getByLabelText(/Git repository/), { target: { value: '/code/app' } });
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Add caching' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start run' })));
@@ -82,7 +82,7 @@ describe('Builder', () => {
     expect(onStarted).toHaveBeenCalledWith('r42');
 
     // the closing dialog stays mounted (hiding the page from role queries) until its exit animation ends
-    fireEvent.click(await screen.findByRole('button', { name: /Run/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
     fireEvent.click(screen.getByRole('button', { name: 'Team' }));
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Add caching' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start run' })));
@@ -92,7 +92,7 @@ describe('Builder', () => {
   it('can start a run without the saved API requests in prompts', async () => {
     renderApp(<Builder onStarted={() => {}} />);
     await waitFor(() => screen.getByDisplayValue('plan-code-review'));
-    fireEvent.click(screen.getByRole('button', { name: /Run/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     fireEvent.change(screen.getByLabelText(/Git repository/), { target: { value: '/code/app' } });
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Add caching' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /saved API requests/ }));
@@ -220,10 +220,60 @@ describe('Builder', () => {
     expect(screen.getByText('workflows / plan-code-review · 3 steps · 1 fix loop')).toBeTruthy();
     expect(screen.getByText('Saved')).toBeTruthy();
     const palette = screen.getByRole('complementary', { name: 'Steps palette' });
-    expect([...palette.querySelectorAll('.bl-item:not(.bl-skill) .bl-item-name')].map((e) => e.textContent)).toEqual(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'Approval']);
+    expect([...palette.querySelectorAll('.bl-item:not(.bl-skill) .bl-item-name')].map((e) => e.textContent)).toEqual(['Planner', 'Architect', 'Coder', 'Reviewer', 'Gate', 'Approval', 'GitHub', 'HTTP request', 'Webhook']);
     fireEvent.click(within(palette).getByRole('button', { name: /Approval/ }));
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
     expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+  });
+
+  it('gives each step card corner actions: edit, duplicate, delete and run from here', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByRole('heading', { level: 1, name: 'plan-code-review' });
+    const card = document.querySelector('[data-node][data-id="plan"]') as HTMLElement;
+    const bar = within(card).getByRole('toolbar');
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Run from here', 'Edit step', 'Duplicate step', 'Delete step']);
+    // edit selects the step and opens it in the inspector
+    fireEvent.click(within(bar).getByRole('button', { name: 'Edit step' }));
+    expect(await screen.findByLabelText('Label')).toBeTruthy();
+    // duplicate adds an unconnected copy and selects it
+    fireEvent.click(within(bar).getByRole('button', { name: 'Duplicate step' }));
+    expect(document.querySelector('[data-node][data-id="plan-copy"]')).toBeTruthy();
+    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+    // delete removes it again, with its connections
+    fireEvent.click(within(document.querySelector('[data-node][data-id="plan-copy"]') as HTMLElement).getByRole('button', { name: 'Delete step' }));
+    expect(document.querySelector('[data-node][data-id="plan-copy"]')).toBeNull();
+  });
+
+  it('runs from a step: a workflow of that step and the ones after it', async () => {
+    const onStarted = vi.fn();
+    renderApp(<Builder onStarted={onStarted} />);
+    await screen.findByRole('heading', { level: 1, name: 'plan-code-review' });
+    const card = document.querySelector('[data-node][data-id="code"]') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Run from here' }));
+    expect(await screen.findByRole('dialog', { name: /from code/ })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Git repository/), { target: { value: '/code/app' } });
+    fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Check it' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start run' })));
+    const body = calls('POST', '/api/runs').at(-1)![2] as { pipeline: { name: string; nodes: { id: string }[]; edges: unknown[] } };
+    expect(body.pipeline.name).toBe('plan-code-review-from-code');
+    expect(body.pipeline.nodes.map((n) => n.id)).toEqual(['code', 'gate']);
+    expect(body.pipeline.edges).toEqual([{ from: 'code', to: 'gate' }]);
+    expect(onStarted).toHaveBeenCalledWith('r42');
+  });
+
+  it('offers the GitHub, HTTP request and webhook integrations as ready-made steps, one that follows the selected step', async () => {
+    renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByRole('heading', { level: 1, name: 'plan-code-review' });
+    const palette = screen.getByRole('complementary', { name: 'Steps palette' });
+    const after = within(palette).getByRole('button', { name: 'Add Webhook after the selected step' }) as HTMLButtonElement;
+    expect(after.disabled).toBe(true);
+    fireEvent.click(within(palette).getByRole('button', { name: /^Webhook/ }));
+    expect(screen.getByText('workflows / plan-code-review · 4 steps · 1 fix loop')).toBeTruthy();
+    // the new gate is selected: its card holds the curl to the webhook
+    expect(document.querySelector('.node.selected .cmd')?.textContent).toContain('$WEBHOOK_URL');
+    fireEvent.pointerDown(document.querySelector('[data-node][data-id="plan"] .node-title') as HTMLElement);
+    fireEvent.click(within(palette).getByRole('button', { name: 'Add HTTP request after plan' }));
+    expect(screen.getByText('workflows / plan-code-review · 5 steps · 1 fix loop')).toBeTruthy();
   });
 
   it('selects the step an issue names', async () => {
@@ -264,7 +314,7 @@ describe('Builder', () => {
     expect(screen.queryByRole('complementary', { name: 'Step inspector' })).toBeNull();
     expect(screen.queryByLabelText('Pipeline name')).toBeNull();
     expect(screen.getByText('Editing needs a wider screen. You can look around and run this workflow.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Run/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();
     expect(screen.getByText('Drag to pan · use + / − to zoom')).toBeTruthy();
   });
 

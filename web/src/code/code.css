@@ -82,4 +82,3 @@
 .code-lens-count .del { color: var(--bad); }
 .code-lens-diff { margin: 8px; overflow: hidden; border: 1px solid var(--line2); border-radius: 10px; background: var(--bg); }
 .code-lens-diff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; border-bottom: 1px solid var(--line); color: var(--mut); font-family: var(--font-code); font-size: 11px; }
-.code-lens-diff .diff { max-height: 320px; border: 0; border-radius: 0; font-size: 11.5px; }

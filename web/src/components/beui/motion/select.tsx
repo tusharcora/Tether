@@ -267,10 +267,13 @@ export function Select({
 
 export interface SelectTriggerProps {
   className?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
   children: ReactNode;
 }
 
-export function SelectTrigger({ className, children }: SelectTriggerProps) {
+export function SelectTrigger({ className, children, ...aria }: SelectTriggerProps) {
   const ctx = useSelectContext("SelectTrigger");
   const isTop = ctx.placement === "top";
   // The edge facing the panel flattens while the panel is attached to it and
@@ -289,8 +292,10 @@ export function SelectTrigger({ className, children }: SelectTriggerProps) {
       type="button"
       id={ctx.triggerId}
       disabled={ctx.disabled}
+      role="combobox"
       aria-haspopup="listbox"
       aria-expanded={ctx.open}
+      {...aria}
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       onKeyDown={(event) => {

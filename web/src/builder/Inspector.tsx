@@ -1,10 +1,10 @@
 import type { Pipeline, PipelineNode } from '../../../src/types';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Select } from '../components/arc/select/select';
-import { Switch } from '../components/arc/switch/switch';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { Input, Select, Switch } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Picker } from '../components/bencho/Picker';
+import { StepOrder } from './StepOrder';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
 import { RequestGateFields } from '../RequestGateFields';
@@ -13,7 +13,6 @@ import { SectionHeading } from '../ui/studio/SectionHeading';
 
 export type Adapters = Record<string, { ok: boolean; version?: string; detail?: string }>;
 
-const ROLES = ['planner', 'architect', 'coder', 'reviewer', 'tester'];
 const KIND_LINE: Record<string, string> = {
   agent: 'Agent step',
   gate: 'Gate · must pass before the next step',
@@ -56,6 +55,7 @@ export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline
         value={pl.settings.pipeMode}
         onValueChange={(v) => mut((p) => (p.settings.pipeMode = v as 'ancestors' | 'direct'))}
       />
+      <StepOrder pl={pl} mut={mut} />
       <Input label="Setup command (runs once in the worktree)" value={pl.settings.setup ?? ''} placeholder="npm ci" spellCheck={false} onChange={(e) => mut((p) => (p.settings.setup = e.target.value || undefined))} />
       <p className="bl-help">Click a step to edit it. Drag from a right-hand port to a left-hand port to connect. Select an edge or step and press Delete to remove it.</p>
     </div>
@@ -95,21 +95,23 @@ export function StepForm(props: {
       <Input label="Label" value={n.title ?? ''} onChange={(e) => patch(n.id, { title: e.target.value })} />
       {n.kind === 'agent' ? (
         <>
-          <Input label="Role" list="roles" value={n.role ?? ''} onChange={(e) => patch(n.id, { role: e.target.value })} />
-          <datalist id="roles">
-            {ROLES.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
+          <Picker
+            label="Role"
+            placeholder="Choose a bot"
+            custom={{ label: 'Another role', placeholder: 'Another role, then Enter' }}
+            options={Object.entries(crew).map(([id, c]) => ({ id, name: id, hint: `${c.name} · ${c.title}`, lead: <Face id={id} size={28} /> }))}
+            value={n.role ? [n.role] : []}
+            onChange={([role]) => patch(n.id, { role: role ?? '' })}
+          />
           <div className="bl-pair">
-            <Select
+            <Picker
               label="Agent"
               options={[
-                { value: NONE, label: `follow ${crew[crewFor(n, crew)]?.name ?? 'its bot'} (set in Crew)` },
-                ...agentOptions.map((a) => ({ value: a, label: a + (adapters[a] && !adapters[a].ok ? ' (not installed)' : '') })),
+                { id: NONE, name: `follow ${crew[crewFor(n, crew)]?.name ?? 'its bot'} (set in Crew)` },
+                ...agentOptions.map((a) => ({ id: a, name: a, hint: adapters[a] && !adapters[a].ok ? 'not installed' : undefined })),
               ]}
-              value={n.agent ?? NONE}
-              onValueChange={(v) => patch(n.id, { agent: fromNone(v) || undefined })}
+              value={[n.agent ?? NONE]}
+              onChange={([v]) => patch(n.id, { agent: fromNone(v ?? NONE) || undefined })}
             />
             <Input label="Model (optional)" value={n.model ?? ''} placeholder="adapter default" spellCheck={false} onChange={(e) => patch(n.id, { model: e.target.value })} />
           </div>

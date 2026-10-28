@@ -47,6 +47,11 @@ describe('Triggers', () => {
     expect(calls('DELETE', '/api/triggers/acme-full-review')).toHaveLength(1);
   });
 
+  it('opens the new trigger form when the Create menu asks for one', async () => {
+    renderApp(<Triggers create={1} />);
+    expect(await screen.findByLabelText('Repo')).toBeTruthy();
+  });
+
   it('saves a new trigger with split lists', async () => {
     renderApp(<Triggers />);
     fireEvent.click(await screen.findByRole('button', { name: 'New trigger' }));
@@ -108,12 +113,18 @@ describe('Triggers', () => {
     expect(within(log).getByText('draft PR (include drafts is off)')).toBeTruthy();
     const order = () => [...log.querySelectorAll('.tg-delivery .tg-what')].map((e) => e.textContent);
     expect(order()).toEqual(['acme/api#42', 'acme/api#41']);
-    fireEvent.click(within(log).getByRole('combobox', { name: /Sort by/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Trigger' }));
-    expect(order()).toEqual(['acme/api#42', 'acme/api#41']);
-    fireEvent.click(within(log).getByRole('combobox', { name: /Sort by/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Oldest first' }));
+    const when = within(log).getByRole('columnheader', { name: /When/ });
+    expect(when.getAttribute('aria-sort')).toBe('descending');
+    fireEvent.click(within(when).getByRole('button'));
     expect(order()).toEqual(['acme/api#41', 'acme/api#42']);
+    fireEvent.click(within(log).getByRole('button', { name: /^Trigger/ }));
+    expect(order()).toEqual(['acme/api#42', 'acme/api#41']);
+    fireEvent.click(within(log).getByRole('button', { name: /^Pull request/ }));
+    expect(order()).toEqual(['acme/api#41', 'acme/api#42']);
+    // a row opens what the delivery said and did
+    fireEvent.click(within(log).getByRole('row', { name: /acme\/api#41, skipped/ }));
+    expect((await within(log).findAllByText('Delivery details')).length).toBeGreaterThan(0);
+    expect(within(log).getByRole('log').textContent).toContain('reason   draft PR (include drafts is off)');
     fireEvent.click(screen.getByRole('button', { name: 'Log' }));
     await waitFor(() => expect(calls('GET', '/api/triggers/deliveries?trigger=acme-full-review&limit=50').length).toBeGreaterThan(0));
   });

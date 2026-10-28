@@ -1,5 +1,5 @@
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
+import { Button } from '../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import type { WorkspaceRow } from '../home/workspaces';
 
 /** Asks before Tether forgets a project: its folder stays, but the API client's secrets for it are deleted. */

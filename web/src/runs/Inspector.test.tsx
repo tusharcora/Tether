@@ -21,11 +21,11 @@ describe('Inspector step pane', () => {
     const { container, unmount } = show(makeRun(), 'code');
     expect(screen.getByRole('heading', { name: /Bolt · coder/ })).toBeTruthy();
     expect(container.querySelector('.sl-chip.t-live')!.textContent).toBe('running');
-    expect(container.querySelector('.out.live .caret')).toBeTruthy();
+    expect(container.querySelector('.live-out .caret')).toBeTruthy();
     unmount();
     const done = makeRun({ nodes: { ...makeRun().nodes, code: { ...makeRun().nodes.code!, status: 'done', live: 'last words' } } });
     const again = show(done, 'code');
-    expect(again.container.querySelector('.out.live .caret')).toBeNull();
+    expect(again.container.querySelector('.live-out .caret')).toBeNull();
   });
 
   it('says why Tether picked the bot on team runs only', () => {
@@ -42,8 +42,10 @@ describe('Inspector step pane', () => {
     const withCommit = makeRun({ nodes: { ...makeRun().nodes, code: { ...makeRun().nodes.code!, status: 'done', commit: 'abc1234' } } });
     routeApi({ 'GET /api/runs/r1/diff?node=code': { diff: DIFF } });
     show(withCommit, 'code');
-    expect(await screen.findByText('src/a.ts')).toBeTruthy();
+    // the file summary (name, counts, bar) and beui's file-diff disclosure both name the file
+    expect((await screen.findAllByText('src/a.ts')).length).toBe(2);
     expect(screen.getByText('+2 −1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /src\/a\.ts/ })).toBeTruthy();
   });
 
   it('says so when the linked step is not in the run', () => {
@@ -67,7 +69,7 @@ describe('Inspector step pane', () => {
     expect(screen.queryByText(/No committed changes/)).toBeNull();
     routeApi({ 'GET /api/runs/r1/diff': { diff: DIFF } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })));
-    expect(await screen.findByText('src/a.ts')).toBeTruthy();
+    expect((await screen.findAllByText('src/a.ts')).length).toBeGreaterThan(0);
   });
 
   it('holds the diff place with the loading skeleton while it loads (F18)', async () => {

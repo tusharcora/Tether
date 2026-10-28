@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 
 export interface ConfirmButtonProps {
   label: string;

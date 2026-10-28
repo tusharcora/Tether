@@ -1,5 +1,5 @@
 import { useState, type InputHTMLAttributes } from 'react';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import type { Check } from './client';
 
 const OPS: Record<Check['kind'], string[]> = {

@@ -19,3 +19,8 @@ export const NAV: { id: Screen; label: string; long?: string; Icon: LucideIcon; 
 
 /** `G x` as shown on hover and in ⌘K. */
 export const goHint = (s: Screen): string => `G ${(NAV.find((n) => n.id === s)?.go ?? '').toUpperCase()}`;
+
+/** What the sidebar's Create menu can start: a run (Home's task field) or a new workflow, bot, trigger or API request on its own screen. */
+export type CreateKind = 'run' | 'workflow' | 'bot' | 'trigger' | 'request';
+/** The screen each kind of new thing is made on. */
+export const CREATE_SCREEN: Record<Exclude<CreateKind, 'run'>, Screen> = { workflow: 'builder', bot: 'crew', trigger: 'triggers', request: 'api' };

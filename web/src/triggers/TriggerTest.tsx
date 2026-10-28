@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
-import { Button } from '../components/arc/button/button';
-import { Input } from '../components/arc/input/input';
-import { Select } from '../components/arc/select/select';
+import { Button } from '../components/beui/kit/Button';
+import { Input, Select } from '../components/beui/kit/fields';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { Panel } from '../ui/studio/Panel';
 import { StatusChip } from '../ui/studio/StatusChip';

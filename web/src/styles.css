@@ -41,13 +41,6 @@ main { flex: 1; min-height: 0; }
 .alert.wait { border-color: var(--wait); background: color-mix(in srgb, var(--wait) 14%, var(--panel)); }
 .coach { margin: 0 16px 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .finding { margin-top: 6px; }
-.out { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
-.out.live { border-color: var(--run); }
-.diff { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin: 0; padding: 8px 0; overflow: auto; max-height: 480px; font-size: 12px; }
-.diff span { display: block; padding: 0 12px; white-space: pre; }
-.diff .da { background: color-mix(in srgb, var(--done) 18%, transparent); color: var(--text); }
-.diff .dd { background: color-mix(in srgb, var(--err) 18%, transparent); }
-.diff .dk { color: var(--accInk); } .diff .dh { color: var(--muted); }
 
 .face { display: inline-block; line-height: 0; }
 span.face > svg { width: 100%; height: 100%; }

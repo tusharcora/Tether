@@ -16,6 +16,7 @@ import {
   useId,
   useRef,
   useState,
+  type ChangeEvent,
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
@@ -39,7 +40,7 @@ export interface InputProps extends Omit<
   label?: string;
   value?: string;
   defaultValue?: string;
-  onChange?: (value: string) => void;
+  onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void;
   /** Truthy error triggers a shake, red border and (if a string) a message. */
   error?: string | boolean;
   /** Reserve one message line so validation does not shift nearby content. */
@@ -101,9 +102,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     );
   }, [hasError, reduce]);
 
-  const handleChange = (next: string) => {
+  const handleChange = (next: string, event: ChangeEvent<HTMLInputElement>) => {
     if (!controlled) setInternal(next);
-    onChange?.(next);
+    onChange?.(next, event);
   };
 
   return (
@@ -157,12 +158,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           ref={ref}
           id={id}
           type={type}
-          value={value}
+          // Uncontrolled stays uncontrolled: a secret typed into a password field must not be mirrored into the DOM `value` attribute.
+          {...(controlled ? { value } : { defaultValue })}
           disabled={disabled}
           aria-invalid={hasError || undefined}
           aria-describedby={errorMessage ? `${id}-error` : undefined}
           {...rest}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value, e)}
           onFocus={(event) => {
             setFocused(true);
             onFocus?.(event);

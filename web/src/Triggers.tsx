@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useCreateIntent } from './ui/useCreateIntent';
 import { api } from './api';
-import { Button } from './components/arc/button/button';
+import { Button } from './components/beui/kit/Button';
 import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { Deliveries } from './triggers/Deliveries';
@@ -16,7 +17,7 @@ import './triggers/triggers.css';
 
 const NO_TRIGGERS: Trigger[] = [];
 
-export function Triggers() {
+export function Triggers(props: { /** The Create menu asked for a new trigger (a counter). */ create?: number }) {
   const notify = useNotify();
   const [logFor, setLogFor] = useState('');
   // rows are keyed by id, so a 5 s poll updates them in place and a focused control keeps focus
@@ -48,6 +49,7 @@ export function Triggers() {
     setForm(t ? fromTrigger(t) : blank());
     setEditing(!!t);
   };
+  useCreateIntent(props.create, true, () => openForm());
   async function save() {
     const f = form!;
     try {

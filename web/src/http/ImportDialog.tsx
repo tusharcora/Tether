@@ -1,10 +1,11 @@
 import './api.css';
 import { useState } from 'react';
-import { Button } from '../components/arc/button/button';
-import { Dialog, DialogContent } from '../components/arc/dialog/dialog';
-import { Input } from '../components/arc/input/input';
-import SegmentedControl from '../components/arc/segmented-control/segmented-control';
-import { Textarea } from '../components/arc/textarea/textarea';
+import { Button } from '../components/beui/kit/Button';
+import { UploadDropzone } from '../components/bencho/UploadDropzone';
+import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Input } from '../components/beui/kit/fields';
+import { SegmentedControl } from '../components/beui/kit/controls';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { useNotify } from '../ui/notify';
 import { httpApi, type ImportBody, type ImportPreview } from './client';
 
@@ -14,6 +15,9 @@ const REASONS: Record<string, string> = { exists: 'already exists, not overwritt
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Paste or pick a cURL command, an OpenAPI document or a Postman collection; preview; then write. */
+/** Per file: a large Postman collection or OpenAPI document still fits. */
+const IMPORT_MAX_BYTES = 5_000_000;
+
 export function ImportDialog(p: { ws?: string; open: boolean; onOpenChange: (o: boolean) => void; onImported: (ids: string[]) => void }) {
   const notify = useNotify();
   const [kind, setKind] = useState<ImportBody['kind']>('curl');
@@ -79,10 +83,7 @@ export function ImportDialog(p: { ws?: string; open: boolean; onOpenChange: (o: 
               spellCheck={false}
               onChange={(e) => (setText(e.target.value), setPv(undefined))}
             />
-            <label className="file-pick">
-              <span className="hint">Or choose a file</span>
-              <input type="file" accept=".json,.yaml,.yml,.txt,.sh" onChange={(e) => void pickFile(e.target.files?.[0])} />
-            </label>
+            <UploadDropzone maxFiles={1} maxBytes={IMPORT_MAX_BYTES} accept=".json,.yaml,.yml,.txt,.sh" label="Or drop a Postman, OpenAPI or cURL file here" onFiles={(files) => void pickFile(files[0])} />
             <Input label="Into collection (optional)" placeholder="shop/orders" value={into} spellCheck={false} onChange={(e) => (setInto(e.target.value), setPv(undefined))} />
             {pv?.error ? (
               <p className="resp-error" role="alert">

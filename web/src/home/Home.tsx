@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AttentionItem, RunRow } from '../api';
-import { Button } from '../components/arc/button/button';
+import { Button } from '../components/beui/kit/Button';
 import { usePoll, type Route } from '../hooks';
 import { useNotify } from '../ui/notify';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
