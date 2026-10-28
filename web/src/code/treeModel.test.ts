@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ancestors, dirsFromPaths, keyMove, visibleRows, type Dirs } from './treeModel';
+import { ancestors, dirsFromPaths, expandDiff, nestRows, visibleRows, type Dirs, type Row } from './treeModel';
 
 const dirs: Dirs = {
   '': [{ name: 'src', path: 'src', kind: 'dir' }, { name: 'README.md', path: 'README.md', kind: 'file' }],
@@ -25,19 +25,15 @@ describe('treeModel', () => {
     expect(d.src!.map((e) => [e.path, e.kind])).toEqual([['src/http', 'dir'], ['src/a.ts', 'file']]);
   });
 
-  it('moves with the arrow keys like a tree', () => {
-    const open = new Set(['src']);
-    const rows = visibleRows(dirs, open); // src, src/http, src/a.ts, README.md
-    expect(keyMove(rows, 0, 'ArrowDown', open)).toEqual({ focus: 1 });
-    expect(keyMove(rows, 3, 'ArrowDown', open)).toEqual({ focus: 3 });
-    expect(keyMove(rows, 0, 'ArrowUp', open)).toEqual({ focus: 0 });
-    expect(keyMove(rows, 0, 'ArrowRight', open)).toEqual({ focus: 1 });
-    expect(keyMove(rows, 1, 'ArrowRight', open)).toEqual({ expand: 'src/http' });
-    expect(keyMove(rows, 0, 'ArrowLeft', open)).toEqual({ collapse: 'src' });
-    expect(keyMove(rows, 2, 'ArrowLeft', open)).toEqual({ focus: 0 });
-    expect(keyMove(rows, 2, 'Enter', open)).toEqual({ open: 'src/a.ts' });
-    expect(keyMove(rows, 1, 'Enter', open)).toEqual({ expand: 'src/http' });
-    expect(keyMove(rows, 0, 'End', open)).toEqual({ focus: 3 });
-    expect(keyMove(rows, 3, 'ArrowRight', open)).toBeUndefined();
+  it('nests flat depth rows into a tree', () => {
+    const rows: Row[] = [{ name: 'src', path: 'src', kind: 'dir', depth: 0 }, { name: 'a.ts', path: 'src/a.ts', kind: 'file', depth: 1, git: 'M' }, { name: 'README.md', path: 'README.md', kind: 'file', depth: 0 }];
+    expect(nestRows(rows)).toEqual([{ path: 'src', name: 'src', kind: 'dir', children: [{ path: 'src/a.ts', name: 'a.ts', kind: 'file', git: 'M', children: [] }] }, { path: 'README.md', name: 'README.md', kind: 'file', children: [] }]);
+    expect(nestRows(visibleRows(dirs, new Set(['src', 'src/http'])))[0]!.children[0]!.children.map((n) => n.path)).toEqual(['src/http/limit.ts']);
+  });
+
+  it('turns beui’s expanded list into one expand or collapse', () => {
+    expect(expandDiff(new Set(['a']), ['a', 'b'])).toEqual({ expand: 'b' });
+    expect(expandDiff(new Set(['a', 'b']), ['a'])).toEqual({ collapse: 'b' });
+    expect(expandDiff(new Set(['a']), ['a'])).toEqual({});
   });
 });

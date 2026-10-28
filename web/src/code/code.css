@@ -17,14 +17,6 @@
 .code-filter { padding: 10px 10px 6px; }
 .code-note { margin: 6px 12px; color: var(--mut); font-size: 12.5px; line-height: 1.5; }
 .code-tree-list { padding: 2px 6px 10px; }
-.code-row { display: flex; align-items: center; gap: 6px; height: 27px; padding: 0 8px 0 calc(6px + var(--depth, 0) * 14px); border-radius: 7px; color: var(--ink); font-size: 12.5px; cursor: pointer; user-select: none; transition: background-color var(--t-fast) var(--ease); }
-.code-row:hover { background: var(--s2); }
-.code-row.current { background: var(--s3); font-weight: 500; }
-.code-row:focus-visible { outline: 2px solid var(--focus-outline); outline-offset: -2px; }
-.code-row > svg { flex: none; color: var(--mut); }
-.code-caret { flex: none; width: 12px; transition: transform var(--t-fast) var(--ease); }
-.code-row.open > .code-caret { transform: rotate(90deg); }
-.code-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-run-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--mut); }
 .code-git { flex: none; font-family: var(--font-code); font-size: 10.5px; font-weight: 600; color: var(--mut); }
 .code-git.g-mod { color: var(--warn); }
