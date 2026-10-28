@@ -83,25 +83,47 @@ export function verbOf(l: ActivityLine): string {
   return t.split(' · ')[0]!;
 }
 
+/** One line of the feed: `all` merged neighbours, shown `rep` times in a row (a repeated retry cycle). */
+function show(all: ActivityLine[], rep: number, count: number): ActivityGroup {
+  const l = all[0]!;
+  const base = { id: l.id, ts: l.ts, runId: l.runId, kind: l.kind, count, ...(l.bot ? { bot: l.bot } : {}) };
+  const times = rep > 1 ? ` ×${rep}` : '';
+  if (all.length === 1) return { ...base, text: l.text + times, who: l.who };
+  if (all.every((x) => x.text.startsWith(`${x.who} `))) return { ...base, text: `${all.length} steps ${verbOf(l)}${times}` };
+  return { ...base, text: `${verbOf(l)} ×${all.length * rep}` };
+}
+
 /**
- * Newest first, neighbours of the same kind and verb merged into one line ("3 steps skipped", "run started ×2"), so the
- * feed never repeats itself; at most `max` lines. A merged line takes the newest line's id, time and face.
+ * Newest first, neighbours of the same kind and verb merged into one line ("3 steps skipped", "run started ×2"), and a
+ * block of lines that repeats right after itself in the same run (a retry cycle) folded into its newest occurrence
+ * ("run resumed ×2"), so the feed never shows the same lines twice; at most `max` lines. A merged line takes the newest
+ * line's id, time and face.
  */
 export function collapseActivity(lines: ActivityLine[], max = ACTIVITY_SHOW): ActivityGroup[] {
   const runs: ActivityLine[][] = [];
   for (const l of lines) {
     const last = runs.at(-1);
     if (last && last[0]!.kind === l.kind && verbOf(last[0]!) === verbOf(l)) last.push(l);
-    else if (runs.length < max) runs.push([l]);
-    else break;
+    else runs.push([l]);
   }
-  return runs.map((all) => {
-    const l = all[0]!;
-    const base = { id: l.id, ts: l.ts, runId: l.runId, kind: l.kind, count: all.length, ...(l.bot ? { bot: l.bot } : {}) };
-    if (all.length === 1) return { ...base, text: l.text, who: l.who };
-    const steps = all.every((x) => x.text.startsWith(`${x.who} `));
-    return { ...base, text: steps ? `${all.length} steps ${verbOf(l)}` : `${verbOf(l)} ×${all.length}` };
-  });
+  const key = runs.map((all) => `${all[0]!.runId}\n${all[0]!.kind}\n${show(all, 1, 0).text}`);
+  // runs[a..a+k) and runs[b..b+k) are the same block
+  const same = (a: number, b: number, k: number) => b + k <= runs.length && key.slice(a, a + k).join('\0') === key.slice(b, b + k).join('\0');
+  const out: ActivityGroup[] = [];
+  for (let i = 0; i < runs.length && out.length < max; ) {
+    let k = 1;
+    while (i + 2 * k <= runs.length && !same(i, i + k, k)) k++;
+    if (i + 2 * k > runs.length) {
+      out.push(show(runs[i]!, 1, runs[i]!.length));
+      i++;
+      continue;
+    }
+    let rep = 2;
+    while (same(i, i + rep * k, k)) rep++;
+    for (let j = 0; j < k; j++) out.push(show(runs[i + j]!, rep, Array.from({ length: rep }, (_, r) => runs[i + r * k + j]!.length).reduce((a, b) => a + b)));
+    i += rep * k;
+  }
+  return out.slice(0, max);
 }
 
 /**

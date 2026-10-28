@@ -123,6 +123,23 @@ describe('Activity', () => {
 
 const G = (id: string, who: string, text: string, kind: ActivityLine['kind'] = 'info'): ActivityLine => ({ id, ts: 1, runId: 'r', who, text, kind });
 describe('collapseActivity', () => {
+  it('folds a repeated retry cycle of the same run into its newest occurrence', () => {
+    const cycle = (n: number, run = 'r') => [
+      { ...G(`${n}f`, 'Team run', 'run failed · budget reached', 'failed'), runId: run },
+      { ...G(`${n}t`, 'Test', 'Test skipped'), runId: run },
+      { ...G(`${n}l`, 'Lint', 'Lint skipped'), runId: run },
+      { ...G(`${n}b`, 'Build', 'Build skipped'), runId: run },
+      { ...G(`${n}r`, 'Team run', 'run resumed', 'working'), runId: run },
+    ];
+    const g = collapseActivity([...cycle(2), ...cycle(1), G('0', 'Team run', 'run started', 'working')]);
+    expect(g.map((x) => x.text)).toEqual(['run failed · budget reached ×2', '3 steps skipped ×2', 'run resumed ×2', 'run started']);
+    expect(g.map((x) => x.id)).toEqual(['2f', '2t', '2r', '0']);
+    expect(g.map((x) => x.count)).toEqual([2, 6, 2, 1]);
+    // another run's identical cycle is not folded into this one
+    expect(collapseActivity([...cycle(2, 'a'), ...cycle(1, 'b')])).toHaveLength(6);
+    // the fold still leaves at most 8 lines
+    expect(collapseActivity(Array.from({ length: 6 }, (_, i) => cycle(i)).flat().concat(Array.from({ length: 20 }, (_, i) => G(`x${i}`, `S${i}`, `S${i} started`, i % 2 ? 'working' : 'done'))))).toHaveLength(8);
+  });
   it('collapses consecutive repeats into one line', () => {
     const g = collapseActivity([G('1', 'Build', 'Build skipped'), G('2', 'Lint', 'Lint skipped'), G('3', 'Test', 'Test skipped'), G('4', 'Bolt', 'Bolt started', 'working')]);
     expect(g.map((x) => x.text)).toEqual(['3 steps skipped', 'Bolt started']);
