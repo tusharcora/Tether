@@ -41,6 +41,7 @@
 .tg-dl dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .tg-code { padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-family: var(--font-code); font-size: 12.5px; }
 .tg-secret { user-select: all; }
+.tg-block { flex: 1 1 100%; min-width: 0; }
 .tg-log { display: flex; flex-direction: column; gap: 10px; }
 .tg-log-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tg-deliveries { border-top: 1px solid var(--line); }

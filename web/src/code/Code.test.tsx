@@ -146,7 +146,8 @@ describe('Code screen', () => {
     fireEvent.click(tune);
     expect(tune.getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect([...document.querySelectorAll('.cm-run-line')].map((l) => l.textContent)).toEqual(['let c = 3;']));
-    expect(within(lens).getByText('+let c = 3;')).toBeTruthy();
+    expect(within(lens).getByRole('button', { name: /changes/ })).toBeTruthy();
+    expect(lens.textContent).toContain('let c = 3;');
     fireEvent.click(within(lens).getByRole('button', { name: 'Open run' }));
     expect(p.onOpenRun).toHaveBeenCalledWith('r-2');
     fireEvent.click(tune);

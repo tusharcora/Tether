@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { describeActual, describeCheck } from '../../../src/http/describe';
 import { JsonViewer } from '../components/kept/json-viewer/json-viewer';
 import { SegmentedControl } from '../components/beui/kit/controls';
+import { ToolResult, ToolResultOutput } from '../components/beui/agents/tool-result';
 import { Loading } from '../components/Loading';
 import type { SendOutput } from './client';
 
@@ -32,7 +33,9 @@ function Body({ body, parsed }: { body: string; parsed: { v: object } | null }) 
   return parsed ? (
     <JsonViewer data={parsed.v} rootName="$" label="Response body" maxHeight="100%" defaultExpandDepth={body.length > FOLD_PAST ? 1 : 2} />
   ) : (
-    <pre className="raw mono">{body}</pre>
+    <div className="raw mono">
+      <ToolResultOutput language="text">{body}</ToolResultOutput>
+    </div>
   );
 }
 
@@ -113,22 +116,37 @@ export function ResponseView(p: ResponseViewProps) {
                 </ul>
               </div>
             ) : null}
-            <div className="resp-body">
-              {view === 'body' ? <Body body={r.body} parsed={parsed} /> : null}
-              {view === 'raw' ? <pre className="raw mono">{r.body}</pre> : null}
-              {view === 'headers' ? (
-                <table className="hdrs mono">
-                  <tbody>
-                    {r.headers.map(([k, v], i) => (
-                      <tr key={i}>
-                        <th scope="row">{k}</th>
-                        <td>{v}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : null}
-            </div>
+            <ToolResult
+              kind="request"
+              tool={`${o.request.method} ${o.request.url}`}
+              title={view === 'headers' ? 'Response headers' : view === 'raw' ? 'Raw response' : 'Response body'}
+              status={r.error || r.status === 0 || r.status >= 400 ? 'error' : 'success'}
+              collapseOnComplete={false}
+              maxHeight={640}
+              contentClassName="p-0"
+              copyText={view === 'headers' ? r.headers.map(([k, v]) => `${k}: ${v}`).join('\n') : r.body}
+            >
+              <div className="resp-body">
+                {view === 'body' ? <Body body={r.body} parsed={parsed} /> : null}
+                {view === 'raw' ? (
+                  <div className="raw mono">
+                    <ToolResultOutput language="text">{r.body}</ToolResultOutput>
+                  </div>
+                ) : null}
+                {view === 'headers' ? (
+                  <table className="hdrs mono">
+                    <tbody>
+                      {r.headers.map(([k, v], i) => (
+                        <tr key={i}>
+                          <th scope="row">{k}</th>
+                          <td>{v}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null}
+              </div>
+            </ToolResult>
           </>
         )}
       </Loading>

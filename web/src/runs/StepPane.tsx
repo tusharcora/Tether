@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { fmtDur, fmtUsd, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { CodeBlock } from '../components/beui/agents/code-block';
+import { ToolResult, ToolResultOutput } from '../components/beui/agents/tool-result';
 import { Input } from '../components/beui/kit/fields';
 import { crewFor, useCrew } from '../crewStore';
 import { Face, moodFor } from '../Face';
@@ -58,27 +58,20 @@ export function StepPane(p: { run: RunView; nodeId: string; diff?: ReactNode; no
       ) : null}
       {node.error ? <div className="alert error">{node.error}</div> : null}
       {node.live ? (
-        <>
-          <h5>Live output</h5>
-          <pre className="out live">
-            {node.live}
-            {running ? <span className="caret" aria-hidden="true" /> : null}
-          </pre>
-        </>
+        <ToolResult tool="agent output" kind="terminal" title="Live output" status={running ? 'running' : 'success'} collapseOnComplete={false} maxHeight={320} contentClassName="live-out" copyText={node.live}>
+          <ToolResultOutput language="text">{node.live}</ToolResultOutput>
+          {running ? <span className="caret" aria-hidden="true" /> : null}
+        </ToolResult>
       ) : null}
       {pnode.kind === 'gate' && node.gate ? (
-        <>
-          <h5>
-            Gate · {pnode.command} · {node.gate.ok ? 'passed' : `failed (exit ${node.gate.exitCode})`}
-          </h5>
-          <CodeBlock code={node.gate.output || '(no output)'} filename={pnode.command} language="text" status="complete" maxHeight={480} />
-        </>
+        <ToolResult tool={pnode.command ?? 'gate'} kind="terminal" title="Gate" meta={node.gate.ok ? 'passed' : `failed (exit ${node.gate.exitCode})`} status={node.gate.ok ? 'success' : 'error'} collapseOnComplete={false} maxHeight={320} copyText={node.gate.output}>
+          <ToolResultOutput language="text">{node.gate.output || '(no output)'}</ToolResultOutput>
+        </ToolResult>
       ) : null}
       {node.output && pnode.kind === 'agent' ? (
-        <>
-          <h5>Output</h5>
-          <CodeBlock code={node.output} language="text" status="complete" maxHeight={480} />
-        </>
+        <ToolResult tool="agent output" kind="terminal" title="Output" status={node.status === 'error' ? 'error' : 'success'} collapseOnComplete={false} maxHeight={320} copyText={node.output}>
+          <ToolResultOutput language="text">{node.output}</ToolResultOutput>
+        </ToolResult>
       ) : null}
       {node.commit && p.diff ? (
         <>

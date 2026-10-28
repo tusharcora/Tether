@@ -1,12 +1,14 @@
 import type { RunRow } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
+import { useCrew } from '../crewStore';
 import type { Poll, Route } from '../hooks';
 import { EmptyState } from '../ui/studio/EmptyState';
 import { FaceStack } from '../ui/studio/FaceStack';
 import { InlineError } from '../ui/studio/InlineError';
 import { ListRow } from '../ui/studio/ListRow';
 import { Panel } from '../ui/studio/Panel';
+import { StepTodos } from '../ui/studio/StepTodos';
 import { StepTrack } from '../ui/studio/StepTrack';
 import { Elapsed } from './Elapsed';
 import { nowLine, runTitle, workingBot } from './runText';
@@ -15,6 +17,7 @@ import { nowLine, runTitle, workingBot } from './runText';
 export function Running(props: { poll: Poll<RunRow[]>; refreshing: boolean; onGo: (r: Route) => void }) {
   const { data, error, refresh } = props.poll;
   const live = (data ?? []).filter((r) => r.live);
+  const { crew } = useCrew();
   return (
     <Panel title="Running" count={data ? live.length : undefined} className="s-running">
       <Loading loading={(data === undefined && !error) || props.refreshing} lines={3} label="Loading running runs">
@@ -47,6 +50,7 @@ export function Running(props: { poll: Poll<RunRow[]>; refreshing: boolean; onGo
                       <>
                         <StepTrack steps={r.steps} planning={r.kind === 'team' && !r.steps.length} />
                         <span className="run-now">{nowLine(r)}</span>
+                        <StepTodos steps={r.steps.map((s) => ({ id: s.id, status: s.status, title: `${crew[s.bot]?.name ?? s.bot} · ${s.id}` }))} title="Steps" defaultOpen={false} className="run-todos" />
                       </>
                     }
                   />

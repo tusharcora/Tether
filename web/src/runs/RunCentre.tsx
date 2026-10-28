@@ -2,6 +2,7 @@ import type { RunView } from '../api';
 import { Canvas } from '../Canvas';
 import type { RunAct } from '../Runs';
 import { TeamPanel } from '../Team';
+import { StepTodos } from '../ui/studio/StepTodos';
 import { StepTrack } from '../ui/studio/StepTrack';
 
 /** Team runs before approval: the Team panel in place of the graph. Otherwise the step track above the plan graph. */
@@ -25,6 +26,7 @@ export function RunCentre({ run: r, selected, onSelect, onAct }: { run: RunView;
       {beforeApproval ? null : (
         <>
           <StepTrack steps={steps} className="run-steptrack" />
+          {r.kind === 'team' ? <StepTodos steps={steps} title="Team plan" className="run-todos" /> : null}
           <div className="run-graph">
             <Canvas nodes={r.pipeline.nodes} edges={r.pipeline.edges} statuses={r.nodes} selected={selected} onSelect={onSelect} />
           </div>

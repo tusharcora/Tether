@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/beui/kit
 import { Timeline, type TimelineEvent } from '../components/kept/timeline/timeline';
 import { Loading } from '../components/Loading';
 import type { RunAct } from '../Runs';
-import { Diff } from '../ui/Diff';
+import { RunDiff } from '../ui/RunDiff';
 import { InlineError } from '../ui/studio/InlineError';
 import { FileBars } from './FileBars';
 import { StepPane } from './StepPane';
@@ -73,7 +73,7 @@ export function Inspector({ run: r, events, selected, pane: hint, onAct, onOpenF
         {!stale && diff.text ? (
           <>
             <FileBars diff={diff.text} onOpen={onOpenFile} />
-            <Diff text={diff.text} />
+            <RunDiff text={diff.text} />
           </>
         ) : (
           <p className="sl-meta pad">{empty}</p>

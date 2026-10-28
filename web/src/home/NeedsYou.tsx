@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ago, api, type AttentionAction, type AttentionItem } from '../api';
+import { ApprovalCard } from '../components/beui/agents/approval-card';
 import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
 import type { Poll, Route } from '../hooks';
@@ -50,8 +51,9 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refres
       mark(item.id, false);
     }
   }
-  const act = (item: AttentionItem, a: AttentionAction) => {
+  const act = (item: AttentionItem, a: AttentionAction | 'reject') => {
     if (a === 'approve') return void post(item, 'approve', { node: item.node, approved: true });
+    if (a === 'reject') return void post(item, 'approve', { node: item.node, approved: false });
     if (a === 'resume' || a === 'retry') return void post(item, 'resume', {});
     props.onGo(linkFor(item, a));
   };
@@ -76,20 +78,27 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; refres
               />
             ) : (
               <ul className="sl-list">
-                {items.map((it) => (
-                  <ListRow
-                    key={it.id}
-                    lead={<StatusChip tone={it.kind === 'failed' || it.kind === 'planning_error' ? 'failed' : 'needs'} label={KIND_LABEL[it.kind]} />}
-                    title={it.title}
-                    meta={it.meta}
-                    age={ago(it.ts)}
-                    actions={it.actions.map((a) => (
-                      <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy.has(it.id)} onClick={() => act(it, a)}>
-                        {ACTION_LABEL[a]}
-                      </Button>
-                    ))}
-                  />
-                ))}
+                {items.map((it) => {
+                  // a human gate is an approval card (approve or reject in place); every other item keeps its row actions
+                  const gate = it.kind === 'approval' && it.actions.includes('approve');
+                  return (
+                    <ListRow
+                      key={it.id}
+                      lead={<StatusChip tone={it.kind === 'failed' || it.kind === 'planning_error' ? 'failed' : 'needs'} label={KIND_LABEL[it.kind]} />}
+                      title={it.title}
+                      meta={it.meta}
+                      age={ago(it.ts)}
+                      extra={gate ? <ApprovalCard className="mt-2" status={busy.has(it.id) ? 'submitting' : 'pending'} onApprove={() => act(it, 'approve')} onReject={() => act(it, 'reject')} /> : undefined}
+                      actions={it.actions
+                        .filter((a) => !(gate && a === 'approve'))
+                        .map((a) => (
+                          <Button key={a} size="sm" variant={PRIMARY.has(a) ? 'primary' : 'secondary'} disabled={busy.has(it.id)} onClick={() => act(it, a)}>
+                            {ACTION_LABEL[a]}
+                          </Button>
+                        ))}
+                    />
+                  );
+                })}
               </ul>
             )}
           </>

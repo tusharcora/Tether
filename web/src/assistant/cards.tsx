@@ -1,10 +1,28 @@
+import { useEffect, useState } from 'react';
 import { ApprovalCard } from '../components/beui/agents/approval-card';
 import type { ApprovalCardAnswers } from '../components/beui/agents/approval-card/types';
 import { ToolApproval } from '../components/beui/agents/tool-approval';
-import type { Route } from '../hooks';
+import type { RunRow } from '../api';
+import { useCrew } from '../crewStore';
+import { usePoll, type Route } from '../hooks';
+import { StepTodos } from '../ui/studio/StepTodos';
 import { useNotify } from '../ui/notify';
 import type { ChatMessage, Proposal, ToolAsk } from './api';
 import type { Assistant } from './useAssistant';
+
+/** The started run's steps as a live to-do list: polled while the run lives, one last time when it ends. */
+export function LiveRunSteps({ runId }: { runId: string }) {
+  const { crew } = useCrew();
+  const [over, setOver] = useState(false);
+  const poll = usePoll<RunRow[]>(over ? null : '/api/runs', 2500);
+  const run = poll.data?.find((r) => r.id === runId);
+  useEffect(() => {
+    if (run && !run.live && run.status !== 'running') setOver(true);
+  }, [run]);
+  if (!run) return null;
+  if (!run.steps.length) return run.kind === 'team' && run.live ? <p className="m-0 mt-2 text-xs text-muted-foreground">Tether is planning…</p> : null;
+  return <StepTodos className="mt-2" title="Run progress" steps={run.steps.map((s) => ({ id: s.id, status: s.status, title: `${crew[s.bot]?.name ?? s.bot} · ${s.id}` }))} />;
+}
 
 /** A run Tether proposes, as an approval card in review mode. Nothing starts until Start run is clicked. */
 export function ProposalCard({ proposal: p, chat, onGo }: { proposal: Proposal; chat: Assistant; onGo: (r: Route) => void }) {
@@ -29,6 +47,7 @@ export function ProposalCard({ proposal: p, chat, onGo }: { proposal: Proposal; 
           Open run
         </button>
       ) : null}
+      {p.status === 'started' && p.runId ? <LiveRunSteps runId={p.runId} /> : null}
     </div>
   );
 }

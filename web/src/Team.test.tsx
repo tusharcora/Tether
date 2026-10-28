@@ -25,6 +25,22 @@ describe('TeamPanel', () => {
     expect(send).toHaveBeenCalledWith('answers', { answers: [{ question: 'q1', option: 'b' }, { question: 'q2', text: 'my own' }] });
   });
 
+  it('shows a Code Mode outside-world ask as a tool approval: allow once or deny, and change the answer', async () => {
+    const ask: Question = { id: 'cm1', ask: 'Allow Bolt to post a comment on PR #12?', recommended: 'deny', options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }], from: 'code' };
+    const send = vi.fn().mockResolvedValue(true);
+    const run = teamRun({ planning: false, pending: [ask], userAsks: [{ node: 'code', question: ask, wait: true }] });
+    renderApp(<TeamPanel run={run} send={send} />);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByText('Approval required')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
+    expect(screen.getByText('Approved')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Change my answer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    expect(screen.getByText('Denied')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Send answers' })));
+    expect(send).toHaveBeenCalledWith('answers', { answers: [{ question: 'cm1', option: 'deny' }] });
+  });
+
   it('answers worker questions one at a time and stops at the first failure', async () => {
     const send = vi.fn().mockResolvedValueOnce(false);
     const run = teamRun({ planning: false, pending: [q('w1', 'code'), q('w2', 'code')], userAsks: [{ node: 'code', question: q('w1', 'code'), wait: true }, { node: 'code', question: q('w2', 'code'), wait: true }] });

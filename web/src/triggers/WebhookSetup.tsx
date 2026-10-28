@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { CopyButton } from '../components/beui/kit/CopyButton';
+import { CodeBlock } from '../components/beui/agents/code-block';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
@@ -46,8 +46,7 @@ export function WebhookSetup() {
       <dl className="tg-dl">
         <dt>Payload URL</dt>
         <dd>
-          <code className="tg-code">{payloadUrl}</code>
-          <CopyButton value={payloadUrl} label="Copy" variant="outline" onCopied={copied} />
+          <CodeBlock className="tg-block" code={payloadUrl} language="text" showLineNumbers={false} wrap onCopy={() => void navigator.clipboard?.writeText(payloadUrl).then(copied, copied)} />
         </dd>
         <dt>Content type</dt>
         <dd>
@@ -61,8 +60,7 @@ export function WebhookSetup() {
         <dd>
           {secret ? (
             <>
-              <code className="tg-code tg-secret">{secret}</code>
-              <CopyButton value={secret} label="Copy" variant="outline" onCopied={copied} />
+              <CodeBlock className="tg-block tg-secret" code={secret} language="text" showLineNumbers={false} wrap onCopy={() => void navigator.clipboard?.writeText(secret).then(copied, copied)} />
               <span className="sl-note">Copy this into GitHub now. It will not be shown again.</span>
             </>
           ) : setup?.hasSecret ? (
