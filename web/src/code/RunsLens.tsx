@@ -4,7 +4,7 @@ import { Loading } from '../components/Loading';
 import { cn } from '../ui/cn';
 import { RunDiff } from '../ui/RunDiff';
 import { InlineError } from '../ui/studio/InlineError';
-import { StatusChip, toneFor } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { RunTouch } from './codeApi';
 
 /** "Changed by runs": the runs whose commits touched the open file. Picking one marks its lines in the editor and shows its diff. */
@@ -32,7 +32,7 @@ export function RunsLens(p: { idle?: boolean; runs?: RunTouch[]; error?: string;
                   <button type="button" className={cn('code-lens-run', { on })} aria-pressed={on} onClick={() => p.onSelect(on ? undefined : r.runId)}>
                     <b>{r.title}</b>
                     <span className="code-lens-meta">
-                      <StatusChip tone={live ? 'live' : toneFor(r.status)} label={r.status} pulse={live} />
+                      <StatusBadge desc={{ of: 'run', status: r.status, live, waiting: false }} />
                       {r.label} · {ago(r.at)}
                     </span>
                     <span className="code-lens-count">

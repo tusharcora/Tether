@@ -15,16 +15,22 @@ const working = makeRow({
 });
 
 describe('Running', () => {
-  it('shows each live run with meta, step track, faces, what is happening and a clock', () => {
+  it('shows the task as title, who works and step n of m, a step track and the clock', () => {
     const onGo = vi.fn();
-    render(<Running poll={poll([working, makeRow({ id: 'r2', live: false, status: 'running' })])} refreshing={false} onGo={onGo} />);
+    const row = makeRow({
+      id: 'r1', live: true, task: 'Tune the limit window\nwith care',
+      steps: [{ id: 'a', status: 'done', bot: 'planner' }, { id: 'b', status: 'running', bot: 'coder' }, { id: 'c', status: 'queued', bot: 'tester' }],
+      current: { node: 'b', bot: 'Bolt', title: 'Implement' },
+    });
+    const { container } = render(<Running poll={poll([row, makeRow({ id: 'r2', live: false, status: 'running' })])} onGo={onGo} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(screen.getByText('r1 · aorch/r1 · workflow')).toBeTruthy();
-    expect(screen.getByText('Bolt is working on Implement')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '1 of 2 steps done, 1 working' })).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Bolt' }).getAttribute('data-mood')).toBe('working');
-    expect(screen.getByText(/^started /)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'ship' }));
+    expect(screen.getByRole('region', { name: 'Running' }).querySelector('.sl-sec-count')!.textContent).toBe('1');
+    expect(screen.getByRole('img', { name: 'Running' })).toBeTruthy();
+    expect(screen.getByText('Bolt is working on Implement · step 2 of 3')).toBeTruthy();
+    expect(container.querySelector('.sl-steptrack')).toBeTruthy();
+    expect(container.querySelector('.elapsed')).toBeTruthy();
+    expect(container.querySelector('.sl-facestack')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tune the limit window' }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r1' });
   });
 
@@ -37,24 +43,24 @@ describe('Running', () => {
   });
 
   it('says when nothing is running', () => {
-    render(<Running poll={poll([])} refreshing={false} onGo={() => {}} />);
-    expect(screen.getByText('Nothing running')).toBeTruthy();
+    render(<Running poll={poll([])} onGo={() => {}} />);
+    expect(screen.getByText('Nothing running.')).toBeTruthy();
   });
 
   it('trusts the server for liveness: a running row with live false is not listed', () => {
-    render(<Running poll={poll([makeRow({ id: 'r9', status: 'running', live: false, lastTs: Date.now() })])} refreshing={false} onGo={() => {}} />);
-    expect(screen.getByText('Nothing running')).toBeTruthy();
+    render(<Running poll={poll([makeRow({ id: 'r9', status: 'running', live: false, lastTs: Date.now() })])} onGo={() => {}} />);
+    expect(screen.getByText('Nothing running.')).toBeTruthy();
   });
 
   it('shows a load error with retry, and keeps rows with a compact retry after a later failure', () => {
     const failing: Poll<RunRow[]> = { data: undefined, error: 'down', fails: 1, refresh: vi.fn(async () => {}) };
-    const { unmount } = render(<Running poll={failing} refreshing={false} onGo={() => {}} />);
+    const { unmount } = render(<Running poll={failing} onGo={() => {}} />);
     expect(screen.getByRole('alert').textContent).toContain('down');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(failing.refresh).toHaveBeenCalled();
     unmount();
-    render(<Running poll={{ ...failing, data: [working] }} refreshing={false} onGo={() => {}} />);
-    expect(screen.getByText('Bolt is working on Implement')).toBeTruthy();
+    render(<Running poll={{ ...failing, data: [working] }} onGo={() => {}} />);
+    expect(screen.getByText('Bolt is working on Implement · step 2 of 2')).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain("Couldn't refresh");
   });
 });

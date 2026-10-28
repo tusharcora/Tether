@@ -1,6 +1,6 @@
-import type { Answer, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
+import type { Answer, Edge, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
 
-export type { Answer, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
+export type { Answer, Edge, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
 export type { ActivityLine, AttentionAction, AttentionItem, Pin, RosterPreview, RunStep, VaultActivityItem } from '../../src/types.js';
 export type RunView = RunState & { live: boolean };
 export interface RunRow extends RunRowExtras {
@@ -71,8 +71,13 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 }
 
 export const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
-export const fmtDur = (ms: number) =>
-  ms < 1000 ? `${Math.round(ms)}ms` : ms < 60_000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+/** 450ms, 4.2s, 6m 12s, 3h 12m, 3d 16h: the two largest units from a minute up. */
+export const fmtDur = (ms: number) => {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.round(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  return m < 60 ? `${m}m ${s % 60}s` : h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+};
 export const ago = (t: number) => {
   const s = Math.max(0, (Date.now() - t) / 1000);
   return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;

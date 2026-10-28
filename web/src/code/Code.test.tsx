@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view';
+import { readFileSync } from 'node:fs';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -35,6 +36,8 @@ beforeEach(() => {
   routeApi(routes);
 });
 
+// through a variable so Vite leaves the URL alone (as test/css.ts does)
+const here = import.meta.url;
 const setup = (o: Partial<CodeProps> = {}) => {
   const p = { project: shop, onPath: vi.fn(), onOpenRun: vi.fn(), onDirtyChange: vi.fn(), ...o };
   const r = renderApp(<Code {...p} />);
@@ -74,6 +77,20 @@ describe('Code screen', () => {
     await waitFor(() => expect(editorText()).toBe(A));
     expect(a.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tab', { name: 'a.ts' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('draws the tree with beui: branch lines and a sliding highlight', async () => {
+    setup();
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    expect(tree.querySelectorAll('button[role="treeitem"]').length).toBeGreaterThan(0);
+    // beui assumes Tailwind's preflight; without it the rows would take the app's default button box
+    expect(cssRule('code/code.css', '.code-tree-list [role="treeitem"]')).toContain('border: 0');
+    expect(cssRule('code/code.css', '.code-tree-list [role="treeitem"]:not([aria-selected="true"])')).toContain('background-color: transparent');
+  });
+
+  it('keeps the vendored MIT notice', () => {
+    expect(readFileSync(new URL('../components/beui/motion/file-tree.tsx', here), 'utf8')).toMatch(/MIT License, Copyright \(c\) 2026 Saurabh Chauhan/);
+    expect(readFileSync(new URL('../components/beui/motion/shared-layout-bg.tsx', here), 'utf8')).toMatch(/MIT License, Copyright \(c\) 2026/);
   });
 
   it('opens read-only; Edit makes it editable, the tab shows unsaved work and Save writes it with the base mtime', async () => {

@@ -15,7 +15,6 @@
 .tm-done { margin: 0; padding-left: 18px; }
 .tm-assign { --row-lead: 36px; }
 .tm-assign-goal { color: var(--ink); }
-.tm-dialogue { min-width: 0; }
 
 /* Read-only planning dialogue: who said it, then what */
 .tm-thread { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }

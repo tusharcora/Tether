@@ -1,8 +1,22 @@
-import { isFinished } from '../../../src/runLabels';
+import { isFinished, runTitle } from '../../../src/runLabels';
 import type { RunRow } from '../api';
 
 /** The run's label and finished statuses come from the one shared copy (`src/runLabels.ts`). */
 export { isFinished, runTitle } from '../../../src/runLabels';
+
+/** A run's title: the first non-empty line of its task (CSS truncates it), else its label. */
+export function taskTitle(r: { task: string; kind: string; pipeline: string }): string {
+  return r.task.split('\n').map((l) => l.trim()).find(Boolean) ?? runTitle(r);
+}
+
+/** "step n of m": the current step's place, else the one after the finished and skipped steps; undefined without steps. */
+export function stepOf(r: RunRow): string | undefined {
+  const m = r.steps.length;
+  if (!m) return undefined;
+  const i = r.current ? r.steps.findIndex((s) => s.id === r.current!.node) : -1;
+  const n = i >= 0 ? i + 1 : Math.min(r.steps.filter((s) => s.status === 'done' || s.status === 'skipped').length + 1, m);
+  return `step ${n} of ${m}`;
+}
 
 /** "What's happening now" for a live run, from its current step (no free text). */
 export function nowLine(r: RunRow): string {
@@ -10,12 +24,6 @@ export function nowLine(r: RunRow): string {
   if (!r.current) return 'Between steps';
   const status = r.steps.find((s) => s.id === r.current!.node)?.status;
   return status === 'awaiting' ? `${r.current.title} waits for you` : `${r.current.bot} is working on ${r.current.title}`;
-}
-
-/** The face that breathes: the current step's bot, or Tether while a team plans. */
-export function workingBot(r: RunRow): string | undefined {
-  if (r.current) return r.steps.find((s) => s.id === r.current!.node)?.bot;
-  return r.kind === 'team' && !r.steps.length ? 'orchestrator' : undefined;
 }
 
 /** The 5 most recently finished runs, Evolve probes left out. */

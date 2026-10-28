@@ -1,0 +1,31 @@
+/* The run graph (the demo's .dag): crew cards in dependency layers on a dot grid; wide team runs scroll sideways. Tokens only. */
+.rg { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--side); }
+/* at least as wide as the scroller, so the dot grid fills it; the dots are a solid fill cut by a mask (no gradient fill, as canvas.css) */
+.rg-inner { position: relative; min-width: 100%; }
+.rg-inner::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--line2);
+  -webkit-mask-image: radial-gradient(circle at 1px 1px, black 1px, transparent 1.2px); mask-image: radial-gradient(circle at 1px 1px, black 1px, transparent 1.2px);
+  -webkit-mask-size: 20px 20px; mask-size: 20px 20px;
+}
+.rg-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rg-edge { fill: none; stroke-width: 1.5; }
+.rg-edge.e-done { stroke: var(--ok); }
+.rg-edge.e-live { stroke: var(--acc); }
+.rg-edge.e-failed { stroke: var(--bad); }
+.rg-edge.e-idle { stroke: var(--line2); }
+.rg-dot { fill: var(--acc); }
+.rg-card {
+  position: absolute; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 10px;
+  background: var(--s1); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.rg-card:hover { transform: translateY(-2px); }
+.rg-card.s-loading { border-color: var(--acc); }
+.rg-card.s-warning { border-color: var(--warn); }
+.rg-card.s-danger { border-color: var(--bad); }
+.rg-card[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 3px var(--accBg); }
+.rg-card .face { flex: none; }
+.rg-text { display: flex; flex-direction: column; min-width: 0; }
+.rg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; }
+.rg-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 10.5px; color: var(--mut); }
+@media (prefers-reduced-motion: reduce) { .rg-card:hover { transform: none; } }

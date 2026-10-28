@@ -2,7 +2,6 @@ import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } fr
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import { Tabs as BeuiTabs, TabsContent as BeuiTabsContent, TabsList as BeuiTabsList, TabsTrigger as BeuiTabsTrigger } from '../motion/tabs';
 import { Tooltip as BeuiTooltip, TooltipProvider } from '../motion/tooltip';
-import { AnimatedBadge, type AnimatedBadgeStatus } from '../motion/animated-badge';
 import { SPRING_LAYOUT } from '../lib/ease';
 import { cn } from '../lib/utils';
 
@@ -93,14 +92,6 @@ export function SegmentedControl({ options, value, onValueChange, label, onOptio
 /** Hover and focus tooltip for a control; keeps its trigger as the child. */
 export function Tooltip({ content, children, side = 'top' }: { content: ReactNode; children: React.ReactElement; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   return <BeuiTooltip content={content} side={side}>{children}</BeuiTooltip>;
-}
-
-export type Tone = 'live' | 'needs' | 'done' | 'failed' | 'neutral';
-const STATUS: Record<Tone, AnimatedBadgeStatus> = { live: 'info', needs: 'warning', done: 'success', failed: 'danger', neutral: 'neutral' };
-
-/** A small status badge. Colour carries meaning only: blue live, amber needs you, green done, red failed. */
-export function Badge({ tone = 'neutral', pulse, size = 'sm', className, children }: { tone?: Tone; pulse?: boolean; size?: 'sm' | 'md'; className?: string; children: ReactNode }) {
-  return <AnimatedBadge status={STATUS[tone]} pulse={pulse} size={size} showIcon={false} className={className}>{children}</AnimatedBadge>;
 }
 
 /** A quiet placeholder block for content on its way. */

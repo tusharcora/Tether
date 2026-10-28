@@ -5,7 +5,8 @@ import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
 import { NodeActions, type NodeAction } from './components/bencho/ActionNode';
 import { Face, moodFor } from './Face';
-import { StatusChip, toneFor } from './ui/studio/StatusChip';
+import { stepDesc } from './ui/studio/status';
+import { StatusBadge } from './ui/studio/StatusBadge';
 import { cn } from './ui/cn';
 import './canvas.css';
 
@@ -280,7 +281,7 @@ export function Canvas(props: CanvasProps) {
                 {n.kind === 'approval' ? <div className="cmd muted">human sign-off</div> : null}
                 {st ? (
                   <div className="run-line">
-                    <StatusChip tone={toneFor(st.status)} label={st.status} pulse={st.status === 'running'} />
+                    <StatusBadge desc={stepDesc(n, st)} />
                     {st.attempts > 1 ? <span>×{st.attempts}</span> : null}
                     {st.costUsd > 0 ? <span>{fmtUsd(st.costUsd)}</span> : null}
                   </div>

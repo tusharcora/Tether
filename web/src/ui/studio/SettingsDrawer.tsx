@@ -12,7 +12,7 @@ import { resolveTheme, THEME_LABEL, type ThemeChoice } from '../../theme';
 import { ToolsStrip, type Tools } from '../../welcome/ToolsStrip';
 import { CONNECTION_LABEL, type Connection } from './connection';
 import { Glyph } from './Glyph';
-import { StatusChip, type Tone } from './StatusChip';
+import { StatusBadge, type Tone } from './StatusBadge';
 import './shell.css';
 
 const TONE: Record<Connection, Tone> = { connecting: 'neutral', connected: 'done', reconnecting: 'needs', offline: 'failed' };
@@ -82,7 +82,7 @@ export function SettingsDrawer(p: { open: boolean; onClose: () => void; choice: 
         </section>
         <section className="sl-settings-group" aria-labelledby="set-conn">
           <h3 id="set-conn">Connection</h3>
-          <StatusChip tone={TONE[p.connection]} label={CONNECTION_LABEL[p.connection]} pulse={p.connection === 'reconnecting'} />
+          <StatusBadge tone={TONE[p.connection]} label={CONNECTION_LABEL[p.connection]} pulse={p.connection === 'reconnecting'} />
         </section>
         {p.notifications ? (
           <section className="sl-settings-group" aria-labelledby="set-notify">

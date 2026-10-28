@@ -1,44 +1,64 @@
 .home { min-height: 100%; padding-bottom: 32px; }
+/* the demo's .cols: a main column and a 270 px side column that stacks under it below 1100 px (same DOM order) */
+.home-cols { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 28px; align-items: start; padding: 0 24px; }
+@media (max-width: 1099px) { .home-cols { grid-template-columns: minmax(0, 1fr); } }
+.home-main, .home-side { min-width: 0; }
+/* Inbox */
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
-/* below 1200 px the two columns dissolve into the one stack */
-.home-col { display: contents; }
-@media (max-width: 899px) { .home-grid { padding: 0 12px; } }
-.start-form { display: flex; flex-direction: column; gap: 12px; }
-.start-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 899px) { .home-cols, .home-grid { padding: 0 12px; } }
+/* Composer (the demo's .composer): a borderless task field that grows, suggestions while it is empty and focused, a chip row */
+.start { display: flex; flex-direction: column; gap: 8px; }
+.start-none { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.composer { position: relative; padding: 12px 12px 10px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s1); transition: border-color var(--t-fast) var(--ease); }
+/* the field itself draws no outline: the box shows focus */
+.composer:has(textarea:focus-visible) { border-color: var(--edge); }
+.composer textarea { display: block; width: 100%; min-height: 22px; max-height: 40vh; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 22px; field-sizing: content; }
+.composer textarea::placeholder { color: var(--mut); }
+/* suggestions float under the box so the chip row never moves under the pointer */
+.start-chips { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border: 1px solid var(--line2); border-radius: 10px; background: var(--s1); }
 .start-chip { padding: 2px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--s1); color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
 .start-chip:hover { color: var(--ink); background: var(--s2); }
-.start-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-.start-row > :first-child { flex: 1 1 200px; min-width: 0; }
-/* the mode switch and the Workflow… link share one centred line */
-.start-mode { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
+.composer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.composer-anchor { position: relative; }
+.composer-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: var(--s2); color: var(--ink2); font: inherit; font-size: 12px; cursor: pointer; }
+.composer-chip:hover, .composer-chip[aria-expanded="true"] { background: var(--s3); color: var(--ink); }
+.composer-label { font-size: 12px; color: var(--mut); }
+.composer-spacer { flex: 1; }
+.composer-menu { top: calc(100% + 4px); left: 0; min-width: 220px; font-size: 13px; }
+.composer-menu [role="menuitem"] > span:first-child { white-space: nowrap; }
+.composer-hint { margin-left: auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
 .start-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; }
 .start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
-.start-go { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
-.s-start .link { color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
-.s-start .link:hover, .s-start .link:focus-visible { text-decoration: underline; }
-.run-now { font-size: 12px; color: var(--mut); }
-.s-running .run-todos { margin: 6px 0 0; }
 .elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
-@media (min-width: 1200px) {
-  /* two independent stacks: a short Live activity leaves no row gap beside the left column */
-  .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: 20px; }
-  .home-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-}
-.act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; max-height: 420px; overflow: auto; }
-.act-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 2px; border-top: 1px solid var(--line); }
-.act-line:first-child { border-top-color: transparent; }
+/* Activity: the demo's .feed, a 44 px mono time column, then the step's name and what it did in the kind's colour */
+.act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+.act-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.act-line:first-child { border-top: 0; }
 .act-line.fresh { animation: act-in var(--t-slow) var(--ease); }
 @keyframes act-in { from { opacity: 0; transform: translateY(-4px); } }
-.act-face { display: grid; place-items: center; }
-.act-dot { width: 8px; height: 8px; background: var(--mut); }
-.act-dot.t-live { background: var(--acc); } .act-dot.t-needs { background: var(--warn); } .act-dot.t-done { background: var(--ok); } .act-dot.t-failed { background: var(--bad); }
-.act-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.saved-method { display: inline-block; min-width: 44px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.act-tm { padding-top: 1px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
+.act-text { min-width: 0; overflow-wrap: anywhere; }
+.act-who { font-weight: 500; }
+.act-what.k-working { color: var(--accInk); } .act-what.k-needs { color: var(--warn); } .act-what.k-done { color: var(--ok); } .act-what.k-failed { color: var(--bad); }
 .crew-strip { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.crew-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
+.crew-face { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
+/* busy dot on the face's bottom-right corner (the 36 px face is centred in the 56 px cell) */
+.crew-face.busy::after { content: ''; position: absolute; top: 27px; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 2px var(--bg); }
 .crew-face.idle .face { opacity: .45; }
 .crew-name { max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--mut); }
 :root:not([data-theme="dark"]) .crew-face .face { border-radius: 30%; box-shadow: 0 0 0 1px var(--line2); }
-/* Needs you (Home and Inbox): the lead column holds a kind chip ("planning failed" is the widest), so rows line up without overlap */
-.s-needs { --row-lead: 112px; }
+/* Inbox (the demo's .inbox): the list on the left, the open item on the right; one column under 1100 px */
+.inbox-cols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 1099px) { .inbox-cols { grid-template-columns: minmax(0, 1fr); } }
+.inbox-list > li { overflow: hidden; }
+.inbox-list > li + li { border-top: 1px solid var(--line); }
+.inbox-row { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 11px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.inbox-row:hover, .inbox-row[aria-current="true"] { background: var(--s2); }
+.inbox-row-main { display: flex; flex-direction: column; min-width: 0; }
+.inbox-dot { background: var(--warn); }
+.inbox-dot.bad { background: var(--bad); }
+.inbox-detail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.inbox-eyebrow { margin: 0; font-family: var(--font-code); font-size: 11.5px; color: var(--mut); }
+.inbox-title { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.inbox-acts { display: flex; flex-wrap: wrap; gap: 8px; }

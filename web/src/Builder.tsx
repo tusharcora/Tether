@@ -17,7 +17,7 @@ import { Palette, type EccSkill } from './builder/Palette';
 import { SettingsForm, StepForm, type Adapters } from './builder/Inspector';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import { ScreenHeader } from './ui/studio/ScreenHeader';
-import { StatusChip } from './ui/studio/StatusChip';
+import { StatusBadge } from './ui/studio/StatusBadge';
 import './builder/builder.css';
 
 const BLANK: Pipeline = {
@@ -327,7 +327,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
             />
             {phone ? null : <Input className="bl-name" label="Pipeline name" value={pl.name} spellCheck={false} onChange={(e) => mut((p) => (p.name = e.target.value.trim()))} />}
             <button type="button" className="bl-issues-toggle" aria-expanded={showIssues} title="Show or hide the issue list" onClick={() => setShowIssues(!showIssues)}>
-              <StatusChip tone={issueTone} label={issueLabel} />
+              <StatusBadge tone={issueTone} label={issueLabel} />
             </button>
             {phone ? null : (
               <>
@@ -351,7 +351,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         <ul className="bl-issues" aria-label="Preflight issues">
           {issues.map((i, k) => (
             <li key={k}>
-              <StatusChip tone={i.level === 'error' ? 'failed' : 'needs'} label={i.level} />
+              <StatusBadge tone={i.level === 'error' ? 'failed' : 'needs'} label={i.level} />
               {i.node && !phone ? (
                 <button type="button" className="bl-issue-node" onClick={() => setSelected(i.node)}>
                   {i.node}

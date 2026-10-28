@@ -1,22 +1,22 @@
+import { Check, ChevronDown } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import { api, type RosterPreview } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { CopyButton } from '../components/beui/kit/CopyButton';
-import { SegmentedControl } from '../components/beui/kit/controls';
-import { Picker } from '../components/bencho/Picker';
-import { Textarea } from '../components/kept/textarea/textarea';
 import { Loading } from '../components/Loading';
 import { Face } from '../Face';
 import { usePoll, type Poll, type Route } from '../hooks';
-import { EmptyState } from '../ui/studio/EmptyState';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { Kbd } from '../ui/studio/Kbd';
-import { Panel } from '../ui/studio/Panel';
+import { QuietLine } from '../ui/studio/Section';
+import { useMenu } from '../ui/studio/useMenu';
+import '../ui/studio/shell.css';
 import { useRosterPreview } from './useRosterPreview';
 import { INIT_COMMAND, pickWorkspace, WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
 
 type Mode = 'live' | 'autonomous';
+const MODE_LABEL: Record<Mode, string> = { live: 'Team · live', autonomous: 'Team · autonomous' };
 const EXAMPLES = ['Add rate limiting to the public API', 'Fix the flaky login test', 'Write a README section for the CLI'];
 
 function PreviewRow({ preview }: { preview: RosterPreview }) {
@@ -45,8 +45,9 @@ function PreviewRow({ preview }: { preview: RosterPreview }) {
 }
 
 /**
- * Start a team run from Home (workflow runs start from the Builder's run dialog).
- * `workspaces` is Home's one shared /api/workspaces poll; without it (standalone use) StartRun polls on its own.
+ * The Home composer (the demo's): one growing "Ask the crew to…" field, suggestions while it is empty and focused, and a
+ * chip row (project, run kind with a hand-off to the Builder for workflows, who picks the crew) with Start run. It starts
+ * team runs. `workspaces` is Home's one shared /api/workspaces poll; without it (standalone use) StartRun polls on its own.
  */
 export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: string) => void; workspaces?: Poll<WorkspaceRow[]> }) {
   const own = usePoll<WorkspaceRow[]>(props.workspaces ? null : WORKSPACES_PATH, WORKSPACES_MS);
@@ -58,6 +59,9 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
   const [mode, setMode] = useState<Mode>('live');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [focused, setFocused] = useState(false);
+  const wsMenu = useMenu();
+  const kindMenu = useMenu();
   const preview = useRosterPreview(task, ws?.id);
   const ready = !!task.trim() && !!ws?.exists && !busy;
 
@@ -83,33 +87,78 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
 
   const list = workspaces.data;
   return (
-    <Panel title="Start a run" className="s-start">
-      <Loading loading={list === undefined && !workspaces.error} lines={5} label="Loading workspaces">
+    <div className="start">
+      <Loading loading={list === undefined && !workspaces.error} lines={3} label="Loading workspaces">
         {workspaces.error && !list ? (
           <InlineError message={workspaces.error} onRetry={() => void workspaces.refresh()} />
         ) : !list?.length ? (
-          <EmptyState
-            title="No workspace yet"
-            description={`Register the project the team should work on: run ${INIT_COMMAND} in its folder.`}
-            action={<CopyButton value={INIT_COMMAND} label="Copy command" onCopied={() => notify.ok('Command copied', INIT_COMMAND)} />}
-          />
+          <div className="start-none">
+            <QuietLine>
+              No workspace yet. Run <code>{INIT_COMMAND}</code> in the project folder.
+            </QuietLine>
+            <CopyButton value={INIT_COMMAND} label="Copy command" onCopied={() => notify.ok('Command copied', INIT_COMMAND)} />
+          </div>
         ) : (
-          <div className="start-form">
-            <Textarea label="Task" rows={3} value={task} onChange={(e) => setTask(e.target.value)} onKeyDown={onKeyDown} placeholder="What should the team do?" />
-            <div className="start-chips">
-              {EXAMPLES.map((x) => (
-                <button key={x} type="button" className="start-chip" onClick={() => setTask(x)}>
-                  {x}
-                </button>
-              ))}
-            </div>
-            <div className="start-row">
-              <Picker label="Workspace" value={ws ? [ws.id] : []} onChange={([id]) => id && setPicked(id)} options={list.map((w) => ({ id: w.id, name: w.name, hint: w.exists ? w.path : 'folder missing', disabled: false }))} />
-              <div className="start-mode">
-                <SegmentedControl label="Run as" options={[{ value: 'live', label: 'Team · live' }, { value: 'autonomous', label: 'Team · autonomous' }]} value={mode} onValueChange={(v) => setMode(v as Mode)} />
-                <button type="button" className="link" onClick={() => props.onGo({ tab: 'builder' })}>
-                  Workflow…
-                </button>
+          <>
+            <div className="composer">
+              {/* suggestions stay while focus is anywhere in the field, so Tab can reach them */}
+              <div onFocus={() => setFocused(true)} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setFocused(false)}>
+                <textarea aria-label="Task" placeholder="Ask the crew to…" rows={1} value={task} onChange={(e) => setTask(e.target.value)} onKeyDown={onKeyDown} />
+                {focused && !task ? (
+                  <div className="start-chips">
+                    {EXAMPLES.map((x) => (
+                      // mouse-down picks before the field blurs; click covers the keyboard
+                      <button key={x} type="button" className="start-chip" onMouseDown={(e) => (e.preventDefault(), setTask(x))} onClick={() => setTask(x)}>
+                        {x}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="composer-row">
+                <span className="composer-anchor">
+                  <button ref={wsMenu.triggerRef} type="button" className="composer-chip" aria-haspopup="menu" aria-expanded={wsMenu.open} onClick={wsMenu.toggle}>
+                    {ws?.name ?? 'Workspace'}
+                    <ChevronDown size={12} aria-hidden="true" />
+                  </button>
+                  {wsMenu.open ? (
+                    <div ref={wsMenu.menuRef} className="sl-menu composer-menu" role="menu" aria-label="Workspace" onKeyDown={wsMenu.onMenuKey}>
+                      {list.map((w) => (
+                        <button key={w.id} type="button" role="menuitem" aria-current={w.id === ws?.id ? 'true' : undefined} onClick={() => (wsMenu.close(), setPicked(w.id))}>
+                          <span>{w.name}</span>
+                          <span className="composer-hint">{w.exists ? w.path : 'folder missing'}</span>
+                          {w.id === ws?.id ? <Check size={14} aria-hidden="true" /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </span>
+                <span className="composer-anchor">
+                  <button ref={kindMenu.triggerRef} type="button" className="composer-chip" aria-haspopup="menu" aria-expanded={kindMenu.open} onClick={kindMenu.toggle}>
+                    {MODE_LABEL[mode]}
+                    <ChevronDown size={12} aria-hidden="true" />
+                  </button>
+                  {kindMenu.open ? (
+                    <div ref={kindMenu.menuRef} className="sl-menu composer-menu" role="menu" aria-label="Run kind" onKeyDown={kindMenu.onMenuKey}>
+                      {(['live', 'autonomous'] as const).map((m) => (
+                        <button key={m} type="button" role="menuitem" aria-current={m === mode ? 'true' : undefined} onClick={() => (kindMenu.close(), setMode(m))}>
+                          <span>{MODE_LABEL[m]}</span>
+                          {m === mode ? <Check size={14} aria-hidden="true" /> : null}
+                        </button>
+                      ))}
+                      <div className="sl-menu-rule" role="separator" />
+                      <button type="button" role="menuitem" onClick={() => (kindMenu.close(), props.onGo({ tab: 'builder' }))}>
+                        Workflow…
+                      </button>
+                    </div>
+                  ) : null}
+                </span>
+                <span className="composer-label">Tether picks the crew</span>
+                <span className="composer-spacer" />
+                <Kbd mod>↵</Kbd>
+                <Button variant="primary" size="sm" loading={busy} disabled={!ready} onClick={() => void start()}>
+                  Start run
+                </Button>
               </div>
             </div>
             {preview ? <PreviewRow preview={preview} /> : null}
@@ -123,15 +172,9 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
                 {error}
               </p>
             ) : null}
-            <div className="start-go">
-              <Kbd mod>↵</Kbd>
-              <Button variant="primary" loading={busy} disabled={!ready} onClick={() => void start()}>
-                Start
-              </Button>
-            </div>
-          </div>
+          </>
         )}
       </Loading>
-    </Panel>
+    </div>
   );
 }

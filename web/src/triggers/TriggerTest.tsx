@@ -4,7 +4,7 @@ import { Button } from '../components/beui/kit/Button';
 import { Input, Select } from '../components/beui/kit/fields';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { Panel } from '../ui/studio/Panel';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { TestResult, Trigger } from './types';
 
 /** Ask GitHub about a PR and say what the trigger would do (dry run), or start the run for real after confirming. */
@@ -51,7 +51,7 @@ export function TriggerTest(p: { triggers: Trigger[]; testId: string; onTestId: 
           ) : null}
           {result ? (
             <div className="tg-result" role="status">
-              <StatusChip tone={result.matches ? 'done' : 'needs'} label={result.fired ? 'run started' : result.matches ? 'would run' : 'would be ignored'} />
+              <StatusBadge tone={result.matches ? 'done' : 'needs'} label={result.fired ? 'run started' : result.matches ? 'would run' : 'would be ignored'} />
               <p>
                 <b>
                   {result.pr.repo}#{result.pr.number}

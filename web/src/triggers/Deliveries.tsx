@@ -8,7 +8,7 @@ import type { Poll } from '../hooks';
 import { NONE, fromNone } from '../ui/cn';
 import { InlineError } from '../ui/studio/InlineError';
 import { SectionHeading } from '../ui/studio/SectionHeading';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import { OUTCOME, type Delivery, type Trigger } from './types';
 
 const time = (d: Delivery) => Date.parse(d.at);
@@ -34,7 +34,7 @@ export function Deliveries(p: { triggers: Trigger[]; logFor: string; onLogFor: (
   if (p.log.data) seen.current = new Set([...(known ?? []), ...rows.map(keyOf)]);
   const columns = useMemo<Column<Delivery>[]>(
     () => [
-      { id: 'outcome', header: 'Outcome', sort: (a, b) => a.outcome.localeCompare(b.outcome) || time(b) - time(a), cell: (d) => <StatusChip tone={OUTCOME[d.outcome].tone} label={OUTCOME[d.outcome].label} /> },
+      { id: 'outcome', header: 'Outcome', sort: (a, b) => a.outcome.localeCompare(b.outcome) || time(b) - time(a), cell: (d) => <StatusBadge tone={OUTCOME[d.outcome].tone} label={OUTCOME[d.outcome].label} /> },
       { id: 'what', header: 'Pull request', sort: (a, b) => what(a).localeCompare(what(b)), cell: (d) => <span className="tg-what">{what(d)}</span> },
       {
         id: 'trigger',

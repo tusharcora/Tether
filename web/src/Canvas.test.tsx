@@ -91,9 +91,9 @@ describe('Canvas', () => {
 
   it('shows a step status chip on run cards only', () => {
     const { container, rerender } = render(<Canvas nodes={nodes} edges={edges} statuses={run.nodes} />);
-    expect(container.querySelector('[data-id="code"] .sl-chip.t-live')!.textContent).toBe('running');
+    expect(container.querySelector('[data-id="code"] [data-status="loading"]')!.textContent).toBe('writing');
     rerender(<Canvas nodes={nodes} edges={edges} />);
-    expect(container.querySelector('.sl-chip')).toBeNull();
+    expect(container.querySelector('.sl-badge')).toBeNull();
   });
 
   it('names the zoom buttons', () => {

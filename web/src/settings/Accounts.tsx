@@ -8,7 +8,7 @@ import type { Poll } from '../hooks';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { AccountsView, DeviceState, ProviderView } from './accountsApi';
 import './settings.css';
 
@@ -40,7 +40,7 @@ function ComingProvider({ p }: { p: ProviderView }) {
     <>
       <div className="acc-head">
         <b>{p.name}</b>
-        <StatusChip tone="neutral" label="coming" />
+        <StatusBadge tone="neutral" label="coming" />
       </div>
       <p className="acc-note">{p.note ?? 'Not available yet.'}</p>
     </>
@@ -94,7 +94,7 @@ function GithubAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Pro
     <>
       <div className="acc-head">
         <b>GitHub</b>
-        {a ? <StatusChip tone="done" label="connected" /> : <StatusChip tone="neutral" label="not connected" />}
+        {a ? <StatusBadge tone="done" label="connected" /> : <StatusBadge tone="neutral" label="not connected" />}
       </div>
       {a ? (
         <div className="acc-body">
@@ -139,7 +139,7 @@ function GithubAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Pro
               <a href={flow.verificationUri} target="_blank" rel="noreferrer">
                 Open {flow.verificationUri.replace(/^https:\/\//, '')}
               </a>
-              <StatusChip tone="needs" label="waiting for you to approve" />
+              <StatusBadge tone="needs" label="waiting for you to approve" />
             </div>
           ) : p.device?.ready ? (
             <div className="acc-option">
