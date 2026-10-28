@@ -85,7 +85,7 @@ describe('Runs', () => {
   it('shows an awaiting approval step in the approval bar and rejects from it', async () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
-    expect(await screen.findByText('Approve Ship it (ship)?')).toBeTruthy();
+    expect(await screen.findByText('Approve “Ship it”?')).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reject' })));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: false });
   });

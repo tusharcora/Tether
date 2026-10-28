@@ -60,12 +60,18 @@ describe('run header, notices and approval bar', () => {
     const onAct = vi.fn(async () => true);
     const review = vi.fn();
     renderApp(<ApprovalBar run={makeAwaitingRun()} onAct={onAct} onReviewDiff={review} />);
-    expect(screen.getByText('Approve Ship it (ship)?')).toBeTruthy();
+    expect(screen.getByText('Approve “Ship it”?')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Review diff' }));
     expect(review).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
     await waitFor(() => expect(onAct).toHaveBeenCalledWith('approve', { node: 'ship', approved: false }));
     expect(cssRule('runs/runs.css', '.run-approve')).toContain('position: sticky');
+  });
+  it('asks plainly when the approval step is just called approve', () => {
+    const r = makeAwaitingRun();
+    const run = { ...r, pipeline: { ...r.pipeline, nodes: r.pipeline.nodes.map((n) => (n.id === 'ship' ? { ...n, title: 'approve' } : n)) } };
+    renderApp(<ApprovalBar run={run} onAct={act0} onReviewDiff={() => {}} />);
+    expect(screen.getByText('Approve this step?')).toBeTruthy();
   });
   it('shows no approval bar when nothing waits', () => {
     const { container } = renderApp(<ApprovalBar run={makeRun()} onAct={act0} onReviewDiff={() => {}} />);

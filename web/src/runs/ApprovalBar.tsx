@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { stepLabel } from '../../../src/runLabels';
 import type { RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import type { RunAct } from '../Runs';
@@ -35,7 +34,8 @@ export function ApprovalBar({ run: r, onAct, onReviewDiff }: { run: RunView; onA
       {waiting.map((n) => (
         <div key={n.id} className="run-approve">
           <div className="run-approve-q">
-            <b>{`Approve ${stepLabel(r.pipeline.nodes, n.id)}?`}</b>
+            {/* a step titled just "approve" (or untitled) would read "Approve approve?" */}
+            <b>{!n.title?.trim() || /^approv/i.test(n.title.trim()) ? 'Approve this step?' : `Approve “${n.title.trim()}”?`}</b>
             <span>{gateSummary(r)}</span>
           </div>
           <Button variant="secondary" size="sm" onClick={onReviewDiff}>
