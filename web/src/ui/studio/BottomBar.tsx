@@ -11,7 +11,7 @@ const MORE = NAV.filter((n) => !MAIN.includes(n.id) && n.id !== 'inbox');
 
 export interface BottomBarProps {
   active: Screen;
-  /** The Settings drawer is open over the active screen. */
+  /** The Settings page is open over the active screen. */
   settingsOpen?: boolean;
   onGo: (s: Screen) => void;
   onSettings: () => void;

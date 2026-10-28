@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ import { api } from './api';
 import { Builder } from './Builder';
 import { calls, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
+import { SettingsPage } from './ui/studio/SettingsPage';
 import { PHONE } from './ui/studio/useMediaQuery';
 
 const pcr = makeRun().pipeline;
@@ -384,6 +386,30 @@ describe('Builder', () => {
     fireEvent.click(await screen.findByRole('button', { name: '1 warning' }));
     expect(screen.getByText('no gate after plan')).toBeTruthy();
     expect(document.querySelector('.bl-issue-node')).toBeNull();
+  });
+
+  it('keeps "/" and Esc on a Settings page from reaching the Builder underneath', async () => {
+    function Harness() {
+      const [settings, setSettings] = useState(false);
+      return (
+        <>
+          <Builder onStarted={() => {}} />
+          <button type="button" onClick={() => setSettings(true)}>open settings</button>
+          {settings ? <SettingsPage onClose={() => setSettings(false)} choice="system" onChoice={() => {}} connection="connected" /> : null}
+        </>
+      );
+    }
+    renderApp(<Harness />);
+    await screen.findByDisplayValue('plan-code-review');
+    openStep('code');
+    fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
+    const page = screen.getByRole('dialog', { name: 'Settings' });
+    fireEvent.keyDown(page, { key: '/' });
+    expect(screen.queryByRole('dialog', { name: 'Add a step' })).toBeNull();
+    fireEvent.keyDown(page, { key: 'Escape' });
+    // the page closed; the step editor under it did not
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Step editor' })).toBeTruthy();
   });
 
   // The view is remembered for the page session (a module variable), so these run in order and end back on Canvas.

@@ -32,7 +32,7 @@ import { MCP_PATH, type McpServerView } from './settings/McpServers';
 import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
-import { SettingsDrawer } from './ui/studio/SettingsDrawer';
+import { SettingsPage } from './ui/studio/SettingsPage';
 import { Sidebar } from './ui/studio/Sidebar';
 import { isTyping, useGoKeys } from './ui/studio/useGoKeys';
 import { CREATE_SCREEN, type CreateKind } from './ui/studio/nav';
@@ -64,7 +64,7 @@ function Shell() {
   /** Screens holding unsaved work: leaving one, or switching project under it, asks first (the screen unmounts and the work would be lost). */
   const [dirty, setDirty] = useState<Partial<Record<Screen, boolean>>>({});
   const [leaving, setLeaving] = useState<{ then: () => void; text: string }>();
-  /** The screen shown under the Settings drawer. Settings opens over it and it stays mounted. */
+  /** The screen shown under the Settings page. Settings opens over it and it stays mounted. */
   const screenRef = useRef<ScreenRoute>({ tab: 'home' });
   const dirtyHere = () => !!dirty[screenRef.current.tab];
   const leaves = (next: Route) => dirtyHere() && next.tab !== screenRef.current.tab && next.tab !== 'settings';
@@ -207,6 +207,10 @@ function Shell() {
   /** Where focus goes when Settings closes and its opener (a More menu item, the ⌘K field) is gone. */
   const settingsHome = () => shellRef.current?.querySelector<HTMLElement>(phone ? '.sl-bottombar [aria-haspopup="menu"]' : '.sl-side [aria-label="Settings"]');
   const list = projects.list.data ?? [];
+  /** Settings as a page over the content area (the screen under it stays mounted); over the Welcome screen it covers the window. */
+  const settingsPage = settingsOpen ? (
+    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+  ) : null;
   /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
   const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);
 
@@ -297,11 +301,12 @@ function Shell() {
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
           </main>
+          {settingsPage}
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
           <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />
         </div>
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+      {welcome && settingsPage ? <div className="st-alone">{settingsPage}</div> : null}
       <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog
