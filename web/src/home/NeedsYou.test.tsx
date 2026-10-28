@@ -15,10 +15,10 @@ const items: AttentionItem[] = [
   { id: 'r3:question:q1', ts: now - 180_000, runId: 'r3', kind: 'question', title: 'Which database?', meta: 'Team run · r3 · aorch/r3', actions: ['answer'], node: 'code' },
 ];
 const poll = (data?: { items: AttentionItem[] }, error?: string): Poll<{ items: AttentionItem[] }> => ({ data, error, fails: 0, refresh: vi.fn(async () => {}) });
-const setup = (p: Poll<{ items: AttentionItem[] }>, refreshing = false) => {
+const setup = (p: Poll<{ items: AttentionItem[] }>) => {
   const onGo = vi.fn();
   const onChanged = vi.fn();
-  renderApp(<NeedsYou poll={p} refreshing={refreshing} onGo={onGo} onChanged={onChanged} />);
+  renderApp(<NeedsYou poll={p} onGo={onGo} onChanged={onChanged} />);
   return { onGo, onChanged };
 };
 
@@ -28,17 +28,19 @@ beforeEach(() => {
 });
 
 describe('Needs you', () => {
-  it('lists items newest first with a kind chip, meta, age and actions', () => {
+  it('lists items newest first with a glyph, title, meta and actions', () => {
     setup(poll({ items }));
-    expect(screen.getByRole('region', { name: 'Needs you' })).toBeTruthy();
+    const region = screen.getByRole('region', { name: 'Needs you' });
+    expect(region.querySelector('.sl-sec-count')!.textContent).toBe('3');
     expect(screen.getAllByRole('listitem').map((li) => li.querySelector('.sl-row-title')!.textContent)).toEqual(['Ship it waits for approval', 'Failed', 'Which database?']);
-    expect(screen.getByText('approval').closest('.sl-chip')!.className).toContain('t-needs');
-    expect(screen.getByText('failed').closest('.sl-chip')!.className).toContain('t-failed');
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]!).getByRole('img', { name: 'Needs you' })).toBeTruthy();
+    expect(within(rows[1]!).getByRole('img', { name: 'Failed' })).toBeTruthy();
     expect(screen.getByText('flow · r1 · aorch/r1')).toBeTruthy();
-    expect(screen.getByText('1m ago')).toBeTruthy();
+    expect(within(rows[0]!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Approve', 'Open']);
   });
 
-  it('approves in place and re-fetches', async () => {
+  it('approves from the row with one click and refetches', async () => {
     const { onChanged } = setup(poll({ items }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ok', approved: true });
@@ -48,7 +50,7 @@ describe('Needs you', () => {
   it('keeps the row busy until the re-fetch lands, so it cannot be approved twice', async () => {
     let done!: () => void;
     const onChanged = vi.fn(() => new Promise<void>((r) => (done = r)));
-    renderApp(<NeedsYou poll={poll({ items })} refreshing={false} onGo={vi.fn()} onChanged={onChanged} />);
+    renderApp(<NeedsYou poll={poll({ items })} onGo={vi.fn()} onChanged={onChanged} />);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })));
     expect(onChanged).toHaveBeenCalledTimes(1);
     expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true);
@@ -57,16 +59,6 @@ describe('Needs you', () => {
     await act(async () => done());
     expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(false);
     expect(calls('POST', '/api/runs/r1/approve')).toHaveLength(1);
-  });
-
-  it('draws a human gate as an approval card with Approve and Reject, and rejects with approved: false', async () => {
-    setup(poll({ items }));
-    const row = screen.getByText('Ship it waits for approval').closest('li')!;
-    expect(row.querySelector('[data-state="pending"]')).toBeTruthy();
-    expect(within(row).getAllByText('Approval required').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
-    await act(async () => fireEvent.click(within(row).getByRole('button', { name: 'Reject' })));
-    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ok', approved: false });
   });
 
   it('retries a failed run through resume', async () => {
@@ -105,27 +97,21 @@ describe('Needs you', () => {
     expect(stale.refresh).toHaveBeenCalled();
   });
 
-  it('offers to open Runs when nothing needs you', () => {
-    const { onGo } = setup(poll({ items: [] }));
-    fireEvent.click(screen.getByRole('button', { name: 'Open Runs' }));
-    expect(onGo).toHaveBeenCalledWith({ tab: 'runs' });
+  it('shows one quiet line when nothing needs you', () => {
+    setup(poll({ items: [] }));
+    expect(screen.getByText('Nothing needs you.').className).toBe('sl-quiet');
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('says when nothing needs you, shows a load error with retry, and a skeleton while loading', () => {
-    const { unmount } = renderApp(<NeedsYou poll={poll({ items: [] })} refreshing={false} onGo={() => {}} onChanged={() => {}} />);
-    expect(screen.getByText('Nothing needs you')).toBeTruthy();
-    unmount();
+  it('shows a load error with retry', () => {
     const failing = poll(undefined, 'down');
     setup(failing);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(failing.refresh).toHaveBeenCalled();
   });
 
-  it('shows the ascii skeleton on first load and on refresh', () => {
-    const { unmount } = renderApp(<NeedsYou poll={poll()} refreshing={false} onGo={() => {}} onChanged={() => {}} />);
-    expect(screen.getByRole('status', { name: 'Loading what needs you' })).toBeTruthy();
-    unmount();
-    setup(poll({ items }), true);
+  it('shows the ascii skeleton on first load', () => {
+    renderApp(<NeedsYou poll={poll()} onGo={() => {}} onChanged={() => {}} />);
     expect(screen.getByRole('status', { name: 'Loading what needs you' })).toBeTruthy();
   });
 });

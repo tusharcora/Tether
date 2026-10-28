@@ -1,0 +1,370 @@
+<title>Step Inspector Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the demo's full-width run view; clicking a crew card slides the step inspector in from the right. Studio tokens. */
+:root{
+  --page:#e7e7e4; --bg:#ffffff; --side:#f7f7f6; --s1:#ffffff; --s2:#f1f1ef; --s3:#e4e4e1;
+  --ink:#1d1d1f; --ink2:#55555a; --mut:#8e8e93; --line:rgba(0,0,0,.08); --line2:rgba(0,0,0,.13);
+  --hov:rgba(0,0,0,.045); --sel:rgba(0,0,0,.075);
+  --acc:#2563eb; --accBg:rgba(37,99,235,.1); --accInk:#1d4ed8;
+  --warn:#b45309; --warnBg:#fdf1d8; --ok:#047857; --okBg:#e7f6ef; --bad:#b91c1c; --badBg:#fdecec;
+  --shadow:0 0 0 1px rgba(0,0,0,.06),0 30px 80px -20px rgba(0,0,0,.28);
+  --panel:0 0 0 1px rgba(0,0,0,.07),-24px 0 60px -20px rgba(0,0,0,.25);
+  --f:"Geist",ui-sans-serif,system-ui,-apple-system,sans-serif; --m:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171; --badBg:rgba(248,113,113,.12);
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.9);
+  --panel:0 0 0 1px rgba(255,255,255,.08),-24px 0 60px -20px rgba(0,0,0,.8); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171; --badBg:rgba(248,113,113,.12);
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.9);
+  --panel:0 0 0 1px rgba(255,255,255,.08),-24px 0 60px -20px rgba(0,0,0,.8); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font:13px/1.55 var(--f);-webkit-font-smoothing:antialiased;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:5px}
+.wrap{max-width:1240px;margin:0 auto}
+.intro{display:flex;justify-content:space-between;align-items:end;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.intro h1{font-size:22px;letter-spacing:-.02em;margin:0}
+.intro p{margin:4px 0 0;color:var(--mut);font-size:14px;max-width:70ch}
+.mono{font-family:var(--m)} .mut{color:var(--mut)}
+.c-ok{color:var(--ok)} .c-bad{color:var(--bad)} .c-acc{color:var(--accInk)} .c-warn{color:var(--warn)} .c-mut{color:var(--mut)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;border:1px solid transparent;cursor:pointer;font-weight:500;font-size:12.5px;transition:transform .12s,background .15s}
+.btn:active{transform:scale(.97)}
+.btn.ink{background:var(--ink);color:var(--bg)} .btn.ghost{border-color:var(--line2);background:var(--s1)} .btn.ghost:hover{background:var(--hov)}
+.kbd{font:500 10.5px var(--m);color:var(--mut);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 4px;line-height:15px}
+
+/* window + run view (as in the demo) */
+.win{position:relative;background:var(--bg);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;height:720px;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:10px;height:44px;padding:0 18px;border-bottom:1px solid var(--line);flex:none}
+.bar .lights{display:flex;gap:7px;margin-right:8px}.bar .lights i{width:11px;height:11px;border-radius:50%;background:#ff5f57}.bar .lights i:nth-child(2){background:#febc2e}.bar .lights i:nth-child(3){background:#28c840}
+.bar .crumb{color:var(--mut)} .bar .crumb b{color:var(--ink);font-weight:500}
+.run{flex:1;overflow:auto;padding:22px 24px 24px}
+.runhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.runhead h2{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0}
+.hint{display:flex;align-items:center;gap:10px;margin:10px 0 16px;font-size:12.5px;color:var(--ink2)}
+.hint .dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+.hint a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;cursor:pointer}
+.hint .x{margin-left:auto;border:0;background:none;color:var(--mut);cursor:pointer;font-size:14px}
+.dag{position:relative;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:22px;padding:18px 16px;border:1px solid var(--line);border-radius:12px;margin-bottom:16px;background:radial-gradient(circle at 1px 1px,var(--line2) 1px,transparent 1.2px) 0 0/18px 18px,var(--side)}
+.dag svg.dl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.dn{position:relative;z-index:1;background:var(--s1);border:1px solid var(--line2);border-radius:10px;padding:8px 9px;display:flex;gap:8px;align-items:center;min-width:0;cursor:pointer;text-align:left;transition:transform .2s cubic-bezier(.2,.8,.2,1),border-color .2s,box-shadow .2s}
+.dn:hover{transform:translateY(-2px)}
+.dn.live{border-color:var(--acc)} .dn.wait{border-color:var(--warn)} .dn.bad{border-color:var(--bad)}
+.dn.sel{box-shadow:0 0 0 3px var(--accBg);border-color:var(--ink)}
+.dn b{display:block;font-weight:500;font-size:12.5px}
+.dn span.s{display:block;font:10.5px var(--m);color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
+.term{background:var(--side);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:12px/1.75 var(--m);color:var(--ink2);min-height:250px}
+.files .f{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font:12px var(--m);padding:6px 0;border-top:1px solid var(--line)}
+.files .f:first-child{border-top:0}
+.fb{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:4px;grid-column:1/-1}.fb .a{background:var(--ok)}.fb .x{background:var(--bad)}
+.approve{border:1px solid var(--warn);border-radius:12px;padding:12px 14px;background:var(--s1);margin-top:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.approve .q{flex:1;min-width:200px} .approve b{display:block;font-weight:500;font-size:14px} .approve span{font-size:12px;color:var(--mut)}
+.sec{font-size:12px;font-weight:500;color:var(--mut);margin-bottom:6px}
+
+/* faces */
+.face{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;background:var(--s3);position:relative}
+.face i{width:3.5px;height:6px;border-radius:2px;background:#18181b;transition:height .2s}
+.face.lg{width:44px;height:44px;gap:7px}.face.lg i{width:5.5px;height:10px;border-radius:3px}
+.face.blink i{height:1.5px}
+
+/* animated badge (vanilla take on beui animated-badge: icon + label roll up with a blur, pill width springs) */
+.badge{position:relative;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:99px;border:1px solid;font:500 11px var(--f);white-space:nowrap;overflow:hidden;transition:background .3s,color .3s,border-color .3s,width .35s cubic-bezier(.3,1.3,.5,1)}
+.badge .ic,.badge .lb{position:relative;display:inline-grid;overflow:hidden}
+.badge .ic > *,.badge .lb > *{grid-area:1/1}
+.badge svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.badge .in{animation:rollIn .32s cubic-bezier(.3,1.25,.5,1) both}
+.badge .out{animation:rollOut .14s ease-out both}
+@keyframes rollIn{from{opacity:0;transform:translateY(90%);filter:blur(3px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes rollOut{to{opacity:0;transform:translateY(-90%);filter:blur(3px)}}
+.badge.neutral{border-color:var(--line2);background:var(--s1);color:var(--mut)}
+.badge.loading{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:var(--accBg);color:var(--accInk)}
+.badge.success{border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:var(--okBg);color:var(--ok)}
+.badge.warning{border-color:color-mix(in srgb,var(--warn) 35%,transparent);background:var(--warnBg);color:var(--warn)}
+.badge.danger{border-color:color-mix(in srgb,var(--bad) 35%,transparent);background:var(--badBg);color:var(--bad)}
+.badge.loading::before{content:"";position:absolute;inset:0;background:currentColor;opacity:.06;animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.18}}
+.spin{animation:spin 1s linear infinite;transform-origin:center}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== the inspector ===== */
+.scrim{position:absolute;inset:44px 0 0 0;background:rgba(0,0,0,.0);pointer-events:none;transition:background .3s}
+.scrim.on{background:rgba(0,0,0,.12);pointer-events:auto}
+.insp{position:absolute;top:52px;right:8px;bottom:8px;width:440px;max-width:calc(100% - 16px);background:var(--bg);border-radius:14px;box-shadow:var(--panel);display:flex;flex-direction:column;overflow:hidden;
+  transform:translateX(calc(100% + 24px));transition:transform .45s cubic-bezier(.2,1.1,.3,1);z-index:5}
+.insp.on{transform:none}
+.ih{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.ih .nav{width:28px;height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--s1);cursor:pointer;display:grid;place-items:center;color:var(--ink2)}
+.ih .nav:hover{background:var(--hov)} .ih .nav:disabled{opacity:.35;cursor:default}
+.dots{display:flex;gap:5px;margin:0 6px}
+.dots i{width:6px;height:6px;border-radius:3px;background:var(--s3);transition:width .3s cubic-bezier(.3,1.3,.5,1),background .3s}
+.dots i.on{width:18px;background:var(--ink)}
+.ih .sp{flex:1}
+.ih .close{border:0;background:none;cursor:pointer;color:var(--mut);font-size:18px;width:28px;height:28px;border-radius:7px}
+.ih .close:hover{background:var(--hov);color:var(--ink)}
+.stage{position:relative;flex:1;min-height:0;overflow:hidden}
+.page{position:absolute;inset:0;display:flex;flex-direction:column;transition:transform .38s cubic-bezier(.2,.9,.25,1),opacity .25s}
+.who{display:flex;gap:12px;align-items:center;padding:16px 16px 12px}
+.who h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.who .sub{font:11.5px var(--m);color:var(--mut);margin-top:2px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 16px 14px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--side)}
+.stat small{display:block;font-size:11px;color:var(--mut)}
+.stat b{font:600 15px var(--m);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.spark{height:18px;margin-top:4px;display:block;width:100%}
+.tabs{position:relative;display:flex;gap:2px;margin:0 16px;padding:3px;border-radius:9px;background:var(--s2)}
+.tabs button{position:relative;z-index:1;flex:1;border:0;background:none;cursor:pointer;height:28px;border-radius:7px;font-size:12px;color:var(--mut);font-weight:500;transition:color .2s;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink)}
+.tabs button .n{font:10.5px var(--m);margin-left:4px;color:var(--mut)}
+.tabs .pill{position:absolute;top:3px;bottom:3px;border-radius:7px;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.1),0 0 0 1px var(--line);transition:left .35s cubic-bezier(.3,1.25,.5,1),width .35s cubic-bezier(.3,1.25,.5,1)}
+.body{position:relative;flex:1;min-height:0;overflow:auto;padding:14px 16px 16px}
+.body > div{animation:fadeUp .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.out{font:12px/1.75 var(--m);color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.out .caret{display:inline-block;width:6px;height:13px;background:var(--ink);vertical-align:-2px;margin-left:1px;animation:blinkc 1s steps(2) infinite}
+@keyframes blinkc{50%{opacity:0}}
+.filesI .row{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden}
+.filesI .rh{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font:12px var(--m);background:var(--side)}
+.filesI .rh .chev{transition:transform .25s cubic-bezier(.3,1.3,.5,1);color:var(--mut)}
+.filesI .row.open .chev{transform:rotate(90deg)}
+.filesI .diff{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1)}
+.filesI .row.open .diff{grid-template-rows:1fr}
+.filesI .diff > div{overflow:hidden}
+.filesI pre{margin:0;padding:8px 10px;font:11.5px/1.7 var(--m);white-space:pre;overflow-x:auto}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin:6px 0 12px}
+.grid i{aspect-ratio:1;border-radius:4px;background:var(--s3);transition:background .2s,transform .2s}
+.grid i.p{background:var(--ok)} .grid i.f{background:var(--bad);transform:scale(.88)}
+.chk{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px}
+.tl{position:relative;padding-left:18px}
+.tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:var(--line2)}
+.tl .e{position:relative;padding:5px 0;font-size:12.5px;animation:fadeUp .3s both}
+.tl .e::before{content:"";position:absolute;left:-17px;top:11px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--c,var(--mut))}
+.tl .e small{font:11px var(--m);color:var(--mut);margin-right:8px}
+.empty{color:var(--mut);font-size:12.5px;padding:24px 0;text-align:center}
+.rate{border-top:1px solid var(--line);padding:10px 12px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rate .q{flex:1;font-size:12.5px;color:var(--ink2);min-width:140px}
+.thumb{width:34px;height:30px;border-radius:8px;border:1px solid var(--line2);background:var(--s1);cursor:pointer;display:grid;place-items:center;color:var(--ink2);transition:transform .2s cubic-bezier(.3,1.5,.5,1),background .2s,color .2s,border-color .2s}
+.thumb:hover{transform:translateY(-1px)}
+.thumb svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.thumb.up.on{background:var(--okBg);color:var(--ok);border-color:var(--ok);transform:scale(1.08)}
+.thumb.down.on{background:var(--badBg);color:var(--bad);border-color:var(--bad);transform:scale(1.08)}
+.note{width:100%;display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s cubic-bezier(.2,.8,.2,1)}
+.note.on{grid-template-rows:1fr}
+.note > div{overflow:hidden;display:flex;gap:6px}
+.note input{flex:1;min-width:0;height:30px;margin-top:8px;border-radius:8px;border:1px solid var(--line2);background:var(--side);color:var(--ink);padding:0 10px;font:12.5px var(--f)}
+.note .btn{margin-top:8px}
+.saved{font:11.5px var(--m);color:var(--ok)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--mut)}
+.legend b{color:var(--ink);font-weight:500}
+@media (max-width:900px){.dag{grid-template-columns:repeat(3,minmax(0,1fr))}.dag svg.dl{display:none}.split{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <div><h1>Step inspector · mockup</h1><p>Click any crew card in the run graph. Bolt is live: its output streams, cost and time tick, and its badge rolls to done. Probe then runs the tests, fails twice, and recovers on the retry.</p></div>
+    <button class="btn ghost" type="button" id="replay">↺ Replay the run</button>
+  </div>
+
+  <div class="win" id="win">
+    <div class="bar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb">orders-api / Runs / <b>Tune the limit window</b></span></div>
+    <div class="run" id="run">
+      <div class="runhead"><h2>Tune the limit window</h2><span id="runBadge"></span><span class="mono mut" style="font-size:12px">R-144 · team run · <span id="runClock">2:22</span> · $<span id="runCost">0.31</span></span></div>
+      <div class="hint" id="hint"><span class="dot"></span><span>Nothing outside the agents checked lint. <a id="addGate">Add a lint gate</a></span><button class="x" type="button" aria-label="Dismiss" id="hintX">×</button></div>
+      <div class="dag" id="dag"><svg class="dl" id="dagsvg" aria-hidden="true"></svg></div>
+      <div class="split">
+        <div class="term" id="term"></div>
+        <div style="min-width:0">
+          <div class="sec">Files · branch aorch/R-144</div>
+          <div class="files">
+            <div class="f"><span>src/middleware/rateLimit.ts</span><span><span class="c-ok">+84</span> <span class="c-bad">−12</span></span><div class="fb"><i class="a" style="flex:84"></i><i class="x" style="flex:12"></i></div></div>
+            <div class="f"><span>src/server.ts</span><span><span class="c-ok">+6</span> <span class="c-bad">−2</span></span><div class="fb"><i class="a" style="flex:6"></i><i class="x" style="flex:2"></i></div></div>
+            <div class="f"><span>test/rateLimit.test.ts</span><span><span class="c-ok">+38</span> <span class="c-bad">−27</span></span><div class="fb"><i class="a" style="flex:38"></i><i class="x" style="flex:27"></i></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="approve"><div class="q"><b>Merge 4 files into main?</b><span>Gates must pass first: npm test, tsc --noEmit</span></div><button class="btn ghost" type="button">Review diff</button><button class="btn ink" type="button">Approve when gates pass</button></div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <aside class="insp" id="insp" aria-label="Step inspector" aria-hidden="true">
+      <div class="ih">
+        <button class="nav" type="button" id="prev" aria-label="Previous step"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button class="nav" type="button" id="next" aria-label="Next step"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+        <div class="dots" id="dots"></div>
+        <span class="mono mut" style="font-size:11.5px" id="stepN"></span>
+        <span class="sp"></span><span class="kbd">← →</span><span class="kbd">esc</span>
+        <button class="close" type="button" id="close" aria-label="Close">×</button>
+      </div>
+      <div class="stage" id="stage"></div>
+    </aside>
+  </div>
+  <div class="legend"><span><b>Opens</b> with a spring from the right; Esc or clicking the run closes it</span><span><b>← →</b> or the dots move between steps</span><span><b>Badges</b> roll when a step changes state</span><span><b>Rating</b> feeds Evolve</span></div>
+</div>
+
+<script>
+(() => {
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+/* ---------- animated badge ---------- */
+const ICON={
+  neutral:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>',
+  loading:'<svg viewBox="0 0 24 24" class="spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
+  success:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  warning:'<svg viewBox="0 0 24 24"><path d="M12 4l9 16H3zM12 10v4M12 17.5v.5"/></svg>',
+  danger:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>'};
+function badge(el,status,label){
+  if(!el._b){el.innerHTML=`<span class="badge ${status}"><span class="ic"><span>${ICON[status]}</span></span><span class="lb"><span>${esc(label)}</span></span></span>`;el._b={status,label};return;}
+  if(el._b.status===status&&el._b.label===label)return;
+  const b=el.firstElementChild, w0=b.offsetWidth;
+  b.className='badge '+status;
+  const swap=(slot,html)=>{const old=slot.lastElementChild;const n=document.createElement('span');n.innerHTML=html;n.className='in';if(old){old.className='out';setTimeout(()=>old.remove(),160);}slot.appendChild(n);};
+  if(el._b.status!==status) swap(b.querySelector('.ic'),ICON[status]);
+  swap(b.querySelector('.lb'),esc(label));
+  if(!reduce){b.style.width=w0+'px';requestAnimationFrame(()=>{b.style.width='auto';const w1=b.offsetWidth;b.style.width=w0+'px';requestAnimationFrame(()=>{b.style.width=w1+'px';setTimeout(()=>b.style.width='',380);});});}
+  el._b={status,label};
+}
+
+/* ---------- run data ---------- */
+const S=[
+ {id:'scout',name:'Scout',role:'plan',agent:'Claude Code · sonnet',color:'#d6d3d1',st:'success',lb:'done',att:1,cost:.06,time:41,
+  out:'Plan for "Tune the limit window"\n\n1. Read src/routes (14 files). No limiter today.\n2. Brick designs a per-key token bucket.\n3. Bolt implements it in src/middleware/rateLimit.ts and wires it into src/server.ts.\n4. Probe runs npm test; Lens reviews the diff.\n\nRisk: clients pinned to /v1 may hit 429s. Keep the old window for /v1.',
+  files:[],checks:null,tl:[['0:00','started','var(--acc)'],['0:12','run_code · repo.search("route") → 14 files','var(--mut)'],['0:41','finished · read-only','var(--ok)']]},
+ {id:'brick',name:'Brick',role:'design',agent:'Claude Code · opus',color:'#fdba74',st:'success',lb:'done',att:1,cost:.11,time:58,
+  out:'Design\n\n• TokenBucket(rpm, burst, windowMs) per key (req.ip ?? "anon").\n• 60 s window, burst 20, header x-ratelimit-remaining.\n• Evict idle buckets after 10 min (Lens asked for this).\n\nInterfaces\n  rateLimit(opts: Opts): RequestHandler',
+  files:[],checks:null,tl:[['0:41','started','var(--acc)'],['1:39','finished · read-only','var(--ok)']]},
+ {id:'bolt',name:'Bolt',role:'code',agent:'Codex · gpt-5-codex',color:'#93c5fd',st:'loading',lb:'writing',att:1,cost:.14,time:142,live:true,
+  out:'',files:[['src/middleware/rateLimit.ts',84,12,'+ export function rateLimit({ rpm, burst = 20, windowMs = 60_000 }: Opts) {\n+   const buckets = new Map<string, TokenBucket>()\n+   return (req, res, next) => {\n+     const b = buckets.get(req.ip) ?? new TokenBucket(rpm, burst, windowMs)\n+     res.setHeader("x-ratelimit-remaining", b.remaining)\n+     if (!b.take()) return res.status(429).end()\n+     next()\n+   }\n+ }'],['src/server.ts',6,2,'- app.use(cors())\n+ app.use(cors(), rateLimit({ rpm: 600 }))'],['test/rateLimit.test.ts',38,27,'+ it("returns 429 after the burst", async () => { … })']],
+  checks:null,tl:[['1:39','started in aorch/R-144','var(--acc)']]},
+ {id:'probe',name:'Probe',role:'tests',agent:'npm test --silent',color:'#86efac',st:'neutral',lb:'queued',att:0,cost:0,time:0,out:'',files:[],checks:{state:'idle'},tl:[]},
+ {id:'lens',name:'Lens',role:'review',agent:'Ollama · qwen3 · local',color:'#fca5a5',st:'neutral',lb:'queued',att:0,cost:0,time:0,out:'',files:[],checks:null,tl:[]},
+ {id:'gate',name:'Gate',role:'approve',agent:'you',color:'#fde68a',st:'warning',lb:'waiting',att:0,cost:0,time:0,out:'',files:[],checks:null,tl:[]},
+];
+const BOLT_LINES=['Reading Brick’s design (6 files of context).','Writing src/middleware/rateLimit.ts','  TokenBucket per key, 60 s window, burst 20','  header x-ratelimit-remaining on every response','Wiring rateLimit({ rpm: 600 }) into src/server.ts','Updating test/rateLimit.test.ts for the new limits','Done: 3 files, +128 −41. Handing to Probe.'];
+const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s)%60).padStart(2,'0');
+
+/* ---------- run graph ---------- */
+const dag=$('#dag');
+dag.insertAdjacentHTML('beforeend',S.map(s=>`<button type="button" class="dn" data-id="${s.id}"><span class="face" style="background:${s.color}"><i></i><i></i></span><span style="min-width:0;flex:1"><b>${s.name}</b><span class="s">${s.role} · ${s.agent.split(' · ')[0]}</span></span></button>`).join(''));
+function paintDag(){
+  S.forEach(s=>{const n=dag.querySelector(`[data-id="${s.id}"]`);n.classList.toggle('live',s.st==='loading');n.classList.toggle('wait',s.st==='warning');n.classList.toggle('bad',s.st==='danger');n.classList.toggle('sel',open&&S[cur].id===s.id);});
+  const R=dag.getBoundingClientRect();if(!R.width)return;const svg=$('#dagsvg');svg.setAttribute('viewBox',`0 0 ${R.width} ${R.height}`);
+  svg.innerHTML=S.slice(0,-1).map((s,i)=>{const a=dag.querySelector(`[data-id="${s.id}"]`).getBoundingClientRect(),b=dag.querySelector(`[data-id="${S[i+1].id}"]`).getBoundingClientRect();
+    const x1=a.right-R.left,y1=a.top+a.height/2-R.top,x2=b.left-R.left,y2=b.top+b.height/2-R.top;
+    const c=s.st==='success'?'var(--ok)':s.st==='loading'?'var(--acc)':'var(--line2)';
+    return `<path id="e${i}" d="M${x1} ${y1} L${x2} ${y2}" stroke="${c}" stroke-width="1.8" ${s.st==='loading'?'stroke-dasharray="5 5"':''}/>`+(s.st==='loading'&&!reduce?`<circle r="3.5" fill="var(--acc)"><animateMotion dur="1.4s" repeatCount="indefinite"><mpath href="#e${i}"/></animateMotion></circle>`:'');}).join('');
+}
+new ResizeObserver(paintDag).observe(dag);
+
+/* ---------- inspector ---------- */
+let open=false, cur=2, tab='out', expanded=new Set([0]);
+const TABS=[['out','Output'],['files','Changes'],['checks','Checks'],['tl','Timeline']];
+$('#dots').innerHTML=S.map((_,i)=>`<i data-i="${i}"></i>`).join('');
+function spark(seed){let p='';for(let i=0;i<16;i++){const y=14-Math.abs(Math.sin(seed*3+i*.9))*10-(i/16)*3;p+=(i?'L':'M')+(i*6.5)+' '+y.toFixed(1);}return `<svg class="spark" viewBox="0 0 100 18" preserveAspectRatio="none"><path d="${p}" fill="none" stroke="var(--acc)" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;}
+function pageHTML(s){
+  const counts={files:s.files.length,checks:s.checks?1:0,tl:s.tl.length};
+  return `<div class="who"><span class="face lg" style="background:${s.color}" data-face><i></i><i></i></span><div style="min-width:0"><h3>${s.name} <span data-badge></span></h3><div class="sub">${s.role} · ${esc(s.agent)}</div></div></div>
+  <div class="stats"><div class="stat"><small>Attempts</small><b data-att>${s.att||'–'}</b></div><div class="stat"><small>Cost</small><b data-cost>${s.cost?'$'+s.cost.toFixed(2):'–'}</b>${s.live?spark(1):''}</div><div class="stat"><small>Time</small><b data-time>${s.time?fmt(s.time):'–'}</b>${s.live?spark(2):''}</div></div>
+  <div class="tabs" role="tablist">${TABS.map(([k,l])=>`<button role="tab" type="button" data-tab="${k}" aria-selected="${k===tab}">${l}${k!=='out'&&counts[k]?`<span class="n">${counts[k]}</span>`:''}</button>`).join('')}<span class="pill"></span></div>
+  <div class="body" data-body></div>
+  <div class="rate"><span class="q">${s.id==='gate'?'Gate is you. Approve from the run.':`How did ${s.name} do?`}</span>${s.id==='gate'?'':`<button class="thumb up" type="button" aria-label="Good" data-r="up"><svg viewBox="0 0 24 24"><path d="M7 10v11M15 5.9L14 10h5.8a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 18.5 21H7V10l4-8a3 3 0 0 1 4 3.9z"/></svg></button><button class="thumb down" type="button" aria-label="Bad" data-r="down"><svg viewBox="0 0 24 24"><path d="M17 14V3M9 18.1L10 14H4.2a2 2 0 0 1-2-2.3l1.4-7A2 2 0 0 1 5.5 3H17v11l-4 8a3 3 0 0 1-4-3.9z"/></svg></button>
+  <div class="note" data-note><div><input type="text" placeholder="What should ${s.name} keep or change? (optional)" aria-label="Note"><button class="btn ghost" type="button" data-save>Save</button></div></div>`}</div>`;
+}
+function bodyHTML(s){
+  if(tab==='out'){ if(!s.out&&!s.live) return `<div class="empty">${s.st==='warning'?'Waiting for you to approve the merge.':'This step hasn’t started yet.'}</div>`;
+    return `<div class="out" data-out>${esc(s.out)}${s.live?'<span class="caret"></span>':''}</div>`;}
+  if(tab==='files'){ if(!s.files.length) return `<div class="empty">${s.name} ${s.id==='scout'||s.id==='brick'?'is read-only and changed no files.':'hasn’t changed files.'}</div>`;
+    return `<div class="filesI">${s.files.map((f,i)=>`<div class="row ${expanded.has(i)?'open':''}" data-row="${i}"><div class="rh"><span class="chev">›</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f[0]}</span><span class="c-ok">+${f[1]}</span><span class="c-bad">−${f[2]}</span></div><div class="diff"><div><pre>${f[3].split('\n').map(l=>`<span class="${l.startsWith('+')?'c-ok':l.startsWith('-')?'c-bad':''}">${esc(l)}</span>`).join('\n')}</pre></div></div></div>`).join('')}</div>`;}
+  if(tab==='checks'){ if(!s.checks) return `<div class="empty">No checks run in this step.</div>`;
+    return `<div><div class="mono mut" style="font-size:11.5px">npm test --silent · <span data-chk-lbl>${{idle:'not run yet',run:'running',fail:'2 failed',pass:'all passed'}[s.checks.state]}</span></div><div class="grid" data-grid>${'<i></i>'.repeat(24)}</div>
+      <div class="chk"><span>Fix loop</span><span class="mono" data-loop>${s.checks.loop||'–'}</span></div><div class="chk"><span>Escalation</span><span class="mono mut">claude opus if the loop runs out</span></div></div>`;}
+  if(!s.tl.length) return `<div class="empty">No events yet.</div>`;
+  return `<div class="tl">${s.tl.map(e=>`<div class="e" style="--c:${e[2]}"><small>${e[0]}</small>${esc(e[1])}</div>`).join('')}</div>`;
+}
+function movePill(page){const t=page.querySelector('.tabs'),b=t.querySelector(`[data-tab="${tab}"]`),p=t.querySelector('.pill');p.style.left=b.offsetLeft+'px';p.style.width=b.offsetWidth+'px';}
+function render(dir){
+  const s=S[cur], stage=$('#stage'), old=stage.firstElementChild;
+  const page=document.createElement('div');page.className='page';page.innerHTML=pageHTML(s);
+  page.querySelector('[data-body]').innerHTML=bodyHTML(s);
+  badge(page.querySelector('[data-badge]'),s.st,s.lb);
+  if(old&&dir&&!reduce){page.style.transform=`translateX(${dir*40}px)`;page.style.opacity='0';stage.appendChild(page);requestAnimationFrame(()=>{page.style.transform='';page.style.opacity='1';old.style.transform=`translateX(${-dir*40}px)`;old.style.opacity='0';setTimeout(()=>old.remove(),380);});}
+  else{stage.innerHTML='';stage.appendChild(page);}
+  requestAnimationFrame(()=>movePill(page));
+  if(s.checks) paintChecks(page,s);
+  $$('#dots i').forEach((d,i)=>d.classList.toggle('on',i===cur));$('#stepN').textContent=`${cur+1} of ${S.length}`;
+  $('#prev').disabled=cur===0;$('#next').disabled=cur===S.length-1;paintDag();
+}
+function cpage(){return $('#stage').lastElementChild;}
+function setTab(k){tab=k;const p=cpage();p.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===k));movePill(p);p.querySelector('[data-body]').innerHTML=bodyHTML(S[cur]);if(S[cur].checks)paintChecks(p,S[cur]);}
+function show(i,dir){cur=i;if(!open){open=true;$('#insp').classList.add('on');$('#insp').setAttribute('aria-hidden','false');$('#scrim').classList.add('on');}render(dir);}
+function hide(){open=false;$('#insp').classList.remove('on');$('#insp').setAttribute('aria-hidden','true');$('#scrim').classList.remove('on');paintDag();}
+dag.addEventListener('click',e=>{const n=e.target.closest('.dn');if(!n)return;const i=S.findIndex(s=>s.id===n.dataset.id);show(i,open?Math.sign(i-cur)||0:0);});
+$('#scrim').addEventListener('click',hide);$('#close').addEventListener('click',hide);
+$('#prev').addEventListener('click',()=>cur>0&&show(cur-1,-1));$('#next').addEventListener('click',()=>cur<S.length-1&&show(cur+1,1));
+$('#dots').addEventListener('click',e=>{const d=e.target.closest('[data-i]');if(d){const i=+d.dataset.i;show(i,Math.sign(i-cur));}});
+addEventListener('keydown',e=>{if(!open)return;if(e.key==='Escape')hide();if(e.key==='ArrowRight'&&cur<S.length-1)show(cur+1,1);if(e.key==='ArrowLeft'&&cur>0)show(cur-1,-1);});
+$('#stage').addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab]');if(t)return setTab(t.dataset.tab);
+  const r=e.target.closest('[data-row]');if(r){const i=+r.dataset.row;expanded.has(i)?expanded.delete(i):expanded.add(i);r.classList.toggle('open');return;}
+  const th=e.target.closest('[data-r]');if(th){const p=cpage();p.querySelectorAll('.thumb').forEach(x=>x.classList.toggle('on',x===th&&!x.classList.contains('on')));p.querySelector('[data-note]').classList.toggle('on',!!p.querySelector('.thumb.on'));return;}
+  if(e.target.closest('[data-save]')){const p=cpage();p.querySelector('[data-note]').classList.remove('on');p.querySelector('.rate .q').innerHTML='<span class="saved">✓ Saved. Evolve will use this.</span>';}
+});
+$('#hintX').addEventListener('click',()=>$('#hint').remove());
+
+/* ---------- live simulation ---------- */
+let timers=[];
+function paintChecks(page,s){const g=page.querySelector('[data-grid]');if(!g)return;const cells=[...g.children];const n=s.checks.n||0;cells.forEach((c,i)=>{c.className=i<n?(s.checks.fails&&s.checks.fails.includes(i)?'f':'p'):'';});const l=page.querySelector('[data-chk-lbl]');if(l)l.textContent={idle:'not run yet',run:'running',fail:'2 failed',pass:'all passed'}[s.checks.state];const lp=page.querySelector('[data-loop]');if(lp)lp.textContent=s.checks.loop||'–';}
+function update(id){const i=S.findIndex(s=>s.id===id);paintDag();if(open&&cur===i){const p=cpage(),s=S[i];badge(p.querySelector('[data-badge]'),s.st,s.lb);
+  p.querySelector('[data-att]').textContent=s.att||'–';p.querySelector('[data-cost]').textContent=s.cost?'$'+s.cost.toFixed(2):'–';p.querySelector('[data-time]').textContent=s.time?fmt(s.time):'–';
+  if(tab==='out'){const o=p.querySelector('[data-out]');if(o)o.innerHTML=esc(s.out)+(s.live?'<span class="caret"></span>':'');else p.querySelector('[data-body]').innerHTML=bodyHTML(s);const b=p.querySelector('[data-body]');b.scrollTop=b.scrollHeight;}
+  if(tab==='tl'||tab==='files')p.querySelector('[data-body]').innerHTML=bodyHTML(s);
+  if(tab==='checks'){if(!p.querySelector('[data-grid]'))p.querySelector('[data-body]').innerHTML=bodyHTML(s);paintChecks(p,s);}
+  p.querySelectorAll('[data-tab]').forEach(b=>{const k=b.dataset.tab;const c={files:s.files.length,checks:s.checks?1:0,tl:s.tl.length}[k];if(k!=='out'){b.innerHTML=TABS.find(t=>t[0]===k)[1]+(c?`<span class="n">${c}</span>`:'');}});
+}}
+const later=(ms,f)=>timers.push(setTimeout(f,reduce?0:ms));
+function sim(){
+  timers.forEach(clearTimeout);timers=[];
+  const bolt=S[2],probe=S[3],lens=S[4];
+  Object.assign(bolt,{st:'loading',lb:'writing',live:true,out:'',cost:.14,time:142,tl:[['1:39','started in aorch/R-144','var(--acc)']]});
+  Object.assign(probe,{st:'neutral',lb:'queued',att:0,cost:0,time:0,checks:{state:'idle'},tl:[],out:''});
+  Object.assign(lens,{st:'neutral',lb:'queued',att:0,cost:0,time:0,tl:[],out:''});
+  badge($('#runBadge'),'loading','running');
+  let t=0;
+  BOLT_LINES.forEach((l,i)=>later(900+i*1100,()=>{bolt.out+=(bolt.out?'\n':'')+l;bolt.cost+=.01;bolt.time+=6;if(i===1)bolt.tl.push(['1:52','writing src/middleware/rateLimit.ts','var(--acc)']);update('bolt');}));
+  const end=900+BOLT_LINES.length*1100;
+  later(end,()=>{Object.assign(bolt,{st:'success',lb:'done',live:false});bolt.tl.push(['2:30','finished · 3 files, +128 −41','var(--ok)']);Object.assign(probe,{st:'loading',lb:'testing',att:1,checks:{state:'run',n:0,fails:[9,17],loop:'–'},tl:[['2:30','started · npm test --silent','var(--acc)']]});update('bolt');update('probe');});
+  for(let i=1;i<=24;i++) later(end+300+i*70,()=>{probe.checks.n=i;probe.time=Math.round(i/3);update('probe');});
+  later(end+2300,()=>{Object.assign(probe,{st:'danger',lb:'2 failed'});probe.checks.state='fail';probe.checks.loop='1 of 2 · sent to Bolt';probe.tl.push(['2:39','2 of 24 failed · burst window off by one','var(--bad)']);update('probe');});
+  later(end+3600,()=>{Object.assign(probe,{st:'loading',lb:'retrying',att:2});probe.checks={state:'run',n:0,fails:[],loop:'1 of 2 · retrying'};probe.tl.push(['2:51','Bolt fixed it · re-running','var(--warn)']);update('probe');});
+  for(let i=1;i<=24;i++) later(end+3900+i*55,()=>{probe.checks.n=i;probe.time=14+Math.round(i/3);update('probe');});
+  later(end+5500,()=>{Object.assign(probe,{st:'success',lb:'passed'});probe.checks.state='pass';probe.tl.push(['3:04','24 of 24 passed','var(--ok)']);Object.assign(lens,{st:'loading',lb:'reviewing',att:1,live:true,out:'',tl:[['3:04','started · local model','var(--acc)']]});update('probe');update('lens');});
+  ['Reading the diff (3 files).','The limiter is sound. Idle buckets are evicted.','VERDICT: PASS'].forEach((l,i)=>later(end+6400+i*900,()=>{lens.out+=(lens.out?'\n':'')+l;lens.time+=4;update('lens');}));
+  later(end+9200,()=>{Object.assign(lens,{st:'success',lb:'pass',live:false});lens.tl.push(['3:18','VERDICT: PASS','var(--ok)']);update('lens');badge($('#runBadge'),'warning','needs you');});
+}
+$('#replay').addEventListener('click',()=>{sim();if(!open)show(2,0);});
+
+/* terminal on the run (static) */
+$('#term').innerHTML=['tether   plan approved · scout → brick → bolt → probe → lens → gate','scout    read-only · 14 routes in src/routes, no limiter','brick    design: token bucket per key, 60 s window','bolt     worktree ~/.aorch/worktrees/R-144 · branch aorch/R-144','bolt     editing src/middleware/rateLimit.ts','run_code repo.search("rateLimit") → 3 files','bolt     editing src/server.ts'].map(l=>`<div>${esc(l)}</div>`).join('');
+
+/* blinking faces */
+setInterval(()=>{if(reduce)return;const f=$$('.face');const one=f[Math.floor(Math.random()*f.length)];one.classList.add('blink');setTimeout(()=>one.classList.remove('blink'),140);},900);
+
+badge($('#runBadge'),'loading','running');
+paintDag(); sim(); setTimeout(()=>show(2,0),reduce?0:700);
+})();
+</script>

@@ -3,7 +3,7 @@ import { Button } from '../components/beui/kit/Button';
 import { Switch } from '../components/beui/kit/fields';
 import { cn } from '../ui/cn';
 import { ConfirmButton } from '../ui/ConfirmButton';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import { DEFAULT_EVENTS, OUTCOME, statusTip, who, type Trigger } from './types';
 import './triggers.css';
 
@@ -38,7 +38,7 @@ export function TriggerRow(p: { t: Trigger; onToggle: () => void; onTest: () => 
       <div className="tg-last">
         {t.last ? (
           <>
-            <StatusChip tone={OUTCOME[t.last.outcome].tone} label={OUTCOME[t.last.outcome].label} />
+            <StatusBadge tone={OUTCOME[t.last.outcome].tone} label={OUTCOME[t.last.outcome].label} />
             <span className="sl-age">
               {t.last.pr ? `#${t.last.pr} · ` : ''}
               {ago(Date.parse(t.last.at))}

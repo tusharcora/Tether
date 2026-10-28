@@ -1,7 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, describeEvent } from './api';
+import { api, ApiError, describeEvent, fmtDur } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('fmtDur', () => {
+  it('reads long runs in hours and days, short ones as before', () => {
+    expect(fmtDur(450)).toBe('450ms');
+    expect(fmtDur(4_200)).toBe('4.2s');
+    expect(fmtDur(6 * 60_000 + 12_000)).toBe('6m 12s');
+    expect(fmtDur(59 * 60_000 + 59_600)).toBe('1h 0m');
+    expect(fmtDur((3 * 60 + 12) * 60_000)).toBe('3h 12m');
+    expect(fmtDur((3 * 24 + 16) * 3_600_000)).toBe('3d 16h');
+    expect(fmtDur(5291 * 60_000 + 23_000)).toBe('3d 16h');
+  });
+});
 
 describe('api()', () => {
   it('throws an ApiError with the server error text and the HTTP status', async () => {

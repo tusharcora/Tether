@@ -1,60 +1,64 @@
-.runs { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 420px); height: 100%; min-height: 0; }
-.runs.mid { grid-template-columns: 280px minmax(0, 1fr); }
-.runs.stacked { display: block; height: auto; min-height: 100%; }
-.runs.stacked .run-list { border-right: 0; }
-.run-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; padding: 14px 10px; background: var(--s1); border-right: 1px solid var(--line); }
-.run-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
-.run-list-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
-.run-list-probes { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; font-size: 12px; color: var(--mut); }
-.run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 4px; }
-/* The runs list is a data table (beui's sortable table look): two sortable columns, the run and its status. A row is one run. */
+/* #/runs/<id>: one full-width scroller (the demo's run screen); the inspector sits over it in the non-scrolling frame */
+.run-view { position: relative; height: 100%; min-height: 0; overflow: hidden; }
+.run-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: auto; padding: 22px 24px 24px; }
+@media (max-width: 899px) { .run-page { padding: 16px 12px 20px; } }
+/* output left, files right; one column under 1100 px */
+.run-split { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+@media (max-width: 1099px) { .run-split { grid-template-columns: minmax(0, 1fr); } }
+.run-split .sl-sec { margin-top: 0; }
+/* the live output (the demo's .term): bot name, then what happened in its tone */
+.term { min-width: 0; min-height: 250px; max-height: 420px; overflow: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--side); font-family: var(--font-code); font-size: 12px; line-height: 1.75; color: var(--ink2); }
+.out-line { display: flex; gap: 8px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+button.out-line { cursor: pointer; }
+button.out-line:hover .out-text { text-decoration: underline; text-underline-offset: 2px; }
+.out-who { flex: none; min-width: 8ch; color: var(--mut); }
+.out-text.t-running { color: var(--accInk); }
+.out-text.t-done { color: var(--ok); }
+.out-text.t-error { color: var(--bad); }
+.out-text.t-wait { color: var(--warn); }
+/* planning and the team plan: collapsed rows that stay inside the page width (spec 7.6) */
+.run-disclosure { min-width: 0; max-width: 100%; }
+.run-disclosure .run-todos { min-width: 0; max-width: 100%; }
+.run-disclosure .run-todos li { overflow-wrap: anywhere; }
+/* #/runs: the list alone, full width; a row is one line (the demo's .list) */
+.runs-list-page { min-height: 100%; }
+.run-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 0 24px 32px; }
+.run-list > .sl-screen-header { padding: 20px 0 0; }
+@media (max-width: 899px) { .run-list { padding: 0 12px 24px; } }
+.run-list-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 12px; color: var(--mut); }
+.run-list-none { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; }
+/* a data table (beui's sortable table) in one bordered box: two sortable columns, the run and its status */
+.run-rows { border: 1px solid var(--line); border-radius: 10px; background: var(--s1); }
 .run-rows table { table-layout: auto; }
-.run-rows th { padding: 4px 8px 6px; }
+.run-rows th { padding: 6px 14px; }
 .run-rows th button { font-weight: 500; }
-.run-row { position: relative; }
-.run-row > td { padding: 8px; vertical-align: middle; }
-.run-row[aria-current="true"] { box-shadow: inset 0 0 0 1px var(--line2); }
-.run-row-cell { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; text-align: left; }
-.run-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.run-row-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
-.run-row-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }
-.run-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-/* a live selected run's border marches (static under reduced motion: the root rule stops the loop) */
-.run-live-border { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-/* rx follows the row's radius, less the half-pixel inset (RunList keeps rx="9.5" as the fallback where CSS rx isn't supported) */
-.run-live-border rect { rx: calc(var(--radius-panel) - .5px); width: calc(100% - 1px); height: calc(100% - 1px); fill: none; stroke: var(--acc); stroke-width: 1; stroke-dasharray: 6 4; animation: run-march 1s linear infinite; }
-@keyframes run-march { to { stroke-dashoffset: -10; } }
-.ring-track { fill: none; stroke: var(--s3); stroke-width: 2.5; }
-.ring-fill { fill: none; stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; }
-.prog-ring.live .ring-fill { stroke: var(--acc); }
-.run-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
-.run-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 20px 10px; }
-.run-head-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.run-head-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.run-head-title h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
-.run-head-task { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-.run-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.run-centre { display: flex; flex-direction: column; gap: 10px; }
-.run-planning { display: flex; flex-direction: column; gap: 8px; margin: 0 20px; }
-.run-steptrack { margin: 0 20px; }
-.run-todos { margin: 10px 20px 0; }
-.run-graph { display: flex; height: 380px; flex: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.run-graph .canvas { flex: 1; }
-/* the Team panel, re-housed in the centre pane: Studio surfaces and spacing through tokens */
-.run-team .team-bar { margin: 0 20px; color: var(--mut); }
-.run-team .qpanel { margin: 0 20px 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
-.run-team .qpanel h4 { font-size: 14px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
-.run-team .qpanel h5 { font-size: 11px; font-weight: 500; color: var(--mut); text-transform: uppercase; letter-spacing: 0.06em; }
-.run-team .dialogue { margin: 0 20px 10px; }
-.run-team .alert { margin-left: 20px; margin-right: 20px; }
-@media (max-width: 640px) { .run-team .team-bar, .run-team .qpanel, .run-team .dialogue, .run-team .alert { margin-left: 12px; margin-right: 12px; } }
-.run-inspector { min-height: 0; overflow: auto; padding: 12px 14px; background: var(--s1); border-left: 1px solid var(--line); }
-.run-inspector-inline { padding: 0 12px 16px; }
-.run-back { padding: 8px 12px 0; }
-.run-phone-switch { padding: 0 20px 8px; }
-.step-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-.step-head-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.step-head h4 { margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); overflow-wrap: anywhere; }
+.run-row > td { padding: 11px 14px; vertical-align: middle; }
+/* the run column takes the rest of the row, so a long title ellipsises instead of widening the table */
+.run-row > td:first-child { width: 100%; max-width: 0; }
+.run-row-cell { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; }
+.run-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
+.run-row-side { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+/* Run header (the demo's .runhead): ← Runs, the task as the title with badge and kind, one mono line, actions on the right */
+.run-head { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.run-head > div:first-child { margin-left: -8px; }
+.run-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.run-head h1 { min-width: 0; max-width: 100%; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.run-head-line { margin: 0; font-family: var(--font-code); font-size: 12px; color: var(--mut); }
+.run-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+/* One-line notices: a 6 px dot, the text, an optional dismiss */
+.run-notices { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.run-notice { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--ink2); }
+.run-notice-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
+.run-notice.bad .run-notice-dot { background: var(--bad); }
+.run-notice-action { color: var(--mut); }
+.run-notice-x { margin-left: auto; padding: 0 4px; border: 0; background: none; color: var(--mut); font: inherit; cursor: pointer; }
+.run-notice-x:hover { color: var(--ink); }
+.run-notice-more { padding: 0 0 0 14px; border: 0; background: none; color: var(--mut); font: inherit; font-size: 12.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+/* The approval bar sticks to the bottom of the run while the approval waits (spec §14.8) */
+.run-approve { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px; border: 1px solid var(--warn); border-radius: 12px; background: var(--s1); }
+.run-approve-q { display: flex; flex: 1; flex-direction: column; min-width: 200px; }
+.run-approve-q b { font-size: 14px; font-weight: 500; color: var(--ink); }
+.run-approve-q span { font-size: 12px; color: var(--mut); }
 .step-why { margin: 6px 0; display: flex; flex-direction: column; gap: 2px; }
 .caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--acc); animation: caret-blink 1s steps(1) infinite; }
 @keyframes caret-blink { 50% { opacity: 0; } }

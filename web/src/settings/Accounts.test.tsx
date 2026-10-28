@@ -52,7 +52,7 @@ describe('Settings → Accounts', () => {
     expect(await screen.findByText('ABCD-1234')).toBeTruthy();
     expect(open).toHaveBeenCalledWith('https://github.com/login/device', '_blank', 'noopener');
     expect(screen.getByRole('link', { name: 'Open github.com/login/device' }).getAttribute('href')).toBe('https://github.com/login/device');
-    expect(screen.getByText('waiting for you to approve').closest('.sl-chip')!.className).toContain('t-needs');
+    expect(screen.getByText('waiting for you to approve').closest('[data-status]')!.getAttribute('data-status')).toBe('warning');
     await act(() => vi.advanceTimersByTimeAsync(DEVICE_POLL_MS));
     expect(screen.getByText('ABCD-1234')).toBeTruthy();
     state = { state: 'connected', account: { provider: 'github', login: 'octo', scopes: ['repo'], via: 'device', connectedAt: Date.now() } };
@@ -96,7 +96,7 @@ describe('Settings → Accounts', () => {
     routeApi({ 'DELETE /api/accounts/github': { ok: true } });
     const p = poll(view({ account: { provider: 'github', login: 'octo', scopes: ['repo', 'read:user'], via: 'gh', connectedAt: Date.now() - 60_000 } }));
     renderApp(<Accounts poll={p} />);
-    expect(within(ghRow()).getByText('connected').closest('.sl-chip')!.className).toContain('t-done');
+    expect(within(ghRow()).getByText('connected').closest('[data-status]')!.getAttribute('data-status')).toBe('success');
     expect(within(ghRow()).getByText(/via the GitHub CLI/).textContent).toContain('@octo');
     expect(within(screen.getByLabelText('Scopes')).getAllByRole('code').map((c) => c.textContent)).toEqual(['repo', 'read:user']);
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));

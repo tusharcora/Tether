@@ -43,3 +43,6 @@
 .cm-panel h4 { margin: 12px 0 4px; font-size: 12px; color: var(--mut); font-weight: 500; }
 .cm-panel ul { margin: 0; padding-left: 18px; font-size: 13px; }
 .cm-panel .mono { font-family: var(--font-code); font-size: 12px; }
+.rf-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.rf-open:hover { text-decoration: underline; text-underline-offset: 2px; }
+.rf-open:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }

@@ -76,12 +76,12 @@ it('shows proposal, probe and lesson states as status chips', async () => {
   });
   const { container } = renderApp(<EvolvePanel bot="coder" name="Bolt" onClose={() => {}} />);
   expect(await screen.findByText('Run the tests first')).toBeTruthy();
-  const chip = (label: string) => [...container.querySelectorAll('.sl-chip')].find((c) => c.textContent === label)!;
-  expect(chip('open').classList.contains('t-needs')).toBe(true);
-  expect(chip('stale').classList.contains('t-needs')).toBe(true);
-  expect(chip('dropped by the probe').classList.contains('t-failed')).toBe(true);
-  expect(chip('kept by the probe').classList.contains('t-done')).toBe(true);
-  expect(chip('confident').classList.contains('t-done')).toBe(true);
+  const chip = (label: string) => [...container.querySelectorAll('.sl-badge')].find((c) => c.textContent === label)!;
+  expect(chip('open').getAttribute('data-status')).toBe('warning');
+  expect(chip('stale').getAttribute('data-status')).toBe('warning');
+  expect(chip('dropped by the probe').getAttribute('data-status')).toBe('danger');
+  expect(chip('kept by the probe').getAttribute('data-status')).toBe('success');
+  expect(chip('confident').getAttribute('data-status')).toBe('success');
   expect(chip('not evolvable')).toBeTruthy();
 });
 

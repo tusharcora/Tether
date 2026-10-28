@@ -13,7 +13,7 @@ import { EmptyState } from '../ui/studio/EmptyState';
 import { ListRow } from '../ui/studio/ListRow';
 import { RUN_STATE_LABEL, RunGlyph } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
-import { StatusChip, type Tone } from '../ui/studio/StatusChip';
+import { StatusBadge, type Tone } from '../ui/studio/StatusBadge';
 import { useCreateIntent } from '../ui/useCreateIntent';
 import { cn } from '../ui/cn';
 import { glyphOf, goalMeta, goalsApi, inProject, isOpen, STATUS_LABEL, type GoalView } from './goalsApi';
@@ -174,7 +174,7 @@ function Detail({ goal: g, set, drop, onGo }: { goal: GoalView; set: (g: GoalVie
       <header className="gd-head">
         <div className="gd-title">
           <h2>{g.title}</h2>
-          <StatusChip tone={g.kind === 'tracker' && g.status === 'active' ? 'neutral' : TONE[g.status]} label={g.kind === 'tracker' && g.status === 'active' ? 'Open' : STATUS_LABEL[g.status]} pulse={g.status === 'active' && g.kind === 'loop'} />
+          <StatusBadge tone={g.kind === 'tracker' && g.status === 'active' ? 'neutral' : TONE[g.status]} label={g.kind === 'tracker' && g.status === 'active' ? 'Open' : STATUS_LABEL[g.status]} pulse={g.status === 'active' && g.kind === 'loop'} />
         </div>
         <p className="sl-meta">
           {g.kind === 'loop' ? 'Outcome loop' : 'Tracker'} · {g.workflow === 'team' ? 'Team' : `Workflow ${g.workflow}`}

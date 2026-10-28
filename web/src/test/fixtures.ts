@@ -47,6 +47,15 @@ export function makeRun(o: Partial<RunView> = {}): RunView {
   } as RunView;
 }
 
+/** A run waiting on its approval step `ship` ("Ship it") after its gate passed. */
+export function makeAwaitingRun(): RunView {
+  const base = makeRun();
+  return makeRun({
+    pipeline: { ...base.pipeline, nodes: [...base.pipeline.nodes, { id: 'ship', kind: 'approval', title: 'Ship it', x: 780, y: 0 }], edges: [...base.pipeline.edges, { from: 'gate', to: 'ship' }] },
+    nodes: { ...base.nodes, gate: { status: 'done', attempts: 1, costUsd: 0, loops: 0 }, ship: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 } },
+  });
+}
+
 export function makeRow(o: Partial<RunRow> = {}): RunRow {
   return { id: 'r1', pipeline: 'plan-code-review', task: 'Add rate limiting', repo: '/repo', repoReal: '/repo', status: 'running', startedAt: Date.now() - 60_000, costUsd: 0.12, live: true, nodes: {}, kind: 'workflow', mode: 'live', pending: 0, planReady: false, branch: 'aorch/r1', lastTs: Date.now(), steps: [], bots: [], ...o };
 }

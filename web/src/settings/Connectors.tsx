@@ -8,9 +8,8 @@ import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import type { Poll } from '../hooks';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
-import { StatusChip, type Tone } from '../ui/studio/StatusChip';
+import { StatusBadge, type Tone } from '../ui/studio/StatusBadge';
 import { PHONE, useMediaQuery } from '../ui/studio/useMediaQuery';
-import '../runs/runflow.css';
 import './settings.css';
 
 export type { ConnectorView };
@@ -113,7 +112,7 @@ function Panel({ c }: { c?: ConnectorView }) {
       {c ? (
         <>
           <h3>
-            {c.name} <StatusChip tone={STATUS[c.status].chip} label={STATUS[c.status].label} />
+            {c.name} <StatusBadge tone={STATUS[c.status].chip} label={STATUS[c.status].label} />
           </h3>
           {c.note ? <p className="sl-note">{c.note}</p> : null}
           <h4>Permissions</h4>
@@ -158,7 +157,7 @@ export function Connectors(p: { poll: Poll<{ connectors: ConnectorView[] }> }) {
           <li key={c.name} className="acc-row">
             <div className="acc-head">
               <b className="mono">{c.name}</b>
-              <StatusChip tone={STATUS[c.status].chip} label={STATUS[c.status].label} />
+              <StatusBadge tone={STATUS[c.status].chip} label={STATUS[c.status].label} />
             </div>
             <p className="sl-meta">{c.note ?? c.summary}</p>
             <Button size="sm" variant="secondary" onClick={() => void test(c.name)}>

@@ -2,7 +2,7 @@ import { useId } from 'react';
 import type { BotDef } from '../crewStore';
 import { Face } from '../Face';
 import { cn } from '../ui/cn';
-import { StatusChip } from '../ui/studio/StatusChip';
+import { StatusBadge } from '../ui/studio/StatusBadge';
 import { isEcc, type Row } from './types';
 
 /** One bot in the grid. A click opens it in the editor; the chips say what it is and what waits for you. */
@@ -33,8 +33,8 @@ export function CrewCard(p: { row: Row; def?: BotDef; evo?: { version: number; o
             v{p.evo.version}
           </span>
         ) : null}
-        {p.row.kind !== 'approval' && p.evo?.open ? <StatusChip tone="needs" label="proposal" /> : null}
-        {p.agentMissing ? <StatusChip tone="needs" label="agent not available" /> : null}
+        {p.row.kind !== 'approval' && p.evo?.open ? <StatusBadge tone="needs" label="proposal" /> : null}
+        {p.agentMissing ? <StatusBadge tone="needs" label="agent not available" /> : null}
       </span>
     </button>
   );

@@ -39,21 +39,32 @@ describe('Home', () => {
     expect(calls('GET', '/api/workspaces')).toHaveLength(1);
   });
 
-  it('lays out the sections in the one-column order', async () => {
+  it('has only a title for a header: no meta line, summary or Refresh', async () => {
     renderApp(<Home onGo={() => {}} />);
     await act(async () => {});
-    // the toast stack's region (from renderApp) sits outside the Home grid
-    const names = screen.getAllByRole('region').filter((r) => r.closest('.home-grid')).map((r) => r.getAttribute('aria-labelledby') && document.getElementById(r.getAttribute('aria-labelledby')!)!.textContent);
-    // DOM (and one-column) order is the main column, then the side column
-    expect(names).toEqual(['Needs you', 'Start a run', 'Running', 'Recent', 'Live activity', 'Saved requests', 'Crew']);
-    const col = (name: string) => screen.getByRole('region', { name }).closest('.home-col')!.className;
-    for (const n of ['Needs you', 'Start a run', 'Running', 'Recent']) expect(col(n)).toContain('home-main');
-    for (const n of ['Live activity', 'Saved requests', 'Crew']) expect(col(n)).toContain('home-side');
-    // two independent stacks at 1200 px; one stack below
-    expect(cssRule('home/home.css', '.home-col')).toContain('display: contents');
-    expect(cssRule('home/home.css', '.home-col', '@media (min-width: 1200px)')).toContain('flex-direction: column');
-    expect(cssRule('home/home.css', '.start-mode')).toContain('align-items: center');
     expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+    expect(screen.queryByText(/running · .* need/)).toBeNull();
+    expect(screen.queryByRole('region', { name: /Saved requests/ })).toBeNull();
+  });
+
+  it('puts the composer and main sections before the side column in DOM order', async () => {
+    const { container } = renderApp(<Home onGo={() => {}} />);
+    await act(async () => {});
+    expect(container.querySelector('.home-cols > :first-child .composer')).toBeTruthy();
+    expect([...container.querySelectorAll('.sl-sec-title')].map((e) => e.textContent)).toEqual(['Needs you', 'Running', 'Recent', 'Activity', 'Crew']);
+  });
+
+  it('has no Pause button and a live dot on Activity', async () => {
+    renderApp(<Home onGo={() => {}} />);
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Activity' }).querySelector('.sl-dot.pulse')).toBeTruthy();
+  });
+
+  it('lays out a 270 px side column that stacks under 1100 px', () => {
+    expect(cssRule('home/home.css', '.home-cols')).toContain('grid-template-columns: minmax(0,1fr) 270px');
+    expect(cssRule('home/home.css', '.home-cols', '@media (max-width: 1099px)')).toContain('grid-template-columns: minmax(0,1fr)');
   });
 
   it('polls every 10 s while nothing is live and every 2 s while a run is live, with no EventSource', async () => {
@@ -85,23 +96,6 @@ describe('Home', () => {
     const start = calls('GET', '/api/runs').length;
     await act(() => vi.advanceTimersByTimeAsync(4000));
     expect(calls('GET', '/api/runs').length).toBe(start);
-    expect(screen.getByText('Nothing running')).toBeTruthy();
-  });
-
-  it('shows skeletons while refreshing', async () => {
-    let finish!: () => void;
-    renderApp(<Home onGo={() => {}} />);
-    await act(async () => {});
-    routeApi({
-      'GET /api/runs': () => new Promise<RunRow[]>((r) => (finish = () => r(rows))),
-      'GET /api/attention': { items: [] },
-      'GET /api/workspaces': WS,
-      'GET /api/roster/preview': new Error('hidden'),
-      'GET /api/activity': { lines: [], cursor: null },
-    });
-    await act(async () => screen.getByRole('button', { name: 'Refresh' }).click());
-    expect(screen.getByRole('status', { name: 'Loading running runs' })).toBeTruthy();
-    await act(async () => finish());
-    expect(screen.queryByRole('status', { name: 'Loading running runs' })).toBeNull();
+    expect(screen.getByText('Nothing running.')).toBeTruthy();
   });
 });

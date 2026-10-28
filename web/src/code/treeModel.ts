@@ -1,4 +1,4 @@
-import type { TreeEntry } from './codeApi';
+import type { GitBadge, TreeEntry } from './codeApi';
 
 /** Each loaded folder's entries, by its project-relative path ('' is the project folder). */
 export type Dirs = Record<string, TreeEntry[]>;
@@ -35,36 +35,31 @@ export function dirsFromPaths(paths: string[]): Dirs {
   return Object.fromEntries(Object.entries(dirs).map(([d, m]) => [d, [...m.values()].sort(order)]));
 }
 
-export type TreeMove = { focus: number } | { expand: string } | { collapse: string } | { open: string } | undefined;
+export interface TreeNode {
+  path: string;
+  name: string;
+  kind: 'dir' | 'file';
+  git?: GitBadge;
+  children: TreeNode[];
+}
 
-/**
- * What a key does on row `at`: ↑/↓ move, Home/End jump, → opens a folder (or steps into an open one), ← closes it (or
- * steps out to the parent folder), Enter opens a file or flips a folder.
- */
-export function keyMove(rows: Row[], at: number, key: string, expanded: ReadonlySet<string>): TreeMove {
-  const r = rows[at];
-  if (!r) return undefined;
-  const open = r.kind === 'dir' && expanded.has(r.path);
-  switch (key) {
-    case 'ArrowDown':
-      return { focus: Math.min(at + 1, rows.length - 1) };
-    case 'ArrowUp':
-      return { focus: Math.max(at - 1, 0) };
-    case 'Home':
-      return { focus: 0 };
-    case 'End':
-      return { focus: rows.length - 1 };
-    case 'ArrowRight':
-      return r.kind !== 'dir' ? undefined : open ? (rows[at + 1]?.depth ?? 0) > r.depth ? { focus: at + 1 } : undefined : { expand: r.path };
-    case 'ArrowLeft': {
-      if (open) return { collapse: r.path };
-      const parent = r.path.split('/').slice(0, -1).join('/');
-      const i = rows.findIndex((x) => x.path === parent);
-      return i >= 0 ? { focus: i } : undefined;
-    }
-    case 'Enter':
-      return r.kind === 'file' ? { open: r.path } : open ? { collapse: r.path } : { expand: r.path };
-    default:
-      return undefined;
+/** The visible rows (depth first, with depths) as nested nodes, for beui's FileTree. */
+export function nestRows(rows: Row[]): TreeNode[] {
+  const top: TreeNode[] = [];
+  const open: TreeNode[] = [];
+  for (const r of rows) {
+    const n: TreeNode = { path: r.path, name: r.name, kind: r.kind, ...(r.git ? { git: r.git } : {}), children: [] };
+    open.length = r.depth;
+    (open[r.depth - 1]?.children ?? top).push(n);
+    open.push(n);
   }
+  return top;
+}
+
+/** beui reports the whole expanded list; Code expands or collapses one folder at a time. */
+export function expandDiff(prev: ReadonlySet<string>, next: string[]): { expand?: string; collapse?: string } {
+  const expand = next.find((x) => !prev.has(x));
+  if (expand) return { expand };
+  const collapse = [...prev].find((x) => !next.includes(x));
+  return collapse ? { collapse } : {};
 }

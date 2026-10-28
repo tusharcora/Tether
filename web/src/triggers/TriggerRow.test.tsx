@@ -20,7 +20,7 @@ describe('TriggerRow', () => {
 
   it('shows the last delivery as a status chip', () => {
     row(t({ status: 'active', last: { at: new Date().toISOString(), source: 'webhook', repo: 'acme/api', pr: 12, outcome: 'started', runId: 'r9' } }));
-    expect(screen.getByText('run started').closest('.sl-chip')!.classList.contains('t-done')).toBe(true);
+    expect(screen.getByText('run started').closest('[data-status]')!.getAttribute('data-status')).toBe('success');
     expect(screen.getByText('#12 · just now')).toBeTruthy();
   });
 

@@ -1,65 +1,50 @@
 import type { RunRow } from '../api';
-import { Button } from '../components/beui/kit/Button';
 import { Loading } from '../components/Loading';
-import { useCrew } from '../crewStore';
 import type { Poll, Route } from '../hooks';
-import { EmptyState } from '../ui/studio/EmptyState';
-import { FaceStack } from '../ui/studio/FaceStack';
 import { InlineError } from '../ui/studio/InlineError';
 import { ListRow } from '../ui/studio/ListRow';
-import { Panel } from '../ui/studio/Panel';
-import { StepTodos } from '../ui/studio/StepTodos';
+import { QuietLine, RowList, Section } from '../ui/studio/Section';
+import { rowDesc } from '../ui/studio/status';
+import { StatusGlyph } from '../ui/studio/StatusBadge';
 import { StepTrack } from '../ui/studio/StepTrack';
 import { Elapsed } from './Elapsed';
-import { nowLine, runTitle, workingBot } from './runText';
+import { nowLine, stepOf, taskTitle } from './runText';
 
-/** Live runs (the server's `live` flag) with their steps, faces, what is happening and an elapsed clock. */
-export function Running(props: { poll: Poll<RunRow[]>; refreshing: boolean; onGo: (r: Route) => void }) {
+/** Live runs (the server's `live` flag): the task, who works and which step, a step track and an elapsed clock. */
+export function Running(props: { poll: Poll<RunRow[]>; onGo: (r: Route) => void }) {
   const { data, error, refresh } = props.poll;
   const live = (data ?? []).filter((r) => r.live);
-  const { crew } = useCrew();
   return (
-    <Panel title="Running" count={data ? live.length : undefined} className="s-running">
-      <Loading loading={(data === undefined && !error) || props.refreshing} lines={3} label="Loading running runs">
+    <Section title="Running" count={data ? live.length : undefined}>
+      <Loading loading={data === undefined && !error} lines={3} label="Loading running runs">
         {error && !data ? (
           <InlineError message={error} onRetry={() => void refresh()} />
         ) : (
           <>
             {error ? <InlineError compact message="Couldn't refresh" onRetry={() => void refresh()} /> : null}
             {!live.length ? (
-              <EmptyState
-                title="Nothing running"
-                description="Runs you start appear here while they work."
-                action={
-                  <Button variant="secondary" size="sm" onClick={() => props.onGo({ tab: 'runs' })}>
-                    Open Runs
-                  </Button>
-                }
-              />
+              <QuietLine>Nothing running.</QuietLine>
             ) : (
-              <ul className="sl-list">
-                {live.map((r) => (
-                  <ListRow
-                    key={r.id}
-                    lead={<FaceStack bots={r.bots.length ? r.bots : r.kind === 'team' ? ['orchestrator'] : []} working={workingBot(r)} />}
-                    title={runTitle(r)}
-                    onOpen={() => props.onGo({ tab: 'runs', id: r.id })}
-                    meta={`${r.id} · ${r.branch} · ${r.kind}`}
-                    age={<Elapsed since={r.startedAt} />}
-                    extra={
-                      <>
-                        <StepTrack steps={r.steps} planning={r.kind === 'team' && !r.steps.length} />
-                        <span className="run-now">{nowLine(r)}</span>
-                        <StepTodos steps={r.steps.map((s) => ({ id: s.id, status: s.status, title: `${crew[s.bot]?.name ?? s.bot} · ${s.id}` }))} title="Steps" defaultOpen={false} className="run-todos" />
-                      </>
-                    }
-                  />
-                ))}
-              </ul>
+              <RowList label="Running">
+                {live.map((r) => {
+                  const step = stepOf(r);
+                  return (
+                    <ListRow
+                      key={r.id}
+                      lead={<StatusGlyph desc={rowDesc(r)} />}
+                      title={taskTitle(r)}
+                      onOpen={() => props.onGo({ tab: 'runs', id: r.id })}
+                      meta={step ? `${nowLine(r)} · ${step}` : nowLine(r)}
+                      age={<Elapsed since={r.startedAt} />}
+                      extra={<StepTrack steps={r.steps} planning={r.kind === 'team' && !r.steps.length} />}
+                    />
+                  );
+                })}
+              </RowList>
             )}
           </>
         )}
       </Loading>
-    </Panel>
+    </Section>
   );
 }
