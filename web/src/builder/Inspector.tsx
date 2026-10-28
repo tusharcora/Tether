@@ -4,6 +4,7 @@ import { Input } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Select } from '../components/beui/kit/fields';
 import { Switch } from '../components/beui/kit/fields';
+import { Picker } from '../components/bencho/Picker';
 import { Textarea } from '../components/kept/textarea/textarea';
 import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
@@ -13,7 +14,6 @@ import { SectionHeading } from '../ui/studio/SectionHeading';
 
 export type Adapters = Record<string, { ok: boolean; version?: string; detail?: string }>;
 
-const ROLES = ['planner', 'architect', 'coder', 'reviewer', 'tester'];
 const KIND_LINE: Record<string, string> = {
   agent: 'Agent step',
   gate: 'Gate · must pass before the next step',
@@ -95,21 +95,23 @@ export function StepForm(props: {
       <Input label="Label" value={n.title ?? ''} onChange={(e) => patch(n.id, { title: e.target.value })} />
       {n.kind === 'agent' ? (
         <>
-          <Input label="Role" list="roles" value={n.role ?? ''} onChange={(e) => patch(n.id, { role: e.target.value })} />
-          <datalist id="roles">
-            {ROLES.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
+          <Picker
+            label="Role"
+            placeholder="Choose a bot"
+            custom={{ label: 'Another role', placeholder: 'Another role, then Enter' }}
+            options={Object.entries(crew).map(([id, c]) => ({ id, name: id, hint: `${c.name} · ${c.title}`, lead: <Face id={id} size={28} /> }))}
+            value={n.role ? [n.role] : []}
+            onChange={([role]) => patch(n.id, { role: role ?? '' })}
+          />
           <div className="bl-pair">
-            <Select
+            <Picker
               label="Agent"
               options={[
-                { value: NONE, label: `follow ${crew[crewFor(n, crew)]?.name ?? 'its bot'} (set in Crew)` },
-                ...agentOptions.map((a) => ({ value: a, label: a + (adapters[a] && !adapters[a].ok ? ' (not installed)' : '') })),
+                { id: NONE, name: `follow ${crew[crewFor(n, crew)]?.name ?? 'its bot'} (set in Crew)` },
+                ...agentOptions.map((a) => ({ id: a, name: a, hint: adapters[a] && !adapters[a].ok ? 'not installed' : undefined })),
               ]}
-              value={n.agent ?? NONE}
-              onValueChange={(v) => patch(n.id, { agent: fromNone(v) || undefined })}
+              value={[n.agent ?? NONE]}
+              onChange={([v]) => patch(n.id, { agent: fromNone(v ?? NONE) || undefined })}
             />
             <Input label="Model (optional)" value={n.model ?? ''} placeholder="adapter default" spellCheck={false} onChange={(e) => patch(n.id, { model: e.target.value })} />
           </div>

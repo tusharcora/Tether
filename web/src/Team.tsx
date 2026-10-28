@@ -4,7 +4,7 @@ import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
 import { Accordion } from './components/beui/kit/fields';
 import { Button } from './components/beui/kit/Button';
 import { RadioCards } from './components/beui/kit/RadioCards';
-import { Select } from './components/beui/kit/fields';
+import { Picker } from './components/bencho/Picker';
 import { SegmentedControl } from './components/beui/kit/controls';
 import { Textarea } from './components/kept/textarea/textarea';
 import { Face } from './Face';
@@ -267,11 +267,11 @@ export function TeamPanel(props: { run: RunView; send: (path: 'answers' | 'plan'
                       {a.swapped ? <StatusChip tone="neutral" label="swapped by you" /> : null}
                       {plan.roster?.length ? (
                         // the current bot is always first so the shown value exists among the options
-                        <Select
+                        <Picker
                           label="Bot"
-                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ value: b, label: b }))}
-                          value={a.bot}
-                          onValueChange={(b) => b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
+                          options={[...new Set([a.bot, ...plan.roster])].map((b) => ({ id: b, name: b, lead: <Face id={b} size={28} /> }))}
+                          value={[a.bot]}
+                          onChange={([b]) => b && b !== a.bot && void props.send('swap', { assignment: i, bot: b })}
                           disabled={busy}
                         />
                       ) : null}

@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { Button } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
-import { Select } from '../components/beui/kit/fields';
+import { Picker } from '../components/bencho/Picker';
 import { Switch } from '../components/beui/kit/fields';
 import { NONE, fromNone } from '../ui/cn';
 import { SectionHeading } from '../ui/studio/SectionHeading';
@@ -27,11 +27,11 @@ export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: 
       <SectionHeading id={id} title="Runs on" action={chosen && !chosen.ok ? <StatusChip tone="needs" label="agent not available" /> : undefined} />
       <p className="sl-meta">A step with no agent of its own follows its bot; a step that names one keeps it. Changes apply to the next run you start.</p>
       <div className="cw-pair">
-        <Select
+        <Picker
           label="Agent"
-          options={[{ value: NONE, label: 'default (claude)' }, ...Object.keys(p.agents).map((a) => ({ value: a, label: a + (p.agents[a]!.ok ? '' : ' (not available)') }))]}
-          value={p.draft.agent || NONE}
-          onValueChange={(v) => p.onChange({ agent: fromNone(v), model: '' })}
+          options={[{ id: NONE, name: 'default (claude)' }, ...Object.keys(p.agents).map((a) => ({ id: a, name: a, hint: p.agents[a]!.ok ? undefined : 'not available' }))]}
+          value={[p.draft.agent || NONE]}
+          onChange={([v]) => p.onChange({ agent: fromNone(v ?? NONE), model: '' })}
         />
         <Input label="Model" list={`models-${p.row.role}`} value={p.draft.model} placeholder="adapter default" spellCheck={false} onChange={(e) => p.onChange({ model: e.target.value })} />
       </div>

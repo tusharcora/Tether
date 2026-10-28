@@ -3,7 +3,7 @@ import { api, type RosterPreview } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { CopyButton } from '../components/beui/kit/CopyButton';
 import { SegmentedControl } from '../components/beui/kit/controls';
-import { Select } from '../components/beui/kit/fields';
+import { Picker } from '../components/bencho/Picker';
 import { Textarea } from '../components/kept/textarea/textarea';
 import { Loading } from '../components/Loading';
 import { Face } from '../Face';
@@ -104,7 +104,7 @@ export function StartRun(props: { onGo: (r: Route) => void; onStarted: (id: stri
               ))}
             </div>
             <div className="start-row">
-              <Select label="Workspace" value={ws?.id} onValueChange={setPicked} options={list.map((w) => ({ value: w.id, label: w.exists ? w.name : `${w.name} (folder missing)` }))} />
+              <Picker label="Workspace" value={ws ? [ws.id] : []} onChange={([id]) => id && setPicked(id)} options={list.map((w) => ({ id: w.id, name: w.name, hint: w.exists ? w.path : 'folder missing', disabled: false }))} />
               <div className="start-mode">
                 <SegmentedControl label="Run as" options={[{ value: 'live', label: 'Team · live' }, { value: 'autonomous', label: 'Team · autonomous' }]} value={mode} onValueChange={(v) => setMode(v as Mode)} />
                 <button type="button" className="link" onClick={() => props.onGo({ tab: 'builder' })}>
