@@ -132,6 +132,52 @@ describe('Code screen', () => {
     expect(screen.getByRole('tab', { name: /a\.ts/ }).textContent).not.toContain('unsaved');
   });
 
+  it('lays out the card: tabs with icons, the path as crumbs, and a status bar', async () => {
+    await openA();
+    const card = screen.getByRole('region', { name: 'Editor' });
+    expect(screen.getByRole('tab', { name: 'a.ts' }).querySelector('svg')).toBeTruthy();
+    expect([...card.querySelectorAll('.code-path .code-crumb')].map((c) => c.textContent)).toEqual(['src', 'a.ts']);
+    const status = () => card.querySelector('.code-status')!.textContent!;
+    for (const s of ['saved', 'Ln 1, Col 1', '3 lines', 'TypeScript', 'UTF-8']) expect(status()).toContain(s);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+    type('x');
+    expect(status()).toContain('unsaved');
+  });
+
+  it('keeps Edit and Save visible with many tabs: the tabs scroll inside the header, a long path ellipsizes', () => {
+    const rule = (sel: string) => cssRule('code/code.css', sel);
+    expect(rule('.code-tablist')).toContain('overflow-x: auto');
+    expect(rule('.code-tab-actions')).toContain('flex: none');
+    for (const p of ['min-width: 0', 'overflow: hidden', 'text-overflow: ellipsis']) expect(rule('.code-crumbs')).toContain(p);
+    // × shows on hover, on the open tab, and whenever the keyboard is in the tab
+    expect(rule('.code-tab:hover .code-tab-close, .code-tab.on .code-tab-close, .code-tab:focus-within .code-tab-close')).toContain('opacity: 1');
+  });
+
+  it('closing the runs panel or switching files clears the picked run', async () => {
+    setup({ path: 'src/a.ts' });
+    await waitFor(() => expect(editorText()).toBe(A));
+    const chip = await screen.findByRole('button', { name: '2 runs touched it' });
+    const pick = async () => {
+      fireEvent.click(chip);
+      fireEvent.click(await screen.findByRole('button', { name: /Tune the window/ }));
+      await waitFor(() => expect(document.querySelectorAll('.cm-run-line')).toHaveLength(1));
+    };
+    await pick();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Runs on this file' }));
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
+    await pick();
+    // the panel follows the open file
+    fireEvent.click(within(screen.getByRole('tree')).getByRole('treeitem', { name: /b\.ts/ }));
+    await waitFor(() => expect(editorText()).toBe('b\n'));
+    const dock = screen.getByRole('complementary', { name: 'Runs on this file' });
+    expect(within(dock).getByText('b.ts')).toBeTruthy();
+    expect(await within(dock).findByText('No run has changed this file yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'a.ts' }));
+    await waitFor(() => expect(editorText()).toBe(A));
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
+  });
+
   it('saves with ⌘S and reports unsaved work to the shell', async () => {
     const p = setup({ path: 'src/a.ts' });
     await waitFor(() => expect(editorText()).toBe(A));
@@ -168,6 +214,7 @@ describe('Code screen', () => {
     const p = setup({ path: 'src/a.ts' });
     const banner = (await screen.findByText(/Bolt is editing/)).closest<HTMLElement>('[role="status"]')!;
     expect(banner.textContent).toMatch(/Bolt is editing files in this folder in run r-9\. Saving is paused/);
+    expect(within(banner).getByRole('img', { name: 'Bolt' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     type('x');
     expect(screen.getByRole('button', { name: /Save/ }).hasAttribute('disabled')).toBe(true);
@@ -226,6 +273,7 @@ describe('Code screen', () => {
     expect(await screen.findByText(/Secrets file: read-only here/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Read-only' }).hasAttribute('disabled')).toBe(true);
     await waitFor(() => expect(editorText()).toBe('K=1\n'));
+    expect(document.querySelector('.code-status')!.textContent).toContain('read-only');
   });
 
   it('shows a file over 2 MB as a panel instead of the editor', async () => {

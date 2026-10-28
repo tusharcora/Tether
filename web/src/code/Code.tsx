@@ -1,10 +1,12 @@
-import { Search, X } from 'lucide-react';
+import { File as FileIcon, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent, Drawer, DrawerContent } from '../components/beui/kit/overlays';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Loading } from '../components/Loading';
+import { useCrew } from '../crewStore';
+import { Face } from '../Face';
 import type { WorkspaceRow } from '../home/workspaces';
 import { useUnloadWarning } from '../hooks';
 import { cn } from '../ui/cn';
@@ -81,6 +83,7 @@ export function Code(p: CodeProps) {
   const [runs, setRuns] = useState<{ path: string; data?: RunTouch[]; error?: string }>();
   const [run, setRun] = useState<string>();
   const [drawer, setDrawer] = useState<'files'>();
+  const [cursor, setCursor] = useState<{ line: number; col: number }>();
   const [runsOpen, setRunsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +91,10 @@ export function Code(p: CodeProps) {
   const file = tab?.file;
   const readOnly = !!file?.readOnly;
   const anyDirty = tabs.some(isDirty);
+  const isText = !!file && !file.tooLarge && !file.binary;
+  const { crew } = useCrew();
+  // the lock names its bot by name; the face needs the id
+  const lockBot = lock && Object.keys(crew).find((id) => crew[id]!.name === lock.bot);
   const patchTab = (path: string, f: (t: Tab) => Tab) => setTabs((ts) => ts.map((t) => (t.path === path ? f(t) : t)));
 
   const fetchFile = useCallback(
@@ -298,7 +305,7 @@ export function Code(p: CodeProps) {
   ) : file.binary ? (
     <EmptyState title="Not a text file" description={`${nameOf(tab.path)} holds binary data, so it is not shown.`} />
   ) : (
-    <Editor docKey={`${tab.path}#${tab.seq}`} text={file.text} lang={file.lang} readOnly={!editing || readOnly} label={`Code of ${tab.path}`} onChange={(text) => patchTab(tab.path, (t) => ({ ...t, edit: text }))} marks={marks} flash={flash} />
+    <Editor docKey={`${tab.path}#${tab.seq}`} text={file.text} lang={file.lang} readOnly={!editing || readOnly} label={`Code of ${tab.path}`} onChange={(text) => patchTab(tab.path, (t) => ({ ...t, edit: text }))} marks={marks} flash={flash} onCursor={(line, col) => setCursor({ line, col })} />
   );
 
   const editorPanel = (
@@ -310,6 +317,7 @@ export function Code(p: CodeProps) {
               {tabs.map((t) => (
                 <div key={t.path} className={cn('code-tab', { on: t.path === cur })}>
                   <button type="button" role="tab" aria-selected={t.path === cur} title={t.path} onClick={() => openAt(t.path)}>
+                    <FileIcon size={13} aria-hidden="true" />
                     {nameOf(t.path)}
                     {isDirty(t) ? (
                       <span className="code-dirty">
@@ -324,18 +332,30 @@ export function Code(p: CodeProps) {
               ))}
             </div>
             <div className="code-tab-actions">
-              <Button size="sm" variant="secondary" aria-pressed={editing && !readOnly} disabled={!file || readOnly || !!file.tooLarge || !!file.binary} onClick={() => setEditing(!editing)}>
-                {readOnly ? 'Read-only' : editing ? 'Editing' : 'Edit'}
+              <Button size="sm" variant="secondary" disabled={!isText || readOnly} onClick={() => setEditing(!editing)}>
+                {readOnly ? 'Read-only' : editing ? 'Done' : 'Edit'}
               </Button>
               <Button size="sm" variant="primary" disabled={!canSave} onClick={() => void save()}>
                 Save <Kbd mod>S</Kbd>
               </Button>
             </div>
           </div>
+          {tab ? (
+            <div className="code-path">
+              <span className="code-crumbs" title={tab.path}>
+                {tab.path.split('/').map((part, i) => (
+                  <span key={i} className="code-crumb">
+                    {part}
+                  </span>
+                ))}
+              </span>
+              {runsChip}
+            </div>
+          ) : null}
           {lock ? (
-            <div className="code-lock" role="status">
-              <span className="sl-dot pulse code-lock-dot" aria-hidden="true" />
-              <span>
+            <div className="code-strip code-lock" role="status">
+              {lockBot ? <Face id={lockBot} size={22} mood="working" /> : null}
+              <span className="code-strip-text">
                 {lock.bot} is editing files in this folder in run <b>{lock.runId}</b>. Saving is paused until the step finishes.
               </span>
               <Button size="sm" variant="secondary" onClick={() => p.onOpenRun(lock.runId)}>
@@ -343,17 +363,19 @@ export function Code(p: CodeProps) {
               </Button>
             </div>
           ) : null}
-          {file?.secret ? <p className="code-banner">Secrets file: read-only here, skipped by search and never sent to agents.</p> : null}
+          {file?.secret ? <p className="code-strip code-banner">Secrets file: read-only here, skipped by search and never sent to agents.</p> : null}
+          <div className="code-editor-wrap">{body}</div>
           {tab && file ? (
-            <div className="code-filebar">
-              <span>{tab.path}</span>
-              <span>{LANGS[file.lang].label}</span>
-              {!file.tooLarge && !file.binary ? <span>{lineCount(tab.edit ?? file.text)} lines</span> : null}
-              <span className="code-filebar-note">{isDirty(tab) ? 'unsaved changes' : readOnly && !file.secret ? 'read-only' : ''}</span>
-              {runsChip}
+            <div className="code-status">
+              {isText ? <span className={cn({ 'code-unsaved': isDirty(tab) })}>{isDirty(tab) ? 'unsaved' : readOnly ? 'read-only' : 'saved'}</span> : null}
+              <span className="code-status-r">
+                {isText && cursor ? <span>{`Ln ${cursor.line}, Col ${cursor.col}`}</span> : null}
+                {isText ? <span>{lineCount(tab.edit ?? file.text)} lines</span> : null}
+                <span>{LANGS[file.lang].label}</span>
+                {isText ? <span>UTF-8</span> : null}
+              </span>
             </div>
           ) : null}
-          <div className="code-editor-wrap">{body}</div>
         </>
       ) : (
         <EmptyState title="Pick a file" description="Open a file from the tree, or search the code with ⌘⇧F." />
@@ -393,7 +415,7 @@ export function Code(p: CodeProps) {
               <span className="code-chip">{nameOf(cur!)}</span>
             </>
           }
-          onClose={() => setRunsOpen(false)}
+          onClose={() => (setRunsOpen(false), setRun(undefined))}
         >
           <RunsLens runs={runs?.data} error={runs?.error} onRetry={() => cur && void loadRuns(cur)} selected={run} onSelect={setRun} onOpenRun={p.onOpenRun} />
         </Dock>

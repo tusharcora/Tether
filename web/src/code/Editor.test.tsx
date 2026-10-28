@@ -49,6 +49,14 @@ describe('Editor', () => {
     expect(marked()).toEqual([]);
   });
 
+  it('reports the cursor line and column', () => {
+    const onCursor = vi.fn();
+    const { container } = render(<Editor {...base} onCursor={onCursor} />);
+    expect(onCursor).toHaveBeenLastCalledWith(1, 1);
+    act(() => viewOf(container).dispatch({ selection: { anchor: TEXT.indexOf('two') } }));
+    expect(onCursor).toHaveBeenLastCalledWith(2, 4);
+  });
+
   it('highlights a line it was asked to show, then lets it fade', () => {
     vi.useFakeTimers();
     const { container } = render(<Editor {...base} flash={{ line: 3, seq: 1 }} />);

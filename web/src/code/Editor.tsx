@@ -63,7 +63,15 @@ export interface EditorProps {
   marks?: Hunk[];
   /** Scroll to a line and highlight it briefly; a new `seq` repeats it. */
   flash?: { line: number; seq: number };
+  /** The cursor's 1-based line and column, on every move and when a document is shown. */
+  onCursor?: (line: number, col: number) => void;
 }
+
+const cursorOf = (s: EditorState) => {
+  const at = s.selection.main.head;
+  const line = s.doc.lineAt(at);
+  return [line.number, at - line.from + 1] as const;
+};
 
 /** CodeMirror 6 in Studio Live tokens: line numbers, history, search (⌘F), bracket matching, read-only by default upstream. */
 export function Editor(p: EditorProps) {
@@ -74,6 +82,8 @@ export function Editor(p: EditorProps) {
   const parts = useRef({ lang: new Compartment(), readOnly: new Compartment() });
   const onChange = useRef(p.onChange);
   onChange.current = p.onChange;
+  const onCursor = useRef(p.onCursor);
+  onCursor.current = p.onCursor;
 
   const fresh = (text: string) =>
     EditorState.create({
@@ -94,7 +104,10 @@ export function Editor(p: EditorProps) {
         EditorView.contentAttributes.of({ 'aria-label': p.label }),
         marksField,
         flashField,
-        EditorView.updateListener.of((u) => u.docChanged && onChange.current(u.state.doc.toString())),
+        EditorView.updateListener.of((u) => {
+          if (u.docChanged) onChange.current(u.state.doc.toString());
+          if (u.selectionSet) onCursor.current?.(...cursorOf(u.state));
+        }),
       ],
     });
 
@@ -109,6 +122,7 @@ export function Editor(p: EditorProps) {
     if (shown.current !== undefined) states.current.set(shown.current, v.state);
     v.setState(states.current.get(p.docKey) ?? fresh(p.text));
     shown.current = p.docKey;
+    onCursor.current?.(...cursorOf(v.state));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.docKey]);
   useEffect(() => {
