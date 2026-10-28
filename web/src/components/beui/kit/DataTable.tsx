@@ -25,6 +25,10 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   rowLabel?: (row: T) => string;
   selectedKey?: string | null;
+  /** The row that is open elsewhere (a list beside its page): marked aria-current. */
+  currentKey?: string | null;
+  /** Drops the table's own border and fill, for a list that sits on a panel. */
+  bare?: boolean;
   empty?: ReactNode;
   className?: string;
   /** Extra class for a row (for example a status tint). */
@@ -36,7 +40,7 @@ export interface DataTableProps<T> {
  * sortable headers are buttons that set aria-sort, rows with an action are focusable and answer Enter and Space.
  * Sorting is stable and happens in the browser, so a screen keeps its own order until the reader asks for another.
  */
-export function DataTable<T>({ columns, rows, rowKey, 'aria-label': label, defaultSort, onRowClick, rowLabel, selectedKey, empty, className, rowClassName }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, 'aria-label': label, defaultSort, onRowClick, rowLabel, selectedKey, currentKey, bare, empty, className, rowClassName }: DataTableProps<T>) {
   const [sort, setSort] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(defaultSort ?? null);
   const sorted = useMemo(() => {
     const col = sort ? columns.find((c) => c.id === sort.id) : undefined;
@@ -44,16 +48,27 @@ export function DataTable<T>({ columns, rows, rowKey, 'aria-label': label, defau
     const sign = sort.dir === 'asc' ? 1 : -1;
     return rows.map((row, i) => ({ row, i })).sort((a, b) => sign * col.sort!(a.row, b.row) || a.i - b.i).map((x) => x.row);
   }, [rows, columns, sort]);
-  const toggle = (id: string) => setSort((s) => (s?.id === id ? (s.dir === 'asc' ? { id, dir: 'desc' } : null) : { id, dir: 'asc' }));
+  // a first press sorts ascending; after that the same header flips the direction (the given order is only the starting point)
+  const toggle = (id: string) => setSort((s) => ({ id, dir: s?.id === id && s.dir === 'asc' ? 'desc' : 'asc' }));
   const onKey = (e: KeyboardEvent<HTMLTableRowElement>, row: T) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onRowClick?.(row);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // arrows walk the rows, the way the lists this table replaces did
+      e.preventDefault();
+      const rowsEls = [...(e.currentTarget.parentElement?.querySelectorAll<HTMLTableRowElement>('tr[tabindex]') ?? [])];
+      const at = rowsEls.indexOf(e.currentTarget);
+      rowsEls[Math.max(0, Math.min(rowsEls.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus();
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      const rowsEls = [...(e.currentTarget.parentElement?.querySelectorAll<HTMLTableRowElement>('tr[tabindex]') ?? [])];
+      rowsEls[e.key === 'Home' ? 0 : rowsEls.length - 1]?.focus();
     }
   };
   return (
-    <div className={cn('min-w-0 overflow-x-auto rounded-lg border border-border bg-card', className)}>
+    <div className={cn('min-w-0 overflow-x-auto', !bare && 'rounded-lg border border-border bg-card', className)}>
       <table aria-label={label} className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border">
@@ -86,9 +101,10 @@ export function DataTable<T>({ columns, rows, rowKey, 'aria-label': label, defau
                   tabIndex={onRowClick ? 0 : undefined}
                   aria-label={onRowClick ? rowLabel?.(row) : undefined}
                   aria-selected={selectedKey === undefined ? undefined : selectedKey === key}
+                  aria-current={currentKey === key ? 'true' : undefined}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   onKeyDown={onRowClick ? (e) => onKey(e, row) : undefined}
-                  className={cn('border-b border-border last:border-b-0 transition-colors', onRowClick && 'cursor-pointer hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', selectedKey === key && 'bg-muted', rowClassName?.(row))}
+                  className={cn('border-b border-border last:border-b-0 transition-colors', onRowClick && 'cursor-pointer hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', (selectedKey === key || currentKey === key) && 'bg-muted', rowClassName?.(row))}
                 >
                   {columns.map((c) => <td key={c.id} className={cn('px-3 py-2 align-middle', c.align === 'right' && 'text-right tabular-nums', c.className)}>{c.cell(row)}</td>)}
                 </tr>

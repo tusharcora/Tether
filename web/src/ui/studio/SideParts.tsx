@@ -40,16 +40,12 @@ export function SideRow(p: {
   /** Extra controls on the row's right (a pin's ⋯), outside the button. */
   extra?: ReactNode;
   className?: string;
-  draggable?: boolean;
-  onDragStart?: () => void;
-  onDragOver?: (e: DragEvent) => void;
-  onDrop?: () => void;
   /** Drawn on the collapsed rail, with this tooltip wiring. */
   rail?: TipProps;
 }) {
   const count = p.count && p.count.n > 0 ? p.count : undefined;
   return (
-    <div className={cn('sl-side-row', p.className, { current: !!p.current })} draggable={p.draggable} onDragStart={p.onDragStart} onDragOver={p.onDragOver} onDrop={p.onDrop}>
+    <div className={cn('sl-side-row', p.className, { current: !!p.current })}>
       <button type="button" className="sl-side-item" aria-label={p.name ?? p.label} aria-current={p.page && p.current ? 'page' : undefined} onClick={p.onClick} {...p.rail}>
         <span className="sl-side-icon" aria-hidden={p.lead ? undefined : true}>
           {p.lead ?? (p.Icon ? <p.Icon size={16} strokeWidth={1.7} aria-hidden="true" /> : null)}

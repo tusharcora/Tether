@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, File, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Workflow, Zap, type LucideIcon } from 'lucide-react';
+import { Bot, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Workflow, Zap } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { Screen } from '../../hooks';
@@ -7,9 +7,10 @@ import { cn } from '../cn';
 import { AccountRow } from './AccountRow';
 import { Kbd, isApple } from './Kbd';
 import { NAV, goHint, type CreateKind } from './nav';
+import { PinList } from './PinList';
 import { ProjectSwitcher, type ProjectsProps } from './ProjectSwitcher';
 import { RUN_STATE_LABEL, RunGlyph, runState, shortRunId, type RunState } from './RunGlyph';
-import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
+import { SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
@@ -58,7 +59,6 @@ export function sideRuns(runs: RunRow[]): { run: RunRow; state: RunState }[] {
   return [...open, ...finished.slice(0, RECENT_FINISHED)];
 }
 
-const PIN_ICON: Record<Pin['kind'], LucideIcon> = { run: Play, request: ArrowRight, workflow: Workflow, file: File };
 const firstLine = (t: string) => t.split('\n')[0]!.slice(0, 120);
 
 export interface SidebarProps {
@@ -124,19 +124,10 @@ export function Sidebar(p: SidebarProps) {
     };
     return { onPointerEnter: show, onFocus: show, onPointerLeave: hideTip, onBlur: hideTip, 'aria-describedby': tip?.key === key ? tipId : undefined };
   };
-  const [dragging, setDragging] = useState<number>();
   const page = (s: Screen) => !p.settingsOpen && p.active === s;
   const top = NAV.filter((n) => n.top);
   const work = NAV.filter((n) => !n.top);
   const runs = sideRuns(p.runs.list);
-  const move = (to: number) => {
-    if (dragging === undefined || dragging === to) return;
-    const next = [...p.pins.list];
-    const [it] = next.splice(dragging, 1);
-    next.splice(to, 0, it!);
-    setDragging(undefined);
-    p.pins.onReorder(next);
-  };
   const mod = isApple() ? '⌘' : 'Ctrl ';
   const navRow = (n: (typeof NAV)[number]) => (
     <SideRow
@@ -226,21 +217,7 @@ export function Sidebar(p: SidebarProps) {
           }
           empty="Pin a run, a request, a workflow or a file with +."
         >
-          {p.pins.list.map((x, i) => (
-            <SideRow
-              key={`${x.kind}:${x.ws ?? ''}:${x.id}`}
-              className={cn('pin', { dragging: dragging === i })}
-              label={x.label}
-              Icon={PIN_ICON[x.kind]}
-              onClick={() => p.pins.onOpen(x)}
-              draggable
-              onDragStart={() => setDragging(i)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => move(i)}
-              rail={tipFor(`pin:${i}`, x.label)}
-              extra={<SideMenu className="sl-side-row-more" label={`${x.label} options`} items={[{ label: `Unpin ${x.label}`, onPick: () => p.pins.onUnpin(x) }, ...(i > 0 ? [{ label: 'Move up', onPick: () => p.pins.onReorder(swap(p.pins.list, i, i - 1)) }] : []), ...(i < p.pins.list.length - 1 ? [{ label: 'Move down', onPick: () => p.pins.onReorder(swap(p.pins.list, i, i + 1)) }] : [])]} />}
-            />
-          ))}
+          {p.pins.list.length ? [<PinList key="pins" pins={p.pins.list} collapsed={collapsed} onOpen={p.pins.onOpen} onUnpin={p.pins.onUnpin} onReorder={p.pins.onReorder} tipFor={tipFor} />] : []}
         </SideSection>
       </div>
 
@@ -258,9 +235,3 @@ export function Sidebar(p: SidebarProps) {
   );
 }
 
-/** The list with items i and j swapped (the keyboard way to reorder Favorites). */
-const swap = <T,>(list: T[], i: number, j: number): T[] => {
-  const next = [...list];
-  [next[i], next[j]] = [next[j]!, next[i]!];
-  return next;
-};

@@ -45,12 +45,10 @@
 .tg-log { display: flex; flex-direction: column; gap: 10px; }
 .tg-log-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tg-deliveries { border-top: 1px solid var(--line); }
-.tg-delivery { display: flex; flex-direction: column; gap: 4px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
-.tg-delivery.fresh { animation: tg-fresh var(--t-slow) var(--ease) both; }
 @keyframes tg-fresh { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.tg-delivery-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tg-delivery.fresh > td { animation: tg-fresh var(--t-slow) var(--ease) both; }
 .tg-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 12px; color: var(--ink); }
-.tg-delivery-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--mut); }
+.tg-delivery-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; color: var(--mut); }
 .tg-delivery-sub > span { flex: 1; min-width: 0; }
 .tg-delivery-sub a { color: var(--accInk); text-decoration: none; }
 .tg-delivery-sub a:hover { text-decoration: underline; }

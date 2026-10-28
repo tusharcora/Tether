@@ -160,3 +160,16 @@ details[open] > .coll::before { transform: rotate(90deg); }
   .api-left, .send-agent { overflow: visible; border: 0; border-bottom: 1px solid var(--line); }
   .api-center .req-tabs [role="tabpanel"] { max-height: none; }
 }
+
+/* Send history as a table under the latency strip */
+.history { flex: none; border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.history > summary { cursor: pointer; color: var(--mut); padding: 2px 0; }
+.history-table { max-height: 220px; overflow: auto; }
+.history-table th { font-size: 11px; padding: 4px 6px; }
+.history-table td { padding: 4px 6px; }
+.hist-req { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hist-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); }
+.history .pill { display: inline-flex; padding: 1px 6px; border-radius: 6px; font: 600 11px var(--font-code); background: var(--s2); }
+.history .pill[data-tone="ok"] { background: var(--okBg); color: var(--ok); }
+.history .pill[data-tone="warn"] { background: var(--warnBg); color: var(--warn); }
+.history .pill[data-tone="bad"] { background: var(--badBg); color: var(--bad); }

@@ -101,8 +101,8 @@ describe('Graph', () => {
   it('moves through the All notes list with the keyboard', async () => {
     renderApp(<GraphView />);
     const list = await screen.findByRole('navigation', { name: 'All notes' });
-    const items = within(list).getAllByRole('button');
-    expect(items.map((b) => b.textContent)).toEqual(['Coder', 'Loose note', 'Run r1']);
+    const items = within(list).getAllByRole('row').slice(1);
+    expect(items.map((r) => r.getAttribute('aria-label'))).toEqual(['Coder', 'Loose note', 'Run r1']);
     items[0]!.focus();
     fireEvent.keyDown(items[0]!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[1]);
@@ -162,7 +162,7 @@ describe('Graph', () => {
     const search = screen.getByLabelText('Search the vault');
     fireEvent.change(search, { target: { value: 'e' } });
     const list = screen.getByRole('navigation', { name: 'All notes' });
-    expect(within(list).getAllByRole('button').map((b) => b.textContent)).toEqual(['Coder', 'Loose note']);
+    expect(within(list).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'))).toEqual(['Coder', 'Loose note']);
     fireEvent.keyDown(search, { key: 'Enter' });
     expect(await screen.findByText('body of Coder')).toBeTruthy();
   });

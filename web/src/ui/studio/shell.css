@@ -46,7 +46,6 @@
 .sl-side-row { position: relative; display: flex; align-items: center; margin: 0 8px; border-radius: 6px; transition: background-color var(--t-fast) var(--ease); }
 .sl-side-row:hover { background: var(--side-hover); }
 .sl-side-row.current { background: var(--side-card); box-shadow: var(--card-shadow); }
-.sl-side-row.dragging { opacity: .5; }
 .sl-side-item { position: relative; display: flex; flex: 1; align-items: center; gap: 0; min-width: 0; height: 28px; padding: 0 8px 0 0; overflow: hidden; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; white-space: nowrap; cursor: pointer; }
 .sl-side-row:hover .sl-side-item, .sl-side-row.current .sl-side-item { color: var(--ink); }
 .sl-side-row.current .sl-side-item { font-weight: 500; }
@@ -64,7 +63,16 @@
 .sl-side-row-extra { display: flex; flex: none; }
 .sl-side-row-more { opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 .sl-side-row:hover .sl-side-row-more, .sl-side-row-more:focus-within { opacity: 1; }
-.sl-side-row.pin { cursor: grab; }
+/* Favorites: beui's sortable list. The handle shows on hover and focus; the rail keeps the rows still. */
+.sl-pins { width: 100%; }
+.sl-pin-group { margin: 0; padding: 0; list-style: none; display: grid; }
+.sl-pin-li { display: flex; align-items: center; list-style: none; min-width: 0; }
+.sl-pin-li > :not(.sl-pin-grip) { flex: 1; min-width: 0; }
+.sl-pin-grip { flex: none; display: grid; place-items: center; width: 16px; height: 28px; margin: 0 -2px 0 -6px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--mut); opacity: 0; cursor: grab; touch-action: none; transition: opacity var(--t-fast) var(--ease); }
+.sl-pin-grip svg { width: 13px; height: 13px; }
+.sl-pin-li:hover .sl-pin-grip, .sl-pin-li:focus-within .sl-pin-grip, .sl-pin-grip:focus-visible { opacity: 1; }
+.sl-pin-grip:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.sl-pin-grip:disabled { opacity: 0 !important; pointer-events: none; }
 .sl-side-rule { height: 1px; margin: 6px 14px; background: var(--line); }
 .sl-side-section { margin-top: 14px; }
 /* a section header keeps its 24 px on the rail and becomes a hairline, so the rows under it stay put */

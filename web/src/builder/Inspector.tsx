@@ -5,6 +5,7 @@ import { SegmentedControl } from '../components/beui/kit/controls';
 import { Select } from '../components/beui/kit/fields';
 import { Switch } from '../components/beui/kit/fields';
 import { Picker } from '../components/bencho/Picker';
+import { StepOrder } from './StepOrder';
 import { Textarea } from '../components/kept/textarea/textarea';
 import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
@@ -56,6 +57,7 @@ export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline
         value={pl.settings.pipeMode}
         onValueChange={(v) => mut((p) => (p.settings.pipeMode = v as 'ancestors' | 'direct'))}
       />
+      <StepOrder pl={pl} mut={mut} />
       <Input label="Setup command (runs once in the worktree)" value={pl.settings.setup ?? ''} placeholder="npm ci" spellCheck={false} onChange={(e) => mut((p) => (p.settings.setup = e.target.value || undefined))} />
       <p className="bl-help">Click a step to edit it. Drag from a right-hand port to a left-hand port to connect. Select an edge or step and press Delete to remove it.</p>
     </div>

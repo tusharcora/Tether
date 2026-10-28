@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunRow } from '../api';
 import type { Poll } from '../hooks';
@@ -62,6 +62,32 @@ describe('RunList', () => {
     const p = setup({ data: rows });
     fireEvent.click(screen.getAllByText('Second task').at(-1)!);
     expect(p.onSelect).toHaveBeenCalledWith('r2');
+  });
+
+  it('is a table of runs: sortable by run and by status, a row opens a run from the keyboard, the open one is current', () => {
+    const p = setup({ data: rows, selected: 'r3' });
+    const table = screen.getByRole('table', { name: 'Run list' });
+    const order = () => within(table).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'));
+    expect(order()).toHaveLength(4);
+    const before = order();
+    fireEvent.click(within(table).getByRole('button', { name: /^Status/ }));
+    expect(within(table).getByRole('columnheader', { name: /Status/ }).getAttribute('aria-sort')).toBe('ascending');
+    expect(order()[0]).toMatch(/running/);
+    fireEvent.click(within(table).getByRole('button', { name: /^Status/ }));
+    expect(within(table).getByRole('columnheader', { name: /Status/ }).getAttribute('aria-sort')).toBe('descending');
+    expect(order()[0]).toMatch(/done/);
+    fireEvent.click(within(table).getByRole('button', { name: /^Status/ }));
+    expect(within(table).getByRole('columnheader', { name: /Status/ }).getAttribute('aria-sort')).toBe('ascending');
+    expect(order()).not.toEqual(before.slice().reverse());
+    expect(order()[0]).toMatch(/running/);
+    const current = within(table).getAllByRole('row').find((r) => r.getAttribute('aria-current') === 'true')!;
+    expect(current.getAttribute('aria-label')).toMatch(/done/);
+    const first = within(table).getAllByRole('row')[1]!;
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(within(table).getAllByRole('row')[2]);
+    fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+    expect(p.onSelect).toHaveBeenCalled();
   });
 
   it('toggles probe replays', () => {

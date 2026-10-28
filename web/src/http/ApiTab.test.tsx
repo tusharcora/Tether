@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
@@ -147,6 +147,21 @@ describe('ApiTab', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Start run with/ })));
     expect(calls('POST', '/api/http/send-to-agent')[0]![2]).toMatchObject({ historyId: 3 });
     expect(started).toHaveBeenCalledWith('r7');
+  });
+
+  it('lists the sends in a history table: sortable, and a row opens that exchange', async () => {
+    const past = (id: number, ms: number, status: number, url: string) => ({ ...hist(ms, status, id), url, data: { request: out.request, response: { ...out.result, status, ms }, checks: [] } });
+    routeApi({ ...routes, 'GET /api/http/history': [past(9, 40, 200, 'http://h/api/runs'), past(8, 900, 404, 'http://h/api/orders?x=1')] });
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    const table = await screen.findByRole('table', { name: 'Send history' });
+    const order = () => within(table).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'));
+    expect(order()).toEqual(['GET /api/runs, 200', 'GET /api/orders?x=1, 404']);
+    fireEvent.click(within(table).getByRole('button', { name: /^Time/ }));
+    expect(order()).toEqual(['GET /api/runs, 200', 'GET /api/orders?x=1, 404']);
+    fireEvent.click(within(table).getByRole('button', { name: /^Time/ }));
+    expect(order()).toEqual(['GET /api/orders?x=1, 404', 'GET /api/runs, 200']);
+    await act(async () => fireEvent.click(within(table).getByRole('row', { name: 'GET /api/orders?x=1, 404' })));
+    expect(screen.getByText('404 OK')).toBeTruthy();
   });
 
   it('says so when the history cannot be loaded, instead of an empty strip', async () => {

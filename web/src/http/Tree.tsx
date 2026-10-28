@@ -1,12 +1,37 @@
 import { Button } from '../components/beui/kit/Button';
+import { DataTable, type Column } from '../components/beui/kit/DataTable';
 import { SearchField } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { NONE } from '../ui/cn';
+import { ago } from '../api';
 import type { HistoryRow, HttpTree, TreeCollection, TreeRequest } from './client';
 
 const ENV_DOTS = ['var(--acc)', 'var(--ok)', 'var(--warn)', 'var(--bad)', 'var(--mut)'];
 /** A send that took this long or longer is "slow" (amber in the latency strip). */
 export const SLOW_MS = 1000;
+
+/** The path of a URL (or the URL as written when it is not one, as with an unresolved {{base}}). */
+const pathOf = (url: string) => {
+  try {
+    const u = new URL(url);
+    return u.pathname + u.search;
+  } catch {
+    return url;
+  }
+};
+
+/** The send history as a table: what was sent, how it went, how long it took, and when. A row opens that exchange. */
+const HISTORY_COLUMNS: Column<HistoryRow>[] = [
+  { id: 'request', header: 'Request', sort: (a, b) => pathOf(a.url).localeCompare(pathOf(b.url)), cell: (h) => (
+    <span className="hist-req" title={h.url}>
+      <span className="method" data-method={h.method} aria-hidden="true">{h.method}</span>
+      <span className="hist-path">{pathOf(h.url)}</span>
+    </span>
+  ) },
+  { id: 'status', header: 'Status', align: 'right', sort: (a, b) => a.status - b.status, cell: (h) => <span className="pill" data-tone={h.status === 0 || h.status >= 400 ? 'bad' : h.status >= 300 ? 'warn' : 'ok'}>{h.status || 'error'}</span> },
+  { id: 'ms', header: 'Time', align: 'right', sort: (a, b) => a.ms - b.ms, cell: (h) => <span className="mono">{`${h.ms} ms`}</span> },
+  { id: 'when', header: 'When', align: 'right', sort: (a, b) => a.ts - b.ts, cell: (h) => <span className="hint">{ago(h.ts)}</span> },
+];
 
 /** The last 20 sends, oldest first, scaled to the slowest; 4xx/5xx, network errors and slow ones are amber. */
 export function latencyBars(history: HistoryRow[]): { id: number; pct: number; amber: boolean; label: string }[] {
@@ -116,11 +141,30 @@ export function Tree(p: TreeProps) {
       {p.historyError ? (
         <p className="resp-error" role="alert">{`History: ${p.historyError}`}</p>
       ) : (
-        <div className="latency" role="group" aria-label="Last 20 sends">
-          {bars.map((b) => (
-            <button key={b.id} type="button" className="lat" data-amber={b.amber ? '' : undefined} aria-pressed={p.shownHistory === b.id} aria-label={b.label} title={b.label} style={{ height: `${b.pct}%` }} onClick={() => p.onHistory(byId.get(b.id)!)} />
-          ))}
-        </div>
+        <>
+          <div className="latency" role="group" aria-label="Last 20 sends">
+            {bars.map((b) => (
+              <button key={b.id} type="button" className="lat" data-amber={b.amber ? '' : undefined} aria-pressed={p.shownHistory === b.id} aria-label={b.label} title={b.label} style={{ height: `${b.pct}%` }} onClick={() => p.onHistory(byId.get(b.id)!)} />
+            ))}
+          </div>
+          {p.history.length ? (
+            <details className="history">
+              <summary>History</summary>
+              <DataTable<HistoryRow>
+                bare
+                aria-label="Send history"
+                className="history-table"
+                columns={HISTORY_COLUMNS}
+                rows={p.history.slice(0, 20)}
+                rowKey={(h) => String(h.id)}
+                defaultSort={{ id: 'when', dir: 'desc' }}
+                rowLabel={(h) => `${h.method} ${pathOf(h.url)}, ${h.status || 'error'}`}
+                selectedKey={p.shownHistory === undefined ? null : String(p.shownHistory)}
+                onRowClick={p.onHistory}
+              />
+            </details>
+          ) : null}
+        </>
       )}
     </div>
   );

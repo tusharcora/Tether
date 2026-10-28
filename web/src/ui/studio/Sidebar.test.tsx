@@ -123,7 +123,7 @@ describe('Sidebar', () => {
     expect(rows.map((r) => r.state)).toEqual(['running', 'needs', 'needs', 'idle', 'done', 'failed', 'done', 'failed', 'done']);
   });
 
-  it('opens and pins favorites, unpins and moves one with its ⋯ menu, and reorders by drag', () => {
+  it('opens and pins favorites, unpins and moves one with its ⋯ menu, and reorders with the sortable handle', () => {
     const p = setup();
     fireEvent.click(screen.getByRole('button', { name: 'README.md' }));
     expect(p.pins.onOpen).toHaveBeenCalledWith(p.pins.list[1]);
@@ -135,10 +135,20 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'README.md options' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin README.md' }));
     expect(p.pins.onUnpin).toHaveBeenCalledWith(p.pins.list[1]);
-    const rows = document.querySelectorAll('.sl-side-row.pin');
-    fireEvent.dragStart(rows[1]!);
-    fireEvent.drop(rows[0]!);
+    // a handle per row: with it focused, the arrow keys move the row and the new place is announced
+    const handle = screen.getByRole('button', { name: 'Reorder README.md' });
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
     expect(p.pins.onReorder).toHaveBeenLastCalledWith([p.pins.list[1], p.pins.list[0]]);
+    expect(screen.getByRole('status').textContent).toContain('README.md moved to position 1 of 2.');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Reorder plan-code-review' }), { key: 'End' });
+    expect(p.pins.onReorder).toHaveBeenLastCalledWith([p.pins.list[1], p.pins.list[0]]);
+  });
+
+  it('keeps the Favorites rows still on the collapsed rail', () => {
+    localStorage.setItem('tether.sidebar', 'collapsed');
+    setup();
+    const handle = screen.getByRole('button', { name: 'Reorder README.md', hidden: true });
+    expect((handle as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('says how to fill empty Runs and Favorites, and pinning waits for something open', () => {
