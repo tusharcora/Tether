@@ -1,11 +1,12 @@
-import { ArrowRight, File, PanelLeftClose, Play, Plus, Search, Settings, SquarePen, Workflow, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Bot, File, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Workflow, Zap, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { Screen } from '../../hooks';
+import { CreateMenu } from '../../components/bencho/CreateMenu';
 import { cn } from '../cn';
 import { AccountRow } from './AccountRow';
 import { Kbd, isApple } from './Kbd';
-import { NAV, goHint } from './nav';
+import { NAV, goHint, type CreateKind } from './nav';
 import { ProjectSwitcher, type ProjectsProps } from './ProjectSwitcher';
 import { RUN_STATE_LABEL, RunGlyph, runState, shortRunId, type RunState } from './RunGlyph';
 import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
@@ -69,6 +70,8 @@ export interface SidebarProps {
   onSettings: () => void;
   /** New run (⌘N / C). */
   onCompose: () => void;
+  /** A new workflow, bot, trigger or request, from the Create menu. */
+  onCreate: (what: Exclude<CreateKind, 'run'>) => void;
   /** Inbox: items that need you (amber). Runs: live runs (blue). */
   counts: { needs: number; live: number };
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
@@ -154,9 +157,21 @@ export function Sidebar(p: SidebarProps) {
       <div className="sl-side-head">
         <ProjectSwitcher {...p.projects} collapsed={collapsed} onExpand={toggle} rail={tipFor('expand', `Expand sidebar  ${mod}\\`)} />
         <span className="sl-side-head-actions" inert={collapsed}>
-          <button type="button" className="sl-side-compose" aria-label="New run" title={`New run  C · ${mod}N`} onClick={p.onCompose}>
+          <CreateMenu
+            label="Create"
+            title={`Create  (New run  C · ${mod}N)`}
+            className="sl-side-compose"
+            items={[
+              { id: 'run', label: 'New run', icon: <Play size={15} strokeWidth={1.8} />, hint: <Kbd>C</Kbd> },
+              { id: 'workflow', label: 'New workflow', icon: <Workflow size={15} strokeWidth={1.8} /> },
+              { id: 'bot', label: 'New bot', icon: <Bot size={15} strokeWidth={1.8} /> },
+              { id: 'trigger', label: 'New trigger', icon: <Zap size={15} strokeWidth={1.8} /> },
+              { id: 'request', label: 'New request', icon: <Send size={15} strokeWidth={1.8} /> },
+            ]}
+            onSelect={(id) => (id === 'run' ? p.onCompose() : p.onCreate(id as Exclude<CreateKind, 'run'>))}
+          >
             <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+          </CreateMenu>
           <button type="button" className="sl-side-icon-btn sl-side-toggle" aria-label="Collapse sidebar" title={`Collapse sidebar  ${mod}\\`} onClick={toggle}>
             <PanelLeftClose size={16} strokeWidth={1.7} aria-hidden="true" />
           </button>

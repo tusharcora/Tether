@@ -1,4 +1,5 @@
 import { Play } from 'lucide-react';
+import { useCreateIntent } from './ui/useCreateIntent';
 import { useEffect, useRef, useState } from 'react';
 import type { Edge, Pipeline, PipelineNode } from '../../src/types';
 import { api, type Issue } from './api';
@@ -48,7 +49,7 @@ const idBase = (n: Partial<PipelineNode>) => (n.kind === 'gate' ? 'gate' : n.kin
  * `gate`: a saved request handed over from the API tab ("Use as gate in a workflow"); once the first workflow has
  * loaded it is appended as a request gate chained after the last step, and `onGateUsed` is called so the shell can clear it.
  */
-export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void; gate?: { run: string; env?: string }; onGateUsed?: () => void }) {
+export function Builder(props: { pipeline?: string; onStarted: (runId: string) => void; gate?: { run: string; env?: string }; onGateUsed?: () => void; /** The Create menu asked for a new workflow (a counter). */ create?: number }) {
   const notify = useNotify();
   const phone = useMediaQuery(PHONE);
   const [pl, setPl] = useState<Pipeline>(() => structuredClone(BLANK));
@@ -125,6 +126,8 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       setSelected(undefined);
       setOpened((n) => n + 1);
     });
+
+  useCreateIntent(props.create, loaded, fresh);
 
   useEffect(() => {
     try {

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunRow } from '../../api';
 import { cssRule } from '../../test/css';
@@ -13,6 +13,7 @@ const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
   onSearch: vi.fn(),
   onSettings: vi.fn(),
   onCompose: vi.fn(),
+  onCreate: vi.fn(),
   counts: { needs: 2, live: 1 },
   runs: { list: [run('rmh0aaa1144', 'Tune the limit window', { live: true, status: 'running' }), run('rmh0aaa1142', 'Plan auth flow', { pending: 1, status: 'paused' }), run('rmh0aaa1141', 'Add rate limiting', { finishedAt: 5 })], onOpen: vi.fn() },
   projects: { list: [w('shop'), w('blog')], current: 'shop', live: new Set(['blog']), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() },
@@ -33,7 +34,7 @@ describe('Sidebar', () => {
   it('lays out the switcher and compose, Search · Home · Inbox · Runs, Workspace, Runs, Favorites, then Settings and the account', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Project: shop' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'New run' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Workspace', 'Code', 'Builder', 'Crew', 'API client', 'Graph', 'Triggers']);
     const sections = [...document.querySelectorAll('.sl-side-section-title')].map((s) => s.textContent);
@@ -52,8 +53,41 @@ describe('Sidebar', () => {
     expect(p.onSearch).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(p.onSettings).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New run' }));
     expect(p.onCompose).toHaveBeenCalled();
+  });
+
+  it('opens a Create menu of new run, workflow, bot, trigger and request, and hands the pick on', async () => {
+    const p = setup();
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create.getAttribute('aria-haspopup')).toBe('menu');
+    expect(create.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(create);
+    const menu = await screen.findByRole('menu', { name: 'Create' });
+    expect(create.getAttribute('aria-expanded')).toBe('true');
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['New run', 'New workflow', 'New bot', 'New trigger', 'New request']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'New bot' }));
+    expect(p.onCreate).toHaveBeenCalledWith('bot');
+    expect(p.onCompose).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it('moves through the Create menu with the arrow keys and Escape returns to the button', async () => {
+    setup();
+    const create = screen.getByRole('button', { name: 'Create' });
+    fireEvent.keyDown(create, { key: 'ArrowDown' });
+    const menu = await screen.findByRole('menu');
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New run' }));
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New workflow' }));
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New request' }));
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New run' }));
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(document.activeElement).toBe(create);
   });
 
   it('marks Settings while its drawer is open', () => {

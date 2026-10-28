@@ -118,11 +118,22 @@ describe('App shell', () => {
   it('composes a new run on Home with the compose button and C', async () => {
     startAt('#/crew');
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New run' }));
     expect(location.hash).toBe('#/home');
     fireEvent.click(screen.getByRole('button', { name: 'crew link' }));
     fireEvent.keyDown(window, { key: 'c' });
     expect(location.hash).toBe('#/home');
+  });
+
+  it('takes a new trigger, bot, workflow or request from the Create menu to its screen', async () => {
+    startAt('#/home');
+    render(<App />);
+    for (const [item, hash] of [['New trigger', '#/triggers'], ['New bot', '#/crew'], ['New workflow', '#/builder'], ['New request', '#/api']] as const) {
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: item }));
+      expect(location.hash).toBe(hash);
+    }
   });
 
   it('collapses the sidebar to its icon rail with ⌘\\ and keeps navigating from it', () => {

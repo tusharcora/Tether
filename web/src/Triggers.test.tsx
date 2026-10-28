@@ -47,6 +47,11 @@ describe('Triggers', () => {
     expect(calls('DELETE', '/api/triggers/acme-full-review')).toHaveLength(1);
   });
 
+  it('opens the new trigger form when the Create menu asks for one', async () => {
+    renderApp(<Triggers create={1} />);
+    expect(await screen.findByLabelText('Repo')).toBeTruthy();
+  });
+
   it('saves a new trigger with split lists', async () => {
     renderApp(<Triggers />);
     fireEvent.click(await screen.findByRole('button', { name: 'New trigger' }));

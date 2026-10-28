@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCreateIntent } from './ui/useCreateIntent';
 import { api } from './api';
 import { Button } from './components/beui/kit/Button';
 import { Dialog, DialogContent } from './components/beui/kit/overlays';
@@ -29,7 +30,7 @@ const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace
 const NO_BINDING: Binding = { agent: '', model: '', toolStyle: 'code', codeReads: false };
 const bindingOf = (b: Row['binding']): Binding => ({ agent: b?.agent ?? '', model: b?.model ?? '', toolStyle: b?.toolStyle ?? 'code', codeReads: !!b?.codeReads });
 
-export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
+export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** The Create menu asked for a new bot (a counter). */ create?: number }) {
   const notify = useNotify();
   const phone = useMediaQuery(PHONE);
   const [rows, setRows] = useState<Row[]>([]);
@@ -147,6 +148,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void }) {
       open(blank(), true);
       props.onBot?.(undefined);
     });
+  useCreateIntent(props.create, !loading, newBot);
   const cancelEdit = () => {
     const d = !isNew && sel ? defs.find((x) => x.id === sel) : undefined;
     if (d) open(d);

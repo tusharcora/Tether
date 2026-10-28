@@ -35,6 +35,7 @@ import { useConnection } from './ui/studio/connection';
 import { SettingsDrawer } from './ui/studio/SettingsDrawer';
 import { Sidebar } from './ui/studio/Sidebar';
 import { isTyping, useGoKeys } from './ui/studio/useGoKeys';
+import { CREATE_SCREEN, type CreateKind } from './ui/studio/nav';
 import { PHONE, useMediaQuery } from './ui/studio/useMediaQuery';
 import './ui/studio/shell.css';
 
@@ -165,6 +166,21 @@ function Shell() {
     go({ tab: 'home' });
     setTimeout(() => document.querySelector<HTMLTextAreaElement>('.shell-main .home textarea')?.focus());
   };
+  /**
+   * A new workflow, bot, trigger or request from the Create menu: go to its screen and hand the screen a counter. The screen
+   * starts its own new thing when the counter arrives (asking first about unsaved edits, as its own New button does); the
+   * counter is dropped once the screen has seen it, so coming back later opens nothing.
+   */
+  const [create, setCreate] = useState<{ what: Exclude<CreateKind, 'run'>; n: number }>();
+  const createNew = (what: Exclude<CreateKind, 'run'>) => {
+    go({ tab: CREATE_SCREEN[what] });
+    setCreate((c) => ({ what, n: (c?.n ?? 0) + 1 }));
+  };
+  useEffect(() => {
+    if (!create) return;
+    const t = setTimeout(() => setCreate(undefined), 0);
+    return () => clearTimeout(t);
+  }, [create]);
   const keys = useRef({ settings: () => {}, folder: () => {}, compose: () => {} });
   keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder, compose };
   useEffect(() => {
@@ -214,6 +230,7 @@ function Shell() {
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
               onCompose={compose}
+              onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0 }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
@@ -251,7 +268,7 @@ function Shell() {
                 <NoProject loading={!projects.list.data && !projects.list.error} onOpen={pickFolder} />
               )
             ) : null}
-            {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} /> : null}
+            {screen.tab === 'builder' ? <Builder pipeline={screen.id} gate={gateDraft} onGateUsed={() => setGateDraft(undefined)} onStarted={(id) => go({ tab: 'runs', id })} create={create?.what === 'workflow' ? create.n : undefined} /> : null}
             {screen.tab === 'runs' ? (
               <Runs
                 selected={screen.id}
@@ -273,11 +290,12 @@ function Shell() {
                 onStarted={(id) => go({ tab: 'runs', id })}
                 onUseAsGate={(g) => (setGateDraft(g), go({ tab: 'builder' }))}
                 onDirtyChange={dirtyFor('api')}
+                create={create?.what === 'request' ? create.n : undefined}
               />
             ) : null}
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
-            {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} /> : null}
-            {screen.tab === 'triggers' ? <Triggers /> : null}
+            {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
+            {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
           </main>
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
           <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />

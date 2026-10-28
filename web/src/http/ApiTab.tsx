@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCreateIntent } from '../ui/useCreateIntent';
 import type { Bundle, Skipped } from '../../../src/wsexport';
 import { api } from '../api';
 import { Button } from '../components/beui/kit/Button';
@@ -44,6 +45,8 @@ export interface ApiTabProps {
   request?: string;
   /** Told which saved request is open (for pinning), or undefined. */
   onOpenRequest?: (r: { id: string; label: string } | undefined) => void;
+  /** The Create menu asked for a new request (a counter). */
+  create?: number;
 }
 
 export function ApiTab(props: ApiTabProps) {
@@ -183,6 +186,7 @@ export function ApiTab(props: ApiTabProps) {
       setSaved('');
       setVars({});
     });
+  useCreateIntent(props.create, tree !== undefined, fresh);
   const save = async () => {
     if (!file || !dirty) return;
     const t = view.current;
