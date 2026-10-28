@@ -255,6 +255,100 @@ describe('Crew', () => {
   });
 });
 
+describe('a library bot plays a role (§15.1)', () => {
+  const quill = { id: 'quill', name: 'Quill', title: 'poet', kind: 'agent', persona: 'Writes poems', look };
+  const gate = { ...bots[0]!, id: 'approval', name: 'Gate', title: 'approver', kind: 'approval', persona: 'A person.' };
+  const row = (b: { id: string; name: string; title: string; kind: string }) => ({ role: b.id, name: b.name, title: b.title, kind: b.kind, binding: null });
+  /** Bolt (built-in), Quill (your own agent bot), and with `gate` also Gate and Go Reviewer (a verdict bot from ECC). */
+  const withQuill = (o: { coderEdited?: boolean; gate?: boolean; refuse?: Error } = {}) => {
+    const coder = { ...bots[0]!, ...(o.coderEdited ? { edited: true } : {}) };
+    const all = [coder, ...(o.gate ? [gate] : []), quill, ...(o.gate ? [goBot] : [])];
+    routeApi({
+      ...routes,
+      'GET /api/crew': { ...crewReply, bots: all, ...(o.gate ? { ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } } : {}) },
+      'GET /api/bots': { ...botsReply, crew: all.map(row) },
+      'PUT /api/crew/coder': o.refuse ?? {},
+      'DELETE /api/crew/coder': {},
+    });
+  };
+  const slotOf = (name: string) => screen.getByRole('button', { name: `Edit ${name}` }).closest('.cw-slot')!;
+  const dropQuillOnBolt = async () => {
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Quill/ }));
+    fireEvent.dragOver(slotOf('Bolt'));
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+  };
+
+  it('links a bench bot to a same-kind role by drag and drop; Undo deletes the fresh override', async () => {
+    withQuill();
+    renderApp(<Crew />);
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Quill/ }));
+    fireEvent.dragOver(slotOf('Bolt'));
+    expect(slotOf('Bolt').classList.contains('over')).toBe(true);
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toEqual({ id: 'coder', name: 'Quill', title: 'coder', kind: 'agent', persona: 'Writes poems', look });
+    expect(screen.getByText('Quill now plays coder. Applies to the next run.')).toBeTruthy();
+    expect(slotOf('Bolt').classList.contains('over')).toBe(false);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+    expect(calls('DELETE', '/api/crew/coder')).toHaveLength(1);
+    expect(screen.queryByText('Quill now plays coder. Applies to the next run.')).toBeNull();
+  });
+
+  it('Undo puts back an earlier override', async () => {
+    withQuill({ coderEdited: true });
+    renderApp(<Crew />);
+    await dropQuillOnBolt();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+    expect(calls('PUT', '/api/crew/coder')[1]![2]).toMatchObject({ id: 'coder', name: 'Bolt', persona: 'Writes the change' });
+    expect(calls('DELETE', '/api/crew/coder')).toHaveLength(0);
+  });
+
+  it('dims other kinds and Gate while dragging and refuses their drop', async () => {
+    withQuill({ gate: true });
+    renderApp(<Crew />);
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+    expect(slotOf('Bolt').classList.contains('dim')).toBe(true);
+    expect(slotOf('Gate').classList.contains('dim')).toBe(true);
+    fireEvent.dragOver(slotOf('Bolt'));
+    expect(slotOf('Bolt').classList.contains('over')).toBe(false);
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(0);
+    fireEvent.dragEnd(screen.getByRole('button', { name: /Edit Go Reviewer/ }));
+    expect(slotOf('Bolt').classList.contains('dim')).toBe(false);
+  });
+
+  it('Swap… picks a same-kind bot from the keyboard; Gate has no Swap', async () => {
+    withQuill({ gate: true });
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Swap Bolt…' }));
+    expect(screen.queryByRole('button', { name: 'Swap Gate…' })).toBeNull();
+    const dlg = await screen.findByRole('dialog', { name: 'Swap Bolt' });
+    expect(within(dlg).queryByText('Go Reviewer')).toBeNull();
+    await act(async () => fireEvent.click(within(dlg).getByRole('button', { name: /Quill/ })));
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ name: 'Quill', kind: 'agent' });
+    expect(await screen.findByText('Quill now plays coder. Applies to the next run.')).toBeTruthy();
+  });
+
+  it("asks before a drop replaces the open bot's unsaved edits", async () => {
+    withQuill();
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Bolt' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'changed' } });
+    await dropQuillOnBolt();
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(0);
+    expect(await screen.findByText('Discard your changes to Bolt?')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Discard' })));
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(1);
+  });
+
+  it('a refused drop shows the error and no note', async () => {
+    withQuill({ refuse: new Error('too many bots; remove some first') });
+    renderApp(<Crew />);
+    await dropQuillOnBolt();
+    expect(await screen.findByText('too many bots; remove some first')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+});
+
 describe('crew sources and faces', () => {
   it('filters the library by source and shows when-to-use', async () => {
     const quill = { ...bots[0]!, id: 'quill', name: 'Quill', builtin: false };

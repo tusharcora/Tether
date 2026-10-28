@@ -7,8 +7,10 @@ import { Dialog, DialogContent, Drawer, DrawerContent, useDrawerItem } from './c
 import { Loading } from './components/Loading';
 import { Bench } from './crew/Bench';
 import { BotEditor } from './crew/BotEditor';
+import { canPlay, playAs } from './crew/roles';
 import { Slot } from './crew/Lineup';
 import { RunsOn } from './crew/RunsOn';
+import { SwapPicker } from './crew/SwapPicker';
 import type { AgentInfo, Binding, CrewReply, Filter, ImportReply, Meta, Pack, Row } from './crew/types';
 import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
 import { EvolvePanel } from './Evolve';
@@ -61,12 +63,18 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
   const [library, setLibrary] = useState(true);
   const [packsOpen, setPacksOpen] = useState(false);
   const [removingEcc, setRemovingEcc] = useState(false);
+  /** The library bot being dragged, the role whose Swap… picker is open, and the "now plays" note with its Undo. */
+  const [dragging, setDragging] = useState<string>();
+  const [swapFor, setSwapFor] = useState<BotDef>();
+  const [note, setNote] = useState<{ text: string; undo: () => Promise<void> }>();
   /** Who is working now: bots of running steps in live runs (read only, as Home's crew strip). */
   const runs = usePoll<RunRow[]>('/api/runs', 5000);
   // the Evolve drawer keeps showing its last bot while it slides out
   const evolveShown = useDrawerItem(evolving);
   const dirty = !!edit && JSON.stringify(edit) !== base.current;
 
+  const cur = useRef({ sel, dirty });
+  cur.current = { sel, dirty };
   const patch = (p: Partial<BotDef>) => edit && setEdit({ ...edit, ...p });
   const patchFace = (p: Partial<FaceLook>) => edit && patch({ look: { ...edit.look, face: { ...edit.look.face, ...p } } });
   const resetFace = () => {
@@ -255,6 +263,44 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
     }
   }
 
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(undefined), 8000);
+    return () => clearTimeout(t);
+  }, [note]);
+  /** After a role changes, the card shows the new identity if it is open on that role (and, for Undo, holds no new edits). */
+  const reload = async (id: string, force: boolean) => {
+    const [fresh] = await Promise.all([load(), loadCrewDefs(true)]);
+    const d = fresh?.find((x) => x.id === id);
+    if (d && cur.current.sel === id && (force || !cur.current.dirty)) open(d);
+  };
+  /**
+   * A library bot plays a built-in role (§15.1): the role's existing identity override takes the bot's name, persona and look
+   * (agent and model stay as linked). Undo puts the earlier override back, or deletes the new one when there was none.
+   */
+  async function play(slot: BotDef, bench: BotDef) {
+    try {
+      await api('PUT', `/api/crew/${slot.id}`, playAs(slot, bench));
+    } catch (e) {
+      return notify.fail(e);
+    }
+    const undo = async () => {
+      setNote(undefined);
+      try {
+        if (slot.edited) await api('PUT', `/api/crew/${slot.id}`, slot);
+        else await api('DELETE', `/api/crew/${slot.id}`);
+      } catch (e) {
+        notify.fail(e);
+      }
+      await reload(slot.id, false);
+    };
+    setNote({ text: `${bench.name} now plays ${slot.title}. Applies to the next run.`, undo });
+    await reload(slot.id, true);
+  }
+  /** A drop or a Swap… pick: when the role is open with unsaved edits, ask first. */
+  const link = (slot: BotDef, bench: BotDef) => (sel === slot.id ? guard : (f: () => void) => f())(() => void play(slot, bench));
+  const dragged = defs.find((d) => d.id === dragging);
+
   const setBinding = (role: string, p: Partial<Binding>) => setDraft((all) => ({ ...all, [role]: { ...(all[role] ?? NO_BINDING), ...p } }));
   const bindingDirty = (r: Row) => {
     const d = draft[r.role];
@@ -345,7 +391,21 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
               {builtins.map((d) => {
                 const row = rows.find((r) => r.role === d.id);
                 const a = row?.binding ? agents[row.binding.agent] : undefined;
-                return <Slot key={d.id} def={d} row={row} busy={busy.has(d.id)} proposals={evo[d.id]?.open ?? 0} agentMissing={!!a && !a.ok} selected={sel === d.id} onPick={() => pick(d.id)} />;
+                return (
+                  <Slot
+                    key={d.id}
+                    def={d}
+                    row={row}
+                    busy={busy.has(d.id)}
+                    proposals={evo[d.id]?.open ?? 0}
+                    agentMissing={!!a && !a.ok}
+                    selected={sel === d.id}
+                    fit={dragged ? (canPlay(dragged, d) ? 'ok' : 'no') : 'none'}
+                    onPick={() => pick(d.id)}
+                    onSwap={d.kind === 'approval' ? undefined : () => setSwapFor(d)}
+                    onDrop={() => (setDragging(undefined), dragged && link(d, dragged))}
+                  />
+                );
               })}
             </section>
           )}
@@ -365,7 +425,16 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
           + New bot
         </Button>
       </FloatBar>
-      {library && !loading && !(loadErr && !loaded) ? <Bench bots={bench} filter={filter} onFilter={setFilter} q={q} onQ={setQ} selected={sel} onPick={pick} /> : null}
+      {library && !loading && !(loadErr && !loaded) ? <Bench bots={bench} filter={filter} onFilter={setFilter} q={q} onQ={setQ} selected={sel} onPick={pick} onDrag={setDragging} /> : null}
+      {note ? (
+        <div className="cw-note" role="status">
+          <span>{note.text}</span>
+          <button type="button" onClick={() => void note.undo()}>
+            Undo
+          </button>
+        </div>
+      ) : null}
+      <SwapPicker slot={swapFor} bots={bench} onClose={() => setSwapFor(undefined)} onPick={(b) => (setSwapFor(undefined), swapFor && link(swapFor, b))} />
       {edit ? (
         <Dock label="Bot card" onClose={closeCard}>
           {editorFor(edit)}

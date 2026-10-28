@@ -7,12 +7,27 @@ import { cn } from '../ui/cn';
 import { FloatBar } from '../ui/studio/ToolFrame';
 import { isEcc, sourceOf, type Filter } from './types';
 
-/** One library bot: a click opens it in the dock. */
-function Sub(p: { bot: BotDef; selected: boolean; onPick: () => void }) {
+/** One library bot: a click opens it in the dock; dragging it onto a role of its kind makes it play that role. */
+function Sub(p: { bot: BotDef; selected: boolean; onPick: () => void; onDrag: (id?: string) => void }) {
   const b = p.bot;
   const desc = useId();
   return (
-    <button type="button" className={cn('cw-sub', { on: p.selected })} aria-label={`Edit ${b.name}`} aria-describedby={desc} aria-pressed={p.selected} onClick={p.onPick}>
+    // shortcut: <button draggable> drags in Chromium (the app and Chrome); Firefox needs a draggable wrapper, add one if Firefox matters
+    <button
+      type="button"
+      className={cn('cw-sub', { on: p.selected })}
+      aria-label={`Edit ${b.name}`}
+      aria-describedby={desc}
+      aria-pressed={p.selected}
+      onClick={p.onPick}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer?.setData('text/plain', b.id);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        p.onDrag(b.id);
+      }}
+      onDragEnd={() => p.onDrag(undefined)}
+    >
       <span className="cw-sub-head">
         <Face id={b.id} size={30} />
         <b>{b.name}</b>
@@ -28,7 +43,7 @@ function Sub(p: { bot: BotDef; selected: boolean; onPick: () => void }) {
 }
 
 /** The library along the bottom (mockup .bench): your own bots and ECC's, searchable and filtered by source. */
-export function Bench(p: { bots: BotDef[]; filter: Filter; onFilter: (f: Filter) => void; q: string; onQ: (q: string) => void; selected?: string; onPick: (id: string) => void }) {
+export function Bench(p: { bots: BotDef[]; filter: Filter; onFilter: (f: Filter) => void; q: string; onQ: (q: string) => void; selected?: string; onPick: (id: string) => void; onDrag: (id?: string) => void }) {
   const hasEcc = p.bots.some(isEcc);
   const count = (f: Filter) => p.bots.filter((b) => f === 'all' || sourceOf(b) === f).length;
   const view: Filter = p.filter === 'ecc' && !hasEcc ? 'all' : p.filter;
@@ -48,7 +63,7 @@ export function Bench(p: { bots: BotDef[]; filter: Filter; onFilter: (f: Filter)
         <SearchField className="cw-bench-q" label="Find a bot" value={p.q} onValueChange={p.onQ} placeholder="Name or when to use" />
       </div>
       <div className="cw-strip">
-        {shown.length ? shown.map((b) => <Sub key={b.id} bot={b} selected={p.selected === b.id} onPick={() => p.onPick(b.id)} />) : <p className="sl-quiet">{p.bots.length ? 'No bots match' : 'No bots of your own yet.'}</p>}
+        {shown.length ? shown.map((b) => <Sub key={b.id} bot={b} selected={p.selected === b.id} onPick={() => p.onPick(b.id)} onDrag={p.onDrag} />) : <p className="sl-quiet">{p.bots.length ? 'No bots match' : 'No bots of your own yet.'}</p>}
       </div>
     </FloatBar>
   );
