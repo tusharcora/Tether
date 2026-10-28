@@ -20,7 +20,7 @@ describe('Inspector step pane', () => {
   it('shows the bot face and name, the status chip, and a caret only while the step runs', () => {
     const { container, unmount } = show(makeRun(), 'code');
     expect(screen.getByRole('heading', { name: /Bolt · coder/ })).toBeTruthy();
-    expect(container.querySelector('.sl-chip.t-live')!.textContent).toBe('running');
+    expect(container.querySelector('[data-status="loading"]')!.textContent).toBe('running');
     expect(container.querySelector('.live-out .caret')).toBeTruthy();
     unmount();
     const done = makeRun({ nodes: { ...makeRun().nodes, code: { ...makeRun().nodes.code!, status: 'done', live: 'last words' } } });

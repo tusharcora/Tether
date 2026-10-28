@@ -92,7 +92,7 @@ describe('SettingsDrawer', () => {
   it('shows a neutral connecting state before the server first answers', () => {
     const { container } = render(<SettingsDrawer {...base} connection="connecting" />);
     expect(screen.getByText('connecting')).toBeTruthy();
-    expect(container.ownerDocument.querySelector('.sl-chip.t-neutral')).toBeTruthy();
+    expect(container.ownerDocument.querySelector('[data-status="neutral"]')).toBeTruthy();
   });
 
   it('returns focus to the fallback when the opener is gone', async () => {

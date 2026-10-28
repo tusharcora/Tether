@@ -104,10 +104,10 @@ describe('TeamPanel', () => {
     const send = vi.fn().mockResolvedValue(true);
     const plan = { goal: 'Ship', success: ['429 with Retry-After'], assignments: [{ bot: 'coder', goal: 'write it', mode: 'write' as const, expected: 'a passing gate' }], limits: { allowWrites: true }, answers: [] };
     const { container } = renderApp(<TeamPanel run={teamRun({ planning: false, plan })} send={send} />);
-    expect(container.querySelector('.tm-bar .sl-chip')!.classList.contains('t-live')).toBe(true);
+    expect(container.querySelector('.tm-bar [data-status]')!.getAttribute('data-status')).toBe('loading');
     const region = screen.getByRole('region', { name: "The team's plan" });
-    expect(region.querySelector('.sl-chip.t-needs')!.textContent).toBe('waits for you');
-    expect(screen.getByText('can edit files').closest('.sl-chip')).toBeTruthy();
+    expect(region.querySelector('[data-status="warning"]')!.textContent).toBe('waits for you');
+    expect(screen.getByText('can edit files').closest('.sl-badge')).toBeTruthy();
     expect(screen.getByText('expects: a passing gate')).toBeTruthy();
     expect(region.querySelectorAll('li.sl-row')).toHaveLength(1);
   });

@@ -32,8 +32,8 @@ describe('Needs you', () => {
     setup(poll({ items }));
     expect(screen.getByRole('region', { name: 'Needs you' })).toBeTruthy();
     expect(screen.getAllByRole('listitem').map((li) => li.querySelector('.sl-row-title')!.textContent)).toEqual(['Ship it waits for approval', 'Failed', 'Which database?']);
-    expect(screen.getByText('approval').closest('.sl-chip')!.className).toContain('t-needs');
-    expect(screen.getByText('failed').closest('.sl-chip')!.className).toContain('t-failed');
+    expect(screen.getByText('approval').closest('[data-status]')!.getAttribute('data-status')).toBe('warning');
+    expect(screen.getByText('failed').closest('[data-status]')!.getAttribute('data-status')).toBe('danger');
     expect(screen.getByText('flow · r1 · aorch/r1')).toBeTruthy();
     expect(screen.getByText('1m ago')).toBeTruthy();
   });
