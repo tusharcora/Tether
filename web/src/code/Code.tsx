@@ -395,13 +395,13 @@ export function Code(p: CodeProps) {
           {p.project.name}
         </span>
         {git ? <span className="code-fact">{facts}</span> : null}
+      </FloatBar>
+      <FloatBar at="right" className="code-searchbar">
         {phone ? (
           <Button size="sm" variant="secondary" onClick={() => setDrawer('files')}>
             Files
           </Button>
         ) : null}
-      </FloatBar>
-      <FloatBar at="right" className="code-searchbar">
         <label className="code-search">
           <Search size={13} aria-hidden="true" />
           <input ref={searchRef} aria-label="Search code" placeholder="Search code" value={q} spellCheck={false} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />

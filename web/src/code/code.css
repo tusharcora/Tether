@@ -96,7 +96,8 @@
 
 /* a phone: the tree is a drawer, the search bar drops under the title bar, the card takes the width */
 @media (max-width: 899px) {
-  .code-searchbar { top: 62px; left: 16px; }
+  .code-searchbar { top: 62px; left: 16px; flex-wrap: nowrap; }
+  .code-search { flex: 1; width: auto; }
   .code-main { top: 112px; left: 8px; right: 8px; bottom: 8px; }
   .code.docked .code-main { right: 8px; }
 }
