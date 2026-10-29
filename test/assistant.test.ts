@@ -100,6 +100,12 @@ describe('the agent’s own tools in the timeline', () => {
     expect(builtinStep('mcp__linear__list_issues', {}, '/repo')).toBe('mcp.linear.list_issues()');
     expect(builtinStep('mcp__tether__run_code', { code: 'x' }, '/repo')).toBeUndefined();
     expect(builtinStep('TodoWrite', {}, '/repo')).toBeUndefined();
+    // Claude in plan mode reads through Bash
+    expect(builtinStep('Bash', { command: "sed -n '1,80p' /repo/web/src/a.ts && cat src/b.ts" }, '/repo')).toBe('repo.read("web/src/a.ts"); repo.read("src/b.ts")');
+    expect(builtinStep('Bash', { command: 'grep -rn "runTurn" test | head -5' }, '/repo')).toBe('repo.search("runTurn")');
+    expect(builtinStep('Bash', { command: 'ls test' }, '/repo')).toBe('repo.list("test")');
+    expect(builtinStep('Bash', { command: 'git diff --stat' }, '/repo')).toBe('repo.diff()');
+    expect(builtinStep('Bash', { command: 'npm run typecheck' }, '/repo')).toBe('// $ npm run typecheck');
   });
 
   it('saves the agent’s own reads with the reply, so the timeline shows them', async () => {
