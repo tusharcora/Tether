@@ -14,7 +14,7 @@ import './chats.css';
  * A chat full screen (mockup board 2): the title (its menu renames or deletes), the project, Pop out to the mini chat and
  * the same menu under ⋯; the thread in a centred 760 px column with the composer pinned under it.
  */
-export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onDelete: () => Promise<void> }) {
+export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void> }) {
   const notify = useNotify();
   const [renaming, setRenaming] = useState<string>();
   /** Escape leaves the title as it was (the field's blur would save it). */
@@ -28,7 +28,7 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
   const rename = (t: string) => {
     cancelled.current = true;
     setRenaming(undefined);
-    if (t.trim() && t.trim() !== title) void p.chat.rename(t.trim()).catch(notify.fail);
+    if (t.trim() && t.trim() !== title) void p.chat.rename(t.trim()).then(p.onRenamed, notify.fail);
   };
   return (
     <div className="chat-screen">

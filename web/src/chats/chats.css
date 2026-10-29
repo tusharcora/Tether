@@ -62,7 +62,8 @@
 .ac-mark.failed { background: var(--bad); }
 .ac-mark.answer { width: 8px; height: 8px; border: 1.5px solid var(--mut); border-radius: 2px; }
 
-.ac-preview { display: flex; flex: 1; flex-direction: column; gap: 18px; min-width: 0; padding: 22px 28px; overflow: auto; }
+/* the bottom padding clears the launcher, which stays on this screen (Pop out opens the mini chat here) */
+.ac-preview { display: flex; flex: 1; flex-direction: column; gap: 18px; min-width: 0; padding: 22px 28px 84px; overflow: auto; }
 .ac-head { display: flex; align-items: center; gap: 10px; }
 .ac-head > div { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
 .ac-head h2 { margin: 0; overflow: hidden; font-size: 18px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

@@ -168,7 +168,7 @@ export function AllChats(p: { ws?: string; project?: { id: string; name: string 
               </ol>
               {waiting ? (
                 <div className="ac-wait" role="group" aria-label="Waiting on you">
-                  <p>{`Start a run: ${waiting.kind === 'workflow' ? `the ${waiting.workflow} workflow on ` : ''}${waiting.task.split('\n')[0]}?`}</p>
+                  <p>{`${waiting.kind === 'workflow' ? `Run the ${waiting.workflow} workflow` : 'Start a run'}: ${waiting.task.split('\n')[0]}?`}</p>
                   <Button variant="secondary" size="sm" onClick={() => decide('dismiss')}>
                     Dismiss
                   </Button>
