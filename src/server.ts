@@ -17,6 +17,9 @@ import { assistantRoute } from './assistant/routes.js';
 import { codemodeRoute } from './codemode/routes.js';
 import { Goals } from './goals/loop.js';
 import { goalsRoute } from './goals/routes.js';
+import { teamsRoute } from './teams/routes.js';
+import { OWNER } from './teams/store.js';
+import { Teams } from './teams/teams.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -250,10 +253,12 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
-  const goals = new Goals({ home: cfg.home, store, engine, registry });
+  // a team's loop starts its runs through its team (made just below; the hooks are only called after both exist)
+  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g) } });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
+  const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
   type Detected = { ok: boolean; version?: string; detail?: string; reportsCost: boolean; supportsResume: boolean };
   let doctorCache: { at: number; data: Record<string, Detected> } | undefined;
   /** Each adapter's detect() result (installed, version), kept for 30 s. */
@@ -330,6 +335,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
+    if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
@@ -916,6 +922,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
           await engine.resume(id, { retryFailed: b.retryFailed, background: true, ...(switchTo ? { switchTo } : {}) });
         } else {
           if (typeof b.node !== 'string') throw new HttpError(400, '"node" is required');
+          // a team's run: the team's approver rule holds here too (spec §6.3)
+          if (!teams.mayApproveRun(id, OWNER.id)) throw new HttpError(403, 'Only the team’s chosen approvers can decide this run');
           engine.approve(id, b.node, b.approved !== false, 'dashboard');
           if (!engine.isLive(id) && store.state(id)!.status === 'paused') await engine.resume(id);
         }

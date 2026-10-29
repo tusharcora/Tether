@@ -117,6 +117,14 @@ export interface WorkItem {
   progress?: number;
   line: string;
 }
+/** GET /api/agents/:bot: a Crew bot as an agent — its profile, memory, teams and recent team work. */
+export interface AgentView {
+  bot: string;
+  profile: AgentProfile;
+  lessons: { id: string; text: string; team?: string; teamName?: string; at: string }[];
+  teams: { id: string; name: string; place: Place; state: AgentState }[];
+  recent: { runId: string; title: string; status: string; costUsd: number; team: string }[];
+}
 export interface TeamView {
   team: Team;
   messages: TeamMessage[];
