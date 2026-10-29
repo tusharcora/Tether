@@ -7,6 +7,8 @@ export interface Streaming {
   id?: string;
   text: string;
   tools: ToolRun[];
+  /** When the question went out (the timeline's clock). */
+  startedAt: number;
 }
 
 export interface Assistant {
@@ -95,7 +97,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
     abort.current = ctl;
     const { ws: forWs, chatId: forChat } = ref.current;
     let forKey = ref.current.key;
-    let draft: Streaming = { text: '', tools: [] };
+    let draft: Streaming = { text: '', tools: [], startedAt: Date.now() };
     setStreaming(draft);
     setError(undefined);
     const onEvent = (e: StreamEvent) => {
@@ -113,7 +115,8 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       else if (e.type === 'tool') draft = { ...draft, tools: [...draft.tools.filter((t) => t.id !== e.tool.id), e.tool] };
       else if (e.type === 'done') {
         setMessages((l) => [...l, e.message]);
-        draft = { text: '', tools: [] };
+        // no id left: a Stop after the reply arrived adds nothing
+        draft = { text: '', tools: [], startedAt: draft.startedAt };
         setStreaming(undefined);
         return;
       } else if (e.type === 'error') {

@@ -3,14 +3,13 @@ import type { ReactNode } from 'react';
 import { SWITCH_MODEL } from '../../../src/openrouter';
 import type { Route } from '../hooks';
 import { ComparisonTable } from '../components/aicss/ComparisonTable';
-import { AgentCode } from '../components/beui/agents/agent-code';
 import { Citations, type CitationItem } from '../components/beui/agents/citations';
 import { StreamingResponse } from '../components/beui/agents/streaming-response';
-import { ToolResult } from '../components/beui/agents/tool-result';
-import type { ChatMessage, Cite, ToolRun } from './api';
+import type { ChatMessage, Cite } from './api';
 import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, ProposalCard, ToolAskCard } from './cards';
+import { Thinking } from './Thinking';
 
 /** Where a citation goes: file:line opens Code, a run opens its page, a note opens the Graph. */
 export function routeOf(c: Cite): Route {
@@ -40,33 +39,12 @@ export const visibleText = (text: string) => {
   return (i >= 0 ? text.slice(0, i) : text).trimEnd();
 };
 
-function Tools({ tools, running }: { tools: ToolRun[]; running?: boolean }) {
-  return (
-    <div className="mb-2 flex flex-col gap-2">
-      {tools.map((t) => (
-        <ToolResult
-          key={t.id}
-          tool="run_code"
-          title={t.code.split('\n')[0]!.slice(0, 80) || 'Code Mode'}
-          kind="terminal"
-          status={t.output === undefined && running ? 'running' : t.isError ? 'error' : 'success'}
-          meta={t.ms !== undefined ? `${t.ms} ms` : undefined}
-          copyText={t.output}
-          defaultOpen={false}
-        >
-          <AgentCode code={t.code} language="typescript" />
-          {t.output ? <AgentCode code={t.output} language="text" className="mt-2 border-t border-border pt-2" /> : null}
-        </ToolResult>
-      ))}
-    </div>
-  );
-}
-
-function TetherMessage({ m, chat, onGo }: { m: ChatMessage; chat: Assistant; onGo: (r: Route) => void }) {
+/** `asked`: when the question was sent, so the finished timeline says how long Tether thought. */
+function TetherMessage({ m, asked, chat, onGo }: { m: ChatMessage; asked?: number; chat: Assistant; onGo: (r: Route) => void }) {
   const text = visibleText(m.text);
   return (
     <div className="max-w-[92%]" data-role="tether">
-      {m.tools?.length ? <Tools tools={m.tools} /> : null}
+      {m.tools?.length ? <Thinking tools={m.tools} ms={asked !== undefined ? m.at - asked : undefined} /> : null}
       {text || m.error ? (
         <StreamingResponse
           status={m.error && m.error !== 'Stopped.' ? 'error' : 'complete'}
@@ -111,19 +89,19 @@ export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route
       {chat.loading ? <p className="m-0 text-muted-foreground">Loading the chat…</p> : null}
       {chat.error ? <p className="m-0 text-danger">{chat.error}</p> : null}
       {!chat.loading && !chat.messages.length && !live ? <p className="m-0 text-muted-foreground">{empty}</p> : null}
-      {chat.messages.map((m) =>
+      {chat.messages.map((m, i) =>
         m.role === 'you' ? (
           <div key={m.id} className="max-w-[80%] self-end rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap" data-role="you">
             {m.text}
             {m.attachments?.length ? <div className="mt-1 text-xs text-muted-foreground">{m.attachments.map((a) => a.name).join(', ')}</div> : null}
           </div>
         ) : (
-          <TetherMessage key={m.id} m={m} chat={chat} onGo={onGo} />
+          <TetherMessage key={m.id} m={m} asked={chat.messages.slice(0, i).findLast((x) => x.role === 'you')?.at} chat={chat} onGo={onGo} />
         ),
       )}
       {live ? (
         <div className="max-w-[92%]" data-role="tether">
-          {live.tools.length ? <Tools tools={live.tools} running /> : null}
+          <Thinking tools={live.tools} startedAt={live.startedAt} />
           <StreamingResponse status="streaming" announce={false}>
             <Markdown text={visibleText(live.text)} />
           </StreamingResponse>
