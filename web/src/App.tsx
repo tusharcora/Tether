@@ -383,7 +383,7 @@ function Shell() {
             {screen.tab === 'teams' && screen.id && screen.id !== 'new' ? (
               <TeamScreen key={screen.id} id={screen.id} goals={goals.goals} agents={teams.data?.agents ?? []} projects={list} onGo={go} onChanged={() => void teams.refresh()} onNewAgent={() => createNew('bot')} />
             ) : null}
-            {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} /> : null}
+            {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} teams={teams.data} /> : null}
           </main>
           {settingsPage}
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}

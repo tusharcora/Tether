@@ -9,6 +9,7 @@ import { renderApp } from '../test/render';
 import { Goals, type GoalsProps } from './Goals';
 import { glyphOf, goalLine, goalMeta, type GoalView } from './goalsApi';
 import { GoalsNeedYou } from './GoalsNeedYou';
+import { nextStrip, sections, sectionOf } from './GoalNode';
 
 const fail = { ok: false, at: 1, summary: '1 failing · 11 passing', failing: 1, passing: 11, tail: 'FAIL login' };
 const loop = (o: Partial<GoalView> = {}): GoalView => ({
@@ -44,24 +45,135 @@ describe('goal labels', () => {
   });
 });
 
-describe('the rows', () => {
-  it('lists goals as rows with a visible amber Approve that starts the proposed run, and filters by tab', async () => {
+describe('sections', () => {
+  it('puts needs you and active in Now (needs you first), paused in Up next, met and stopped in Done (newest end first)', () => {
+    expect(sectionOf(loop({ status: 'needs_you' }))).toBe('now');
+    expect(sectionOf(loop({ status: 'active' }))).toBe('now');
+    expect(sectionOf(loop({ status: 'paused' }))).toBe('next');
+    expect(sectionOf(loop({ status: 'met' }))).toBe('done');
+    expect(sectionOf(loop({ status: 'stopped' }))).toBe('done');
+    const s = sections([
+      loop({ id: 'a', status: 'active' }),
+      loop({ id: 'b', status: 'needs_you' }),
+      loop({ id: 'p', status: 'paused' }),
+      loop({ id: 'old', status: 'met', endedAt: 10 }),
+      loop({ id: 'new', status: 'stopped', endedAt: 30 }),
+      // an old goal with no endedAt falls back to its last item's time
+      loop({ id: 'mid', status: 'met', endedAt: undefined, items: [{ ...loop().items[0]!, at: 20 }] }),
+    ]);
+    expect(s.now.map((g) => g.id)).toEqual(['b', 'a']);
+    expect(s.next.map((g) => g.id)).toEqual(['p']);
+    expect(s.done.map((g) => g.id)).toEqual(['new', 'mid', 'old']);
+  });
+});
+
+describe('the next strip', () => {
+  it('needs you with a plan: amber "Needs you:", the task and Approve', () => {
+    expect(nextStrip(loop())).toEqual({ label: 'Needs you:', text: 'Fix the redirect after login', action: 'approve', tone: 'needs' });
+  });
+  it('an active loop: "Step n of m:", the running item and Watch', () => {
+    const running = loop({ status: 'active', pending: undefined, items: [{ id: 2, goalId: 'g1', kind: 'run', text: 'Fix session expiry\nmore', runId: 'r2', done: false, at: 1, runStatus: 'running', attempt: {} }] });
+    expect(nextStrip(running)).toEqual({ label: 'Step 1 of 4:', text: 'Fix session expiry', action: 'watch', tone: 'live' });
+  });
+  it('an active tracker: "Next:", the first unchecked item and Open', () => {
+    expect(nextStrip(tracker())).toEqual({ label: 'Next:', text: 'Update docs', action: 'open', tone: 'live' });
+  });
+});
+
+describe('the goals page', () => {
+  it('shows Now as equal goal nodes with their next strip, Up next and Done as quiet rows, and no tabs', async () => {
     const set = vi.fn();
     routeApi({ 'POST /api/goals/g1/next': (b: unknown) => ({ ...loop({ status: 'active', pending: undefined }), b }) });
     const onSelect = vi.fn();
-    renderApp(<Goals {...props([loop(), tracker(), loop({ id: 'g3', title: 'README covers the CLI', status: 'met' })], { onSelect, goals: { goals: [loop(), tracker(), loop({ id: 'g3', title: 'README covers the CLI', status: 'met' })], error: undefined, set, drop: vi.fn() } })} />);
-    const list = screen.getByRole('complementary', { name: 'Goals' });
-    expect(within(list).getByText('Login tests green')).toBeTruthy();
-    fireEvent.click(within(list).getByRole('button', { name: 'Approve run' }));
+    const all = [loop(), tracker(), loop({ id: 'p1', title: 'Cache warmup', status: 'paused', dueDate: '2026-11-30' }), loop({ id: 'g3', title: 'README covers the CLI', status: 'met', endedAt: new Date(2026, 9, 20).getTime() })];
+    renderApp(<Goals {...props(all, { onSelect, goals: { goals: all, error: undefined, set, drop: vi.fn() } })} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Goals' })).toBeTruthy();
+    expect(screen.getByText('orders-api')).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: 'Show goals' })).toBeNull();
+    const now = screen.getByRole('region', { name: 'Now' });
+    expect(within(now).getAllByRole('toolbar').map((t) => t.getAttribute('aria-label'))).toEqual(['Login tests green actions', 'Ship v2 auth actions']);
+    // a tracker's arc has Add a step; a loop's does not
+    expect(within(within(now).getByRole('toolbar', { name: 'Ship v2 auth actions' })).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Copy link', 'Add a step', 'Duplicate', 'Settings']);
+    expect(within(within(now).getByRole('toolbar', { name: 'Login tests green actions' })).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Copy link', 'Duplicate', 'Settings']);
+    expect(within(now).getByText('Feature · Needs you')).toBeTruthy();
+    expect(within(now).getByText('Feature · Open')).toBeTruthy();
+    fireEvent.click(within(now).getByRole('button', { name: 'Approve run' }));
     await waitFor(() => expect(calls('POST', '/api/goals/g1/next')[0]?.[2]).toEqual({ action: 'start' }));
     await waitFor(() => expect(set).toHaveBeenCalled());
-    fireEvent.click(within(list).getByRole('button', { name: 'Login tests green' }));
-    expect(onSelect).toHaveBeenCalledWith('g1');
-    fireEvent.click(within(list).getByRole('button', { name: /^Met/ }));
-    expect(within(list).queryByText('Ship v2 auth')).toBeNull();
-    expect(within(list).getByText('README covers the CLI')).toBeTruthy();
+    const next = screen.getByRole('region', { name: 'Up next' });
+    expect(within(next).getByText('Cache warmup')).toBeTruthy();
+    expect(within(next).getByText('Due Nov 30')).toBeTruthy();
+    const done = screen.getByRole('region', { name: 'Done' });
+    expect(within(done).getByText('Oct 20')).toBeTruthy();
+    fireEvent.click(within(done).getByRole('button', { name: 'README covers the CLI' }));
+    expect(onSelect).toHaveBeenCalledWith('g3');
+    // hovering a row opens it into the full node
+    fireEvent.pointerEnter(within(next).getByRole('listitem'));
+    expect(within(next).getByRole('toolbar', { name: 'Cache warmup actions' })).toBeTruthy();
+    fireEvent.pointerLeave(within(next).getByRole('listitem'));
+    expect(within(next).queryByRole('toolbar')).toBeNull();
   });
 
+  it('clicking a node opens the detail', () => {
+    routeApi({});
+    const onSelect = vi.fn();
+    renderApp(<Goals {...props([loop(), tracker()], { onSelect })} />);
+    fireEvent.click(within(screen.getByRole('region', { name: 'Now' })).getByRole('button', { name: 'Ship v2 auth' }));
+    expect(onSelect).toHaveBeenCalledWith('t1');
+  });
+
+  it('an empty Now shows a quiet line, and each empty list its own', () => {
+    routeApi({});
+    renderApp(<Goals {...props([loop({ status: 'paused' })])} />);
+    expect(within(screen.getByRole('region', { name: 'Now' })).getByText('Nothing in progress.')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Done' })).getByText('Nothing finished yet.')).toBeTruthy();
+  });
+
+  it('6 assignees show 3 avatars and +3, on the node and on a row', () => {
+    routeApi({});
+    const six = ['coder', 'reviewer', 'tester', 'planner', 'architect', 'approval'].map((id) => ({ kind: 'agent' as const, id }));
+    const { container } = renderApp(<Goals {...props([loop({ assignees: six }), loop({ id: 'p1', status: 'paused', assignees: six })])} />);
+    const stacks = container.querySelectorAll('.gav');
+    expect(stacks).toHaveLength(2);
+    for (const st of stacks) {
+      expect(st.querySelectorAll('.gav-face')).toHaveLength(3);
+      expect(st.textContent).toContain('+3');
+      expect(st.getAttribute('aria-label')).toBe('Assigned to Bolt, Lens, Probe and 3 more');
+    }
+  });
+
+  it('a removed assignee renders as a grey "removed" avatar', () => {
+    routeApi({});
+    const { container } = renderApp(<Goals {...props([loop({ assignees: [{ kind: 'agent', id: 'ghost' }, { kind: 'team', id: 'gone' }, { kind: 'team', id: 'core' }] })], { teams: { teams: [{ id: 'core', name: 'Core', place: 'tether', project: 'w', agents: [], status: 'idle' }], agents: [] } })} />);
+    const faces = [...container.querySelectorAll('.gav-face')];
+    expect(faces.map((f) => f.getAttribute('title'))).toEqual(['ghost (removed)', 'gone (removed)', 'Core']);
+    expect(faces[0]!.className).toContain('removed');
+    expect(faces[2]!.className).toContain('team');
+    expect(faces[2]!.textContent).toBe('C');
+  });
+
+  it('a node keeps its fixed height with a long title or description; the strip never moves', () => {
+    const css = cssText('goals/goals.css');
+    expect(css).toMatch(/\.gn-node \{[^}]*height: 168px/);
+    expect(css).toMatch(/\.gn-title \{[^}]*-webkit-line-clamp: 2/);
+    expect(css).toMatch(/\.gn-desc \{[^}]*-webkit-line-clamp: 2/);
+    expect(css).toMatch(/\.gn-strip \{[^}]*height: 48px/);
+    expect(css).toMatch(/\.gn-grid \{[^}]*grid-template-columns: repeat\(3,minmax\(0,1fr\)\); gap: 16px/);
+    routeApi({});
+    renderApp(<Goals {...props([loop({ title: 'x'.repeat(120), description: 'y'.repeat(500) })])} />);
+    const title = screen.getByRole('button', { name: 'x'.repeat(120) });
+    expect(title.closest('.gn-node')).toBeTruthy();
+  });
+
+  it('lifts and dims with CSS only, and not under reduced motion', () => {
+    const css = cssText('goals/goals.css');
+    expect(css).toMatch(/\.gn-grid:has\(\.gn-mod:hover,\.gn-mod:focus-within\) \.gn-mod:not\(:hover\):not\(:focus-within\) \{ opacity: 0\.35/);
+    expect(css).toMatch(/translateY\(-4px\)/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.gn-node[^}]*transform: none/);
+  });
+});
+
+describe('Goals waiting for you', () => {
   it('shows Goals waiting for you on Home and the Inbox, with the same Approve', () => {
     routeApi({});
     renderApp(<GoalsNeedYou goals={[loop(), loop({ id: 'g2', status: 'active', pending: undefined })]} onGo={vi.fn()} onDone={vi.fn()} />);
@@ -69,24 +181,20 @@ describe('the rows', () => {
   });
 });
 
-describe('the frame', () => {
-  it('docks the list left and shows the first goal when none is picked, without a route change', () => {
-    routeApi({});
-    const onSelect = vi.fn();
-    renderApp(<Goals {...props([loop(), tracker()], { onSelect })} />);
-    const list = screen.getByRole('complementary', { name: 'Goals' });
-    expect(within(list).getByText('loop · 1 of 4 runs')).toBeTruthy();
-    expect(within(list).getByText('tracker · 1 of 2 done')).toBeTruthy();
-    expect(within(list).getByRole('progressbar', { name: 'Login tests green budget used' }).getAttribute('aria-valuenow')).toBe('24');
-    expect(within(list).getByRole('progressbar', { name: 'Ship v2 auth progress' }).getAttribute('aria-valuenow')).toBe('50');
-    expect(screen.getByRole('heading', { level: 2, name: 'Login tests green' })).toBeTruthy();
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('an unknown id shows the first goal', () => {
+describe('the detail page', () => {
+  it('an unknown id shows the goals page', () => {
     routeApi({});
     renderApp(<Goals {...props([tracker(), loop()], { selected: 'gone' })} />);
-    expect(screen.getByRole('heading', { level: 2, name: 'Ship v2 auth' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Goals' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Ship v2 auth' })).toBeNull();
+  });
+
+  it('goes back to the goals page', () => {
+    routeApi({});
+    const onSelect = vi.fn();
+    renderApp(<Goals {...props([loop()], { selected: 'g1', onSelect })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to goals' }));
+    expect(onSelect).toHaveBeenCalledWith();
   });
 
   it('puts the goal actions in the top bar and the limits at the bottom', async () => {

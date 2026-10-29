@@ -71,3 +71,23 @@ export function goalLine(g: GoalView): string {
 
 /** The goals of one project (every goal when none is open). */
 export const inProject = <T extends { workspace: string }>(goals: T[] | undefined, ws: string | undefined): T[] => (goals ?? []).filter((g) => !ws || g.workspace === ws);
+
+export const TYPE_LABEL: Record<GoalType, string> = { feature: 'Feature', bugfix: 'Bug fix', refactor: 'Refactor', chore: 'Chore' };
+export const TYPE_GLYPH: Record<GoalType, string> = { feature: '+', bugfix: '!', refactor: '↻', chore: '·' };
+/** A goal without a type reads as a feature. */
+export const typeOf = (g: Pick<GoalView, 'type'>): GoalType => g.type ?? 'feature';
+
+/** The status word on a goal node: a working loop is Live, an open tracker Open. */
+export const statusWord = (g: Pick<GoalView, 'status' | 'kind'>): string => (g.status === 'active' ? (g.kind === 'loop' ? 'Live' : 'Open') : STATUS_LABEL[g.status]);
+
+/** What a duplicate is made from: every field, " (copy)" on the title, and a loop's check and limits. */
+export const copyOf = (g: GoalView): Record<string, unknown> => ({
+  title: `${g.title.slice(0, 193)} (copy)`,
+  workspace: g.workspace,
+  workflow: g.workflow,
+  ...(g.type ? { type: g.type } : {}),
+  ...(g.description ? { description: g.description } : {}),
+  ...(g.assignees?.length ? { assignees: g.assignees } : {}),
+  ...(g.dueDate ? { dueDate: g.dueDate } : {}),
+  ...(g.kind === 'loop' ? { check: g.check, budgetUsd: g.budgetUsd, maxRuns: g.maxRuns, approval: g.approval } : {}),
+});

@@ -6,7 +6,7 @@ import type { GoalView } from './goalsApi';
 import './goals.css';
 
 /** A tracker: a checklist of manual items and linked runs, and an add-item field (Turn into a loop is in the goal's bar). */
-export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onGo: (r: Route) => void }) {
+export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onGo: (r: Route) => void; /** Opened from the arc's Add a step. */ focusAdd?: boolean }) {
   const [text, setText] = useState('');
   const items: TodoItem[] = p.goal.items.map((i) => {
     const run = i.kind === 'run';
@@ -50,7 +50,7 @@ export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: bool
           setText('');
         }}
       >
-        <input className="gf-input" aria-label="Add an item" placeholder="Add an item" value={text} maxLength={300} onChange={(e) => setText(e.target.value)} />
+        <input className="gf-input" aria-label="Add an item" placeholder="Add an item" value={text} maxLength={300} autoFocus={p.focusAdd} onChange={(e) => setText(e.target.value)} />
         <Button type="submit" size="sm" variant="secondary" disabled={!text.trim()}>
           Add
         </Button>
