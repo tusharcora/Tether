@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { fmtUsd } from '../api';
 import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
 import { SpeakerIdentity } from '../components/assistant-ui/elements/speaker-identity';
+import { TeamRunCard } from '../assistant/taskCards';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Loading } from '../components/Loading';
@@ -183,19 +184,7 @@ type Act = (m: TeamMessage, body: { action: string; reason?: string; task?: stri
 
 function CardView(p: { msg: TeamMessage; card: Card; team: TeamView; goals?: GoalView[]; onGo: (r: Route) => void; onAct: Act; onDiff: (m: TeamMessage, title: string) => void }) {
   const c = p.card;
-  if (c.kind === 'run')
-    return (
-      <div className="tm-card">
-        <span className="tm-card-top">
-          <b>{`${shortRunId(c.runId)} · ${c.title}`}</b>
-          <span className="tm-mono">{`${c.status} · ${fmtUsd(c.costUsd)}`}</span>
-        </span>
-        <StepTrack steps={c.steps} />
-        <button type="button" className="tm-link" onClick={() => p.onGo({ tab: 'runs', id: c.runId })}>
-          Open run
-        </button>
-      </div>
-    );
+  if (c.kind === 'run') return <TeamRunCard card={c} onOpen={() => p.onGo({ tab: 'runs', id: c.runId })} />;
   if (c.kind === 'loop') return <LoopCard goal={p.goals?.find((g) => g.id === c.goalId)} onGo={p.onGo} />;
   if (c.kind === 'approval') return <AskCard msg={p.msg} card={c} team={p.team} onAct={p.onAct} onDiff={p.onDiff} />;
   if (c.kind === 'proposal') return <ProposalCard msg={p.msg} card={c} onAct={p.onAct} onGo={p.onGo} />;

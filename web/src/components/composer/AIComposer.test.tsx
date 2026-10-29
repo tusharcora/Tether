@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { AIComposer, makerOf } from './AIComposer';
+import { Plus, Square } from 'lucide-react';
+import { AIComposer, makerOf, menuState, type ComposerPerson, type SlashCommand } from './AIComposer';
 
-function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boolean; onStop?: () => void; tags?: Record<string, string[]> }) {
+function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boolean; onStop?: () => void; tags?: Record<string, string[]>; commands?: SlashCommand[]; people?: ComposerPerson[] }) {
   const [value, setValue] = useState('');
   const [model, setModel] = useState<string | undefined>();
   return (
@@ -23,6 +24,8 @@ function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boole
       onRemoveFile={() => {}}
       favKey="test.favs"
       tags={p.tags}
+      commands={p.commands}
+      people={p.people}
     />
   );
 }
@@ -95,5 +98,98 @@ describe('the AI composer', () => {
     render(<Harness onSubmit={vi.fn()} loading onStop={onStop} />);
     fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
     expect(onStop).toHaveBeenCalled();
+  });
+});
+
+describe('slash commands and mentions', () => {
+  const setup = () => {
+    const onSubmit = vi.fn();
+    const commands = [
+      { name: 'new', description: 'Start a new chat', icon: Plus, run: vi.fn() },
+      { name: 'stop', description: 'Stop the reply', icon: Square, run: vi.fn() },
+    ];
+    const people: ComposerPerson[] = [
+      { name: 'Bolt', role: 'agent' },
+      { name: 'Brick', role: 'agent' },
+      { name: 'Scout', role: 'agent' },
+    ];
+    render(<Harness onSubmit={onSubmit} commands={commands} people={people} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+    const type = (v: string) => fireEvent.change(box, { target: { value: v } });
+    const key = (k: string, o: Record<string, unknown> = {}) => fireEvent.keyDown(box, { key: k, ...o });
+    const active = () => document.getElementById(box.getAttribute('aria-activedescendant') ?? '')?.textContent ?? '';
+    return { onSubmit, commands, box, type, key, active };
+  };
+
+  it('"/" lists the commands (with /model for the picker); arrows move the highlight, Enter runs it and clears the text', () => {
+    const { commands, box, type, key, active, onSubmit } = setup();
+    type('/');
+    const list = screen.getByRole('listbox', { name: 'Commands' });
+    expect(screen.getAllByRole('option').map((o) => o.textContent?.split('/')[1]?.split(/[A-Z]/)[0])).toEqual(['new', 'stop', 'model']);
+    expect(box.getAttribute('aria-controls')).toBe(list.id);
+    expect(active()).toContain('/new');
+    key('ArrowDown');
+    expect(active()).toContain('/stop');
+    expect(screen.getByRole('option', { name: /stop/ }).getAttribute('aria-selected')).toBe('true');
+    key('ArrowUp');
+    key('ArrowUp');
+    expect(active()).toContain('/model');
+    key('ArrowDown');
+    key('Enter');
+    expect(commands[0]!.run).toHaveBeenCalled();
+    expect(box.value).toBe('');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('filters by what follows the slash, runs with Tab or a click, and /model opens the picker', () => {
+    const { commands, type, key } = setup();
+    type('/st');
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    key('Tab');
+    expect(commands[1]!.run).toHaveBeenCalled();
+    type('/n');
+    fireEvent.click(screen.getByRole('option', { name: /new/ }));
+    expect(commands[0]!.run).toHaveBeenCalled();
+    type('/mo');
+    key('Enter');
+    expect(screen.getByRole('dialog', { name: 'Choose a model' })).toBeTruthy();
+  });
+
+  it('Escape closes the menu until the text changes, and a slash that matches nothing sends as text', () => {
+    const { type, key, onSubmit } = setup();
+    type('/');
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    const outer = vi.fn();
+    document.addEventListener('keydown', outer);
+    act(() => void screen.getByLabelText('Message').dispatchEvent(esc));
+    document.removeEventListener('keydown', outer);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(outer).not.toHaveBeenCalled();
+    type('/n');
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    type('/etc/hosts is broken');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    key('Enter');
+    expect(onSubmit).toHaveBeenCalledWith('/etc/hosts is broken', undefined);
+  });
+
+  it('"@" lists the people whose name starts with what follows; Enter puts the name in', () => {
+    const { box, type, key, active } = setup();
+    type('ask @b');
+    expect(screen.getByRole('listbox', { name: 'Mention' })).toBeTruthy();
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['BBoltagent', 'BBrickagent']);
+    key('ArrowDown');
+    expect(active()).toContain('Brick');
+    key('Enter');
+    expect(box.value).toBe('ask @Brick ');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('works out which menu is open', () => {
+    expect(menuState('/', undefined, 2, 0)).toBe('commands');
+    expect(menuState('@b', undefined, 0, 1)).toBe('mention');
+    expect(menuState('@b', '@b', 0, 1)).toBeUndefined();
+    expect(menuState('hi', undefined, 0, 0)).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 /**
- * The agent's answer is plain text, optionally ending in one ```tether JSON block: its sources, runs it proposes, questions
+ * The agent's answer is plain text with any artifacts (artifactBlocks.ts: a page or a doc, cut out and saved by the turn),
+ * optionally ending in one ```tether JSON block: its sources, runs it proposes, questions
  * it needs answered, a comparison and the cards (report, spec, choice, diagram, timeline). The block is data: it is cut from the text and every part is checked here (files must
  * exist in the project, runs in the store, notes in the vault, workflows on disk) before the dashboard sees it.
  */
@@ -10,6 +11,7 @@ import { pipelinesDir } from '../config.js';
 import { NAME_RE } from '../pipeline.js';
 import type { Store } from '../store.js';
 import type { Vault } from '../vault.js';
+import { splitArtifacts, type ArtifactBlock } from './artifactBlocks.js';
 import type { AskCard, Choice, Compare, Cite, Diagram, Proposal, Report, Spec, TimelineEvent } from './types.js';
 
 export interface Checked {
@@ -23,6 +25,8 @@ export interface Checked {
   choice?: Choice;
   diagram?: Diagram;
   timeline?: TimelineEvent[];
+  /** The artifacts the reply wrote, not yet saved (at most 3, none empty). */
+  artifacts: ArtifactBlock[];
 }
 
 const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
@@ -96,8 +100,10 @@ let seq = 0;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 export async function checkReply(output: string, o: { home: string; repo?: string; store: Store; vault?: Vault }): Promise<Checked> {
-  const m = FENCE.exec(output);
-  const text = (m ? output.slice(0, m.index) : output).trim();
+  const cut = splitArtifacts(output);
+  const artifacts = cut.artifacts.filter((a) => a.content.trim()).slice(0, 3);
+  const m = FENCE.exec(cut.text);
+  const text = (m ? cut.text.slice(0, m.index) : cut.text).trim();
   let raw: Record<string, unknown> = {};
   if (m) {
     try {
@@ -162,5 +168,5 @@ export async function checkReply(output: string, o: { home: string; repo?: strin
     });
     if (columns.length && rows.length) compare = { ...(str(c.title, 80) ? { title: str(c.title, 80) } : {}), columns, rows };
   }
-  return { text, cites, proposals, ...(questions.length ? { ask: { id: uid('a'), questions, status: 'pending' as const } } : {}), ...(compare ? { compare } : {}), ...checkCards(raw, cites.length) };
+  return { text, cites, proposals, artifacts, ...(questions.length ? { ask: { id: uid('a'), questions, status: 'pending' as const } } : {}), ...(compare ? { compare } : {}), ...checkCards(raw, cites.length) };
 }

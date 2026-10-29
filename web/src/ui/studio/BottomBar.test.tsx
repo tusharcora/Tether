@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BottomBar } from './BottomBar';
 
 describe('BottomBar', () => {
-  it('shows five screens and a More menu with Code, Graph, Triggers and Settings', () => {
+  it('shows five screens and a More menu with Code, Graph, Triggers, Artifacts and Settings', () => {
     const onGo = vi.fn();
     const onSettings = vi.fn();
     render(<BottomBar active="home" onGo={onGo} onSettings={onSettings} />);
@@ -14,7 +14,7 @@ describe('BottomBar', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(more);
     expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Goals', 'Graph', 'Triggers', 'Settings']);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Goals', 'Graph', 'Triggers', 'Artifacts', 'Settings']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     expect(onGo).toHaveBeenCalledWith('graph');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -59,7 +59,7 @@ describe('BottomBar', () => {
   it('focuses the first menu item on open and moves through the menu with arrows, Home and End', () => {
     render(<BottomBar active="home" onGo={() => {}} onSettings={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
-    const [code, goals, , , settings] = screen.getAllByRole('menuitem');
+    const [code, goals, , , , settings] = screen.getAllByRole('menuitem');
     expect(document.activeElement).toBe(code);
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(goals);

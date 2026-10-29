@@ -17,6 +17,7 @@
 @source './components/ai-elements';
 @source './components/assistant-ui';
 @source './assistant';
+@source './artifacts';
 @source not './**/*.test.{ts,tsx}';
 
 /* our theme attribute, not beui's .dark class */
@@ -68,7 +69,9 @@
    and Tether's :where(button) defaults lose. */
 :where(
   [data-slot='activity-graph'],
+  [data-slot='artifact-card'],
   [data-slot='comparison-card'],
+  [data-slot='composer-menu'],
   [data-slot='diagram'],
   [data-slot='document-reference'],
   [data-slot='error-state'],
@@ -79,12 +82,14 @@
   [data-slot='message-actions'],
   [data-slot='message-queue'],
   [data-slot='permission-grant'],
+  [data-slot='prompt-library'],
   [data-slot='research-report'],
   [data-slot='retrieval-chunks'],
   [data-slot='score-breakdown'],
   [data-slot='speaker-identity'],
   [data-slot='spec-sheet'],
   [data-slot='stopped-run'],
+  [data-slot='task-card'],
   [data-slot='timeline'],
   [data-slot='web-search']
 ) {

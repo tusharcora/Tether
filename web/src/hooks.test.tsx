@@ -128,7 +128,7 @@ describe('hash routes', () => {
   });
 
   it('lists the screens in sidebar order', () => {
-    expect(SCREENS).toEqual(['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'goals', 'api', 'graph', 'triggers']);
+    expect(SCREENS).toEqual(['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'goals', 'api', 'graph', 'triggers', 'artifacts']);
     expect(TAB_LABEL.settings).toBe('Settings');
   });
 
