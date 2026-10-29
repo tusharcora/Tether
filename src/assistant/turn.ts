@@ -14,13 +14,14 @@ import { redactText } from '../http/redact.js';
 import { loadSecrets } from '../http/secrets.js';
 import type { Engine } from '../engine.js';
 import type { Store } from '../store.js';
-import type { AttentionItem } from '../types.js';
+import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
 import { loadAllow, newChatId, readChat, saveChat, titleOf, type Chat } from './history.js';
-import { buildPrompt } from './prompt.js';
+import { knownSize } from './context.js';
+import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type StreamEvent, type ToolRun } from './types.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
   home: string;
@@ -30,6 +31,16 @@ export interface AssistantCtx {
   vault: Vault;
   /** The items waiting for the person (the Inbox). */
   needs(): AttentionItem[];
+  /** The answering model's context size and free-tier limit, where known (the server asks OpenRouter's models list). */
+  modelInfo?(agent: string, model?: string): Promise<{ size?: number; limit?: ContextUse['limit'] }>;
+}
+
+/** The tools part of what a turn sends: run_code's description (one item per connector it lists) and Code Mode's note. */
+function toolsPart(cm: CodeModeRequest | undefined): [string, number][] {
+  if (!cm) return [];
+  const desc = cm.runner.description();
+  const connectors = desc.split('\n').flatMap((l): [string, number][] => (l.startsWith('- ') ? [[l.slice(2).split(':')[0]!, l.length]] : []));
+  return [['run_code', desc.length - connectors.reduce((a, [, c]) => a + c, 0)], ...connectors, ['Code Mode notes', cm.note.length]];
 }
 
 export interface TurnBody {
@@ -124,7 +135,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, 8)
       .map((r) => `- ${r.id}: ${r.status}, ${r.kind === 'team' ? 'team' : r.pipeline}, "${r.task.replace(/\s+/g, ' ').slice(0, 80)}"`);
-    const prompt = buildPrompt({
+    const input: PromptInput = {
       message: body.message,
       context: body.context,
       project: ws ? { name: ws.name, blurb: contextOf(ws).slice(0, 1500) } : undefined,
@@ -134,7 +145,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500 }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
-    });
+    };
+    const prompt = buildPrompt(input);
     const cm = await openCodeModeFor({
       engine: c.engine,
       adapter: c.registry.get(agent),
@@ -159,12 +171,13 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     });
     sessionBox.close = cm.close;
     let streamed = false;
+    const model = body.model || bound;
     const res = await c.registry.get(agent).run({
       runId: 'tether-assistant',
       nodeId: 'chat',
       prompt,
       cwd,
-      model: body.model || bound,
+      model,
       readOnly: true,
       lean: true,
       attempt: 1,
@@ -187,6 +200,15 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (res.exitCode !== 0 || res.error) return fail((res.error ?? `the agent exited ${res.exitCode}`).split('\n')[0]!.slice(0, 300));
     const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault });
     const approvals = cm.approvals();
+    const info = (await c.modelInfo?.(agent, model).catch(() => undefined)) ?? { size: knownSize(agent, model) };
+    const context: ContextUse = {
+      parts: { ...promptParts(input, prompt), tools: toolsPart(cm.request) },
+      ...(res.usage?.promptTokens ? { tokens: res.usage.promptTokens } : {}),
+      agent,
+      ...(model ? { model } : {}),
+      ...(info.size ? { size: info.size } : {}),
+      ...(info.limit ? { limit: info.limit } : {}),
+    };
     return done({
       id,
       role: 'tether',
@@ -199,6 +221,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       ...(approvals.length ? { toolAsks: approvals.map((what) => ({ id: mid('ta'), what, status: 'pending' as const })) } : {}),
       ...(tools.length ? { tools } : {}),
       ...(res.costUsd !== undefined ? { costUsd: res.costUsd } : {}),
+      context,
     });
   } catch (e) {
     return signal.aborted ? fail('Stopped.') : fail((e as Error).message.split('\n')[0]!.slice(0, 300));

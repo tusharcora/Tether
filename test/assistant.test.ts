@@ -10,7 +10,7 @@ import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { startServer } from '../src/server.js';
 import { Store } from '../src/store.js';
-import type { AgentAdapter, AgentRequest, AgentResult } from '../src/types.js';
+import type { AgentAdapter, AgentRequest, AgentResult, AgentUsage } from '../src/types.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace } from '../src/workspace.js';
 import type { StreamEvent } from '../src/assistant/types.js';
@@ -25,6 +25,7 @@ class Scripted implements AgentAdapter {
   prompts: string[] = [];
   reply = 'Hello.';
   script?: string;
+  usage?: AgentUsage;
   async detect() {
     return { ok: true };
   }
@@ -35,7 +36,7 @@ class Scripted implements AgentAdapter {
     this.prompts.push(req.prompt);
     if (this.script && req.codeMode) await req.codeMode.runner.runCode(this.script);
     for (const part of this.reply.match(/[\s\S]{1,7}/g) ?? []) req.onDelta?.(part);
-    return { output: this.reply, exitCode: 0, costUsd: 0.001 };
+    return { output: this.reply, exitCode: 0, costUsd: 0.001, ...(this.usage ? { usage: this.usage } : {}) };
   }
 }
 
@@ -57,7 +58,9 @@ async function boot() {
   const store = Store.open(':memory:');
   const vault = new Vault(tmp('vault-'));
   const engine = new Engine(store, { home, registry, vault, bindings: () => loadBindings(home) });
-  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0 });
+  // OpenRouter's models list (context sizes) is faked: a 1M free model, never the network
+  const orModels = { data: [{ id: 'nvidia/nemotron-3.5-super-vl:free', name: 'Nemotron (free)', context_length: 1_000_000, supported_parameters: ['tools'] }] };
+  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, openrouter: { fetch: (async () => new Response(JSON.stringify(orModels))) as typeof fetch } });
   closers.push(s.close);
   const u = new URL(s.url);
   const call = (method: string, path: string, body?: unknown) =>
@@ -98,6 +101,29 @@ describe('POST /api/assistant', () => {
     expect(done!.message.cites).toEqual([{ n: 1, label: 'limit.ts', kind: 'file', path: 'src/limit.ts', line: 1 }]);
     expect(t.agent.prompts[0]).toContain('on the code page');
     expect(t.agent.prompts[0]).toContain('"src/limit.ts" line 1');
+  });
+
+  it('saves what the turn sent on the reply: its parts, the reported prompt tokens and the model size', async () => {
+    const t = await boot();
+    t.agent.usage = { promptTokens: 4321 };
+    const { done } = await t.turn({ message: 'what is the limit?' });
+    const u = done!.message.context!;
+    expect(u).toMatchObject({ tokens: 4321, agent: 'scripted' });
+    expect(u.size).toBeUndefined();
+    expect(u.parts.messages).toContainEqual(['This message', 'what is the limit?'.length]);
+    expect(u.parts.tools.map(([l]) => l)).toEqual(expect.arrayContaining(['run_code', 'repo', 'tether', 'Code Mode notes']));
+    // the prompt's parts add up to exactly what was sent
+    const sum = (k: 'prompt' | 'memory' | 'messages') => u.parts[k].reduce((a, [, c]) => a + c, 0);
+    expect(sum('prompt') + sum('memory') + sum('messages')).toBe(t.agent.prompts[0]!.length);
+    // Claude's size is known; no usage reported: no tokens
+    t.registry.register(new (class extends Scripted {
+      override readonly id = 'claude' as never;
+    })());
+    link(t.home, 'orchestrator', { agent: 'claude', model: 'opus' });
+    const c = await t.turn({ message: 'hi', chat: done!.message && (await t.call('GET', '/api/assistant/chats?ws=api')).json.chats[0].id });
+    expect(c.done!.message.context).toMatchObject({ agent: 'claude', model: 'opus', size: 200_000 });
+    expect(c.done!.message.context!.tokens).toBeUndefined();
+    expect(c.done!.message.context!.parts.messages[0]).toEqual(['2 earlier messages', expect.any(Number)]);
   });
 
   it('drops sources that are not real files, runs or notes, or leave the project', async () => {
@@ -217,6 +243,8 @@ describe('POST /api/assistant', () => {
     const r = await t.turn({ message: 'hi', agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' });
     expect(r.done?.message.error).toBeUndefined();
     expect(or.models).toEqual(['nvidia/nemotron-3.5-super-vl:free']);
+    // the ring knows the free model's size from OpenRouter's list, and that the free daily limit applies
+    expect(r.done!.message.context).toMatchObject({ agent: 'openrouter', size: 1_000_000, limit: 'openrouter' });
     expect(t.agent.prompts).toHaveLength(0);
     await t.turn({ message: 'again', agent: 'openrouter' });
     expect(or.models[1]).toBeUndefined();
