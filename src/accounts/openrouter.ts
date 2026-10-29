@@ -5,8 +5,10 @@
  */
 import { OpenAICompatAdapter } from '../adapters/openai.js';
 import type { AdapterRegistry } from '../adapters/index.js';
+import { BUILTIN_BOTS } from '../crew.js';
+import { bindFree, loadBindings } from '../bindings.js';
 import type { Config } from '../config.js';
-import { authUrl, exchangeKey } from '../openrouter.js';
+import { FREE_DEFAULT, OR_API, authUrl, exchangeKey, freeDefault, tagModels, type OrModel } from '../openrouter.js';
 import { useAccountEndpoint } from '../providers.js';
 import { setAccountKey } from './keys.js';
 import { CALLBACK_PATH, loopbackCode } from './pkce.js';
@@ -23,10 +25,16 @@ export interface OpenRouterDeps {
   timeoutMs?: number;
   /** Called after connect and disconnect (the server drops its agent caches). */
   onChange?: () => void;
+  /** Can anything else run a step (`anyUsable`)? Unknown counts as yes: the crew is then left alone. */
+  usable?: () => Promise<boolean>;
 }
+
+/** How long the models list is kept. */
+const MODELS_MS = 3_600_000;
 
 export class OpenRouterAccount {
   private state: OrFlow = { state: 'idle' };
+  private cache?: { at: number; models: OrModel[] };
   /** The flow in flight: an older one that ends late must not overwrite a newer one's state. */
   private current?: object;
 
@@ -77,15 +85,51 @@ export class OpenRouterAccount {
     });
   }
 
-  /** The new key into the SecretStore and memory, the account recorded, the `openrouter` endpoint pointed at it and registered. */
+  /**
+   * The new key into the SecretStore and memory, the account recorded, the `openrouter` endpoint pointed at it and
+   * registered. When nothing else could run a step, the unbound crew goes on the free default (the owner's rule); returns who.
+   */
   private async connect(key: string): Promise<string[]> {
+    const nothingElse = !(await this.deps.usable?.().catch(() => true) ?? true);
     await this.store.set('openrouter', key);
     setAccountKey(this.cfg.home, 'openrouter', key);
     setAccount(this.cfg.home, 'openrouter', { provider: 'openrouter', login: 'Tether', scopes: [], via: 'browser', connectedAt: Date.now() });
     useAccountEndpoint(this.cfg);
     this.registry.register(new OpenAICompatAdapter('openrouter', this.cfg.endpoints.openrouter!, this.cfg.home));
     this.deps.onChange?.();
-    return [];
+    return nothingElse ? this.useForCrew() : [];
+  }
+
+  /** "Use free models for the crew": unbound built-in bots go on the free default; bots bound on purpose stay. */
+  async useForCrew(): Promise<string[]> {
+    return bindFree(this.cfg.home, freeDefault((await this.models()).models)?.id ?? FREE_DEFAULT);
+  }
+
+  /** What Settings shows as the free defaults: the crew's and ⌘J's OpenRouter models, and whether the default model is gone from the list. */
+  defaults(): { crew?: string; assistant?: string; fallback: boolean } {
+    const b = loadBindings(this.cfg.home);
+    const crew = b[BUILTIN_BOTS.find((d) => d.id !== 'orchestrator' && b[d.id]?.agent === 'openrouter')?.id ?? '']?.model;
+    const assistant = b.orchestrator?.agent === 'openrouter' ? b.orchestrator.model : undefined;
+    return { ...(crew ? { crew } : {}), ...(assistant ? { assistant } : {}), fallback: !!this.cache?.models.length && !this.cache.models.some((m) => m.id === FREE_DEFAULT) };
+  }
+
+  /** Home's first-launch row: no account and nothing else that can run a step. */
+  async setupNeeded(): Promise<boolean> {
+    return !this.account() && !(await this.deps.usable?.().catch(() => true) ?? true);
+  }
+
+  /** OpenRouter's models with free / tools / images tags, fetched without a key and kept an hour; offline, the last list. */
+  async models(): Promise<{ models: OrModel[]; error?: string }> {
+    if (this.cache && Date.now() - this.cache.at < MODELS_MS) return { models: this.cache.models };
+    try {
+      const res = await (this.deps.fetch ?? fetch)(`${OR_API}/models`, { signal: AbortSignal.timeout(10_000) });
+      const models = res.ok ? tagModels(await res.json()) : [];
+      if (!models.length) throw new Error(`HTTP ${res.status}`);
+      this.cache = { at: Date.now(), models };
+      return { models };
+    } catch {
+      return { models: this.cache?.models ?? [], error: "can't reach OpenRouter" };
+    }
   }
 
   /** Forget the key and the account. The endpoint and bindings stay; they show "not connected" until a new approval. */

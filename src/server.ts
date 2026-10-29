@@ -23,6 +23,7 @@ import { checkPins, loadPins, savePins } from './pins.js';
 import { rgVersion } from './tools.js';
 import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
+import { anyUsable } from './providers.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
@@ -266,7 +267,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
   // connecting or disconnecting adds or cuts off an agent: the cached health and model lists go
-  const openrouter = new OpenRouterAccount(cfg, registry, { ...o.openrouter, onChange: () => void ((doctorCache = undefined), (modelsCache = undefined)) });
+  const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: () => void ((doctorCache = undefined), (modelsCache = undefined)) });
 
   const runView = (id: string) => {
     const s = store.state(id);

@@ -35,6 +35,8 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
 
   if (p === '/api/accounts' && m === 'GET') {
     const cli = await c.github.cliLogin();
+    const or = c.openrouter.account();
+    const orView = { setup: await c.openrouter.setupNeeded(), defaults: or ? c.openrouter.defaults() : null };
     const providers = PROVIDERS.map((d) => ({
       id: d.id,
       name: d.name,
@@ -44,6 +46,7 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
       ...(d.note ? { note: d.note } : {}),
       account: d.id === 'github' ? (c.github.account() ?? null) : d.id === 'openrouter' ? (c.openrouter.account() ?? null) : null,
       ...(d.id === 'github' ? { cli: cli ? { login: cli.login } : null, device: githubClientId(c.home) ? { ready: true } : { ready: false, setup: DEVICE_SETUP } } : {}),
+      ...(d.id === 'openrouter' ? orView : {}),
     }));
     return send(res, 200, { user: localUser(), providers }), true;
   }
@@ -55,6 +58,10 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
     return send(res, 200, started), true;
   }
   if (p === '/api/accounts/openrouter/flow' && m === 'GET') return send(res, 200, c.openrouter.flow()), true;
+  if (p === '/api/accounts/openrouter/crew' && m === 'POST') {
+    if (!c.openrouter.account()) throw new HttpError(409, 'connect OpenRouter first');
+    return send(res, 200, { bound: await c.openrouter.useForCrew() }), true;
+  }
   if (p === '/api/accounts/github/cli' && m === 'POST') {
     const account = await c.github.adoptCli().catch(asHttp);
     return send(res, 200, { account }), true;

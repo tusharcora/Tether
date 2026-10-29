@@ -1,10 +1,11 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { setAccount } from '../src/accounts/store.js';
 import { defaultRegistry } from '../src/adapters/index.js';
 import { loadConfig } from '../src/config.js';
-import { addEndpoint, keyRef, listProviders, removeEndpoint } from '../src/providers.js';
+import { addEndpoint, anyUsable, keyRef, listProviders, removeEndpoint } from '../src/providers.js';
 
 describe('providers', () => {
   it('adds and removes an endpoint, keeping the rest of the config file', () => {
@@ -44,5 +45,23 @@ describe('forgiving input', () => {
     expect(baseUrlOf('api.experimentallabs.ai')).toBe('https://api.experimentallabs.ai/v1');
     expect(baseUrlOf('https://x.io/custom/v2/')).toBe('https://x.io/custom/v2');
     expect(baseUrlOf('localhost:8000')).toBe('http://localhost:8000/v1');
+  });
+});
+
+describe('anything usable (first launch)', () => {
+  it('counts a healthy CLI, a running local server and an endpoint whose key is there; never mock or a keyless account', () => {
+    const home = mkdtempSync(join(tmpdir(), 'aorch-p-'));
+    const cfg = loadConfig({ home });
+    cfg.endpoints = { openrouter: { baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'account:openrouter' }, deepseek: { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'env:FM_TEST_UNSET_KEY' }, lan: { baseUrl: 'http://10.0.0.2:8000/v1' } };
+    const none = { mock: { ok: true }, claude: { ok: false }, ollama: { ok: false }, openrouter: { ok: true }, deepseek: { ok: true }, lan: { ok: false } };
+    expect(anyUsable(cfg, none)).toBe(false);
+    expect(anyUsable(cfg, { ...none, claude: { ok: true } })).toBe(true);
+    expect(anyUsable(cfg, { ...none, ollama: { ok: true } })).toBe(true);
+    expect(anyUsable(cfg, { ...none, lan: { ok: true } })).toBe(true);
+    vi.stubEnv('FM_TEST_UNSET_KEY', 'x');
+    expect(anyUsable(cfg, none)).toBe(true);
+    vi.unstubAllEnvs();
+    setAccount(home, 'openrouter', { provider: 'openrouter', login: 'Tether', scopes: [], via: 'browser', connectedAt: 1 });
+    expect(anyUsable(cfg, none)).toBe(true);
   });
 });

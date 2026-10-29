@@ -39,18 +39,38 @@ export interface ProviderRow {
   removable: boolean;
 }
 
+/** Is the endpoint's key there now: its env var set, its account connected, or a literal key. */
+function keySet(home: string, ep: EndpointConfig): boolean {
+  const k = ep.apiKey;
+  if (k?.startsWith('env:')) return !!process.env[k.slice(4)];
+  if (k?.startsWith('account:')) return !!accountOf(home, k.slice(8) as ProviderId);
+  return !!k;
+}
+
 export function listProviders(cfg: Config, registry: AdapterRegistry): ProviderRow[] {
   return registry.ids().map((id) => {
     const ep = cfg.endpoints[id];
     if (ep) {
       const keyEnv = ep.apiKey?.startsWith('env:') ? ep.apiKey.slice(4) : undefined;
-      const account = ep.apiKey?.startsWith('account:') ? (ep.apiKey.slice(8) as ProviderId) : undefined;
-      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keyEnv ? !!process.env[keyEnv] : account ? !!accountOf(cfg.home, account) : !!ep.apiKey, removable: true };
+      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keySet(cfg.home, ep), removable: true };
     }
     if (LOCAL_ENDPOINTS[id]) return { id, kind: 'local server', where: LOCAL_ENDPOINTS[id]!.baseUrl, removable: false };
     if (cfg.adapters[id]) return { id, kind: 'custom cli', where: cfg.adapters[id]!.command, removable: false };
     if (id === 'mock') return { id, kind: 'test', where: 'built in, no model', removable: false };
     return { id, kind: 'agent cli', where: id === 'claude' ? 'claude' : id, removable: false };
+  });
+}
+
+/**
+ * Can anything run a step now (free models spec §7.5): a healthy agent or custom CLI, a running local server, or a
+ * reachable endpoint whose key is there (or that needs none). `detected` is each adapter's detect(); mock never counts.
+ */
+export function anyUsable(cfg: Config, detected: Record<string, { ok: boolean }>): boolean {
+  return Object.entries(detected).some(([id, d]) => {
+    const ep = cfg.endpoints[id];
+    // OpenRouter's /models answers without a key, so a reachable endpoint is not enough
+    if (ep?.apiKey) return keySet(cfg.home, ep);
+    return d.ok && id !== 'mock';
   });
 }
 

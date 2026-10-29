@@ -1,5 +1,8 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyBindings, hintFor } from '../src/bindings.js';
+import { applyBindings, bindFree, hintFor, link, loadBindings } from '../src/bindings.js';
 import { registerCrew } from '../src/bots.js';
 import { BUILTIN_BOTS } from '../src/crew.js';
 
@@ -28,5 +31,19 @@ describe('model hints', () => {
     expect(hintFor('arch2', 'claude')).toBe('opus');
     expect(hintFor('arch2', 'codex')).toBeUndefined();
     expect(hintFor('coder', 'claude')).toBeUndefined();
+  });
+});
+
+describe('free defaults', () => {
+  it('binds the built-in model bots that have no binding, never one bound on purpose, the tester or the approver', () => {
+    const home = mkdtempSync(join(tmpdir(), 'aorch-b-'));
+    link(home, 'reviewer', { agent: 'claude' });
+    expect(bindFree(home, 'nvidia/nemotron-3.5-super-vl:free').sort()).toEqual(['architect', 'coder', 'manager', 'orchestrator', 'planner']);
+    const b = loadBindings(home);
+    expect(b.coder).toEqual({ agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' });
+    expect(b.reviewer).toEqual({ agent: 'claude' });
+    expect(b.tester).toBeUndefined();
+    expect(b.approval).toBeUndefined();
+    expect(bindFree(home, 'other:free')).toEqual([]);
   });
 });

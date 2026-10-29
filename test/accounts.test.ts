@@ -7,6 +7,7 @@ import { AccountError, DEVICE_SETUP, GithubAccount, ghExec, ghLogin, type Device
 import { accountKey } from '../src/accounts/keys.js';
 import { OpenRouterAccount } from '../src/accounts/openrouter.js';
 import { AdapterRegistry } from '../src/adapters/index.js';
+import { link, loadBindings } from '../src/bindings.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { authorizeUrl, challengeOf, checkCallback, loopbackRedirect, pkcePair, runPkceFlow } from '../src/accounts/pkce.js';
 import { PROVIDERS, providerOf } from '../src/accounts/registry.js';
@@ -410,6 +411,29 @@ describe('OpenRouter account', () => {
     expect(acct.account()).toBeUndefined();
   });
 
+  it('puts the crew on the free default only when nothing else can run; otherwise on request, never over a binding', async () => {
+    const models = JSON.parse(readFileSync(new URL('./fixtures/openrouter-models.json', import.meta.url), 'utf8'));
+    const f = (async (u: string) => new Response(JSON.stringify(String(u).endsWith('/models') ? models : { key: OR_KEY }), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
+    const nothing = tmp('home-');
+    link(nothing, 'reviewer', { agent: 'claude' });
+    const a = new OpenRouterAccount(cfgOf(nothing), new AdapterRegistry(), { fetch: f, store: memStore(), usable: async () => false });
+    await a.start(approve());
+    await until(() => a.flow().state === 'connected');
+    expect(a.flow()).toEqual({ state: 'connected', bound: ['orchestrator', 'planner', 'architect', 'coder', 'manager'] });
+    expect(loadBindings(nothing).coder).toEqual({ agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' });
+    expect(loadBindings(nothing).reviewer).toEqual({ agent: 'claude' });
+    expect(a.defaults()).toEqual({ crew: 'nvidia/nemotron-3.5-super-vl:free', assistant: 'nvidia/nemotron-3.5-super-vl:free', fallback: false });
+
+    const has = tmp('home-');
+    const b = new OpenRouterAccount(cfgOf(has), new AdapterRegistry(), { fetch: f, store: memStore(), usable: async () => true });
+    await b.start(approve());
+    await until(() => b.flow().state === 'connected');
+    expect(b.flow()).toEqual({ state: 'connected', bound: [] });
+    expect(loadBindings(has)).toEqual({});
+    expect(b.defaults()).toEqual({ fallback: false });
+    expect(await b.useForCrew()).toEqual(['orchestrator', 'planner', 'architect', 'coder', 'reviewer', 'manager']);
+  });
+
   it('over /api/accounts: starts the approval, reports the flow, disconnects; never the key', async () => {
     const store = memStore();
     const { f } = fakeExchange();
@@ -421,14 +445,22 @@ describe('OpenRouter account', () => {
       bodies.push(r.text);
       return r;
     };
-    expect((await call('GET', '/api/accounts')).json.providers[0]).toMatchObject({ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', account: null });
+    // the test server's only agent is mock: nothing can run, so Home offers free models
+    expect((await call('GET', '/api/accounts')).json.providers[0]).toMatchObject({ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', account: null, setup: true, defaults: null });
+    expect((await call('POST', '/api/accounts/openrouter/crew')).status).toBe(409);
     const started = await call('POST', '/api/accounts/openrouter');
     expect(started.json.url).toMatch(/^https:\/\/openrouter\.ai\/auth\?/);
     expect((await call('GET', '/api/accounts/openrouter/flow')).json).toEqual({ state: 'pending', url: started.json.url });
     await approve()(started.json.url);
     await until(() => store.items.has('openrouter'));
     expect((await call('GET', '/api/accounts/openrouter/flow')).json.state).toBe('connected');
-    expect((await call('GET', '/api/accounts')).json.providers[0].account).toMatchObject({ provider: 'openrouter', via: 'browser', login: 'Tether' });
+    const connected = (await call('GET', '/api/accounts')).json.providers[0];
+    expect(connected.account).toMatchObject({ provider: 'openrouter', via: 'browser', login: 'Tether' });
+    expect(connected.setup).toBe(false);
+    // nothing could run, so the unbound bots went free at connect; those the test server bound to mock stayed
+    expect((await call('GET', '/api/accounts/openrouter/flow')).json).toEqual({ state: 'connected', bound: ['architect', 'manager'] });
+    expect(connected.defaults).toEqual({ crew: 'nvidia/nemotron-3.5-super-vl:free', fallback: false });
+    expect((await call('POST', '/api/accounts/openrouter/crew')).json).toEqual({ bound: [] });
     expect((await call('DELETE', '/api/accounts/openrouter')).json).toEqual({ ok: true });
     expect(store.items.size).toBe(0);
     for (const b of bodies) expect(b).not.toContain(OR_KEY);
