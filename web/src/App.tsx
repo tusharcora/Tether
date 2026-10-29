@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
-import { chatsPath, type ChatSummary } from './assistant/api';
+import { assistantApi, chatsPath, type ChatSummary } from './assistant/api';
 import { Assistant } from './assistant/Assistant';
-import { assistantApi } from './assistant/api';
 import { useActiveChat, useAssistant } from './assistant/useAssistant';
 import { useAssistantShell } from './assistant/useAssistantShell';
 import { contextOf } from './assistant/context';
