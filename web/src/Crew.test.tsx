@@ -24,6 +24,9 @@ const routes = {
   'PUT /api/crew/go-reviewer': {},
   'POST /api/crew/import': { ref: 'v2.2.3', added: ['go-reviewer'], updated: [], removed: [], skipped: [], notes: [], skills: 1, commands: 1 },
   'DELETE /api/crew': { removed: ['go-reviewer'] },
+  // the bot as a teammate (Teams), on its card
+  'GET /api/agents/coder': { bot: 'coder', profile: {}, lessons: [], teams: [], recent: [] },
+  'GET /api/agents/go-reviewer': { bot: 'go-reviewer', profile: {}, lessons: [], teams: [], recent: [] },
 };
 const goBot = { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', persona: '', look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go' };
 const twoBots = () =>
@@ -438,7 +441,7 @@ describe('crew sources and faces', () => {
       renderApp(<Crew />);
       fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
       expect(calls('GET', '/api/crew/go-reviewer')).toHaveLength(1);
-      const persona = (await screen.findByLabelText(/Persona/)) as HTMLTextAreaElement;
+      const persona = (await screen.findByLabelText(/Persona \(/)) as HTMLTextAreaElement;
       await waitFor(() => expect(persona.value).toBe(full));
       expect(persona.readOnly).toBe(false);
       expect(screen.getByText('From ECC; an update replaces your edits')).toBeTruthy();
@@ -453,7 +456,7 @@ describe('crew sources and faces', () => {
       renderApp(<Crew />);
       fireEvent.click(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
       expect(await screen.findByText('Showing the first 2000 characters; edits are disabled until the full text loads')).toBeTruthy();
-      const persona = screen.getByLabelText(/Persona/) as HTMLTextAreaElement;
+      const persona = screen.getByLabelText(/Persona \(/) as HTMLTextAreaElement;
       expect(persona.readOnly).toBe(true);
       fireEvent.change(persona, { target: { value: 'lost edit' } });
       fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'gopher' } });
