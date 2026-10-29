@@ -180,6 +180,27 @@ describe('POST /api/assistant', () => {
     expect(readChat(t.home, 'api', chat!)).toBeUndefined();
   });
 
+  it('lists the chats newest first, searches them, renames and deletes one', async () => {
+    const t = await boot();
+    const a = await t.turn({ message: 'why did the readme run fail?' });
+    t.agent.reply = 'Here is a plan.\n```tether\n{"proposals":[{"kind":"team","task":"fix it"}]}\n```';
+    const b = await t.turn({ message: 'plan the teams feature' });
+    const list = (await t.call('GET', '/api/assistant/chats?ws=api')).json.chats;
+    expect(list.map((c: { id: string }) => c.id)).toEqual([b.chat, a.chat]);
+    expect(list[0]).toMatchObject({ title: 'plan the teams feature', kind: 'needs', count: 2, last: 'Here is a plan.' });
+    expect((await t.call('GET', '/api/assistant/chats?ws=api&q=README')).json.chats.map((c: { id: string }) => c.id)).toEqual([a.chat]);
+    const renamed = await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: '  The README run  ' });
+    expect(renamed.json.chat).toMatchObject({ id: a.chat, title: 'The README run' });
+    expect((await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: ' ' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: 'x'.repeat(121) })).status).toBe(400);
+    expect((await t.call('PATCH', '/api/assistant/chats/allow', { ws: 'api', title: 'x' })).status).toBe(400);
+    // a rename does not move the chat up the list
+    expect((await t.call('GET', '/api/assistant/chats?ws=api')).json.chats[1].title).toBe('The README run');
+    expect((await t.call('DELETE', `/api/assistant/chats/${a.chat}?ws=api`)).json).toEqual({ ok: true });
+    expect((await t.call('DELETE', `/api/assistant/chats/${a.chat}?ws=api`)).status).toBe(404);
+    expect((await t.call('GET', '/api/assistant/chats?ws=api')).json.chats.length).toBe(1);
+  });
+
   it('offers OpenRouter beside the bound agent, and a turn that names it runs there without the bound model', async () => {
     const t = await boot();
     link(t.home, 'orchestrator', { agent: 'scripted', model: 'm1' });

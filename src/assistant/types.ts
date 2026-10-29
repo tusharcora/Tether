@@ -97,6 +97,31 @@ export interface ChatView {
   openrouter?: boolean;
 }
 
+/** One step of what a chat led to: the question, a proposal, the run it started. Tones match the action nodes'. */
+export interface OutcomeNode {
+  kind: 'Asked' | 'Proposal' | 'Run';
+  label: string;
+  /** "answered", "waiting on you", "running", "done · $0.12", "failed"… */
+  state: string;
+  tone: 'live' | 'needs' | 'done' | 'failed' | 'idle';
+  runId?: string;
+}
+
+/** GET /api/assistant/chats: one chat as All chats, the sidebar and the switcher list it, with its runs' live state. */
+export interface ChatSummary {
+  id: string;
+  title: string;
+  updated: number;
+  count: number;
+  /** The first line of Tether's last reply. */
+  last: string;
+  kind: 'live' | 'needs' | 'done' | 'failed' | 'answer';
+  outcome: OutcomeNode[];
+  /** Crew bots that worked on its runs. */
+  faces: string[];
+  cites: Cite[];
+}
+
 /** The server-sent events of one turn (POST /api/assistant). */
 export type StreamEvent =
   /** `chat`: the chat the turn is in (made by this message when none was named). */

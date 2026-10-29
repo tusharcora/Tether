@@ -8,12 +8,15 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
-import { isChatId, loadAllow, readChat, saveAllow, saveChat, type Chat } from './history.js';
+import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
+import { matches, summarize } from './summary.js';
 import { assistantAgent, mid, runTurn, type AssistantCtx, type TurnBody } from './turn.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ChatMessage, type ChatView, type Proposal, type StreamEvent } from './types.js';
 
 const wsOf = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 const rootOf = (c: AssistantCtx, ws: string | undefined) => (ws ? projectRoot(c.home, ws) : undefined);
+/** The run store by id, for the summaries' live run states. */
+const runsOf = (c: AssistantCtx) => new Map(c.store.listRows().map((r) => [r.summary.id, r]));
 
 function parseBody(b: Record<string, unknown>): TurnBody {
   if (typeof b.message !== 'string' || !b.message.trim()) throw new HttpError(400, '"message" is required');
@@ -87,6 +90,33 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     }
     res.end();
     return true;
+  }
+
+  if (p === '/api/assistant/chats' && m === 'GET') {
+    const ws = wsOf(url.searchParams.get('ws'));
+    rootOf(c, ws);
+    const q = (url.searchParams.get('q') ?? '').slice(0, 200);
+    const rows = runsOf(c);
+    return send(res, 200, { chats: listChats(c.home, ws).filter((x) => matches(x, q)).map((x) => summarize(x, rows, c.engine)) }), true;
+  }
+
+  if ((g = p.match(/^\/api\/assistant\/chats\/([^/]+)$/)) && (m === 'PATCH' || m === 'DELETE')) {
+    const id = decodeURIComponent(g[1]!);
+    if (m === 'DELETE') {
+      const ws = wsOf(url.searchParams.get('ws'));
+      rootOf(c, ws);
+      if (!isChatId(id)) throw new HttpError(400, 'not a chat id');
+      if (!deleteChat(c.home, ws, id)) throw new HttpError(404, 'unknown chat');
+      return send(res, 200, { ok: true }), true;
+    }
+    const b = reqObject(await readJson(req));
+    const ws = wsOf(b.ws);
+    rootOf(c, ws);
+    const chat = chatIn(c, ws, id);
+    const title = typeof b.title === 'string' ? b.title.replace(/\s+/g, ' ').trim() : '';
+    if (!title || title.length > TITLE_MAX) throw new HttpError(400, `"title" is 1 to ${TITLE_MAX} characters`);
+    saveChat(c.home, ws, { ...chat, title });
+    return send(res, 200, { chat: summarize({ ...chat, title }, runsOf(c), c.engine) }), true;
   }
 
   if (p === '/api/assistant/proposals' && m === 'POST') {
