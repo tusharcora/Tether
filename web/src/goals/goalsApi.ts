@@ -63,5 +63,11 @@ export function goalMeta(g: GoalView): string {
   return `${check} · ${state} · ${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)}`;
 }
 
+/** The muted line under a goal in the list: its kind and how far it has come. */
+export function goalLine(g: GoalView): string {
+  if (g.kind === 'tracker') return `tracker · ${g.items.filter((i) => i.done || i.runStatus === 'done').length} of ${g.items.length} done`;
+  return `loop · ${g.items.filter((i) => i.kind === 'run').length} of ${g.maxRuns} runs`;
+}
+
 /** The goals of one project (every goal when none is open). */
 export const inProject = <T extends { workspace: string }>(goals: T[] | undefined, ws: string | undefined): T[] => (goals ?? []).filter((g) => !ws || g.workspace === ws);

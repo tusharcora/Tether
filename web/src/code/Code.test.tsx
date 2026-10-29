@@ -52,10 +52,12 @@ const openA = async () => {
 };
 
 describe('Code screen', () => {
-  it('says where it is: project path, file count and files changed by runs', async () => {
+  it('says where it is: the project, its file count and the files runs changed', async () => {
     setup();
-    expect(await screen.findByText('/code/shop · 4 files · 1 changed by runs')).toBeTruthy();
+    expect(await screen.findByText('4 files · 1 changed by runs')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Code' })).toBeTruthy();
+    expect(screen.getByText('shop').getAttribute('title')).toBe('/code/shop');
+    expect(screen.getByText('changed by a run in 30 days')).toBeTruthy();
     expect(screen.getByText('Pick a file')).toBeTruthy();
   });
 
@@ -88,6 +90,26 @@ describe('Code screen', () => {
     expect(cssRule('code/code.css', '.code-tree-list [role="treeitem"]:not([aria-selected="true"])')).toContain('background-color: transparent');
   });
 
+  it('draws a guide line for every level, git badges as tinted letters and the run dot in blue', async () => {
+    routeApi({
+      ...routes,
+      'GET /api/code/tree?ws=shop&dir=src': { entries: [{ name: 'http', path: 'src/http', kind: 'dir' }, { name: 'a.ts', path: 'src/a.ts', kind: 'file', git: 'M' }], git: true },
+      'GET /api/code/tree?ws=shop&dir=src%2Fhttp': { entries: [{ name: 'c.ts', path: 'src/http/c.ts', kind: 'file' }], git: true },
+      'GET /api/code/file?ws=shop&path=src%2Fhttp%2Fc.ts': file({ path: 'src/http/c.ts' }),
+      'GET /api/code/runs-for-file?ws=shop&path=src%2Fhttp%2Fc.ts': [],
+    });
+    setup({ path: 'src/http/c.ts' });
+    const tree = await screen.findByRole('tree', { name: 'Files' });
+    const guides = (el: HTMLElement) => el.querySelectorAll(':scope > span.w-px').length;
+    expect(guides(await within(tree).findByRole('treeitem', { name: /c\.ts/ }))).toBe(2);
+    expect(guides(within(tree).getByRole('treeitem', { name: /a\.ts/ }))).toBe(1);
+    expect(guides(within(tree).getByRole('treeitem', { name: /^src/ }))).toBe(0);
+    expect(cssRule('code/code.css', '.code-git.g-mod')).toContain('background: var(--warnBg)');
+    expect(cssRule('code/code.css', '.code-git.g-add')).toContain('background: var(--okBg)');
+    expect(() => cssRule('code/code.css', '.code-git.g-del')).toThrow();
+    expect(cssRule('code/code.css', '.code-run-dot')).toContain('background: var(--acc)');
+  });
+
   it('keeps the vendored MIT notice', () => {
     expect(readFileSync(new URL('../components/beui/motion/file-tree.tsx', here), 'utf8')).toMatch(/MIT License, Copyright \(c\) 2026 Saurabh Chauhan/);
     expect(readFileSync(new URL('../components/beui/motion/shared-layout-bg.tsx', here), 'utf8')).toMatch(/MIT License, Copyright \(c\) 2026/);
@@ -108,6 +130,52 @@ describe('Code screen', () => {
     expect(calls('PUT', '/api/code/file')[0]![2]).toEqual({ ws: 'shop', path: 'src/a.ts', text: `// note\n${A}`, baseMtimeMs: 100 });
     expect(await screen.findByText('Saved a.ts')).toBeTruthy();
     expect(screen.getByRole('tab', { name: /a\.ts/ }).textContent).not.toContain('unsaved');
+  });
+
+  it('lays out the card: tabs with icons, the path as crumbs, and a status bar', async () => {
+    await openA();
+    const card = screen.getByRole('region', { name: 'Editor' });
+    expect(screen.getByRole('tab', { name: 'a.ts' }).querySelector('svg')).toBeTruthy();
+    expect([...card.querySelectorAll('.code-path .code-crumb')].map((c) => c.textContent)).toEqual(['src', 'a.ts']);
+    const status = () => card.querySelector('.code-status')!.textContent!;
+    for (const s of ['saved', 'Ln 1, Col 1', '3 lines', 'TypeScript', 'UTF-8']) expect(status()).toContain(s);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+    type('x');
+    expect(status()).toContain('unsaved');
+  });
+
+  it('keeps Edit and Save visible with many tabs: the tabs scroll inside the header, a long path ellipsizes', () => {
+    const rule = (sel: string) => cssRule('code/code.css', sel);
+    expect(rule('.code-tablist')).toContain('overflow-x: auto');
+    expect(rule('.code-tab-actions')).toContain('flex: none');
+    for (const p of ['min-width: 0', 'overflow: hidden', 'text-overflow: ellipsis']) expect(rule('.code-crumbs')).toContain(p);
+    // × shows on hover, on the open tab, and whenever the keyboard is in the tab
+    expect(rule('.code-tab:hover .code-tab-close, .code-tab.on .code-tab-close, .code-tab:focus-within .code-tab-close')).toContain('opacity: 1');
+  });
+
+  it('closing the runs panel or switching files clears the picked run', async () => {
+    setup({ path: 'src/a.ts' });
+    await waitFor(() => expect(editorText()).toBe(A));
+    const chip = await screen.findByRole('button', { name: '2 runs touched it' });
+    const pick = async () => {
+      fireEvent.click(chip);
+      fireEvent.click(await screen.findByRole('button', { name: /Tune the window/ }));
+      await waitFor(() => expect(document.querySelectorAll('.cm-run-line')).toHaveLength(1));
+    };
+    await pick();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Runs on this file' }));
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
+    await pick();
+    // the panel follows the open file
+    fireEvent.click(within(screen.getByRole('tree')).getByRole('treeitem', { name: /b\.ts/ }));
+    await waitFor(() => expect(editorText()).toBe('b\n'));
+    const dock = screen.getByRole('complementary', { name: 'Runs on this file' });
+    expect(within(dock).getByText('b.ts')).toBeTruthy();
+    expect(await within(dock).findByText('No run has changed this file yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'a.ts' }));
+    await waitFor(() => expect(editorText()).toBe(A));
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
   });
 
   it('saves with ⌘S and reports unsaved work to the shell', async () => {
@@ -146,6 +214,7 @@ describe('Code screen', () => {
     const p = setup({ path: 'src/a.ts' });
     const banner = (await screen.findByText(/Bolt is editing/)).closest<HTMLElement>('[role="status"]')!;
     expect(banner.textContent).toMatch(/Bolt is editing files in this folder in run r-9\. Saving is paused/);
+    expect(within(banner).getByRole('img', { name: 'Bolt' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     type('x');
     expect(screen.getByRole('button', { name: /Save/ }).hasAttribute('disabled')).toBe(true);
@@ -155,7 +224,9 @@ describe('Code screen', () => {
 
   it('lists the runs that changed the file; picking one marks its lines and shows its diff', async () => {
     const p = setup({ path: 'src/a.ts' });
-    const lens = await screen.findByRole('region', { name: 'Changed by runs' });
+    fireEvent.click(await screen.findByRole('button', { name: '2 runs touched it' }));
+    const lens = screen.getByRole('complementary', { name: 'Runs on this file' });
+    expect(within(lens).getByText('a.ts')).toBeTruthy();
     const tune = await within(lens).findByRole('button', { name: /Tune the window/ });
     expect(tune.textContent).toContain('+1');
     expect(tune.textContent).toContain('running');
@@ -168,6 +239,14 @@ describe('Code screen', () => {
     fireEvent.click(within(lens).getByRole('button', { name: 'Open run' }));
     expect(p.onOpenRun).toHaveBeenCalledWith('r-2');
     fireEvent.click(tune);
+    expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
+  });
+
+  it('marks every run’s lines in the gutter without a pick: blue while live, green when done', async () => {
+    await openA();
+    const gutter = (cls: string) => [...document.querySelectorAll(`.cm-gutterElement.${cls}`)].map((e) => e.textContent);
+    await waitFor(() => expect(gutter('cm-run-live')).toEqual(['3']));
+    expect(gutter('cm-run-done')).toEqual(['1', '2']);
     expect(document.querySelectorAll('.cm-run-line')).toHaveLength(0);
   });
 
@@ -202,6 +281,8 @@ describe('Code screen', () => {
     expect(await screen.findByText(/Secrets file: read-only here/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Read-only' }).hasAttribute('disabled')).toBe(true);
     await waitFor(() => expect(editorText()).toBe('K=1\n'));
+    expect(document.querySelector('.code-status')!.textContent).toContain('read-only');
+    expect(document.querySelector('.code-status')!.textContent).toMatch(/1 line(?!s)/);
   });
 
   it('shows a file over 2 MB as a panel instead of the editor', async () => {
@@ -224,12 +305,14 @@ describe('Code screen', () => {
     expect(screen.getByText('Pick a file')).toBeTruthy();
   });
 
-  it('says when the folder is empty, and when it is not a git repo hides badges, filter and the runs lens', async () => {
+  it('says when the folder is empty, and when it is not a git repo hides badges, filter, legend and the runs chip', async () => {
     routeApi({ ...routes, 'GET /api/code/tree?ws=shop&dir=': { entries: [], git: false } });
-    setup();
+    setup({ path: 'src/a.ts' });
     expect(await screen.findByText('This folder is empty.')).toBeTruthy();
     expect(screen.getByText(/Not a git repository/)).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Changed by runs' })).toBeNull();
+    await waitFor(() => expect(editorText()).toBe(A));
+    expect(screen.queryByRole('button', { name: /touched it/ })).toBeNull();
+    expect(screen.queryByText('changed by a run in 30 days')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Changed by runs' })).toBeNull();
   });
 
@@ -241,17 +324,15 @@ describe('Code screen', () => {
     expect(within(tree).getAllByRole('treeitem').map((t) => t.querySelector('.code-row-name')!.textContent)).toEqual(['src', 'a.ts']);
   });
 
-  it('is bounded to the shell’s main area: the header stays, and the tree, the editor and the lens each scroll inside themselves', async () => {
+  it('is bounded to the screen: the tree dock and the editor card each scroll inside themselves', async () => {
     const rule = (sel: string) => cssRule('code/code.css', sel);
-    // the screen fills main exactly and never makes main (or the page) scroll
-    for (const p of ['height: 100%', 'grid-template-rows: auto minmax(0,1fr)', 'min-height: 0', 'overflow: hidden']) expect(rule('.code')).toContain(p);
-    for (const p of ['grid-template-rows: minmax(0,1fr)', 'min-height: 0', 'overflow: hidden']) expect(rule('.code-grid')).toContain(p);
-    // columns: clipped flex columns with one scroller each
-    for (const sel of ['.code-tree', '.code-main']) for (const p of ['min-height: 0', 'overflow: hidden']) expect(rule(sel), sel).toContain(p);
+    // the tree dock and the editor card float on the frame: clipped flex columns with one scroller each
+    for (const sel of ['.code-tree', '.code-main']) for (const p of ['position: absolute', 'min-height: 0', 'overflow: hidden']) expect(rule(sel), sel).toContain(p);
+    // the runs dock takes the right edge, so the card stops short of it
+    expect(rule('.code.docked .code-main')).toContain('right: 352px');
     for (const p of ['flex: 1', 'min-height: 0', 'overflow: auto']) expect(rule('.code-pane')).toContain(p);
     for (const p of ['flex: 1', 'min-height: 0', 'overflow: hidden']) expect(rule('.code-editor-wrap')).toContain(p);
     for (const p of ['position: absolute', 'inset: 0']) expect(rule('.code-editor')).toContain(p);
-    for (const p of ['min-height: 0', 'overflow: auto']) expect(rule('.code-lens')).toContain(p);
     // the scrollers' contents never scroll on their own (a second scroller would grow the column instead)
     expect(rule('.code-tree-list')).not.toContain('overflow');
     expect(rule('.code-hits')).not.toContain('overflow');

@@ -1,44 +1,56 @@
-/* Goals: rows on the left, the open goal on the right. Tokens only; only live parts move. */
-.goals { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); height: 100%; min-height: 0; }
-.goals-list { display: flex; flex-direction: column; min-height: 0; overflow: auto; border-right: 1px solid var(--line); background: var(--s1); }
-.goals-list .sl-screen-header { padding: 16px 16px 8px; }
-.goals-list .sl-screen-header h1 { font-size: 18px; }
-.goals-tabs { padding: 0 16px 8px; }
-.goals-rows { padding: 0 8px 16px; }
-.goal-row.current { background: var(--s2); }
-.goal-row .sl-row-extra { padding-top: 2px; }
-.goal-detail { min-width: 0; min-height: 0; overflow: auto; }
-.goal-none { padding: 48px 24px; }
+/* Goals in the tool frame (mockup docs/design/CodeGoals.html #goals): the rows dock on the left, the open goal's title and
+   actions float at the top, a loop runs down the canvas, its limits float at the bottom; settings and new goal dock right.
+   Tokens only; only live parts move. */
+.gl-list { position: absolute; z-index: 5; top: 64px; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; width: 236px; padding: 10px; overflow: auto; border-radius: 14px; background: var(--s1); box-shadow: var(--tf-float); }
+.gl-head { display: flex; flex-direction: column; gap: 8px; padding: 2px 4px 6px; }
+.gl-head h1, .gl-title, .gl-dock-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+/* rows without a lead: title and badge, the line, then the bar (and Approve) across */
+.gl-list .sl-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main side" "extra extra"; gap: 4px 8px; padding: 9px 8px; border-top: 0; }
+.gl-list .sl-row-lead { display: none; }
+.gl-row.current { background: var(--s2); }
+.gl-new { flex: none; padding: 9px 8px; border: 0; border-radius: 8px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.gl-new:hover { background: var(--s2); color: var(--ink); }
+
+.gl-screen > .gl-titlebar { left: 268px; max-width: max(240px, calc(100% - 760px)); }
+.gl-title { min-width: 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-kind { min-width: 0; overflow: hidden; font-size: 12px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
+.gl-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* the canvas: the flow (or the checklist card) centred on the dots, scrolling inside */
+.gl-canvas { position: absolute; top: 64px; left: 268px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: auto; padding: 16px 16px 40px; }
+.gl-canvas.loop { bottom: 84px; }
+.gl-screen.docked .gl-canvas { right: 352px; }
+.gl-canvas > * { flex: none; max-width: 100%; }
+.gl-canvas .gt { box-sizing: border-box; width: 480px; padding: 14px; border-radius: 14px; background: var(--s1); box-shadow: var(--tf-float); }
+
+/* the limits: a small bar at the bottom centre that stays clear of the assistant launcher */
+.gl-limits { max-width: calc(100% - 2 * var(--tf-launcher)); padding: 8px 14px; }
+.gl-limits-in { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.gl-limit { display: flex; flex-direction: column; gap: 4px; min-width: 140px; font-size: 12px; color: var(--mut); }
+.gl-limit-top { display: flex; justify-content: space-between; gap: 10px; }
+.gl-limit-top b { font-weight: 500; color: var(--ink); }
+
 @media (max-width: 899px) {
-  .goals { display: block; height: auto; }
-  .goals-list { border-right: 0; border-bottom: 1px solid var(--line); }
+  .gl-screen { overflow: auto; }
+  .gl-screen > .tf-bar, .gl-screen > .gl-titlebar, .gl-list, .gl-canvas, .gl-canvas.loop { position: relative; inset: auto; transform: none; width: auto; max-width: none; margin: 8px; }
+  .gl-list { max-height: 40vh; }
+  .gl-canvas { overflow: visible; }
 }
 
 .mut { color: var(--mut); }
-.goals .mono, .nod-title .mono { font-family: var(--font-code); }
+.gl-screen .mono, .nod-title .mono { font-family: var(--font-code); }
 
-/* a 3 px bar: the list's progress, the budget meter, a checklist's progress */
+/* a 3 px bar: a row's progress, the limits, a checklist's progress */
 .goal-bar, .gt-bar { display: block; height: 3px; border-radius: 2px; background: var(--line2); overflow: hidden; }
 .goal-bar > span, .gt-bar > span { display: block; height: 100%; background: var(--ink); transition: width var(--t-med) var(--ease); }
 .goal-bar > span.met { background: var(--ok); }
 
 /* an approval is visible: amber, because the run waits for you (the text is the page colour on amber, AA in both themes) */
-.goal-approve { height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--warn); color: var(--bg); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.goal-approve { align-self: flex-start; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--warn); color: var(--bg); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .goal-approve:hover:not(:disabled) { opacity: 0.88; }
 .goal-approve:disabled { opacity: 0.5; cursor: default; }
 .goal-approve:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
-.gd-wrap { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 32px; min-width: 0; }
-.gd-head { display: flex; flex-direction: column; gap: 6px; }
-.gd-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.gd-title h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
-.gd-limits { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--s1); }
-.gd-limit { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 12px; }
-.gd-limit .mono { font-size: 12px; color: var(--ink); }
-
-/* the dot grid, cut from a solid fill by a mask (no gradient fill), as the pipeline canvas draws it */
-.gd-grid { position: relative; display: flex; justify-content: center; padding: 64px 72px 48px; border: 1px solid var(--line); border-radius: var(--radius-panel); background-color: var(--bg); }
-.gd-grid::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--grid); -webkit-mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); mask-image: radial-gradient(circle, black 1.2px, transparent 1.4px); -webkit-mask-size: 24px 24px; mask-size: 24px 24px; }
 .goal-flow { position: relative; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 0; list-style: none; max-width: 100%; }
 .goal-flow > li { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 .gf-link { width: 2px; height: 24px; background: var(--edge); }
@@ -55,6 +67,8 @@
 .gd, .gd-check { display: flex; flex-direction: column; gap: 14px; }
 .gd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .gd .row.between { justify-content: space-between; }
+.gd-note { margin: 0; font-size: 12.5px; }
+.gd-ask { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 13px; line-height: 1.5; }
 
 /* a tracker */
 .gt { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
@@ -68,4 +82,3 @@
 @media (prefers-reduced-motion: reduce) {
   .goal-bar > span, .gt-bar > span { transition: none; }
 }
-.goal-tracker-glyph { color: var(--ink2); }

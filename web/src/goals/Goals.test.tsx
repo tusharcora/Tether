@@ -7,7 +7,7 @@ import { calls, routeApi } from '../test/fixtures';
 import { cssText } from '../test/css';
 import { renderApp } from '../test/render';
 import { Goals, type GoalsProps } from './Goals';
-import { glyphOf, goalMeta, type GoalView } from './goalsApi';
+import { glyphOf, goalLine, goalMeta, type GoalView } from './goalsApi';
 import { GoalsNeedYou } from './GoalsNeedYou';
 
 const fail = { ok: false, at: 1, summary: '1 failing · 11 passing', failing: 1, passing: 11, tail: 'FAIL login' };
@@ -39,6 +39,8 @@ describe('goal labels', () => {
     expect(goalMeta(loop())).toBe('1 failing · 11 passing · run 2 awaiting approval · $1.20 of $5.00');
     expect(goalMeta(tracker())).toBe('1 of 2 done · due 2026-11-15');
     expect(goalMeta(loop({ status: 'stopped', reason: 'Budget reached' }))).toBe('Budget reached · 1 run');
+    expect(goalLine(loop())).toBe('loop · 1 of 4 runs');
+    expect(goalLine(tracker())).toBe('tracker · 1 of 2 done');
   });
 });
 
@@ -48,21 +50,87 @@ describe('the rows', () => {
     routeApi({ 'POST /api/goals/g1/next': (b: unknown) => ({ ...loop({ status: 'active', pending: undefined }), b }) });
     const onSelect = vi.fn();
     renderApp(<Goals {...props([loop(), tracker(), loop({ id: 'g3', title: 'README covers the CLI', status: 'met' })], { onSelect, goals: { goals: [loop(), tracker(), loop({ id: 'g3', title: 'README covers the CLI', status: 'met' })], error: undefined, set, drop: vi.fn() } })} />);
-    expect(screen.getByText('Login tests green')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Approve run' }));
+    const list = screen.getByRole('complementary', { name: 'Goals' });
+    expect(within(list).getByText('Login tests green')).toBeTruthy();
+    fireEvent.click(within(list).getByRole('button', { name: 'Approve run' }));
     await waitFor(() => expect(calls('POST', '/api/goals/g1/next')[0]?.[2]).toEqual({ action: 'start' }));
     await waitFor(() => expect(set).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: 'Login tests green' }));
+    fireEvent.click(within(list).getByRole('button', { name: 'Login tests green' }));
     expect(onSelect).toHaveBeenCalledWith('g1');
-    fireEvent.click(screen.getByRole('button', { name: /^Met/ }));
-    expect(screen.queryByText('Ship v2 auth')).toBeNull();
-    expect(screen.getByText('README covers the CLI')).toBeTruthy();
+    fireEvent.click(within(list).getByRole('button', { name: /^Met/ }));
+    expect(within(list).queryByText('Ship v2 auth')).toBeNull();
+    expect(within(list).getByText('README covers the CLI')).toBeTruthy();
   });
 
   it('shows Goals waiting for you on Home and the Inbox, with the same Approve', () => {
     routeApi({});
     renderApp(<GoalsNeedYou goals={[loop(), loop({ id: 'g2', status: 'active', pending: undefined })]} onGo={vi.fn()} onDone={vi.fn()} />);
     expect(screen.getAllByRole('button', { name: 'Approve run' })).toHaveLength(1);
+  });
+});
+
+describe('the frame', () => {
+  it('docks the list left and shows the first goal when none is picked, without a route change', () => {
+    routeApi({});
+    const onSelect = vi.fn();
+    renderApp(<Goals {...props([loop(), tracker()], { onSelect })} />);
+    const list = screen.getByRole('complementary', { name: 'Goals' });
+    expect(within(list).getByText('loop · 1 of 4 runs')).toBeTruthy();
+    expect(within(list).getByText('tracker · 1 of 2 done')).toBeTruthy();
+    expect(within(list).getByRole('progressbar', { name: 'Login tests green budget used' }).getAttribute('aria-valuenow')).toBe('24');
+    expect(within(list).getByRole('progressbar', { name: 'Ship v2 auth progress' }).getAttribute('aria-valuenow')).toBe('50');
+    expect(screen.getByRole('heading', { level: 2, name: 'Login tests green' })).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('an unknown id shows the first goal', () => {
+    routeApi({});
+    renderApp(<Goals {...props([tracker(), loop()], { selected: 'gone' })} />);
+    expect(screen.getByRole('heading', { level: 2, name: 'Ship v2 auth' })).toBeTruthy();
+  });
+
+  it('puts the goal actions in the top bar and the limits at the bottom', async () => {
+    const active = loop({ status: 'active', pending: undefined });
+    routeApi({ 'PATCH /api/goals/g1': (b: object) => ({ ...active, ...b }) });
+    renderApp(<Goals {...props([active], { selected: 'g1' })} />);
+    const limits = screen.getByRole('group', { name: 'Limits' });
+    expect(within(limits).getByRole('progressbar', { name: 'Budget used' }).getAttribute('aria-valuenow')).toBe('24');
+    expect(within(limits).getByRole('progressbar', { name: 'Runs used' }).getAttribute('aria-valuenow')).toBe('25');
+    fireEvent.click(within(limits).getByRole('button', { name: 'Auto' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ approval: 'auto' }));
+    const bar = screen.getByRole('group', { name: 'Goal actions' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Pause goal' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[1]?.[2]).toEqual({ status: 'paused' }));
+    expect(within(bar).getByRole('button', { name: 'Stop' })).toBeTruthy();
+    // Duplicate shows where today offers it: a loop with a proposed next run
+    expect(within(bar).queryByRole('button', { name: 'Duplicate' })).toBeNull();
+    expect(within(bar).getAllByRole('button').at(-1)!.textContent).toBe('+ New goal');
+    fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
+    expect(screen.getByRole('complementary', { name: 'Goal settings' })).toBeTruthy();
+  });
+
+  it('deletes from the Settings dock after asking', async () => {
+    const drop = vi.fn();
+    const onSelect = vi.fn();
+    routeApi({ 'PATCH /api/goals/g1': (b: object) => ({ ...loop(), ...b }), 'DELETE /api/goals/g1': {} });
+    renderApp(<Goals {...props([loop()], { selected: 'g1', onSelect, goals: { goals: [loop()], error: undefined, set: vi.fn(), drop } })} />);
+    const bar = screen.getByRole('group', { name: 'Goal actions' });
+    expect(within(bar).getByRole('button', { name: 'Duplicate' })).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
+    let dock = screen.getByRole('complementary', { name: 'Goal settings' });
+    fireEvent.change(within(dock).getByLabelText('Budget ($)'), { target: { value: '8' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 8, maxRuns: 4, dueDate: null }));
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Goal settings' })).toBeNull());
+    fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
+    dock = screen.getByRole('complementary', { name: 'Goal settings' });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Delete goal…' }));
+    expect(within(dock).getByText('Delete Login tests green?')).toBeTruthy();
+    fireEvent.click(within(dock).getByRole('button', { name: 'Delete goal' }));
+    await waitFor(() => expect(calls('DELETE', '/api/goals/g1')).toHaveLength(1));
+    expect(drop).toHaveBeenCalledWith('g1');
+    expect(onSelect).toHaveBeenCalledWith();
+    expect(screen.queryByRole('complementary', { name: 'Goal settings' })).toBeNull();
   });
 });
 
@@ -112,7 +180,7 @@ describe('the loop flow', () => {
 });
 
 describe('the tracker', () => {
-  it('ticks manual items, adds one, and offers to become a loop', async () => {
+  it('ticks manual items, adds one, and turns into a loop from the bar', async () => {
     routeApi({ 'PATCH /api/goals/t1/items/2': { id: 2 }, 'POST /api/goals/t1/items': { id: 3 }, 'GET /api/goals/t1': tracker() });
     renderApp(<Goals {...props([tracker()], { selected: 't1' })} />);
     expect(screen.getByText('1 of 2 done')).toBeTruthy();
@@ -121,21 +189,27 @@ describe('the tracker', () => {
     fireEvent.change(screen.getByLabelText('Add an item'), { target: { value: 'Announce it' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(calls('POST', '/api/goals/t1/items')[0]?.[2]).toEqual({ text: 'Announce it' }));
-    expect(screen.getByRole('button', { name: /turn into a loop/ })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Goal actions' })).getByRole('button', { name: 'Turn into a loop' }));
+    expect(await screen.findByRole('dialog', { name: 'Add a finish check' })).toBeTruthy();
   });
 });
 
 describe('New goal', () => {
-  it('creates a loop from the dialog', async () => {
+  it('creates a loop from the dock', async () => {
     routeApi({ 'GET /api/pipelines': [{ name: 'fix-and-verify' }], 'POST /api/goals': loop({ status: 'active', pending: undefined }) });
-    renderApp(<Goals {...props([])} />);
-    expect(screen.getByText('No goals yet')).toBeTruthy();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New goal' })[0]!);
-    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'p95 under 200 ms' } });
-    fireEvent.click(screen.getByRole('switch', { name: 'Add a finish check' }));
-    fireEvent.change(await screen.findByLabelText('Command'), { target: { value: 'npm run bench' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create goal' }));
+    const onSelect = vi.fn();
+    renderApp(<Goals {...props([], { onSelect })} />);
+    expect(screen.getByText(/No goals yet/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: '+ New goal' })[0]!);
+    const dock = screen.getByRole('complementary', { name: 'New goal' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(within(dock).getByLabelText('Title'), { target: { value: 'p95 under 200 ms' } });
+    fireEvent.click(within(dock).getByRole('switch', { name: 'Add a finish check' }));
+    fireEvent.change(await within(dock).findByLabelText('Command'), { target: { value: 'npm run bench' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Create goal' }));
     await waitFor(() => expect(calls('POST', '/api/goals')).toHaveLength(1));
     expect(calls('POST', '/api/goals')[0]?.[2]).toMatchObject({ title: 'p95 under 200 ms', workspace: 'w', workflow: 'team', check: { kind: 'command', command: 'npm run bench' }, budgetUsd: 5, maxRuns: 5, approval: 'ask' });
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith('g1'));
+    expect(screen.queryByRole('complementary', { name: 'New goal' })).toBeNull();
   });
 });
