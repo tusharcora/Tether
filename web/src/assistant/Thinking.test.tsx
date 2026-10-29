@@ -40,6 +40,6 @@ describe('Thinking', () => {
 
   it('stops shimmer, spin and fade for reduced motion', () => {
     const css = cssText('assistant/assistant.css');
-    expect(css).toContain('@media (prefers-reduced-motion: reduce) { .th-shimmer { background: none; color: var(--ink); } }');
+    expect(css).toContain('@media (prefers-reduced-motion: reduce) { .th-shimmer { -webkit-mask-image: none; mask-image: none; } }');
   });
 });
