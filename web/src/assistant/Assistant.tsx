@@ -1,6 +1,9 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { ArtifactViewer } from '../artifacts/ArtifactViewer';
+import { CenterMorphModalContent } from '../components/beui/motion/center-morph-modal';
+import { Dialog } from '../components/beui/kit/overlays';
 import type { Route, Screen } from '../hooks';
-import type { ChatSummary } from './api';
+import type { ArtifactRef, ChatSummary } from './api';
 import { RunningNow } from '../home/AgentsRunning';
 import { Chat } from './Chat';
 import { ChatSwitcher } from './ChatSwitcher';
@@ -42,6 +45,8 @@ export interface AssistantProps {
 export function Assistant(p: AssistantProps) {
   const { shell, chat } = p;
   const launcherRef = useRef<HTMLButtonElement>(null);
+  // the mini chat is too narrow for a side panel: an artifact opens over the screen
+  const [artifact, setArtifact] = useState<ArtifactRef>();
   if (p.hidden) return null;
   const close = () => {
     shell.close();
@@ -59,12 +64,20 @@ export function Assistant(p: AssistantProps) {
         onFullScreen={p.onFullScreen}
         onClose={close}
       >
-        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} idle={<RunningNow onGo={p.onGo} />} />
+        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} idle={<RunningNow onGo={p.onGo} />} onArtifact={setArtifact} />
       </Panel>
     );
+  const closeArtifact = () => setArtifact(undefined);
   return (
     <>
       {panel}
+      <Dialog open={!!artifact} onOpenChange={(o) => !o && closeArtifact()}>
+        {artifact ? (
+          <CenterMorphModalContent ariaLabel={artifact.title} showCloseButton={false} className="h-[min(820px,88vh)] w-[min(1100px,94vw)] max-w-none overflow-hidden rounded-xl">
+            <ArtifactViewer ws={p.project?.id} id={artifact.id} version={artifact.version} project={p.project?.name} onClose={closeArtifact} />
+          </CenterMorphModalContent>
+        ) : null}
+      </Dialog>
       {shell.docked ? null : <Launcher ref={launcherRef} open={shell.mode === 'float'} unseen={shell.unseen} onClick={() => (shell.mode === 'float' ? close() : shell.open())} />}
     </>
   );

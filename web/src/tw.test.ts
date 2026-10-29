@@ -48,7 +48,7 @@ describe('the Tailwind foundation (spec §2)', () => {
     expect(tw).toContain(`@import 'tailwindcss/theme.css' layer(theme)`);
     expect(tw).toContain(`@import 'tailwindcss/utilities.css' source(none);`);
     expect(tw).not.toMatch(/preflight|@import 'tailwindcss'(?!\/)/);
-    expect([...tw.matchAll(/@source '([^']+)'/g)].map((m) => m[1])).toEqual(['./components/beui', './components/bencho', './components/aicss', './components/faces', './components/composer', './components/ui', './components/ai-elements', './components/assistant-ui', './assistant']);
+    expect([...tw.matchAll(/@source '([^']+)'/g)].map((m) => m[1])).toEqual(['./components/beui', './components/bencho', './components/aicss', './components/faces', './components/composer', './components/ui', './components/ai-elements', './components/assistant-ui', './assistant', './artifacts']);
     // the assistant-ui elements' shimmer utility
     expect(tw).toContain(`@import 'tw-shimmer';`);
   });

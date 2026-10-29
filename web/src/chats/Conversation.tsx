@@ -1,7 +1,8 @@
 import { ChevronDown, Ellipsis } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Chat } from '../assistant/Chat';
-import { TITLE_MAX, type AssistantContext } from '../assistant/api';
+import { TITLE_MAX, type ArtifactRef, type AssistantContext } from '../assistant/api';
+import { ArtifactViewer } from '../artifacts/ArtifactViewer';
 import type { Assistant } from '../assistant/useAssistant';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
@@ -12,7 +13,8 @@ import './chats.css';
 
 /**
  * A chat full screen (mockup board 2): the title (its menu renames or deletes), the project, Pop out to the mini chat and
- * the same menu under ⋯; the thread in a centred 760 px column with the composer pinned under it.
+ * the same menu under ⋯; the thread in a centred 760 px column with the composer pinned under it. A pressed artifact card
+ * opens the artifact in a panel beside the thread.
  */
 export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void> }) {
   const notify = useNotify();
@@ -20,6 +22,7 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
   /** Escape leaves the title as it was (the field's blur would save it). */
   const cancelled = useRef(false);
   const [confirm, setConfirm] = useState(false);
+  const [artifact, setArtifact] = useState<ArtifactRef>();
   const title = p.chat.title ?? 'New chat';
   const items = [
     { label: 'Rename', onSelect: () => ((cancelled.current = false), setRenaming(title)), disabled: !p.chat.chatId },
@@ -57,7 +60,16 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
         </Button>
         <MenuButton title="Chat actions" variant="secondary" align="end" label={<Ellipsis size={15} aria-hidden="true" />} items={items} />
       </header>
-      <Chat chat={p.chat} project={p.project?.name} context={p.context} onGo={p.onGo} wide placeholder="Reply to Tether…" />
+      <div className="chat-split">
+        <div className="chat-col">
+          <Chat chat={p.chat} project={p.project?.name} context={p.context} onGo={p.onGo} wide placeholder="Reply to Tether…" onArtifact={setArtifact} />
+        </div>
+        {artifact ? (
+          <aside className="chat-artifact">
+            <ArtifactViewer ws={p.project?.id} id={artifact.id} version={artifact.version} project={p.project?.name} onClose={() => setArtifact(undefined)} />
+          </aside>
+        ) : null}
+      </div>
       <Dialog open={confirm} onOpenChange={setConfirm}>
         {confirm ? (
           <DialogContent title="Delete this chat?" description={`"${title}" and its messages are deleted. Runs it started are kept.`}>

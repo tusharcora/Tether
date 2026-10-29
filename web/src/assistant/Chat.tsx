@@ -6,7 +6,7 @@ import { cn } from '../ui/cn';
 import { usePoll } from '../hooks';
 import { MODELS_PATH, NV_MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext } from './api';
 import { ContextRing } from './ContextRing';
 import { Thread } from './Thread';
 import type { Assistant } from './useAssistant';
@@ -97,8 +97,8 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
   );
 }
 
-/** The conversation: the chat's thread and the composer. `wide`: the full screen's centred 760 px column. `idle`: shown under an empty chat. */
-export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void; wide?: boolean; placeholder?: string; idle?: ReactNode }) {
+/** The conversation: the chat's thread and the composer. `wide`: the full screen's centred 760 px column. `idle`: shown under an empty chat. `onArtifact`: an artifact card was pressed. */
+export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void; wide?: boolean; placeholder?: string; idle?: ReactNode; onArtifact?: (a: ArtifactRef) => void }) {
   const { chat } = p;
   const log = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -124,7 +124,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
         aria-busy={!!chat.streaming}
       >
         <div className={cn('flex flex-col gap-3', column)}>
-          <Thread chat={chat} onGo={p.onGo} empty={`Ask about ${p.project ?? 'your work'}: what's running, a run's result, the code.`} />
+          <Thread chat={chat} onGo={p.onGo} empty={`Ask about ${p.project ?? 'your work'}: what's running, a run's result, the code.`} project={p.project} onArtifact={p.onArtifact} />
           {p.idle && !chat.loading && !chat.messages.length && !chat.streaming ? p.idle : null}
         </div>
       </div>

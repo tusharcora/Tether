@@ -1,6 +1,9 @@
 import { FileCode2, NotebookText, Play } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { splitArtifacts, wordCount } from '../../../src/assistant/artifactBlocks';
 import { SWITCH_MODEL } from '../../../src/openrouter';
+import { artifactMeta, KIND_LABEL } from '../artifacts/ArtifactViewer';
+import { ArtifactCard } from '../components/assistant-ui/elements/artifact-card';
 import type { Route } from '../hooks';
 import { ComparisonTable } from '../components/aicss/ComparisonTable';
 import { ComparisonCard } from '../components/assistant-ui/elements/comparison-card';
@@ -15,7 +18,7 @@ import { StoppedRun } from '../components/assistant-ui/elements/stopped-run';
 import { Timeline } from '../components/assistant-ui/elements/timeline';
 import { Citations, type CitationItem } from '../components/beui/agents/citations';
 import { StreamingResponse } from '../components/beui/agents/streaming-response';
-import type { ChatMessage, Cite } from './api';
+import type { ArtifactRef, ChatMessage, Cite } from './api';
 import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, DiagramCard, ProposalCard, ToolAskCard } from './cards';
@@ -45,11 +48,25 @@ export function citationItems(cites: Cite[], onGo: (r: Route) => void): Citation
   });
 }
 
-/** The reply's visible text: the trailing ```tether block (sources, proposals, ...) is data, never shown, even half-written. */
+/** The reply's visible text: artifacts and the trailing ```tether block (sources, proposals, ...) are data, never shown, even half-written. */
 export const visibleText = (text: string) => {
-  const i = text.indexOf('```tether');
-  return (i >= 0 ? text.slice(0, i) : text).trimEnd();
+  const t = splitArtifacts(text).text;
+  const i = t.indexOf('```tether');
+  return (i >= 0 ? t.slice(0, i) : t).trimEnd();
 };
+
+/** An artifact's card: pressed (or Enter, Space), it opens in the artifact panel. */
+function ArtifactRow({ a, project, onOpen }: { a: ArtifactRef; project?: string; onOpen?: (a: ArtifactRef) => void }) {
+  const open = onOpen && (() => onOpen(a));
+  return (
+    <ArtifactCard
+      className={cn('mt-2', open && 'cursor-pointer')}
+      title={a.title}
+      meta={artifactMeta(a, project)}
+      {...(open ? { role: 'button', tabIndex: 0, 'aria-label': `Open ${a.title}, ${artifactMeta(a)}`, onClick: open, onKeyDown: (e: KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open()) } : {})}
+    />
+  );
+}
 
 /** What a thumbs down can say was wrong (the person's options; a free note goes with them). */
 const REASONS = ['Wrong', 'Missed the project', 'Too long', 'Did not answer'];
@@ -126,7 +143,7 @@ function RetrievedNotes({ m, query, onGo }: { m: ChatMessage; query: string; onG
 }
 
 /** `asked`: when the question was sent, so the finished timeline says how long Tether thought; `query`: its text. */
-function TetherMessage({ m, asked, query, chat, onGo, dim }: { m: ChatMessage; asked?: number; query?: string; chat: Assistant; onGo: (r: Route) => void; dim?: boolean }) {
+function TetherMessage({ m, asked, query, chat, onGo, dim, project, onArtifact }: { m: ChatMessage; asked?: number; query?: string; chat: Assistant; onGo: (r: Route) => void; dim?: boolean; project?: string; onArtifact?: (a: ArtifactRef) => void }) {
   const notify = useNotify();
   const text = visibleText(m.text);
   const stopped = m.error === 'Stopped.';
@@ -149,6 +166,7 @@ function TetherMessage({ m, asked, query, chat, onGo, dim }: { m: ChatMessage; a
           ) : null}
         </StreamingResponse>
       ) : null}
+      {m.artifacts?.map((a) => <ArtifactRow key={`${a.id}-${a.version}`} a={a} project={project} onOpen={onArtifact} />)}
       {/* outside the response: its prose rules would space the element's lines */}
       {m.error && !stopped && !m.error.endsWith(SWITCH_MODEL) ? <ErrorState className="mt-2" title="Tether could not answer" detail={m.error} retrying={false} onRetry={() => void chat.regenerate(m.id)} /> : null}
       {m.cites?.length ? <Citations className="mt-1" citations={citationItems(m.cites, onGo)} idPrefix={`src-${m.id}`} /> : null}
@@ -166,7 +184,7 @@ function TetherMessage({ m, asked, query, chat, onGo, dim }: { m: ChatMessage; a
       {m.ask ? <AskCardView message={m} chat={chat} /> : null}
       {m.toolAsks?.map((a) => <ToolAskCard key={a.id} ask={a} onDecide={(d) => chat.tool(m.id, a.id, d)} />)}
       {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} chat={chat} onGo={onGo} />)}
-      {text && !m.error ? <ReplyActions m={m} text={text} chat={chat} /> : null}
+      {(text || m.artifacts?.length) && !m.error ? <ReplyActions m={m} text={text} chat={chat} /> : null}
     </div>
   );
 }
@@ -198,8 +216,10 @@ function CompactRow({ m, open, newest, onToggle, chat }: { m: ChatMessage; open:
 const asked = (q?: ChatMessage) => ({ asked: q?.at, query: q?.text });
 
 /** The conversation: your messages, and Tether's with their scripts, sources, comparison and cards. Compacted messages fold under their summary. */
-export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route) => void; empty: ReactNode }) {
+export function Thread({ chat, onGo, empty, project, onArtifact }: { chat: Assistant; onGo: (r: Route) => void; empty: ReactNode; project?: string; onArtifact?: (a: ArtifactRef) => void }) {
   const live = chat.streaming;
+  // what the reply is writing: an open artifact is still generating; a closed one is saved when the reply ends
+  const writing = live ? splitArtifacts(live.text).artifacts : [];
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const toggle = (id: string) => setShown((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])));
   const newest = chat.messages.findLast((m) => m.compact && !m.compactedBy)?.id;
@@ -217,7 +237,7 @@ export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route
             {m.attachments?.length ? <div className="mt-1 text-xs text-muted-foreground">{m.attachments.map((a) => a.name).join(', ')}</div> : null}
           </div>
         ) : (
-          <TetherMessage key={m.id} m={m} {...asked(chat.messages.slice(0, i).findLast((x) => x.role === 'you'))} chat={chat} onGo={onGo} dim={!!m.compactedBy} />
+          <TetherMessage key={m.id} m={m} {...asked(chat.messages.slice(0, i).findLast((x) => x.role === 'you'))} chat={chat} onGo={onGo} dim={!!m.compactedBy} project={project} onArtifact={onArtifact} />
         ),
       )}
       {live ? (
@@ -226,6 +246,9 @@ export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route
           <StreamingResponse status="streaming" announce={false}>
             <Markdown text={visibleText(live.text)} />
           </StreamingResponse>
+          {writing.map((a, k) => (
+            <ArtifactCard key={k} className="mt-2" title={a.title} meta={`${KIND_LABEL[a.kind]} · ${wordCount(a.content)} words`} generating={!!a.open} words={wordCount(a.content)} />
+          ))}
         </div>
       ) : null}
     </>

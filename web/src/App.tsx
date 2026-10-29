@@ -5,6 +5,7 @@ import { Assistant } from './assistant/Assistant';
 import { useActiveChat, useAssistant } from './assistant/useAssistant';
 import { useAssistantShell } from './assistant/useAssistantShell';
 import { contextOf } from './assistant/context';
+import { Artifacts } from './artifacts/Artifacts';
 import { AllChats } from './chats/AllChats';
 import { Conversation } from './chats/Conversation';
 import { NewChat } from './chats/NewChat';
@@ -362,6 +363,7 @@ function Shell() {
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
+            {screen.tab === 'artifacts' ? <Artifacts key={projects.current?.id ?? '_'} ws={projects.current?.id} project={projects.current} onGo={go} /> : null}
             {screen.tab === 'chats' && !screen.id ? (
               <AllChats
                 key={projects.current?.id ?? '_'}

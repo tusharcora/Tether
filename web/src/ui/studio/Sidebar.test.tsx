@@ -49,7 +49,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: 'Project: shop' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Tether core · working', 'tether-dev · needs you', 'On the go', 'Chats', 'New chat', 'New chat', 'Chat 1', 'Chat 2', 'Chat 3', 'Chat 4', 'Chat 5', 'All chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers']);
+    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Tether core · working', 'tether-dev · needs you', 'On the go', 'Chats', 'New chat', 'New chat', 'Chat 1', 'Chat 2', 'Chat 3', 'Chat 4', 'Chat 5', 'All chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers', 'Artifacts']);
     const sections = [...document.querySelectorAll('.sl-side-section-title')].map((s) => s.textContent);
     expect(sections).toEqual(['Teams', 'Chats', 'Workspace', 'Runs', 'Favorites']);
     const foot = document.querySelector('.sl-side-foot') as HTMLElement;
@@ -300,7 +300,7 @@ describe('collapsing to the icon rail', () => {
     expect(screen.queryByRole('button', { name: 'Project: shop' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand sidebar' }).querySelector('.sl-switch-glyph .sl-glyph')).toBeTruthy();
     // Chats folds to one chat icon that opens All chats
-    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Teams', 'Chats', 'New chat', 'Chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers']);
+    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Teams', 'Chats', 'New chat', 'Chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers', 'Artifacts']);
     expect(screen.getByRole('region', { name: 'Recent runs' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'README.md' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();

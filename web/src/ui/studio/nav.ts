@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Code, House, Inbox, Play, Target, Users, Waypoints, Workflow, Zap, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, Code, House, Inbox, Play, Shapes, Target, Users, Waypoints, Workflow, Zap, type LucideIcon } from 'lucide-react';
 import { TAB_LABEL, type Screen } from '../../hooks';
 
 /**
@@ -16,6 +16,7 @@ export const NAV: { id: Screen; label: string; long?: string; Icon: LucideIcon; 
   { id: 'api', label: TAB_LABEL.api, long: 'API client', Icon: ArrowLeftRight, go: 'a' },
   { id: 'graph', label: TAB_LABEL.graph, Icon: Waypoints, go: 'g' },
   { id: 'triggers', label: TAB_LABEL.triggers, Icon: Zap, go: 't' },
+  { id: 'artifacts', label: TAB_LABEL.artifacts, Icon: Shapes, go: 'f' },
 ];
 
 /** `G x` as shown on hover and in ⌘K. */

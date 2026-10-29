@@ -1,7 +1,7 @@
-import type { AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
+import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
-export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
+export type { ArtifactKind, ArtifactMeta, ArtifactRef, ArtifactView, AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
 export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
 /** `?ws=…&chat=…` with the parts that are set. */
@@ -11,6 +11,8 @@ const q = (o: Record<string, string | undefined>) => {
 };
 /** Where the chat list is read (polled by the sidebar and All chats). */
 export const chatsPath = (ws: string | undefined, search?: string) => `/api/assistant/chats${q({ ws, q: search })}`;
+/** Where the project's artifacts are listed (the Artifacts screen polls it). */
+export const artifactsPath = (ws: string | undefined) => `/api/assistant/artifacts${q({ ws })}`;
 
 export interface SendBody {
   ws?: string;
@@ -41,6 +43,9 @@ export const assistantApi = {
   discard: (ws: string | undefined, chat: string, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/messages/${encodeURIComponent(id)}${q({ ws, chat })}`),
   /** Compact now (a summary of the older messages) or, with `undo`, put the newest compaction's messages back. */
   compact: (ws: string | undefined, chat: string, undo?: boolean) => api<{ messages: ChatMessage[] }>('POST', '/api/assistant/compact', { ws, chat, ...(undo ? { undo: true } : {}) }),
+  /** An artifact with one version's content (the latest unless `v`). */
+  artifact: (ws: string | undefined, id: string, v?: number) => api<ArtifactView>('GET', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws, v: v === undefined ? undefined : String(v) })}`),
+  removeArtifact: (ws: string | undefined, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws })}`),
 };
 
 /**

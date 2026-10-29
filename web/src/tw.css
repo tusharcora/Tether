@@ -17,6 +17,7 @@
 @source './components/ai-elements';
 @source './components/assistant-ui';
 @source './assistant';
+@source './artifacts';
 @source not './**/*.test.{ts,tsx}';
 
 /* our theme attribute, not beui's .dark class */
