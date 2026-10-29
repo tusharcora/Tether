@@ -21,10 +21,11 @@
 .gn-grid:has(.gn-mod:hover, .gn-mod:focus-within) .gn-mod:not(:hover):not(:focus-within) { opacity: 0.35; }
 .gn-top { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding-right: 8px; }
 .gn-tile { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--s3); font-size: 18px; font-weight: 600; line-height: 1; }
-.gn-tile.t-feature { color: var(--accInk); }
-.gn-tile.t-bugfix { color: var(--bad); }
-.gn-tile.t-refactor { color: #06b6d4; }
-.gn-tile.t-chore { color: var(--mut); }
+.gn-tile.t-feature, .gn-glyph.t-feature { color: var(--accInk); }
+.gn-tile.t-bugfix, .gn-glyph.t-bugfix { color: var(--bad); }
+.gn-tile.t-refactor, .gn-glyph.t-refactor { color: #06b6d4; }
+.gn-tile.t-chore, .gn-glyph.t-chore { color: var(--mut); }
+.gn-glyph { font-size: 14px; font-weight: 600; line-height: 1; }
 /* the whole node opens the goal: the title's button stretches over it (the arc sits above) */
 .gn-open { min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .gn-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }

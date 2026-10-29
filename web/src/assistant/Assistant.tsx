@@ -30,6 +30,8 @@ export interface AssistantProps {
   /** The active chat full screen. */
   onFullScreen: () => void;
   onAllChats: () => void;
+  /** New chat about a run or a file (the New chat screen with that starter). */
+  onStarter: (s: 'run' | 'file') => void;
   /** Where a citation or a started run goes. */
   onGo: (r: Route) => void;
 }
@@ -51,11 +53,12 @@ export function Assistant(p: AssistantProps) {
     shell.mode === 'closed' ? null : (
       <Panel
         mode={shell.mode}
-        switcher={<ChatSwitcher title={chat.title ?? 'New chat'} chats={p.chats} current={chat.chatId} onPick={p.onPick} onAll={p.onAllChats} />}
+        switcher={<ChatSwitcher title={chat.title ?? 'New chat'} chats={p.chats} current={chat.chatId} onPick={p.onPick} onAll={p.onAllChats} onStarter={p.onStarter} />}
         context={contextLine(p.route)}
         canDock={!p.phone}
         onDock={shell.dock}
         onNewChat={() => p.onPick(undefined)}
+        onStarter={p.onStarter}
         onFullScreen={p.onFullScreen}
         onClose={close}
       >

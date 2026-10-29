@@ -311,6 +311,25 @@ describe('ApiTab', () => {
 });
 
 describe('ApiTab in the tool frame', () => {
+  it('API New: Import cURL opens Import on cURL mode', async () => {
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    fireEvent.click(screen.getByRole('button', { name: '+ New request' }));
+    const menu = await screen.findByRole('menu', { name: '+ New request' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['Request', 'Import cURL']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Import cURL' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import requests' });
+    expect(within(dialog).getByRole('button', { name: 'cURL' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('API New: Request starts a new request', async () => {
+    renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
+    await screen.findByRole('button', { name: 'GET List runs' });
+    fireEvent.click(screen.getByRole('button', { name: '+ New request' }));
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Request' }));
+    await waitFor(() => expect((screen.getByLabelText('Request name') as HTMLInputElement).value).toBe('New request'));
+  });
+
   it('keeps the request tree in a left dock with New request at its foot, and the screen actions on top', async () => {
     renderApp(<ApiTab onStarted={() => {}} onUseAsGate={() => {}} />);
     const dock = await screen.findByRole('complementary', { name: 'Requests' });

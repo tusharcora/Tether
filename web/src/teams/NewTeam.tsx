@@ -2,7 +2,6 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../components/beui/kit/Button';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Input, Select, Switch } from '../components/beui/kit/fields';
-import { RadioCards } from '../components/beui/kit/RadioCards';
 import { Face } from '../Face';
 import type { WorkspaceRow } from '../home/workspaces';
 import { ConfirmButton } from '../ui/ConfirmButton';
@@ -10,23 +9,17 @@ import { useNotify } from '../ui/notify';
 import { LEVELS, PLACE, teamsApi, type Level, type Place, type Team, type TeamsReply } from './teamsApi';
 import './teams.css';
 
-const LATER = 'Connect in a later phase.';
-const PLACES: { value: Place; label: string; description: string; disabled?: boolean }[] = [
-  { value: 'tether', label: 'Tether', description: 'A channel inside Tether. You and your agents.' },
-  { value: 'slack', label: 'Slack', description: `A Slack channel. Teammates join in; agents post as themselves. ${LATER}`, disabled: true },
-  { value: 'telegram', label: 'Telegram', description: `A Telegram group. Add the Tether bot, send the pairing code. ${LATER}`, disabled: true },
-];
-
 /**
  * A team's settings (board 2): name, where it lives, its agents (they keep one memory across all their teams), who can
  * approve, how much needs sign-off, its daily limits and its project. New team and a team's settings share it; a team's
- * place is fixed once made.
+ * place is picked in the New team menu and fixed once made.
  */
 export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onSaved: (t: Team) => void; onCancel: () => void; onNewAgent: () => void; onDeleted?: () => void }) {
   const notify = useNotify();
   const t = p.team;
   const [name, setName] = useState(t?.name ?? '');
-  const [place, setPlace] = useState<Place>(t?.place ?? 'tether');
+  // a new team's place is picked in the sidebar's New team menu, where only Tether is open for now
+  const place: Place = t?.place ?? 'tether';
   const [agents, setAgents] = useState<string[]>(t?.agents ?? []);
   const [chosen, setChosen] = useState(t ? t.approvers !== 'any' : false);
   const [level, setLevel] = useState<Level>(t?.level ?? 'balanced');
@@ -68,14 +61,7 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
         </Button>
       </div>
       <Input label="Name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
-      {t ? (
-        <p className="tm-form-note">Lives in {PLACE[t.place]}.</p>
-      ) : (
-        <fieldset className="tm-fieldset">
-          <legend>Where it lives</legend>
-          <RadioCards aria-label="Where it lives" options={PLACES} value={place} onValueChange={(v) => setPlace(v as Place)} layout="grid" />
-        </fieldset>
-      )}
+      <p className="tm-form-note">Lives in {PLACE[place]}.</p>
       <fieldset className="tm-fieldset" aria-describedby={ids.agents}>
         <legend>Agents · they keep one memory across all their teams</legend>
         <div className="tm-agents">

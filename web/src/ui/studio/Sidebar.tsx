@@ -1,4 +1,4 @@
-import { Bot, Hash, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
+import { Bot, FileText, Hash, MessageSquare, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
 import { MARK, type TeamSummary } from '../../teams/teamsApi';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
@@ -16,6 +16,19 @@ import { SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
+/** Where a new team lives: only Tether for now. */
+const NEW_TEAM = [
+  { id: 'tether', label: 'In Tether', icon: <Hash size={15} strokeWidth={1.8} /> },
+  { id: 'slack', label: 'Slack channel', icon: <span>S</span>, hint: 'soon', disabled: true },
+  { id: 'telegram', label: 'Telegram group', icon: <span>T</span>, hint: 'soon', disabled: true },
+];
+/** What a new chat starts with: nothing, or the New chat screen's run or file starter. */
+export type ChatStarter = 'run' | 'file';
+export const NEW_CHAT = [
+  { id: 'empty', label: 'Empty chat', icon: <MessageSquare size={15} strokeWidth={1.8} /> },
+  { id: 'run', label: 'About a run', icon: <Play size={15} strokeWidth={1.8} /> },
+  { id: 'file', label: 'About a file', icon: <FileText size={15} strokeWidth={1.8} /> },
+];
 const TIP_DELAY_MS = 300;
 /** Finished runs the Runs section keeps under the live and waiting ones. */
 export const RECENT_FINISHED = 5;
@@ -81,7 +94,7 @@ export interface SidebarProps {
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
   /** The project's chats, newest first; `current` is what the Chats screen shows: '' All chats, 'new', or a chat id. */
-  chats: { list: ChatSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void; onAll: () => void };
+  chats: { list: ChatSummary[]; current?: string; onNew: () => void; onStarter: (s: ChatStarter) => void; onOpen: (id: string) => void; onAll: () => void };
   /** Every team (spec Teams §6.4); `current` is the team on screen ('new' while making one). */
   teams: { list: TeamSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void };
   projects: ProjectsProps;
@@ -188,9 +201,9 @@ export function Sidebar(p: SidebarProps) {
             title="Teams"
             collapsed={collapsed}
             actions={
-              <button type="button" className="sl-side-icon-btn" aria-label="New team" title="New team" onClick={p.teams.onNew}>
+              <CreateMenu label="New team" title="New team" className="sl-side-icon-btn" items={NEW_TEAM} onSelect={() => p.teams.onNew()}>
                 <Plus size={14} aria-hidden="true" />
-              </button>
+              </CreateMenu>
             }
             empty="No teams yet. Make one with +."
           >
@@ -214,9 +227,9 @@ export function Sidebar(p: SidebarProps) {
             title="Chats"
             collapsed={collapsed}
             actions={
-              <button type="button" className="sl-side-icon-btn" aria-label="New chat" title={`New chat  ${mod}⇧O`} onClick={p.chats.onNew}>
+              <CreateMenu label="New chat" title={`New chat  ${mod}⇧O`} className="sl-side-icon-btn" items={NEW_CHAT} onSelect={(id) => (id === 'empty' ? p.chats.onNew() : p.chats.onStarter(id as ChatStarter))}>
                 <Plus size={14} aria-hidden="true" />
-              </button>
+              </CreateMenu>
             }
           >
             {collapsed

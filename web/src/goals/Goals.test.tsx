@@ -309,6 +309,7 @@ describe('New goal', () => {
     renderApp(<Goals {...props([], { onSelect })} />);
     expect(screen.getByText(/No goals yet/)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: '+ New goal' })[0]!);
+    fireEvent.click(within(await screen.findByRole('menu', { name: '+ New goal' })).getByRole('menuitem', { name: 'Feature' }));
     const dock = screen.getByRole('complementary', { name: 'New goal' });
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.change(within(dock).getByLabelText('Title'), { target: { value: 'p95 under 200 ms' } });
@@ -392,6 +393,7 @@ describe('type and description', () => {
     routeApi({ 'GET /api/pipelines': [], 'POST /api/goals': tracker() });
     renderApp(<Goals {...props([])} />);
     fireEvent.click(screen.getByRole('button', { name: '+ New goal' }));
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Feature' }));
     const dock = screen.getByRole('complementary', { name: 'New goal' });
     fireEvent.change(within(dock).getByLabelText('Title'), { target: { value: 'Tidy auth' } });
     fireEvent.click(within(dock).getByRole('button', { name: 'Refactor' }));
@@ -402,3 +404,20 @@ describe('type and description', () => {
   });
 });
 
+describe('create menus', () => {
+  it('New goal menu opens form with type preset', async () => {
+    routeApi({ 'GET /api/pipelines': [], 'POST /api/goals': tracker() });
+    renderApp(<Goals {...props([])} />);
+    const trigger = screen.getByRole('button', { name: '+ New goal' });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole('menu', { name: '+ New goal' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['Feature', 'Bug fix', 'Refactor', 'Chore']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Bug fix' }));
+    const dock = screen.getByRole('complementary', { name: 'New goal' });
+    expect(within(dock).getByRole('button', { name: 'Bug fix' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(within(dock).getByLabelText('Title'), { target: { value: 'Logout bug' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Create goal' }));
+    await waitFor(() => expect(calls('POST', '/api/goals')[0]?.[2]).toMatchObject({ title: 'Logout bug', type: 'bugfix' }));
+  });
+});

@@ -28,6 +28,10 @@ const SIZE: Record<ButtonSize, string> = {
   icon: 'size-9 rounded-lg p-0 text-sm',
 };
 
+/** A Button's look, for a native button someone else draws (the create menu's trigger). */
+export const buttonClass = (variant: ButtonVariant = 'primary', size: ButtonSize = 'sm') =>
+  cn('inline-flex cursor-pointer select-none items-center justify-center font-medium', SIZE[size], VARIANT[variant].cls, 'whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring');
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'primary', size = 'md', loading = false, className, disabled, onClick, children, ...rest },
   ref,

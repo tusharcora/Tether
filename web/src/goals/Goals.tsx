@@ -2,7 +2,8 @@ import { ArrowLeft, Copy, Link2, ListPlus, Settings } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, fmtUsd } from '../api';
 import type { NodeAction } from '../components/bencho/ActionNode';
-import { Button } from '../components/beui/kit/Button';
+import { CreateMenu } from '../components/bencho/CreateMenu';
+import { Button, buttonClass } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
 import { SegmentedControl } from '../components/beui/kit/controls';
@@ -20,7 +21,7 @@ import { cn } from '../ui/cn';
 import { AssigneePicker } from './AssigneePicker';
 import { Avatars, Roster, useWho } from './Avatars';
 import { endOf, GoalNode, sections, TypeTile } from './GoalNode';
-import { copyOf, goalsApi, inProject, STATUS_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
+import { copyOf, goalsApi, inProject, STATUS_LABEL, TYPE_GLYPH, TYPE_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
 import { LoopFlow } from './LoopFlow';
 import { CheckDialog, NewGoalForm, TypeField } from './NewGoalDialog';
 import { Tracker } from './Tracker';
@@ -61,6 +62,8 @@ export interface GoalsProps {
   teams?: TeamsReply;
 }
 
+const NEW_GOAL = (Object.keys(TYPE_LABEL) as GoalType[]).map((t) => ({ id: t, label: TYPE_LABEL[t], icon: <span className={`gn-glyph t-${t}`}>{TYPE_GLYPH[t]}</span> }));
+
 /** A row in Up next or Done; under the pointer it opens into the full goal node, pushing the rows below it down. */
 function GoalRow(p: { goal: GoalView; note: string; node: (g: GoalView) => ReactNode; onOpen: () => void }) {
   const [big, setBig] = useState(false);
@@ -90,7 +93,7 @@ function GoalRow(p: { goal: GoalView; note: string; node: (g: GoalView) => React
 export function Goals(p: GoalsProps) {
   const notify = useNotify();
   const { goals, error, set, drop } = p.goals;
-  const [dock, setDock] = useState<{ kind: 'settings'; id: string } | { kind: 'new' }>();
+  const [dock, setDock] = useState<{ kind: 'settings'; id: string } | { kind: 'new'; type?: GoalType }>();
   /** A tracker opened from its arc's Add a step: its add field takes focus. */
   const [addFor, setAddFor] = useState<string>();
   const flows = usePoll<{ name: string }[]>(dock?.kind === 'new' ? '/api/pipelines' : null, 60_000);
@@ -120,9 +123,9 @@ export function Goals(p: GoalsProps) {
       <QuietLine>{empty}</QuietLine>
     );
   const newGoal = (
-    <Button size="sm" variant="primary" onClick={() => setDock({ kind: 'new' })}>
+    <CreateMenu label="+ New goal" title="New goal" className={buttonClass()} items={NEW_GOAL} onSelect={(t) => setDock({ kind: 'new', type: t as GoalType })}>
       + New goal
-    </Button>
+    </CreateMenu>
   );
 
   return (
@@ -166,6 +169,8 @@ export function Goals(p: GoalsProps) {
         ) : dock?.kind === 'new' ? (
           <Dock label="New goal" head={<h2 className="gl-dock-title">New goal</h2>} onClose={closeDock}>
             <NewGoalForm
+              key={dock.type}
+              type={dock.type}
               projects={p.projects}
               current={p.project?.id}
               workflows={(flows.data ?? []).map((f) => f.name)}

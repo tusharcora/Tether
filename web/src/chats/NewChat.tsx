@@ -18,12 +18,18 @@ export function starters(runs: RunRow[], lastFile?: string): { title: string; de
   ];
 }
 
+/** The starter a New chat menu's "About a run" or "About a file" opens with: the failed-run one when a run failed. */
+export function starterFor(kind: 'run' | 'file', runs: RunRow[], lastFile?: string): string {
+  const all = starters(runs, lastFile);
+  return (kind === 'run' ? (all.find((s) => s.text.startsWith('Why did run')) ?? all[0]!) : all.at(-1)!).text;
+}
+
 /**
  * The New chat screen (mockup board 1): Tether's face, the question, a large composer and starters built from the project's
  * state. A starter fills the composer for the person to send or finish. Sending makes the chat (the shell then opens it).
  */
-export function NewChat(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; runs: RunRow[]; lastFile?: string }) {
-  const [draft, setDraft] = useState('');
+export function NewChat(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; runs: RunRow[]; lastFile?: string; starter?: 'run' | 'file' }) {
+  const [draft, setDraft] = useState(() => (p.starter ? starterFor(p.starter, p.runs, p.lastFile) : ''));
   const fill = (text: string) => {
     setDraft(text);
     setTimeout(() => {

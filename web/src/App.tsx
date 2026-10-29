@@ -138,6 +138,8 @@ function Shell() {
     if (route.tab === 'chats' && route.id) setActiveChat(route.id === 'new' ? undefined : route.id);
   }, [route.tab, route.id, setActiveChat]);
   const newChat = () => go({ tab: 'chats', id: 'new' });
+  /** New chat about a run or a file: the New chat screen with that starter in the composer. */
+  const newChatAbout = (starter: 'run' | 'file') => go({ tab: 'chats', id: 'new', node: starter });
   /** Pop out: the chat moves to the mini chat over the screen the person came from. */
   const popOut = () => {
     shell.open('float');
@@ -296,7 +298,7 @@ function Shell() {
               onCompose={compose}
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
-              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
+              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
               teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: () => go({ tab: 'teams', id: 'new' }), onOpen: (id) => go({ tab: 'teams', id }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
@@ -375,7 +377,7 @@ function Shell() {
                 onTurnDone={(id) => id === activeChat && chat.refresh()}
               />
             ) : null}
-            {screen.tab === 'chats' && screen.id === 'new' ? <NewChat chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} /> : null}
+            {screen.tab === 'chats' && screen.id === 'new' ? <NewChat key={screen.node ?? ''} chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} starter={screen.node === 'run' || screen.node === 'file' ? screen.node : undefined} /> : null}
             {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} /> : null}
             {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
               <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
@@ -398,6 +400,7 @@ function Shell() {
             onPick={setActiveChat}
             onFullScreen={() => (shell.close(), go({ tab: 'chats', id: activeChat ?? 'new' }))}
             onAllChats={() => go({ tab: 'chats' })}
+            onStarter={newChatAbout}
             onGo={go}
           />
         </div>

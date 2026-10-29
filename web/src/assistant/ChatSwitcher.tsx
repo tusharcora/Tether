@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Check, ChevronDown, FileText, Play, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { SearchField } from '../components/beui/kit/fields';
 import { useMenu } from '../ui/studio/useMenu';
@@ -11,7 +11,7 @@ const SHOWN = 8;
  * The mini chat's title, a button that opens the chat switcher (mockup board 5): find a chat, + New chat, the recent chats
  * with the open one ticked, All chats →. A click outside or Escape closes it (focus back on the title).
  */
-export function ChatSwitcher(p: { title: string; chats: ChatSummary[]; current?: string; onPick: (id: string | undefined) => void; onAll: () => void }) {
+export function ChatSwitcher(p: { title: string; chats: ChatSummary[]; current?: string; onPick: (id: string | undefined) => void; onAll: () => void; onStarter: (s: 'run' | 'file') => void }) {
   const menu = useMenu();
   const [find, setFind] = useState('');
   const findRef = useRef<HTMLInputElement>(null);
@@ -39,6 +39,15 @@ export function ChatSwitcher(p: { title: string; chats: ChatSummary[]; current?:
           <button type="button" className="tether-switch-item" onClick={() => pick(undefined)}>
             <Plus size={14} aria-hidden="true" />
             New chat
+          </button>
+          {/* the New chat menu's other two choices, as rows: a menu opened from this popup would close it */}
+          <button type="button" className="tether-switch-item" onClick={() => (menu.close(), p.onStarter('run'))}>
+            <Play size={14} aria-hidden="true" />
+            About a run
+          </button>
+          <button type="button" className="tether-switch-item" onClick={() => (menu.close(), p.onStarter('file'))}>
+            <FileText size={14} aria-hidden="true" />
+            About a file
           </button>
           {shown.map((c) => (
             <button key={c.id} type="button" className="tether-switch-item" aria-current={c.id === p.current || undefined} onClick={() => pick(c.id)}>

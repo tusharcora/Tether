@@ -1,4 +1,6 @@
 import { Maximize2, PanelRight, PictureInPicture2, Plus, X } from 'lucide-react';
+import { CreateMenu } from '../components/bencho/CreateMenu';
+import { NEW_CHAT } from '../ui/studio/Sidebar';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { TetherFace } from '../components/faces/TetherFace';
@@ -8,7 +10,7 @@ import { TetherFace } from '../components/faces/TetherFace';
  * the screen). The header holds Tether's face, the chat's title (the switcher), New chat, full screen, dock or pop out
  * (not on a phone) and close; under it, what Tether sees ("Sees: Runs · R-4F21").
  */
-export function Panel(p: { mode: 'float' | 'docked'; switcher: ReactNode; context: string; canDock: boolean; onDock: (on: boolean) => void; onNewChat: () => void; onFullScreen: () => void; onClose: () => void; children: ReactNode }) {
+export function Panel(p: { mode: 'float' | 'docked'; switcher: ReactNode; context: string; canDock: boolean; onDock: (on: boolean) => void; onNewChat: () => void; onStarter: (s: 'run' | 'file') => void; onFullScreen: () => void; onClose: () => void; children: ReactNode }) {
   const reduce = useReducedMotion();
   const float = p.mode === 'float';
   const enter = reduce ? { opacity: 0 } : float ? { opacity: 0, scale: 0.94, y: 10 } : { opacity: 0, x: 20 };
@@ -24,9 +26,9 @@ export function Panel(p: { mode: 'float' | 'docked'; switcher: ReactNode; contex
       <header className="tether-head">
         <TetherFace size={22} eyeScale={1.15} within=".tether-panel" />
         {p.switcher}
-        <button type="button" className="tether-icon-btn" aria-label="New chat" title="New chat" onClick={p.onNewChat}>
+        <CreateMenu label="New chat" title="New chat" className="tether-icon-btn" items={NEW_CHAT} onSelect={(id) => (id === 'empty' ? p.onNewChat() : p.onStarter(id as 'run' | 'file'))}>
           <Plus size={16} strokeWidth={1.8} aria-hidden="true" />
-        </button>
+        </CreateMenu>
         <button type="button" className="tether-icon-btn" aria-label="Open full screen" title="Open full screen" onClick={p.onFullScreen}>
           <Maximize2 size={14} strokeWidth={1.8} aria-hidden="true" />
         </button>
