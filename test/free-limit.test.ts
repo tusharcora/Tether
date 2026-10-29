@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -48,6 +49,9 @@ describe('free daily limit', () => {
     expect(s.nodes.code).toMatchObject({ status: 'awaiting', limit: { resetsAt: expect.any(Number) } });
     expect(s.nodes.review!.status).toBe('queued');
     expect(existsSync(join(s.workdir, 'half.txt'))).toBe(true);
+    const sh = (...args: string[]) => execFileSync('git', args, { cwd: s.workdir, encoding: 'utf8' });
+    expect(sh('log', '-1', '--format=%s')).toMatch(/code \(coder\) paused on the free limit/);
+    expect(sh('status', '--porcelain')).toBe('');
     const items = attentionFor({ state: s, events: store.eventsNoChunks(id), live: false, lastTs: store.lastTs(id) });
     expect(items.map((i) => [i.kind, i.title, i.node])).toEqual([['free_limit', 'Out of free requests for today', 'code']]);
     expect(agent.calls).toHaveLength(1);

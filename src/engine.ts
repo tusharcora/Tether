@@ -1995,8 +1995,9 @@ export class Engine {
     if (teamStep) res = { ...res, output: stripUserAsks(res.output) };
 
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
-    // out of free requests: the step waits (the run pauses) with its edits left in the worktree, nothing committed or lost
+    // out of free requests: the step waits (the run pauses); a writing step's edits so far are committed, so they show and stay
     if (res.limit) {
+      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit`, state.setupArtifacts).catch(() => undefined);
       this.store.append(runId, { type: 'node.limited', node: node.id, resetsAt: res.limit.resetsAt });
       return { ok: false, paused: true, output: res.output };
     }

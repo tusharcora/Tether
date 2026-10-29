@@ -1,5 +1,6 @@
 import { FileCode2, NotebookText, Play } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { SWITCH_MODEL } from '../../../src/openrouter';
 import type { Route } from '../hooks';
 import { ComparisonTable } from '../components/aicss/ComparisonTable';
 import { AgentCode } from '../components/beui/agents/agent-code';
@@ -77,7 +78,17 @@ function TetherMessage({ m, chat, onGo }: { m: ChatMessage; chat: Assistant; onG
           sourceIdPrefix={`src-${m.id}`}
         >
           <Markdown text={text} cites={new Set((m.cites ?? []).map((c) => c.n))} idPrefix={`src-${m.id}`} onCite={(n) => { const c = m.cites?.find((x) => x.n === n); if (c) onGo(routeOf(c)); }} />
-          {m.error ? <p className="m-0 mt-2 text-danger">{m.error}</p> : null}
+          {m.error?.endsWith(SWITCH_MODEL) ? (
+            // out of free requests: the model the assistant runs on is the Tether bot's, in its Runs on
+            <p className="m-0 mt-2 text-danger">
+              {m.error.slice(0, -SWITCH_MODEL.length)} ·{' '}
+              <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-danger underline" onClick={() => onGo({ tab: 'crew', id: 'orchestrator' })}>
+                Switch model
+              </button>
+            </p>
+          ) : m.error ? (
+            <p className="m-0 mt-2 text-danger">{m.error}</p>
+          ) : null}
         </StreamingResponse>
       ) : null}
       {m.compare ? (

@@ -10,7 +10,7 @@ import { ToolApproval } from '../components/beui/agents/tool-approval';
 import { ToolResult } from '../components/beui/agents/tool-result';
 import { TodoList } from '../components/beui/agents/todo-list';
 import { UploadDropzone } from '../components/bencho/UploadDropzone';
-import { citationItems, routeOf, visibleText } from './Thread';
+import { Thread, citationItems, routeOf, visibleText } from './Thread';
 
 describe('chat components', () => {
   it('streaming response shows no actions while streaming, then copy and feedback', () => {
@@ -23,6 +23,15 @@ describe('chat components', () => {
     );
     expect(screen.getAllByRole('button').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Helpful' })).toBeTruthy();
+  });
+
+  it('out of free requests: the reply says until when and links Switch model to the Tether bot’s Runs on', () => {
+    const onGo = vi.fn();
+    const chat = { messages: [{ id: 'm1', role: 'tether', text: '', at: 1, error: 'Out of free requests until 02:00 · Switch model' }], models: [], loading: false, feedback: vi.fn() } as never;
+    render(<Thread chat={chat} onGo={onGo} empty="" />);
+    expect(screen.getByText(/Out of free requests until 02:00/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch model' }));
+    expect(onGo).toHaveBeenCalledWith({ tab: 'crew', id: 'orchestrator' });
   });
 
   it('citation rows open inside the app through onOpen', () => {

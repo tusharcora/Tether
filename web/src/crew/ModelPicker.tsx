@@ -20,11 +20,11 @@ export const modelMeta = (m: OrModel) => (m.free && !m.tools ? "chat only · can
  * search box and a Free only filter, free / tools / images tags, and the free requests left at the foot. A free model
  * that cannot call tools is dimmed, and picking it for a bot that writes says so (it is still allowed).
  */
-export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo>; writes: boolean; onPick: (b: { agent: string; model: string }) => void }) {
+export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo>; writes: boolean; onPick: (b: { agent: string; model: string }) => void; defaultOpen?: boolean }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!p.defaultOpen);
   const [query, setQuery] = useState('');
   const [freeOnly, setFreeOnly] = useState(false);
   const list = usePoll<{ models: OrModel[]; error?: string }>(MODELS_PATH, MODELS_MS);

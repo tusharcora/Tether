@@ -909,8 +909,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (action === 'stop') {
           if (!engine.stop(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
         } else if (action === 'resume') {
+          // Switch model… after the free limit: the waiting steps carry on on this agent/model (this run only)
+          const model = reqString(b, 'model');
+          const switchTo = typeof b.agent === 'string' ? { agent: b.agent, ...(model ? { model } : {}) } : undefined;
           // a team run still planning resumes with its next round in the background
-          await engine.resume(id, { retryFailed: b.retryFailed, background: true });
+          await engine.resume(id, { retryFailed: b.retryFailed, background: true, ...(switchTo ? { switchTo } : {}) });
         } else {
           if (typeof b.node !== 'string') throw new HttpError(400, '"node" is required');
           engine.approve(id, b.node, b.approved !== false, 'dashboard');

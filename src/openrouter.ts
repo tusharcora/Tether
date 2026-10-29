@@ -76,8 +76,10 @@ const hhmm = (t: number) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
+/** The end of the limit message, which screens turn into a link to the model picker. */
+export const SWITCH_MODEL = ' · Switch model';
 /** What a call outside a run step says when the free requests ran out (a step pauses instead). */
-export const limitMessage = (resetsAt: number): string => `Out of free requests until ${hhmm(resetsAt)} · Switch model`;
+export const limitMessage = (resetsAt: number): string => `Out of free requests until ${hhmm(resetsAt)}${SWITCH_MODEL}`;
 
 export interface OrModel {
   id: string;
