@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import type { OrModel } from '../../../src/openrouter';
+import { FREE_DEFAULT, type OrModel } from '../../../src/openrouter';
 import { SearchField } from '../components/beui/kit/fields';
 import { usePoll } from '../hooks';
 import { MODELS_PATH } from '../settings/accountsApi';
@@ -43,7 +43,8 @@ export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo
 
   const q = query.trim().toLowerCase();
   const hit = (m: OrModel) => !q || `${m.name} ${m.id}`.toLowerCase().includes(q);
-  const free = models.filter((m) => m.free && hit(m));
+  // the crew's free default leads its group
+  const free = models.filter((m) => m.free && hit(m)).sort((a, b) => Number(b.id === FREE_DEFAULT) - Number(a.id === FREE_DEFAULT));
   const paid = freeOnly ? [] : models.filter((m) => !m.free && hit(m));
   const local = freeOnly ? [] : Object.keys(p.agents).filter((a) => a !== 'openrouter' && a !== 'mock' && (!q || a.includes(q)));
   const pick = (b: { agent: string; model: string }) => {
