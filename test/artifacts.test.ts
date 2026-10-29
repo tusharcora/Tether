@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { splitArtifacts, wordCount } from '../src/assistant/artifactBlocks.js';
-import { artifactsDir, deleteArtifact, listArtifacts, readArtifact, saveArtifact } from '../src/assistant/artifacts.js';
+import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact, saveArtifact } from '../src/assistant/artifacts.js';
 import { checkReply } from '../src/assistant/reply.js';
 import { Store } from '../src/store.js';
 import { tmp } from './helpers.js';
@@ -45,6 +45,38 @@ describe('artifact blocks in a reply', () => {
     const c = await checkReply(`Made them.\n${four}\n<artifact title="Empty"></artifact>\n\`\`\`tether\n{"sources":[]}\n\`\`\``, { home: tmp('home-'), store });
     expect(c.text).toBe('Made them.');
     expect(c.artifacts.map((a) => a.title)).toEqual(['A1', 'A2', 'A3']);
+  });
+});
+
+describe('.aorch/.gitignore', () => {
+  it('is created with artifacts/ and prompts.json, or gets only the missing lines appended, other lines kept', () => {
+    const a = tmp('proj-');
+    ensureIgnored(a);
+    expect(readFileSync(join(a, '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
+    ensureIgnored(a);
+    expect(readFileSync(join(a, '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
+    const b = tmp('proj-');
+    mkdirSync(join(b, '.aorch'));
+    writeFileSync(join(b, '.aorch', '.gitignore'), '# mine\nhttp/secrets\n  prompts.json  \nlast-no-newline');
+    writeFileSync(join(b, '.gitignore'), 'node_modules\n');
+    ensureIgnored(b);
+    expect(readFileSync(join(b, '.aorch', '.gitignore'), 'utf8')).toBe('# mine\nhttp/secrets\n  prompts.json  \nlast-no-newline\nartifacts/\n');
+    // the project's own .gitignore is never touched
+    expect(readFileSync(join(b, '.gitignore'), 'utf8')).toBe('node_modules\n');
+  });
+
+  it('refuses a symlinked .gitignore or .aorch, writing nothing through it', () => {
+    const outside = tmp('outside-');
+    writeFileSync(join(outside, 'g'), 'theirs\n');
+    const a = tmp('proj-');
+    mkdirSync(join(a, '.aorch'));
+    symlinkSync(join(outside, 'g'), join(a, '.aorch', '.gitignore'));
+    expect(() => ensureIgnored(a)).toThrow(/symlinked/);
+    const b = tmp('proj-');
+    symlinkSync(outside, join(b, '.aorch'));
+    expect(() => ensureIgnored(b)).toThrow(/symlinked/);
+    expect(readFileSync(join(outside, 'g'), 'utf8')).toBe('theirs\n');
+    expect(existsSync(join(outside, '.gitignore'))).toBe(false);
   });
 });
 

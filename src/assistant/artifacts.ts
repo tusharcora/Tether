@@ -44,6 +44,22 @@ function fileIn(f: string, name: string): string {
   return p;
 }
 
+/**
+ * `<project>/.aorch/.gitignore` lists what Tether keeps there for the person alone (artifacts, saved prompts): created,
+ * or the missing lines appended; no other line is touched, and a symlinked .aorch or .gitignore is refused.
+ */
+export function ensureIgnored(root: string): void {
+  const aorch = join(root, '.aorch');
+  const file = join(aorch, '.gitignore');
+  if (isLink(aorch) || isLink(file)) throw new HttpError(400, 'refusing a symlinked .aorch/.gitignore');
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const have = new Set(text.split(/\r?\n/).map((l) => l.trim()));
+  const missing = ['artifacts/', 'prompts.json'].filter((l) => !have.has(l));
+  if (!missing.length) return;
+  mkdirSync(aorch, { recursive: true });
+  writeAtomic(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`);
+}
+
 /** A fresh temp name opened exclusively, then a rename: a planted symlink is never followed, a reader never sees half a file. */
 function writeAtomic(file: string, text: string): void {
   const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;

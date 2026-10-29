@@ -23,7 +23,9 @@ import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
 import { splitArtifacts } from './artifactBlocks.js';
-import { artifactsDir, readArtifact, saveArtifact } from './artifacts.js';
+import { artifactsDir, ensureIgnored, readArtifact, saveArtifact } from './artifacts.js';
+import { personaOf } from '../composer.js';
+import { AGENT_KINDS, loadCrew } from '../crew.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
@@ -140,8 +142,12 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   emit({ type: 'start', you, id, chat: chat.id, title: chat.title });
 
   const binding = assistantAgent(c.home);
-  // a bot with no binding leaves the turn to Tether's own
+  // an @mentioned crew agent with a binding answers as itself on that binding; with none, Tether answers
   const routed = body.bot ? loadBindings(c.home)[body.bot] : undefined;
+  const as = routed ? loadCrew(c.home).find((b) => b.id === body.bot && AGENT_KINDS.has(b.kind)) : undefined;
+  const persona = as && personaOf(as);
+  const who = o.who ?? (as ? `You are ${as.name}${as.title ? `, the ${as.title}` : ''}, an agent in the person's Tether crew. They @mentioned you in their chat with Tether: answer as yourself, in your own voice, not as Tether.${persona ? `\n${persona}` : ''}` : undefined);
+  const by = as ? { by: { bot: as.id, name: as.name } } : {};
   const agent = body.agent ?? routed?.agent ?? binding.agent;
   // the bound model belongs to the bound agent (claude's "haiku" means nothing to OpenRouter)
   const bound = routed && agent === routed.agent ? routed.model : agent === binding.agent ? binding.model : undefined;
@@ -166,7 +172,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     return m;
   };
   // a half-written artifact is not kept: the reply's prose is
-  const fail = (error: string) => done({ id, role: 'tether', text: redact(splitArtifacts(text).text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
+  const fail = (error: string) => done({ id, role: 'tether', text: redact(splitArtifacts(text).text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...by, ...(tools.length ? { tools } : {}), error });
   if (!c.registry.has(agent)) return fail(`"${agent}" is not set up. Link a model to Tether in the Crew tab.`);
   // a team agent's turn keeps no chat, so there is nothing to compact
   const latest = o.ephemeral ? undefined : latestContext(chat.messages)?.use;
@@ -223,7 +229,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500, used: (h) => void retrieved.push({ path: h.note.path, title: h.note.title, score: h.score, snippet: redact(h.snippet).slice(0, 300) }) }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
-      who: o.who,
+      who,
+      ...(as && !o.who ? { mention: true as const } : {}),
       extra: o.extra,
       ...(refs.length ? { artifacts: refs } : {}),
       ...(artifact ? { artifact } : {}),
@@ -307,6 +314,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (!o.ephemeral)
       for (const a of checked.artifacts) {
         try {
+          if (o.root) ensureIgnored(o.root);
           artifacts.push(saveArtifact(artifactsDir(c.home, o.root), a, chat.id));
         } catch (e) {
           unsaved.push(`Could not save the artifact "${a.title}": ${(e as Error).message.split('\n')[0]!.slice(0, 200)}`);
@@ -328,6 +336,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       role: 'tether',
       text: replyText || (artifacts.length ? '' : 'Done.'),
       at: Date.now(),
+      ...by,
       ...(checked.cites.length ? { cites: checked.cites } : {}),
       ...(checked.proposals.length ? { proposals: checked.proposals } : {}),
       ...(checked.ask ? { ask: checked.ask } : {}),

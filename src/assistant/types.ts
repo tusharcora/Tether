@@ -183,6 +183,8 @@ export interface ChatMessage {
   timeline?: TimelineEvent[];
   /** Artifacts the reply made or rewrote (a page, a doc), in the order it wrote them. */
   artifacts?: ArtifactRef[];
+  /** An @mentioned crew agent answered (as itself, on its own binding), not Tether. */
+  by?: { bot: string; name: string };
   /** What the turn cost, where the agent reports it. */
   costUsd?: number;
   /** The turn failed: what to tell the person. */

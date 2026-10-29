@@ -22,6 +22,7 @@ import { assistantApi, type ArtifactRef, type ChatMessage, type Cite } from './a
 import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, DiagramCard, ProposalCard, ToolAskCard } from './cards';
+import { Face } from '../Face';
 import { promptFrom } from './Prompts';
 import { Thinking } from './Thinking';
 import { useNotify } from '../ui/notify';
@@ -170,6 +171,16 @@ function TetherMessage({ m, asked, query, chat, onGo, dim, project, onArtifact }
   const stopped = m.error === 'Stopped.';
   return (
     <div className={cn('max-w-[92%]', dim && 'opacity-60')} data-role="tether">
+      {m.by ? (
+        // an @mentioned crew agent answered, as itself
+        <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground" data-answered-by={m.by.bot}>
+          <span aria-hidden="true">
+            <Face id={m.by.bot} size={16} />
+          </span>
+          <span className="font-medium text-foreground">{m.by.name}</span>
+          <span>· crew agent</span>
+        </div>
+      ) : null}
       {m.tools?.length ? <Thinking tools={m.tools} ms={asked !== undefined ? m.at - asked : undefined} /> : null}
       {stopped ? (
         <StoppedRun words={text.split(/\s+/).filter(Boolean)} reason="stopped" onContinue={() => void chat.send('Continue')} onDiscard={() => void chat.discard(m.id).catch(notify.fail)} />

@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
-import { artifactsDir, deleteArtifact, listArtifacts, readArtifact } from './artifacts.js';
+import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
 import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } from './prompts.js';
 import { latestContext } from './context.js';
@@ -257,16 +257,22 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
   if (p === '/api/assistant/prompts' && (m === 'GET' || m === 'POST')) {
     if (m === 'GET') return send(res, 200, { prompts: listPrompts(promptsFile(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))))) }), true;
     const b = reqObject(await readJson(req, 100_000));
-    return send(res, 200, { prompt: createPrompt(promptsFile(c.home, rootOf(c, wsOf(b.ws))), b) }), true;
+    const root = rootOf(c, wsOf(b.ws));
+    const file = promptsFile(c.home, root);
+    if (root) ensureIgnored(root);
+    return send(res, 200, { prompt: createPrompt(file, b) }), true;
   }
   if ((g = p.match(/^\/api\/assistant\/prompts\/([^/]+)$/)) && (m === 'PATCH' || m === 'DELETE')) {
     const id = decodeURIComponent(g[1]!);
+    const b = m === 'PATCH' ? reqObject(await readJson(req, 100_000)) : {};
+    const root = rootOf(c, wsOf(m === 'PATCH' ? b.ws : url.searchParams.get('ws')));
+    const file = promptsFile(c.home, root);
+    if (root) ensureIgnored(root);
     if (m === 'DELETE') {
-      if (!deletePrompt(promptsFile(c.home, rootOf(c, wsOf(url.searchParams.get('ws')))), id)) throw new HttpError(404, 'no such prompt');
+      if (!deletePrompt(file, id)) throw new HttpError(404, 'no such prompt');
       return send(res, 200, { ok: true }), true;
     }
-    const b = reqObject(await readJson(req, 100_000));
-    return send(res, 200, { prompt: updatePrompt(promptsFile(c.home, rootOf(c, wsOf(b.ws))), id, b) }), true;
+    return send(res, 200, { prompt: updatePrompt(file, id, b) }), true;
   }
 
   // Discard a stopped or failed reply

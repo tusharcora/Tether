@@ -441,6 +441,8 @@ describe('artifacts', () => {
     expect(r.done!.message.text).toBe('Here is the page.');
     expect(r.done!.message.artifacts).toEqual([{ id: 'landing-page', version: 1, title: 'Landing page', kind: 'html' }]);
     expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'artifacts', 'landing-page', 'v1.html'), 'utf8')).toBe('<!doctype html><h1>v1</h1>');
+    // kept out of the project's git: .aorch/.gitignore lists them
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
     expect(t.agent.prompts[0]).toContain('<artifact title="Short title" kind="html">');
     // the chat keeps the reference, not the content
     expect(JSON.stringify(readChat(t.home, 'api', r.chat!))).not.toContain('<h1>v1</h1>');
@@ -502,10 +504,14 @@ describe('the composer’s prompts and mentions', () => {
     const t = await boot();
     const made = await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: 'Explain', body: 'Explain {{file}}' });
     expect(made.json.prompt).toMatchObject({ name: 'Explain', variables: ['file'] });
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
+    // no project: Tether's home gets no .gitignore
+    await t.call('POST', '/api/assistant/prompts', { name: 'Home one', body: 'x' });
+    expect(existsSync(join(t.home, '.gitignore'))).toBe(false);
     expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'prompts.json'), 'utf8')).toContain('Explain {{file}}');
     expect((await t.call('GET', '/api/assistant/prompts?ws=api')).json.prompts).toHaveLength(1);
     // another project's (here: no project's) prompts are its own
-    expect((await t.call('GET', '/api/assistant/prompts')).json.prompts).toEqual([]);
+    expect((await t.call('GET', '/api/assistant/prompts')).json.prompts.map((x: { name: string }) => x.name)).toEqual(['Home one']);
     const id = made.json.prompt.id as string;
     expect((await t.call('PATCH', `/api/assistant/prompts/${id}`, { ws: 'api', name: 'Explain a file' })).json.prompt.name).toBe('Explain a file');
     expect((await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: '', body: 'x' })).status).toBe(400);
@@ -514,13 +520,28 @@ describe('the composer’s prompts and mentions', () => {
     expect((await t.call('DELETE', `/api/assistant/prompts/${id}?ws=api`)).status).toBe(404);
   });
 
-  it('an @mentioned crew bot answers on its own binding; one with no binding leaves it to Tether', async () => {
+  it('an @mentioned crew agent answers as itself on its own binding, keeping the page and artifacts; one with no binding leaves it to Tether', async () => {
     const t = await boot();
     const r = await t.turn({ message: '@Bolt what is the limit?', bot: 'coder' });
     expect(r.done!.message.context?.agent).toBe('mock');
+    expect(r.done!.message.by).toEqual({ bot: 'coder', name: 'Bolt' });
     expect(t.agent.prompts).toHaveLength(0);
+    // on the scripted agent the prompt can be read: Bolt's identity and persona, Tether's page line and artifact contract
+    link(t.home, 'coder', { agent: 'scripted', model: 'm2' });
+    t.agent.reply = 'Five, from limit.ts.';
+    const b = await t.turn({ chat: r.chat, message: '@Bolt and now?', bot: 'coder', context: { page: 'code' } });
+    const p = t.agent.prompts.at(-1)!;
+    expect(p.startsWith("You are Bolt, the coder, an agent in the person's Tether crew.")).toBe(true);
+    expect(p).toContain('Writes the change in the run worktree');
+    expect(p).not.toContain('You are Tether');
+    expect(p).toContain('on the code page');
+    expect(p).toContain('<artifact title="Short title" kind="html">');
+    expect(p).toContain(`Bolt: ${r.done!.message.text.slice(0, 40)}`);
+    expect(b.done!.message).toMatchObject({ by: { bot: 'coder', name: 'Bolt' }, text: 'Five, from limit.ts.', context: { agent: 'scripted', model: 'm2' } });
     const r2 = await t.turn({ message: '@Lens hi', bot: 'reviewer' });
     expect(r2.done!.message.context?.agent).toBe('scripted');
+    expect(r2.done!.message.by).toBeUndefined();
+    expect(t.agent.prompts.at(-1)!).toContain('You are Tether');
     // not a bot id: ignored
     const r3 = await t.turn({ message: 'hi', bot: '../x' });
     expect(r3.done!.message.context?.agent).toBe('scripted');

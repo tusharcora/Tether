@@ -52,6 +52,22 @@ describe('@mentions in the chat', () => {
   });
 });
 
+describe('who answered', () => {
+  it('a reply by an @mentioned crew agent says so, with its face; Tether’s own replies do not', () => {
+    serve();
+    const msgs: ChatMessage[] = [
+      { id: 'y', role: 'you', text: '@Bolt why?', at: 1 },
+      { id: 'a', role: 'tether', text: 'Because the test is flaky.', at: 2, by: { bot: 'coder', name: 'Bolt' } },
+      { id: 'b', role: 'tether', text: 'Tether here.', at: 3 },
+    ];
+    const { container } = renderApp(<Thread chat={fakeChat({ messages: msgs })} onGo={vi.fn()} empty="" />);
+    const row = container.querySelector('[data-answered-by="coder"]') as HTMLElement;
+    expect(row.textContent).toBe('Bolt· crew agent');
+    expect(row.querySelector('[aria-hidden="true"] .face')).toBeTruthy();
+    expect(container.querySelectorAll('[data-answered-by]')).toHaveLength(1);
+  });
+});
+
 describe('slash commands in the chat', () => {
   it('offers what the chat can do now and runs it', async () => {
     serve();
