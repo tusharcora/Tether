@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
+import { artifactsDir, deleteArtifact, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
 import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
@@ -231,6 +232,23 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     else if (b.value !== 'down') delete msg.feedbackNote;
     saveChat(c.home, ws, chat);
     return send(res, 200, { ok: true }), true;
+  }
+
+  // The project's artifacts (no project: Tether's own folder). An id is checked before any path is made from it.
+  if (p === '/api/assistant/artifacts' && m === 'GET') {
+    const dir = artifactsDir(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))));
+    return send(res, 200, { artifacts: listArtifacts(dir) }), true;
+  }
+  if ((g = p.match(/^\/api\/assistant\/artifacts\/([^/]+)$/)) && (m === 'GET' || m === 'DELETE')) {
+    const dir = artifactsDir(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))));
+    const id = decodeURIComponent(g[1]!);
+    if (m === 'DELETE') {
+      if (!deleteArtifact(dir, id)) throw new HttpError(404, 'no such artifact');
+      return send(res, 200, { ok: true }), true;
+    }
+    const v = url.searchParams.get('v');
+    if (v !== null && !/^\d{1,4}$/.test(v)) throw new HttpError(400, '"v" must be a version number');
+    return send(res, 200, readArtifact(dir, id, v === null ? undefined : Number(v))), true;
   }
 
   // Discard a stopped or failed reply

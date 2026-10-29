@@ -22,7 +22,9 @@ import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
+import { splitArtifacts } from './artifactBlocks.js';
+import { artifactsDir, readArtifact, saveArtifact } from './artifacts.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
   home: string;
@@ -159,7 +161,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     emit({ type: 'done', message: m });
     return m;
   };
-  const fail = (error: string) => done({ id, role: 'tether', text: redact(text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
+  // a half-written artifact is not kept: the reply's prose is
+  const fail = (error: string) => done({ id, role: 'tether', text: redact(splitArtifacts(text).text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
   if (!c.registry.has(agent)) return fail(`"${agent}" is not set up. Link a model to Tether in the Crew tab.`);
   // a team agent's turn keeps no chat, so there is nothing to compact
   const latest = o.ephemeral ? undefined : latestContext(chat.messages)?.use;
@@ -194,6 +197,18 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, 8)
       .map((r) => `- ${r.id}: ${r.status}, ${r.kind === 'team' ? 'team' : r.pipeline}, "${r.task.replace(/\s+/g, ' ').slice(0, 80)}"`);
+    // the chat's artifacts at their latest version, and the newest one's content, so "change that page" can rewrite it
+    const made = chat.messages.flatMap((m) => m.artifacts ?? []);
+    const refs = made.filter((a, k) => made.findLastIndex((x) => x.id === a.id) === k);
+    let artifact: PromptInput['artifact'];
+    if (refs.length && !o.ephemeral) {
+      try {
+        const v = readArtifact(artifactsDir(c.home, o.root), refs.at(-1)!.id);
+        artifact = { ref: { id: v.meta.id, version: v.version, title: v.meta.title, kind: v.meta.kind }, content: v.content };
+      } catch {
+        /* deleted since: the list still names it */
+      }
+    }
     const input: PromptInput = {
       message: body.message,
       context: body.context,
@@ -206,6 +221,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       attachments,
       who: o.who,
       extra: o.extra,
+      ...(refs.length ? { artifacts: refs } : {}),
+      ...(artifact ? { artifact } : {}),
     };
     const prompt = buildPrompt(input);
     const cm = await openCodeModeFor({
@@ -280,6 +297,18 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (signal.aborted) return fail('Stopped.');
     if (res.exitCode !== 0 || res.error) return fail((res.error ?? `the agent exited ${res.exitCode}`).split('\n')[0]!.slice(0, 300));
     const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault });
+    // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either
+    const artifacts: ArtifactRef[] = [];
+    const unsaved: string[] = [];
+    if (!o.ephemeral)
+      for (const a of checked.artifacts) {
+        try {
+          artifacts.push(saveArtifact(artifactsDir(c.home, o.root), a, chat.id));
+        } catch (e) {
+          unsaved.push(`Could not save the artifact "${a.title}": ${(e as Error).message.split('\n')[0]!.slice(0, 200)}`);
+        }
+      }
+    const replyText = [checked.text, ...unsaved].filter(Boolean).join('\n\n');
     const approvals = cm.approvals();
     const info = (await c.modelInfo?.(agent, model).catch(() => undefined)) ?? { size: knownSize(agent, model) };
     const context: ContextUse = {
@@ -293,7 +322,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     return done({
       id,
       role: 'tether',
-      text: checked.text || 'Done.',
+      text: replyText || (artifacts.length ? '' : 'Done.'),
       at: Date.now(),
       ...(checked.cites.length ? { cites: checked.cites } : {}),
       ...(checked.proposals.length ? { proposals: checked.proposals } : {}),
@@ -304,6 +333,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       ...(checked.choice ? { choice: checked.choice } : {}),
       ...(checked.diagram ? { diagram: checked.diagram } : {}),
       ...(checked.timeline ? { timeline: checked.timeline } : {}),
+      ...(artifacts.length ? { artifacts } : {}),
       ...(retrieved.length ? { retrieved } : {}),
       ...(approvals.length ? { toolAsks: approvals.map((what) => ({ id: mid('ta'), what, status: 'pending' as const })) } : {}),
       ...(tools.length ? { tools } : {}),

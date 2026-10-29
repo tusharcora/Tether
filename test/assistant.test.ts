@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -430,6 +430,70 @@ describe('what the chat elements read', () => {
     const t = await boot();
     t.agent.reply = 'See the spec.\n```tether\n{"spec":{"title":"Runtime","rows":[{"label":"Node","value":"22"}]}}\n```';
     expect((await t.turn({ message: 'q' })).done!.message.spec).toEqual({ title: 'Runtime', rows: [{ label: 'Node', value: '22' }] });
+  });
+});
+
+describe('artifacts', () => {
+  it('saves a reply’s artifact in the project, keeps a reference on the message, and the next turn sees and rewrites it', async () => {
+    const t = await boot();
+    t.agent.reply = 'Here is the page.\n<artifact title="Landing page" kind="html">\n<!doctype html><h1>v1</h1>\n</artifact>';
+    const r = await t.turn({ message: 'make a landing page' });
+    expect(r.done!.message.text).toBe('Here is the page.');
+    expect(r.done!.message.artifacts).toEqual([{ id: 'landing-page', version: 1, title: 'Landing page', kind: 'html' }]);
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'artifacts', 'landing-page', 'v1.html'), 'utf8')).toBe('<!doctype html><h1>v1</h1>');
+    expect(t.agent.prompts[0]).toContain('<artifact title="Short title" kind="html">');
+    // the chat keeps the reference, not the content
+    expect(JSON.stringify(readChat(t.home, 'api', r.chat!))).not.toContain('<h1>v1</h1>');
+
+    t.agent.reply = 'Made it blue.\n<artifact id="landing-page" title="Landing page" kind="html">\n<h1 style="color:blue">v2</h1>\n</artifact>';
+    const r2 = await t.turn({ chat: r.chat, message: 'make it blue' });
+    const p = t.agent.prompts[1]!;
+    expect(p).toContain('Artifacts in this chat: "Landing page" (id landing-page, html, v1)');
+    expect(p).toContain('<current_artifact id="landing-page">\n<!doctype html><h1>v1</h1>\n</current_artifact>');
+    expect(p).toContain('[made artifact "Landing page" v1]');
+    expect(r2.done!.message.artifacts).toEqual([{ id: 'landing-page', version: 2, title: 'Landing page', kind: 'html' }]);
+    expect(r2.done!.message.context!.parts.messages.map(([l]) => l)).toContain('Artifacts in this chat');
+
+    const list = await t.call('GET', '/api/assistant/artifacts?ws=api');
+    expect(list.json.artifacts.map((a: { id: string; versions: unknown[] }) => [a.id, a.versions.length])).toEqual([['landing-page', 2]]);
+    const v = await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api');
+    expect(v.json).toMatchObject({ version: 2, content: '<h1 style="color:blue">v2</h1>', meta: { chatId: r.chat } });
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=1')).json.content).toBe('<!doctype html><h1>v1</h1>');
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=9')).status).toBe(404);
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=x')).status).toBe(400);
+    expect((await t.call('GET', `/api/assistant/artifacts/${encodeURIComponent('../x')}?ws=api`)).status).toBe(400);
+    expect((await t.call('GET', '/api/assistant/artifacts?ws=nope')).status).toBe(404);
+    expect((await t.call('DELETE', '/api/assistant/artifacts/landing-page?ws=api')).status).toBe(200);
+    expect((await t.call('DELETE', '/api/assistant/artifacts/landing-page?ws=api')).status).toBe(404);
+  });
+
+  it('streams the artifact for the card to count, keeps a reply that is only an artifact, and saves to Tether’s home with no project', async () => {
+    const t = await boot();
+    t.agent.reply = '<artifact title="Notes" kind="markdown">\n# Notes\n</artifact>';
+    const r = await t.turn({ message: 'notes please' });
+    const streamed = r.events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text).join('');
+    expect(streamed).toContain('# Notes');
+    expect(r.done!.message.text).toBe('');
+    expect(r.done!.message.artifacts?.[0]?.id).toBe('notes');
+    // no project: Tether's own folder
+    const none = await t.call('POST', '/api/assistant', { message: 'notes please' });
+    expect(none.status).toBe(200);
+    expect(readFileSync(join(t.home, 'artifacts', 'notes', 'v1.md'), 'utf8')).toBe('# Notes');
+  });
+
+  it('a team agent’s turn has no artifact contract and saves none', async () => {
+    const t = await boot();
+    t.agent.reply = 'Sure.\n<artifact title="X" kind="markdown">\n# X\n</artifact>';
+    const m = await runTurn(
+      { home: t.home, store: t.store, engine: t.engine, registry: t.registry, vault: new Vault(tmp('vault-')), needs: () => [] },
+      { ws: 'api', root: realpathSync(t.dir), body: { message: 'hi', agent: 'scripted' }, who: 'You are Bolt.', ephemeral: true },
+      () => {},
+      new AbortController().signal,
+    );
+    expect(m.text).toBe('Sure.');
+    expect(m.artifacts).toBeUndefined();
+    expect(t.agent.prompts.at(-1)).not.toContain('<artifact title=');
+    expect(existsSync(join(realpathSync(t.dir), '.aorch', 'artifacts'))).toBe(false);
   });
 });
 
