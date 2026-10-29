@@ -291,6 +291,8 @@ export type RunEvent =
   | { type: 'manager.cost'; node: string; costUsd: number }
   /** A skipped step is queued again (its failed upstream was redone). */
   | { type: 'node.requeued'; node: string; reason: string }
+  /** The step's free model ran out of free requests for the day: it waits (the run pauses), its edits stay in the worktree. */
+  | { type: 'node.limited'; node: string; resetsAt: number }
   | { type: 'handoff'; from: string; to: string; goal: string; answer: string; round: number; costUsd?: number }
   | { type: 'consult'; from: string; to: string; question: string; answer: string; round: number; costUsd?: number; /** The consulted step's bot and harness version (the one its session ran with). */ harness?: { bot: string; version: number } }
   /** The person's thumbs up/down on a step's output. Last one per step wins. `note` is free text from a person: data, capped at 500 chars. */
@@ -338,6 +340,8 @@ export interface NodeState {
   harness?: HarnessRef;
   /** The person's latest thumbs up/down on this step (absent in logs from before Evolve). */
   feedback?: { rating: Rating; note?: string };
+  /** Out of free requests until `resetsAt`: set while the step waits for the reset (or another model), cleared when it starts again. */
+  limit?: { resetsAt: number };
 }
 
 export interface RunState {
@@ -537,6 +541,14 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
           n.harness = e.harness;
           n.live = '';
           n.error = undefined;
+          n.limit = undefined;
+        }
+        break;
+      case 'node.limited':
+        if (n?.status === 'running') {
+          n.status = 'awaiting';
+          n.limit = { resetsAt: e.resetsAt };
+          n.live = undefined;
         }
         break;
       case 'node.session':
@@ -634,6 +646,8 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
             for (const a of s.userAsks) if (!a.answer && s.nodes[a.node]?.status === 'awaiting') s.nodes[a.node]!.status = 'queued';
             s.userAsks = s.userAsks.filter((a) => a.answer);
           }
+          // a step waiting on the free limit runs again if the run is resumed
+          for (const ns of Object.values(s.nodes)) if (ns.limit && ns.status === 'awaiting') ns.status = 'queued';
           // planning cards nobody answered: gone, and their round counts as not asked, so a resume asks it again
           const dropped = new Set(s.pending.map((q) => q.id));
           if (s.kind === 'team' && s.planning && dropped.size) {
@@ -760,7 +774,7 @@ export interface RunRowExtras {
   current?: RunCurrent;
   bots: string[];
 }
-export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
+export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'free_limit' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
 export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open';
 export interface AttentionItem {
   id: string;

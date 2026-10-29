@@ -9,7 +9,7 @@ import { ListRow } from '../ui/studio/ListRow';
 import { RunGlyph } from '../ui/studio/RunGlyph';
 import { QuietLine, RowList, Section } from '../ui/studio/Section';
 
-export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed' };
+export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed', free_limit: 'Free limit' };
 const ACTION_LABEL: Record<AttentionAction, string> = { answer: 'Answer', review: 'Review plan', approve: 'Approve', resume: 'Resume', retry: 'Retry', open: 'Open' };
 const PRIMARY = new Set<AttentionAction>(['answer', 'review', 'approve']);
 
