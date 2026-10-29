@@ -32,6 +32,8 @@ vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   api: async (_m: string, path: string) => {
     if (path === '/api/accounts/nvidia/models') return { models: ['nvidia/nemotron-3.5-super-vl-120b-a12b', 'z-ai/glm-5.3-flash'] };
+    if (path === '/api/accounts/openrouter/models')
+      return { models: ['nvidia/nemotron-3.5-super-vl:free', 'meta-llama/llama-4:free'].map((id) => ({ id, name: id, provider: id.split('/')[0], free: true, tools: true, images: false, context: 0 })) };
     throw new Error(`no route for ${path}`);
   },
 }));
@@ -94,7 +96,7 @@ describe('the chat', () => {
 
   it('lists NVIDIA’s free models in their own group beside the bound agent’s, and a turn on one names nvidia', async () => {
     localStorage.clear();
-    api.view = { models: ['opus', 'haiku'], nvidia: true };
+    api.view = { models: ['opus', 'haiku'], nvidia: true, openrouter: true };
     api.bodies.length = 0;
     api.turn = async (_b, on) => on({ type: 'start', you: { id: 'y', role: 'you', text: 'hi', at: 3 }, id: 'a', chat: 'c1', title: 'q' });
     try {
@@ -103,10 +105,11 @@ describe('the chat', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Model: Auto' }));
       const heads = await waitFor(() => {
         const h = [...document.querySelectorAll('[cmdk-group-heading]')].map((x) => x.textContent);
-        expect(h).toContain('NVIDIA (build.nvidia.com)');
+        expect(h).toContain('OpenRouter · free');
         return h;
       });
-      expect(heads).toEqual(['Anthropic', 'NVIDIA (build.nvidia.com)']);
+      // NVIDIA right after the agent's own models; OpenRouter's free ones as one group, not one per maker
+      expect(heads).toEqual(['Anthropic', 'NVIDIA (build.nvidia.com)', 'OpenRouter · free']);
       const row = screen.getByRole('option', { name: /z-ai\/glm-5.3-flash/ });
       expect([...row.querySelectorAll('.aic-tag')].map((t) => t.textContent)).toEqual(['free', '40/min']);
       fireEvent.click(row);

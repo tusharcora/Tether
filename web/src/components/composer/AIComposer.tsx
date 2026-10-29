@@ -258,7 +258,7 @@ export function AIComposer(p: AIComposerProps) {
                 </ModelSelectorTrigger>
                 <ModelSelectorContent title="Choose a model" className="sm:max-w-md">
                   <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
+                  <ModelSelectorList className="max-h-[min(60vh,520px)]">
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
                     <ModelSelectorGroup>
                       <ModelSelectorItem value="auto" keywords={['auto', p.autoModel ?? '']} onSelect={() => pick(undefined)}>
