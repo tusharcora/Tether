@@ -12,7 +12,7 @@ import { NAME_RE } from '../pipeline.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import type { Store } from '../store.js';
 import type { Goals } from './loop.js';
-import type { Goal, GoalCheck, GoalView } from './types.js';
+import type { Assignee, Goal, GoalCheck, GoalType, GoalView } from './types.js';
 
 const num = (b: Record<string, unknown>, k: string, lo: number, hi: number, whole = false): number | undefined => {
   const v = b[k];
@@ -47,6 +47,20 @@ const dateOf = (b: Record<string, unknown>) => {
   const d = text(b, 'dueDate', 10);
   if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, '"dueDate" must look like 2026-11-30');
   return d;
+};
+const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const satisfies readonly GoalType[];
+/** Who works on it: at most 20 teams or agents. An id that no longer exists is kept (the page shows it as removed). */
+const assigneesOf = (b: Record<string, unknown>): Assignee[] | undefined => {
+  const v = b.assignees;
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v) || v.length > 20) throw new HttpError(400, '"assignees" must be a list of at most 20');
+  return v.map((a) => {
+    const o = reqObject(a);
+    const kind = enumOf(o, 'kind', ['team', 'agent'] as const);
+    const id = text(o, 'id', 100);
+    if (!kind || !id) throw new HttpError(400, 'an assignee needs a "kind" (team or agent) and an "id"');
+    return { kind, id };
+  });
 };
 const workflowOf = (home: string, b: Record<string, unknown>) => {
   const w = text(b, 'workflow', 64);
@@ -96,6 +110,9 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
     const kind = enumOf(b, 'kind', ['loop', 'tracker'] as const) ?? (check ? 'loop' : 'tracker');
     if (kind === 'loop' && !check) throw new HttpError(400, 'a loop needs a "check"');
     const dueDate = dateOf(b);
+    const type = enumOf(b, 'type', TYPES);
+    const description = text(b, 'description', 500, false);
+    const assignees = assigneesOf(b);
     const goal: Goal = {
       id: `g${Date.now().toString(36)}${randomBytes(3).toString('hex')}`,
       workspace: workspace!,
@@ -110,6 +127,9 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       ...(dueDate ? { dueDate } : {}),
       createdAt: Date.now(),
       spentUsd: 0,
+      ...(type ? { type } : {}),
+      ...(description ? { description } : {}),
+      ...(assignees?.length ? { assignees } : {}),
     };
     return send(res, 201, view(goals.create(goal))), true;
   }
@@ -146,6 +166,11 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       if (wf) patch.workflow = wf;
       if (b.dueDate !== undefined) patch.dueDate = dateOf(b);
       if (b.check !== undefined && b.check !== null) patch.check = checkOf(b.check);
+      const type = enumOf(b, 'type', TYPES);
+      if (type) patch.type = type;
+      if (b.description !== undefined) patch.description = text(b, 'description', 500, false);
+      const assignees = assigneesOf(b);
+      if (assignees) patch.assignees = assignees.length ? assignees : undefined;
       if (Object.keys(patch).length) goals.update(id, patch);
       return send(res, 200, view(status ? goals.setStatus(id, status) : goals.db.must(id))), true;
     }
@@ -167,8 +192,10 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
     }
     if (sub === 'items' && g[3] && m === 'PATCH') {
       const b = reqObject(await readJson(req));
-      if (typeof b.done !== 'boolean') throw new HttpError(400, '"done" must be true or false');
-      return send(res, 200, goals.toggleItem(id, Number(g[3]), b.done)), true;
+      if (b.done !== undefined && typeof b.done !== 'boolean') throw new HttpError(400, '"done" must be true or false');
+      const assignees = assigneesOf(b);
+      if (b.done === undefined && !assignees) throw new HttpError(400, '"done" or "assignees" is required');
+      return send(res, 200, goals.editItem(id, Number(g[3]), { ...(b.done !== undefined ? { done: b.done as boolean } : {}), ...(assignees ? { assignees } : {}) })), true;
     }
   }
   return false;

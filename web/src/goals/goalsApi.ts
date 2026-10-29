@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CheckResult, GoalCheck, GoalStatus, GoalView } from '../../../src/goals/types.js';
+import type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView } from '../../../src/goals/types.js';
 import { api, fmtUsd } from '../api';
 import type { RunState } from '../ui/studio/RunGlyph';
 
-export type { CheckResult, GoalCheck, GoalStatus, GoalView };
+export type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView };
 
 const upsert = (list: GoalView[], g: GoalView): GoalView[] => (list.some((x) => x.id === g.id) ? list.map((x) => (x.id === g.id ? g : x)) : [g, ...list]);
 

@@ -175,24 +175,30 @@ describe('the loop', () => {
   });
 });
 
+/** The real server on a temp home, and a JSON caller. */
+async function serve(r: ReturnType<typeof rig>) {
+  const vault = new Vault(tmp('vault-'));
+  const registry = new AdapterRegistry().register(new MockAdapter());
+  const s = await startServer({ engine: new Engine(r.store, { home: r.home, registry }), store: r.store, vault, registry, cfg: { home: r.home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, webDir: tmp('web-') });
+  const u = new URL(s.url);
+  const call = (method: string, path: string, body?: unknown) =>
+    new Promise<{ status: number; json: any }>((resolve, reject) => {
+      const q = request({ host: u.hostname, port: u.port, method, path, headers: { host: u.host, 'content-type': 'application/json' } }, (res) => {
+        let t = '';
+        res.on('data', (d) => (t += d));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, json: t ? JSON.parse(t) : undefined }));
+      });
+      q.on('error', reject);
+      q.end(body === undefined ? undefined : JSON.stringify(body));
+    });
+  return { s, u, call };
+}
+
 describe('/api/goals', () => {
   it('validates, serves and streams goals', async () => {
     const r = rig();
-    const vault = new Vault(tmp('vault-'));
-    const registry = new AdapterRegistry().register(new MockAdapter());
-    const s = await startServer({ engine: new Engine(r.store, { home: r.home, registry }), store: r.store, vault, registry, cfg: { home: r.home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, webDir: tmp('web-') });
+    const { s, u, call } = await serve(r);
     try {
-      const u = new URL(s.url);
-      const call = (method: string, path: string, body?: unknown) =>
-        new Promise<{ status: number; json: any }>((resolve, reject) => {
-          const q = request({ host: u.hostname, port: u.port, method, path, headers: { host: u.host, 'content-type': 'application/json' } }, (res) => {
-            let t = '';
-            res.on('data', (d) => (t += d));
-            res.on('end', () => resolve({ status: res.statusCode ?? 0, json: t ? JSON.parse(t) : undefined }));
-          });
-          q.on('error', reject);
-          q.end(body === undefined ? undefined : JSON.stringify(body));
-        });
       expect((await call('POST', '/api/goals', { title: '' })).status).toBe(400);
       expect((await call('POST', '/api/goals', { title: 'x', workspace: 'nope' })).status).toBe(404);
       expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, kind: 'loop' })).status).toBe(400);
@@ -222,5 +228,117 @@ describe('/api/goals', () => {
     } finally {
       await s.close();
     }
+  });
+
+  it('type, description and assignees round-trip on create and patch', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      const made = await call('POST', '/api/goals', { title: 'Fix login', workspace: r.ws.id, type: 'bugfix', description: '  Users get logged out.  ', assignees: [{ kind: 'team', id: 'core' }, { kind: 'agent', id: 'coder' }] });
+      expect(made.status).toBe(201);
+      expect(made.json).toMatchObject({ type: 'bugfix', description: 'Users get logged out.', assignees: [{ kind: 'team', id: 'core' }, { kind: 'agent', id: 'coder' }] });
+      const id = made.json.id as string;
+      const patched = await call('PATCH', `/api/goals/${id}`, { type: 'refactor', description: 'Tidy the session code.', assignees: [{ kind: 'agent', id: 'reviewer' }] });
+      expect(patched.json).toMatchObject({ type: 'refactor', description: 'Tidy the session code.', assignees: [{ kind: 'agent', id: 'reviewer' }] });
+      const cleared = await call('PATCH', `/api/goals/${id}`, { description: '', assignees: [] });
+      expect(cleared.json).not.toHaveProperty('description');
+      expect(cleared.json).not.toHaveProperty('assignees');
+      expect((await call('GET', `/api/goals/${id}`)).json.type).toBe('refactor');
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('item assignees round-trip', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      const id = (await call('POST', '/api/goals', { title: 'Docs', workspace: r.ws.id })).json.id as string;
+      const item = (await call('POST', `/api/goals/${id}/items`, { text: 'Write intro' })).json;
+      const patched = await call('PATCH', `/api/goals/${id}/items/${item.id}`, { assignees: [{ kind: 'agent', id: 'coder' }] });
+      expect(patched.status).toBe(200);
+      expect(patched.json).toMatchObject({ done: false, assignees: [{ kind: 'agent', id: 'coder' }] });
+      expect((await call('GET', `/api/goals/${id}`)).json.items[0].assignees).toEqual([{ kind: 'agent', id: 'coder' }]);
+      // done alone keeps the assignees
+      expect((await call('PATCH', `/api/goals/${id}/items/${item.id}`, { done: true })).json).toMatchObject({ done: true, assignees: [{ kind: 'agent', id: 'coder' }] });
+      expect((await call('PATCH', `/api/goals/${id}/items/${item.id}`, {})).status).toBe(400);
+      expect((await call('PATCH', `/api/goals/${id}/items/${item.id}`, { assignees: [{ kind: 'user', id: 'me' }] })).status).toBe(400);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('rejects a bad type (400)', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, type: 'epic' })).status).toBe(400);
+      const id = (await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id })).json.id as string;
+      expect((await call('PATCH', `/api/goals/${id}`, { type: 'epic' })).status).toBe(400);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('rejects assignee kind "user" (400) and more than 20 assignees (400)', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, assignees: [{ kind: 'user', id: 'me' }] })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, assignees: [{ kind: 'agent', id: '' }] })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, assignees: 'coder' })).status).toBe(400);
+      const many = Array.from({ length: 21 }, (_, i) => ({ kind: 'agent', id: `a${i}` }));
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, assignees: many })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, assignees: many.slice(0, 20) })).status).toBe(201);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('description over 500 chars is 400', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(501) })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(500) })).status).toBe(201);
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+describe('goal fields added after teams', () => {
+  it('an old row without the new columns reads type undefined and opens', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`CREATE TABLE goals (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, check_json TEXT, budget_usd REAL NOT NULL,
+      max_runs INTEGER NOT NULL, approval TEXT NOT NULL, workflow TEXT NOT NULL, due_date TEXT, created_at INTEGER NOT NULL, spent_usd REAL NOT NULL DEFAULT 0, reason TEXT, last_check TEXT, pending TEXT, team TEXT, agent TEXT)`);
+    db.exec('CREATE TABLE goal_items (id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, run_id TEXT, done INTEGER NOT NULL DEFAULT 0, attempt TEXT, at INTEGER NOT NULL)');
+    db.exec("INSERT INTO goals (id, workspace, title, kind, status, budget_usd, max_runs, approval, workflow, created_at) VALUES ('old', 'w', 'Old', 'tracker', 'met', 5, 3, 'ask', 'team', 1)");
+    db.exec("INSERT INTO goal_items (goal_id, kind, text, at) VALUES ('old', 'manual', 'one', 2)");
+    const s = new GoalStore(db as never);
+    const old = s.get('old')!;
+    expect(old.title).toBe('Old');
+    expect(old.type).toBeUndefined();
+    expect(old).not.toHaveProperty('description');
+    expect(old).not.toHaveProperty('assignees');
+    expect(old).not.toHaveProperty('endedAt');
+    expect(s.items('old')[0]).not.toHaveProperty('assignees');
+    s.insert({ id: 'g2', workspace: 'w', title: 'T', kind: 'tracker', status: 'active', budgetUsd: 5, maxRuns: 3, approval: 'ask', workflow: 'team', createdAt: 2, spentUsd: 0, type: 'chore', description: 'd', assignees: [{ kind: 'team', id: 't1' }] });
+    expect(s.get('g2')).toMatchObject({ type: 'chore', description: 'd', assignees: [{ kind: 'team', id: 't1' }] });
+    ensureGoals(db as never);
+  });
+
+  it('endedAt is set when a goal is met and when stopped, and cleared on resume', async () => {
+    const r = rig();
+    const met = r.goals.create(r.goal({ check: { kind: 'command', command: 'true' } }));
+    await r.goals.idle();
+    expect(r.goals.db.must(met.id).status).toBe('met');
+    expect(r.goals.db.must(met.id).endedAt).toEqual(expect.any(Number));
+    const t = r.goals.create(r.goal({ kind: 'tracker', check: undefined }));
+    expect(r.goals.db.must(t.id)).not.toHaveProperty('endedAt');
+    r.goals.setStatus(t.id, 'stopped');
+    expect(r.goals.db.must(t.id).endedAt).toEqual(expect.any(Number));
+    r.goals.setStatus(t.id, 'active');
+    expect(r.goals.db.must(t.id)).not.toHaveProperty('endedAt');
   });
 });
