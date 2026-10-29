@@ -8,6 +8,7 @@
 .gl-proj { min-width: 0; overflow: hidden; font-size: 14px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
 .gl-head-act { margin-left: auto; align-self: center; }
 .gl-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.gl-lists > .sl-section > .sl-sec { margin-top: 0; }
 .gl-title, .gl-dock-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
 
 /* Now: three equal columns; every module is a 168 px node and a 48 px strip, so nothing in a row moves */
