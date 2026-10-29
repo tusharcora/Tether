@@ -64,9 +64,10 @@
 
 /* Agents running (agent-work board): a spinner or an amber dot, the bot's face and task, what happens now; Review on a run that waits */
 .ar-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--s1); font-size: 13.5px; }
-.ar-head { display: flex; align-items: center; gap: 6px; min-height: 28px; }
-.ar-head b { font-size: 15px; font-weight: 600; }
-.ar-word { color: var(--mut); }
+/* the Stop all question wraps under the count in a narrow panel instead of squeezing it */
+.ar-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px; }
+.ar-head b { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.ar-word { color: var(--mut); white-space: nowrap; }
 .ar-gap { flex: 1; }
 .ar-rows { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .ar-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
