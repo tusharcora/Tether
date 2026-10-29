@@ -167,7 +167,10 @@ describe('the goals page', () => {
 
   it('lifts and dims with CSS only, and not under reduced motion', () => {
     const css = cssText('goals/goals.css');
-    expect(css).toMatch(/\.gn-grid:has\(\.gn-mod:hover,\.gn-mod:focus-within\) \.gn-mod:not\(:hover\):not\(:focus-within\) \{ opacity: 0\.35/);
+    // keyboard focus lifts and dims; a mouse click (which focuses the button in Chromium) leaves nothing stuck
+    expect(css).toMatch(/\.gn-grid:has\(\.gn-mod:hover,\.gn-mod :focus-visible\) \.gn-mod:not\(:hover\):not\(:has\(:focus-visible\)\) \{ opacity: 0\.35/);
+    expect(css).toMatch(/\.gn-mod:has\(:focus-visible\) > \.gn-node/);
+    expect(css).not.toMatch(/\.gn-mod:focus-within/);
     expect(css).toMatch(/translateY\(-4px\)/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.gn-node[^}]*transform: none/);
   });

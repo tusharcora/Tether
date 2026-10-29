@@ -17,9 +17,10 @@
 .nod-card.gn-node { box-sizing: border-box; height: 168px; display: flex; flex-direction: column; padding: 16px 18px; border-color: var(--line); background: var(--s1); transition: transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease); }
 .nod-card.gn-node.t-needs { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .nod-card.gn-node.t-live { border-color: color-mix(in srgb, var(--accInk) 30%, transparent); }
-/* lift and dim: the node under the pointer (or holding focus) rises; the others fade so its arc reads on top of them */
-.gn-mod:hover > .gn-node, .gn-mod:focus-within > .gn-node { transform: translateY(-4px); box-shadow: 0 14px 30px -14px rgb(0 0 0 / .5); }
-.gn-grid:has(.gn-mod:hover, .gn-mod:focus-within) .gn-mod:not(:hover):not(:focus-within) { opacity: 0.35; }
+/* lift and dim: the node under the pointer (or holding keyboard focus) rises; the others fade so its arc reads on top of
+   them. :focus-visible, not :focus-within, so a mouse click on the arc leaves nothing lifted or dimmed */
+.gn-mod:hover > .gn-node, .gn-mod:has(:focus-visible) > .gn-node { transform: translateY(-4px); box-shadow: 0 14px 30px -14px rgb(0 0 0 / .5); }
+.gn-grid:has(.gn-mod:hover, .gn-mod :focus-visible) .gn-mod:not(:hover):not(:has(:focus-visible)) { opacity: 0.35; }
 .gn-top { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding-right: 8px; }
 .gn-tile { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--s3); font-size: 18px; font-weight: 600; line-height: 1; }
 .gn-tile.t-feature, .gn-glyph.t-feature { color: var(--accInk); }
@@ -149,6 +150,6 @@
 @media (prefers-reduced-motion: reduce) {
   .goal-bar > span, .gt-bar > span { transition: none; }
   .gn-mod, .nod-card.gn-node { transition: none; }
-  .gn-mod:hover > .gn-node, .gn-mod:focus-within > .gn-node { transform: none; }
+  .gn-mod:hover > .gn-node, .gn-mod:has(:focus-visible) > .gn-node { transform: none; }
   .gr > .gn-mod { animation: none; }
 }
