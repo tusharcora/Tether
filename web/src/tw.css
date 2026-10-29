@@ -6,6 +6,8 @@
 @layer theme;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' source(none);
+/* the assistant-ui elements' ShimmerLabel (the registry's elements-surfaces css) */
+@import 'tw-shimmer';
 @source './components/beui';
 @source './components/bencho';
 @source './components/aicss';
@@ -13,6 +15,7 @@
 @source './components/composer';
 @source './components/ui';
 @source './components/ai-elements';
+@source './components/assistant-ui';
 @source './assistant';
 @source not './**/*.test.{ts,tsx}';
 
