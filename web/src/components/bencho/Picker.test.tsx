@@ -128,4 +128,27 @@ describe('Picker', () => {
       expect(document.activeElement).toBe(within(list).getByRole('option', { name }));
     }
   });
+
+  it('with a small trigger, opens its list over the page (fixed, in a portal) so a clipping row cannot hide it', async () => {
+    const onChange = vi.fn();
+    render(
+      <div data-testid="row" style={{ overflow: 'hidden' }}>
+        <Picker label="Who" hideLabel multiple trigger={<span>+</span>} options={OPTIONS} value={[]} onChange={onChange} />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Who' }));
+    const list = await screen.findByRole('listbox');
+    expect(screen.getByTestId('row').contains(list)).toBe(false);
+    expect(list.style.position).toBe('fixed');
+    expect(document.activeElement).toBe(within(list).getByRole('option', { name: 'coder' }));
+    // a press inside the list is not a press outside the control
+    fireEvent.pointerDown(within(list).getByRole('option', { name: 'reviewer' }));
+    fireEvent.click(within(list).getByRole('option', { name: 'reviewer' }));
+    expect(onChange).toHaveBeenCalledWith(['reviewer']);
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Who' }));
+  });
 });
+
