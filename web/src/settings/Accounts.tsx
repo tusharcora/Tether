@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ago, api } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { CopyButton } from '../components/beui/kit/CopyButton';
@@ -9,6 +9,7 @@ import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { StatusBadge } from '../ui/studio/StatusBadge';
+import { KEYS_URL } from '../../../src/nvidia';
 import { FREE_DEFAULT } from '../../../src/openrouter';
 import { shortModel, type AccountsView, type DeviceState, type ProviderView } from './accountsApi';
 import { FreeCounter, useOpenRouterConnect } from './FreeModels';
@@ -28,7 +29,7 @@ export function Accounts(p: { poll: Poll<AccountsView> }) {
         <ul className="acc-list">
           {(data?.providers ?? []).map((pv) => (
             <li key={pv.id} className="acc-row">
-              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : pv.id === 'openrouter' ? <OpenRouterAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
+              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : pv.id === 'openrouter' ? <OpenRouterAccount p={pv} onChanged={refresh} /> : pv.id === 'nvidia' ? <NvidiaAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
             </li>
           ))}
         </ul>
@@ -115,6 +116,67 @@ function OpenRouterAccount({ p, onChanged }: { p: ProviderView; onChanged: () =>
             </Button>
           )}
           {flow.state === 'error' ? <InlineError compact message={flow.error} onRetry={() => void connect()} /> : null}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** NVIDIA: a key made on build.nvidia.com, pasted once and checked by the server; then Disconnect. No counter: its limit is per minute. */
+function NvidiaAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Promise<void> }) {
+  const notify = useNotify();
+  // uncontrolled, so the key is never mirrored into the DOM's value attribute
+  const input = useRef<HTMLInputElement>(null);
+  const [filled, setFilled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const a = p.account;
+  const connect = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api('POST', '/api/accounts/nvidia', { key: input.current?.value ?? '' });
+      notify.ok('NVIDIA connected', 'Its free models are in the model pickers');
+      await onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = () => api('DELETE', '/api/accounts/nvidia').then(onChanged, notify.fail);
+
+  return (
+    <>
+      <div className="acc-head">
+        <b>NVIDIA</b>
+        {a ? <StatusBadge tone="done" label="connected" /> : <StatusBadge tone="neutral" label="not connected" />}
+      </div>
+      {a ? (
+        <div className="acc-body">
+          <p className="acc-note">Free NVIDIA-hosted models for the crew and ⌘J, about 40 requests a minute. The key stays in your Keychain · connected {ago(a.connectedAt)}</p>
+          <div className="acc-actions">
+            <ConfirmButton label="Disconnect" prompt="Remove the NVIDIA key from the Keychain? Bots on NVIDIA stay linked and show not connected." confirmLabel="Disconnect" onConfirm={disconnect} />
+          </div>
+        </div>
+      ) : (
+        <div className="acc-body">
+          <p className="acc-note">Free NVIDIA-hosted models, about 40 requests a minute, meant for trying things out. Make a key on build.nvidia.com and paste it once; it goes to your Keychain.</p>
+          <a href={KEYS_URL} target="_blank" rel="noreferrer">
+            Get a key ↗
+          </a>
+          <form
+            className="acc-client"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void connect();
+            }}
+          >
+            <Input ref={input} label="NVIDIA API key" type="password" autoComplete="off" spellCheck={false} placeholder="nvapi-…" error={error} onChange={(e) => (setFilled(!!e.target.value.trim()), setError(undefined))} />
+            <Button type="submit" variant="primary" size="sm" disabled={busy || !filled}>
+              Connect
+            </Button>
+          </form>
         </div>
       )}
     </>

@@ -119,6 +119,8 @@ export interface ChatView {
   models: string[];
   /** OpenRouter is connected but Tether runs on another agent: the picker also offers OpenRouter's free models. */
   openrouter?: boolean;
+  /** NVIDIA is set up but Tether runs on another agent: the picker also offers NVIDIA's free models. */
+  nvidia?: boolean;
 }
 
 /** One step of what a chat led to: the question, a proposal, the run it started. Tones match the action nodes'. */

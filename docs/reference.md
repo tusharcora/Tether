@@ -290,7 +290,7 @@ Slash commands: `/status`, `/approve` `/reject` `/retry` `/resume`, `/open` `/ch
 
 ## LLM providers
 
-Settings → **LLM providers** lists every agent and model server Tether can use (installed? reachable? which models?) and adds new ones: DeepSeek, OpenAI, OpenRouter, Groq, Together, Fireworks, or any OpenAI-compatible URL. The same from the shell: `tether providers`, `tether providers add deepseek`, `tether providers add --name mybox --url https://host/v1 --key-env MYBOX_KEY`, `tether providers remove mybox`. Keys are never stored: you give the *name* of the environment variable that holds the key. Link a provider's model to a bot in the Crew tab.
+Settings → **LLM providers** lists every agent and model server Tether can use (installed? reachable? which models?) and adds new ones: DeepSeek, OpenAI, OpenRouter, NVIDIA, Groq, Together, Fireworks, or any OpenAI-compatible URL. The same from the shell: `tether providers`, `tether providers add deepseek`, `tether providers add --name mybox --url https://host/v1 --key-env MYBOX_KEY`, `tether providers remove mybox`. Keys are never stored: you give the *name* of the environment variable that holds the key. Link a provider's model to a bot in the Crew tab. Free hosted models: Settings → **Accounts** connects OpenRouter (one approval in the browser) or NVIDIA (paste a key from build.nvidia.com once; `pbpaste | tether accounts connect nvidia` from the shell). Those keys go to the Keychain, never to the config file. NVIDIA's free tier allows about 40 requests a minute and is meant for trying things out.
 
 ### Usage and spend (Experiential Labs)
 

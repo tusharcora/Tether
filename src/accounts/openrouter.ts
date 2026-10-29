@@ -94,7 +94,7 @@ export class OpenRouterAccount {
     await this.store.set('openrouter', key);
     setAccountKey(this.cfg.home, 'openrouter', key);
     setAccount(this.cfg.home, 'openrouter', { provider: 'openrouter', login: 'Tether', scopes: [], via: 'browser', connectedAt: Date.now() });
-    useAccountEndpoint(this.cfg);
+    useAccountEndpoint(this.cfg, 'openrouter');
     this.registry.register(new OpenAICompatAdapter('openrouter', this.cfg.endpoints.openrouter!, this.cfg.home));
     this.deps.onChange?.();
     return nothingElse ? this.useForCrew() : [];
