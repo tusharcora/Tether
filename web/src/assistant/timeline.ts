@@ -129,9 +129,9 @@ export function timeline(tools: ToolRun[], streaming: boolean): Step[] {
   return groups.map((g) => stepFor(g.tools, g.live));
 }
 
-/** The finished row's line: "3 calls · 6 files · 1 run". */
+/** The finished row's line: "3 calls · 6 files · 1 run" (a failed script read nothing). */
 export function thinkingSummary(tools: ToolRun[]): string {
-  const calls = tools.flatMap((t) => callsOf(t.code));
+  const calls = tools.filter((t) => !t.isError).flatMap((t) => callsOf(t.code));
   const parts: [number, string][] = [
     [tools.length, 'call'],
     [argsOf(calls, is('repo.read')).length, 'file'],

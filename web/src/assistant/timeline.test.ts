@@ -69,5 +69,6 @@ describe('thinkingSummary', () => {
   it('counts calls, files, runs and notes, leaving out zeros', () => {
     expect(thinkingSummary([run('repo.read("a.ts"); repo.read("b.ts")'), run('tether.runs.get("R-1")'), run('repo.read("a.ts")')])).toBe('3 calls · 2 files · 1 run');
     expect(thinkingSummary([run('return 1')])).toBe('1 call');
+    expect(thinkingSummary([run('repo.read("a.ts")'), run('repo.read("gone.ts")', { isError: true, output: 'Error: no such file' })])).toBe('2 calls · 1 file');
   });
 });

@@ -76,11 +76,9 @@ export function foldable(messages: ChatMessage[]): ChatMessage[] {
   return live.slice(0, Math.max(0, live.length - KEEP));
 }
 
-/** The newest context record (a turn's, or a summary's after a compaction). */
+/** The newest context record by time: a turn's, or a summary's (it sits before the kept messages but is newer than them). */
 export function latestContext(messages: ChatMessage[]): { use: ContextUse; summary: boolean } | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]!;
-    if (m.context && !m.compactedBy) return { use: m.context, summary: !!m.compact };
-  }
-  return undefined;
+  let best: ChatMessage | undefined;
+  for (const m of messages) if (m.context && !m.compactedBy && (!best || m.at >= best.at)) best = m;
+  return best && { use: best.context!, summary: !!best.compact };
 }

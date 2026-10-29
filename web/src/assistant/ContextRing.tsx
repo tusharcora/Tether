@@ -73,7 +73,7 @@ function Ring({ chat, latest, v }: { chat: Assistant; latest: NonNullable<Return
         </button>
       </MorphPopoverTrigger>
       <MorphPopoverContent side="top" align="end" radius={14}>
-        <div className="flex w-[340px] max-w-[calc(100vw-32px)] flex-col text-[13px]" role="group" aria-label="Context window">
+        <div className="flex w-[360px] max-w-[calc(100vw-32px)] flex-col text-[13px]" role="group" aria-label="Context window">
           <div className="flex flex-col gap-2.5 px-4 pt-3.5 pb-3">
             <div className="flex items-baseline text-sm">
               <span className="text-muted-foreground">Context</span>
@@ -102,7 +102,7 @@ function Ring({ chat, latest, v }: { chat: Assistant; latest: NonNullable<Return
                   onBlur={() => setDetail(undefined)}
                 >
                   <span className={cn('size-[9px] flex-none rounded-[3px]', SWATCH[p.key])} />
-                  <span className={cn('flex-1', detail && detail !== p.key && 'text-muted-foreground')}>{p.label}</span>
+                  <span className={cn('flex-1 whitespace-nowrap', detail && detail !== p.key && 'text-muted-foreground')}>{p.label}</span>
                   <span className="font-mono text-xs text-muted-foreground">{kTok(p.tokens)}</span>
                 </button>
               ))}

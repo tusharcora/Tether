@@ -76,6 +76,9 @@ describe('latestContext', () => {
     const b = use({ model: 'b' });
     expect(latestContext([msg('t1', { context: a }), msg('y2')])).toEqual({ use: a, summary: false });
     expect(latestContext([msg('t1', { context: a }), msg('s', { context: b, compact: { count: 2 } }), msg('y2')])).toEqual({ use: b, summary: true });
+    // a summary sits before the messages it kept, yet it is the newer record until the next turn
+    expect(latestContext([msg('s', { context: b, compact: { count: 2 }, at: 9 }), msg('t3', { context: a, at: 5 })])).toEqual({ use: b, summary: true });
+    expect(latestContext([msg('s', { context: b, compact: { count: 2 }, at: 9 }), msg('t4', { context: a, at: 12 })])).toEqual({ use: a, summary: false });
     expect(latestContext([msg('y1')])).toBeUndefined();
   });
 });
