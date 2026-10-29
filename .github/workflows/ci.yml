@@ -1,0 +1,41 @@
+# Tests, typecheck and build on every PR and every push to main.
+# Kept small for Actions limits: one Linux job, superseded runs cancelled, docs-only changes skipped, 15 min cap.
+name: CI
+
+on:
+  pull_request:
+    paths-ignore: ['docs/**', '**/*.md', 'assets/**']
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md', 'assets/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The Electron binary is only needed to package the Mac app, not to test.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # package-lock.json is gitignored, so cache npm's download cache keyed on package.json.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
