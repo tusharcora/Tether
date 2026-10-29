@@ -1,5 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
+import { api } from '../api';
+import { tagModels } from '../../../src/openrouter';
+import fixture from '../../../test/fixtures/openrouter-models.json';
+import { routeApi } from '../test/fixtures';
+import { renderApp } from '../test/render';
 import { RunsOn } from './RunsOn';
 import type { Binding } from './types';
 
@@ -7,6 +14,12 @@ const agents = { claude: { ok: true, models: ['opus'], codeMode: 'mcp' as const 
 const b = (agent: string, model = '', o: Partial<Binding> = {}): Binding => ({ agent, model, toolStyle: 'code', codeReads: false, ...o });
 const row = (o = {}) => ({ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null, ...o });
 const h = () => ({ onChange: vi.fn(), onSave: vi.fn(), onUnlink: vi.fn() });
+const MODELS = tagModels(fixture);
+const FREE = 'nvidia/nemotron-3.5-super-vl:free';
+
+beforeEach(() => {
+  vi.mocked(api).mockReset();
+});
 
 describe('RunsOn', () => {
   it('saves only a changed link and suggests the agent’s models', () => {
@@ -53,6 +66,42 @@ describe('RunsOn', () => {
     expect(screen.getByText('Small models may do better with Direct tool calls.')).toBeTruthy();
     rerender(<RunsOn row={row()} agents={agents} draft={b('claude')} dirty={false} {...h()} />);
     expect(screen.queryByText(/Small models may do better/)).toBeNull();
+  });
+
+  it('on OpenRouter, picks from Free · OpenRouter, Paid · OpenRouter and Agents & local, with tags, search and Free only', async () => {
+    routeApi({ 'GET /api/accounts/openrouter/models': { models: MODELS }, 'GET /api/accounts/openrouter/allowance': { used: 18, limit: 50, remaining: 32, resetsAt: Date.now() + 3_600_000 } });
+    const fns = h();
+    renderApp(<RunsOn row={row()} agents={{ ...agents, openrouter: { ok: true, models: [], codeMode: 'native' } }} draft={b('openrouter', FREE)} dirty={false} {...fns} />);
+    expect(screen.queryByLabelText('Model', { selector: 'input' })).toBeNull();
+    const pill = await screen.findByRole('button', { name: /Model Nemotron 3.5 Super VL/ });
+    expect(within(pill).getByText('free')).toBeTruthy();
+    fireEvent.click(pill);
+    const panel = screen.getByRole('dialog', { name: 'Choose a model' });
+    const group = (name: string) => within(panel).getByRole('region', { name });
+    expect(within(group('Free · OpenRouter')).getByText('nvidia · tools · images · 1M ctx')).toBeTruthy();
+    expect(within(group('Free · OpenRouter')).getByText("chat only · can't edit files").closest('button')!.className).toContain('mp-dim');
+    expect(within(group('Paid · OpenRouter')).getByText('anthropic · tools · images · 1M ctx · $3 / $15 · 1M')).toBeTruthy();
+    expect(within(group('Agents & local')).getByText('claude')).toBeTruthy();
+    expect(await within(panel).findByText('32 of 50 free requests left today')).toBeTruthy();
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Free only' }));
+    expect(within(panel).queryByRole('region', { name: 'Paid · OpenRouter' })).toBeNull();
+    expect(within(panel).queryByRole('region', { name: 'Agents & local' })).toBeNull();
+    fireEvent.change(within(panel).getByLabelText('Search models'), { target: { value: 'flint' } });
+    fireEvent.click(within(panel).getByText('Flint'));
+    expect(fns.onChange).toHaveBeenCalledWith({ agent: 'openrouter', model: 'recursive/flint-v1.0:free' });
+    expect(screen.queryByRole('dialog', { name: 'Choose a model' })).toBeNull();
+  });
+
+  it('warns when a writing bot is on a chat-only free model, not a read-only one', async () => {
+    routeApi({ 'GET /api/accounts/openrouter/models': { models: MODELS }, 'GET /api/accounts/openrouter/allowance': new Error('OpenRouter is not connected') });
+    const chatOnly = 'nvidia/nemotron-3.5-content-safety:free';
+    const { unmount } = renderApp(<RunsOn row={row()} agents={agents} draft={b('openrouter', chatOnly)} dirty={false} {...h()} />);
+    expect(await screen.findByText(/is chat only and can't edit files: this bot writes/)).toBeTruthy();
+    unmount();
+    renderApp(<RunsOn row={row({ role: 'planner' })} readOnly agents={agents} draft={b('openrouter', chatOnly)} dirty={false} {...h()} />);
+    await screen.findByRole('button', { name: /Model Nemotron 3.5 Content Safety/ });
+    expect(screen.queryByText(/is chat only/)).toBeNull();
   });
 
   it('has nothing to link for an approval bot', () => {

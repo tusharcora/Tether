@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AIComposer } from './AIComposer';
 
-function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boolean; onStop?: () => void }) {
+function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boolean; onStop?: () => void; tags?: Record<string, string[]> }) {
   const [value, setValue] = useState('');
   const [model, setModel] = useState<string | undefined>();
   return (
@@ -22,6 +22,7 @@ function Harness(p: { onSubmit: (t: string, m?: string) => void; loading?: boole
       onFiles={() => {}}
       onRemoveFile={() => {}}
       favKey="test.favs"
+      tags={p.tags}
     />
   );
 }
@@ -50,6 +51,14 @@ describe('the AI composer', () => {
     fireEvent.click(screen.getByRole('tab', { name: /fav/ }));
     expect(screen.getAllByRole('menuitemradio').map((r) => r.textContent)).toEqual(['gpt-5']);
     expect(JSON.parse(localStorage.getItem('test.favs')!)).toEqual(['gpt-5']);
+  });
+
+  it('tags models when it is given tags (OpenRouter: free, tools, images)', () => {
+    render(<Harness onSubmit={vi.fn()} tags={{ 'gpt-5': ['free', 'tools'] }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Model: Auto' }));
+    const row = screen.getByRole('menuitemradio', { name: /gpt-5/ });
+    expect([...row.querySelectorAll('.aic-tag')].map((t) => t.textContent)).toEqual(['free', 'tools']);
+    expect(row.querySelector('.aic-tag.free')).toBeTruthy();
   });
 
   it('turns send into Stop while a reply streams', () => {

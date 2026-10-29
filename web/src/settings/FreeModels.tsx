@@ -45,7 +45,7 @@ export function useOpenRouterConnect(onDone: () => unknown) {
 /** "32 of 50 free requests left today · resets 20:00", with a bar; asked when shown and every 60 s after (spec §7.6). */
 export function FreeCounter(p: { compact?: boolean }) {
   const { data, error } = usePoll<Allowance>(ALLOWANCE_PATH, ALLOWANCE_MS);
-  if (!data) return error ? <p className="acc-note">Can't reach OpenRouter for the free requests left.</p> : null;
+  if (!data) return error ? <p className="acc-note">{error}</p> : null;
   const left = `${data.remaining} of ${data.limit} free requests left today`;
   if (p.compact) return <span className="fm-count">{left}</span>;
   return (

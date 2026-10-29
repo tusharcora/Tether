@@ -30,6 +30,8 @@ export interface AIComposerProps {
   'aria-label'?: string;
   /** localStorage key for the starred models. */
   favKey?: string;
+  /** Short tags per model shown on its row (OpenRouter: free, tools, images). */
+  tags?: Record<string, string[]>;
 }
 
 type Provider = 'kimi' | 'openai' | 'spark';
@@ -334,6 +336,11 @@ export function AIComposer(p: AIComposerProps) {
                                 <ProviderIcon model={m} />
                               </span>
                               <span className="truncate text-[14px] font-medium">{m}</span>
+                              {p.tags?.[m]?.map((t) => (
+                                <span key={t} className={`aic-tag${t === 'free' ? ' free' : ''}`}>
+                                  {t}
+                                </span>
+                              ))}
                               <button type="button" onClick={(e) => toggleFav(e, m)} className={`aic-star ${fav ? 'starred' : ''}`} aria-label={fav ? `Unstar ${m}` : `Star ${m}`} aria-pressed={fav}>
                                 <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill={fav ? '#FACC15' : 'none'} stroke={fav ? '#FACC15' : 'currentColor'} strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
                                   <path d={STAR} />

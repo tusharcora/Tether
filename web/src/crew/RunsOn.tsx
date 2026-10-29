@@ -6,10 +6,11 @@ import { Picker } from '../components/bencho/Picker';
 import { NONE, fromNone } from '../ui/cn';
 import { SectionHeading } from '../ui/studio/SectionHeading';
 import { StatusBadge } from '../ui/studio/StatusBadge';
+import { ModelPicker } from './ModelPicker';
 import type { AgentInfo, Binding, Row } from './types';
 
-/** Which agent and model a bot runs on. A step with no agent of its own follows its bot. */
-export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: Binding; dirty: boolean; onChange: (b: Partial<Binding>) => void; onSave: () => void; onUnlink: () => void }) {
+/** Which agent and model a bot runs on. A step with no agent of its own follows its bot. On OpenRouter the model comes from its tagged list. */
+export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: Binding; dirty: boolean; onChange: (b: Partial<Binding>) => void; onSave: () => void; onUnlink: () => void; /** The bot never edits files (a chat-only model is fine for it). */ readOnly?: boolean }) {
   const id = useId();
   if (p.row.kind === 'approval')
     return (
@@ -32,7 +33,11 @@ export function RunsOn(p: { row: Row; agents: Record<string, AgentInfo>; draft: 
           value={[p.draft.agent || NONE]}
           onChange={([v]) => p.onChange({ agent: fromNone(v ?? NONE), model: '' })}
         />
-        <Input label="Model" list={`models-${p.row.role}`} value={p.draft.model} placeholder="adapter default" spellCheck={false} onChange={(e) => p.onChange({ model: e.target.value })} />
+        {p.draft.agent === 'openrouter' ? (
+          <ModelPicker value={p.draft.model} agents={p.agents} writes={!p.readOnly} onPick={(b) => p.onChange(b)} />
+        ) : (
+          <Input label="Model" list={`models-${p.row.role}`} value={p.draft.model} placeholder="adapter default" spellCheck={false} onChange={(e) => p.onChange({ model: e.target.value })} />
+        )}
       </div>
       <p className="sl-meta">Local models (Ollama, LM Studio, llama.cpp) appear in Agent when their server is running.</p>
       <datalist id={`models-${p.row.role}`}>

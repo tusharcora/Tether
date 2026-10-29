@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import type { OrModel } from '../../../src/openrouter';
 import { AIComposer } from '../components/composer/AIComposer';
+import { usePoll } from '../hooks';
+import { MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
 import { Thread } from './Thread';
@@ -52,6 +55,9 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
     setFiles((cur) => [...cur, ...next].slice(0, ATTACH_MAX_FILES));
   };
   const picked = model && chat.models.includes(model) ? model : undefined;
+  // on OpenRouter the menu says which models are free and what they can do (spec §7.4)
+  const or = usePoll<{ models: OrModel[] }>(chat.agent === 'openrouter' ? MODELS_PATH : null, 3_600_000);
+  const tags = or.data && Object.fromEntries(or.data.models.map((m) => [m.id, [m.free && 'free', m.tools && 'tools', m.images && 'images'].filter((t): t is string => !!t)]));
 
   return (
     <>
@@ -86,6 +92,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
           onRemoveFile={(name) => setFiles((c) => c.filter((x) => x.name !== name))}
           accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml"
           favKey="tether.assistant.favModels"
+          tags={tags}
         />
       </div>
     </>
