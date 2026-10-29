@@ -135,3 +135,5 @@ export const ATTACH_MAX_FILES = 5;
 /** Per attached file, as text. */
 export const ATTACH_MAX_BYTES = 200_000;
 export const MESSAGE_MAX = 8000;
+/** A renamed chat title's limit (a title from the first message is shorter). */
+export const TITLE_MAX = 120;

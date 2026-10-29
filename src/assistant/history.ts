@@ -8,11 +8,10 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ChatMessage } from './types.js';
+import { TITLE_MAX, type ChatMessage } from './types.js';
 
 export const MAX_MESSAGES = 200;
-/** A renamed title's limit; a title from the first message is shorter. */
-export const TITLE_MAX = 120;
+export { TITLE_MAX };
 const TITLE_AUTO = 60;
 
 export interface Chat {

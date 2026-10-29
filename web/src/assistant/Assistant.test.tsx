@@ -4,6 +4,8 @@ import { ToastStackProvider } from '../components/beui/kit/toast';
 import { Assistant } from './Assistant';
 import { cssRule } from '../test/css';
 import { contextLine, contextOf } from './context';
+import { useActiveChat, useAssistant } from './useAssistant';
+import { useAssistantShell } from './useAssistantShell';
 
 const chats: Record<string, { id: string; role: 'you' | 'tether'; text: string; at: number }[]> = {
   a: [{ id: 'm1', role: 'you', text: 'hello from a', at: 1 }],
@@ -17,10 +19,17 @@ vi.mock('./api', async (orig) => ({
 }));
 
 const route = { tab: 'runs' as const, id: 'r1' };
+/** Wired as App wires it: the shell, the active chat and the chat hook live outside the panel. */
+function Harness(p: { project: { id: string; name: string }; needs: number; phone: boolean }) {
+  const shell = useAssistantShell({ needs: p.needs, phone: p.phone });
+  const [active, setActive] = useActiveChat(p.project.id);
+  const chat = useAssistant(p.project.id, active, shell.mode !== 'closed', { created: setActive, gone: () => setActive(undefined) });
+  return <Assistant shell={shell} chat={chat} project={p.project} route={route} phone={p.phone} onNewChat={() => setActive(undefined)} onGo={() => {}} />;
+}
 const tree = (o: Partial<{ project: { id: string; name: string }; needs: number; phone: boolean }> = {}) => (
   <ToastStackProvider>
     <div className="shell">
-      <Assistant project={o.project ?? { id: 'a', name: 'orders' }} route={route} needs={o.needs ?? 0} phone={o.phone ?? false} onGo={() => {}} />
+      <Harness project={o.project ?? { id: 'a', name: 'orders' }} needs={o.needs ?? 0} phone={o.phone ?? false} />
     </div>
   </ToastStackProvider>
 );

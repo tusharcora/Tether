@@ -2,7 +2,7 @@ import type { AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, St
 import { api, ApiError } from '../api';
 
 export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Cite, Compare, OutcomeNode, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
-export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX } from '../../../src/assistant/types.js';
+export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
 /** `?ws=…&chat=…` with the parts that are set. */
 const q = (o: Record<string, string | undefined>) => {
