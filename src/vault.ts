@@ -259,16 +259,16 @@ export class Vault {
    * Prompt-ready context block: each note is a fenced <vault-note> data section (bounded), so nothing in a note reads as instructions.
    * Evolve notes (anything under lessons/, and lesson or harness notes by type) are never retrieved: lessons reach a bot only through
    * guidance the person accepted, and one bot's lessons must not leak into another bot's or another repository's prompts.
-   * Empty string if nothing relevant.
+   * Empty string if nothing relevant. `used` hears each note that made it into the block.
    */
-  async contextFor(query: string, opts: { maxChars?: number; limit?: number; exclude?: Set<string> } = {}): Promise<string> {
+  async contextFor(query: string, opts: { maxChars?: number; limit?: number; exclude?: Set<string>; used?: (hit: { note: VaultNote; score: number; snippet: string }) => void } = {}): Promise<string> {
     const notes = await this.scan();
     const exclude = new Set(opts.exclude ?? []);
     for (const n of notes) if (isEvolveNote(n)) exclude.add(n.path);
     const hits = await this.search(query, opts.limit ?? 5, exclude);
     const max = opts.maxChars ?? 6000;
     let out = '';
-    for (const { note } of hits) {
+    for (const { note, score } of hits) {
       const snippet = note.body.replace(/^#+\s.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 700);
       const body = `[[${noExt(note.path)}]]${note.type ? ` (${note.type})` : ''}\n${snippet}${
         note.links.length ? `\nLinks: ${[...new Set(note.links)].slice(0, 8).map((l) => `[[${l}]]`).join(', ')}` : ''
@@ -276,6 +276,7 @@ export class Vault {
       const block = `${fence('vault-note', body)}\n\n`;
       if (out.length + block.length > max) break;
       out += block;
+      opts.used?.({ note, score, snippet });
     }
     return out.trim();
   }

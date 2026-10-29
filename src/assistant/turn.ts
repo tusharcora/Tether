@@ -22,7 +22,7 @@ import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type StreamEvent, type ToolRun } from './types.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
   home: string;
@@ -67,7 +67,9 @@ export function builtinStep(name: string, input: unknown, cwd: string): string |
   if (name === 'Read' || name === 'NotebookRead') return `repo.read(${s(i.file_path ?? i.notebook_path)})`;
   if (name === 'Grep') return `repo.search(${s(i.pattern)})`;
   if (name === 'Glob' || name === 'LS') return `repo.list(${s(i.pattern ?? i.path)})`;
-  if (name === 'WebFetch' || name === 'WebSearch') return `http.get(${s(i.url ?? i.query)})`;
+  if (name === 'WebFetch') return `http.get(${s(i.url)})`;
+  // no Code Mode call searches the web: its own name keeps it apart from a script's http.get
+  if (name === 'WebSearch') return `http.search(${s(i.query)})`;
   if (name === 'Bash') return bashStep(typeof i.command === 'string' ? i.command : '', s);
   const m = /^mcp__([^_].*?)__(.+)$/.exec(name);
   if (m && m[1] !== 'tether') return `mcp.${m[1]}.${m[2]}()`;
@@ -140,6 +142,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   const secrets = secretsFor(c.home, o.ws);
   const redact = (s: string) => redactText(s, secrets);
   const tools: ToolRun[] = [];
+  const retrieved: Retrieved[] = [];
   let text = '';
   // the trailing ```tether block is data: it never streams, and a partial fence waits until it is known not to be one
   let sent = 0;
@@ -198,7 +201,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       needs: c.needs(),
       runs,
       workflows: listPipelines(c.home).map((f) => f.name),
-      notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500 }).catch(() => '')) || undefined,
+      notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500, used: (h) => void retrieved.push({ path: h.note.path, title: h.note.title, score: h.score, snippet: redact(h.snippet).slice(0, 300) }) }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
       who: o.who,
@@ -230,6 +233,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     });
     sessionBox.close = cm.close;
     let streamed = false;
+    /** The agent's web searches by call id, so their results (titles and links) land on their step. */
+    const searches = new Map<string, ToolRun>();
     const model = body.model || bound;
     const res = await c.registry.get(agent).run({
       runId: 'tether-assistant',
@@ -254,11 +259,20 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       },
       onSession: () => {},
       // the agent's own reads and searches (Claude's Read, Grep…) show in the timeline like run_code steps
-      onTool: (name, input) => {
+      onTool: (name, input, useId) => {
         const code = builtinStep(name, input, cwd);
         if (!code) return;
         const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };
         tools.push(t);
+        if (name === 'WebSearch' && useId) searches.set(useId, t);
+        emit({ type: 'tool', tool: { ...t } });
+      },
+      // only a search's result is kept: the others are file contents the timeline does not show, and would swell the chat
+      onToolResult: (useId, output, isError) => {
+        const t = searches.get(useId);
+        if (!t) return;
+        t.output = redact(output).slice(0, 4000);
+        t.isError = isError || undefined;
         emit({ type: 'tool', tool: { ...t } });
       },
     });
@@ -285,6 +299,12 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       ...(checked.proposals.length ? { proposals: checked.proposals } : {}),
       ...(checked.ask ? { ask: checked.ask } : {}),
       ...(checked.compare ? { compare: checked.compare } : {}),
+      ...(checked.report ? { report: checked.report } : {}),
+      ...(checked.spec ? { spec: checked.spec } : {}),
+      ...(checked.choice ? { choice: checked.choice } : {}),
+      ...(checked.diagram ? { diagram: checked.diagram } : {}),
+      ...(checked.timeline ? { timeline: checked.timeline } : {}),
+      ...(retrieved.length ? { retrieved } : {}),
       ...(approvals.length ? { toolAsks: approvals.map((what) => ({ id: mid('ta'), what, status: 'pending' as const })) } : {}),
       ...(tools.length ? { tools } : {}),
       ...(res.costUsd !== undefined ? { costUsd: res.costUsd } : {}),

@@ -75,6 +75,49 @@ export interface Compare {
   rows: { label: string; cells: string[] }[];
 }
 
+/** A vault note the turn's prompt carried (keyword retrieval, raw score): what the reply could lean on. */
+export interface Retrieved {
+  path: string;
+  title: string;
+  score: number;
+  snippet: string;
+}
+
+/** A write-up in sections; `sources` counts the reply's real sources a section cites. */
+export interface Report {
+  title: string;
+  sections: { heading: string; summary?: string; sources: number }[];
+}
+
+/** Facts as label and value rows (versions, limits, settings). */
+export interface Spec {
+  title: string;
+  subtitle?: string;
+  rows: { label: string; value: string; emphasis?: true }[];
+}
+
+/** Options on the same traits (false: the option lacks it) and the one Tether would pick (empty: none). */
+export interface Choice {
+  traits: string[];
+  options: { name: string; headline: string; traits: (string | false)[] }[];
+  pick: string;
+  reason: string;
+}
+
+/** Boxes and arrows: edges only between listed nodes. */
+export interface Diagram {
+  title: string;
+  nodes: { id: string; label: string }[];
+  edges: { from: string; to: string; label?: string }[];
+}
+
+export interface TimelineEvent {
+  time: string;
+  title: string;
+  detail?: string;
+  when: 'past' | 'now' | 'future';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'you' | 'tether';
@@ -88,6 +131,15 @@ export interface ChatMessage {
   compare?: Compare;
   attachments?: { name: string; size: number }[];
   feedback?: 'up' | 'down';
+  /** What was wrong, with a thumbs down. */
+  feedbackNote?: { reasons: string[]; note?: string };
+  /** The vault notes the prompt carried. */
+  retrieved?: Retrieved[];
+  report?: Report;
+  spec?: Spec;
+  choice?: Choice;
+  diagram?: Diagram;
+  timeline?: TimelineEvent[];
   /** What the turn cost, where the agent reports it. */
   costUsd?: number;
   /** The turn failed: what to tell the person. */

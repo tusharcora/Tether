@@ -80,6 +80,13 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const root = rootOf(c, ws);
     const body = parseBody(b);
     const chat = b.chat === undefined ? undefined : chatIn(c, ws, b.chat);
+    if (b.regenerate !== undefined) {
+      const last = chat?.messages.at(-1);
+      if (!chat || typeof b.regenerate !== 'string' || last?.id !== b.regenerate || last.role !== 'tether') throw new HttpError(409, 'only the latest reply can be regenerated');
+      // drop the reply and the question it answered: the turn asks it again
+      const q = chat.messages.findLastIndex((x) => x.role === 'you');
+      chat.messages.splice(q >= 0 ? q : -1);
+    }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     const ctl = new AbortController();
     // the person pressed Stop (or left): stop the agent
@@ -209,11 +216,31 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     rootOf(c, ws);
     if (b.value !== null && b.value !== 'up' && b.value !== 'down') throw new HttpError(400, '"value" must be "up", "down" or null');
+    const reasons = b.reasons ?? [];
+    if (!Array.isArray(reasons) || reasons.length > 6 || !reasons.every((r) => typeof r === 'string' && r.trim() && r.length <= 60)) throw new HttpError(400, '"reasons" is at most 6 strings of up to 60 characters');
+    if (b.note !== undefined && (typeof b.note !== 'string' || b.note.length > 1000)) throw new HttpError(400, '"note" is a string of up to 1000 characters');
+    const note = typeof b.note === 'string' ? b.note.trim() : '';
+    if ((reasons.length || note) && b.value !== 'down') throw new HttpError(400, 'reasons and a note go with "down"');
     const chat = chatIn(c, ws, b.chat);
     const msg = chat.messages.find((x) => x.id === decodeURIComponent(g![1]!));
     if (!msg) throw new HttpError(404, 'unknown message');
     if (b.value) msg.feedback = b.value;
     else delete msg.feedback;
+    // a plain thumbs down keeps what was said before; anything else drops it
+    if (reasons.length || note) msg.feedbackNote = { reasons: (reasons as string[]).map((r) => r.trim()), ...(note ? { note } : {}) };
+    else if (b.value !== 'down') delete msg.feedbackNote;
+    saveChat(c.home, ws, chat);
+    return send(res, 200, { ok: true }), true;
+  }
+
+  // Discard a stopped or failed reply
+  if ((g = p.match(/^\/api\/assistant\/messages\/([^/]+)$/)) && m === 'DELETE') {
+    const ws = wsOf(url.searchParams.get('ws'));
+    rootOf(c, ws);
+    const chat = chatIn(c, ws, url.searchParams.get('chat'));
+    const i = chat.messages.findIndex((x) => x.id === decodeURIComponent(g![1]!) && x.role === 'tether' && !!x.error);
+    if (i < 0) throw new HttpError(404, 'no stopped or failed reply with that id');
+    chat.messages.splice(i, 1);
     saveChat(c.home, ws, chat);
     return send(res, 200, { ok: true }), true;
   }
