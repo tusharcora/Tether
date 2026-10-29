@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { cssRule } from '../../test/css';
-import { Disclosure, QuietLine, RowList, Section, Tag } from './Section';
+import { Disclosure, QuietLine, RowList, Section, Tag, ToolChip } from './Section';
 
 describe('Section primitives', () => {
   it('labels a section with its count and an optional live dot', () => {
@@ -14,6 +14,20 @@ describe('Section primitives', () => {
   it('shows an empty section as one quiet line', () => {
     render(<QuietLine>Nothing needs you.</QuietLine>);
     expect(screen.getByText('Nothing needs you.').className).toBe('sl-quiet');
+  });
+  it('tags a trigger red, an agent blue and an approval amber', () => {
+    render(<><Tag tone="trigger">Trigger</Tag><Tag tone="agent">Agent</Tag><Tag tone="asks">Asks first</Tag></>);
+    expect(screen.getByText('Asks first').className).toBe('sl-tag t-asks');
+    expect(cssRule('ui/studio/parts.css', '.sl-tag.t-trigger')).toContain('color: var(--bad)');
+    expect(cssRule('ui/studio/parts.css', '.sl-tag.t-agent')).toContain('color: var(--accInk)');
+    expect(cssRule('ui/studio/parts.css', '.sl-tag.t-asks')).toContain('color: var(--warn)');
+  });
+  it('draws a tool chip with its mark', () => {
+    render(<ToolChip mark="TS" label="turn.ts" title="src/assistant/turn.ts" />);
+    const chip = screen.getByTitle('src/assistant/turn.ts');
+    expect(chip.className).toBe('sl-chip');
+    expect(chip.textContent).toBe('TSturn.ts');
+    expect(chip.querySelector('.sl-chip-mark')!.textContent).toBe('TS');
   });
   it('tags with a small muted label', () => {
     render(<Tag title="Evolve probe replay">probe</Tag>);

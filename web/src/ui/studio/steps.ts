@@ -1,5 +1,6 @@
-export type SegState = 'done' | 'working' | 'waiting' | 'queued' | 'failed' | 'skipped' | 'planning';
-export interface StepLike { id: string; status: string; title?: string }
+export type SegState = 'done' | 'working' | 'waiting' | 'queued' | 'gate' | 'failed' | 'skipped' | 'planning';
+/** `kind` approval: a queued approval step shows as a gate (it will ask first). */
+export interface StepLike { id: string; status: string; title?: string; kind?: string }
 export interface Segment { id: string; state: SegState; label: string }
 
 const STATE: Record<string, SegState> = { done: 'done', running: 'working', awaiting: 'waiting', queued: 'queued', error: 'failed', skipped: 'skipped' };
@@ -7,7 +8,7 @@ const STATE: Record<string, SegState> = { done: 'done', running: 'working', awai
 /** One segment per step in pipeline order. A team run before its plan is approved has no steps: one "planning" segment. */
 export function segmentsFor(steps: StepLike[], o: { planning?: boolean } = {}): Segment[] {
   if (!steps.length) return o.planning ? [{ id: 'planning', state: 'planning', label: 'planning' }] : [];
-  return steps.map((s) => ({ id: s.id, state: STATE[s.status] ?? 'queued', label: `${s.title ?? s.id}: ${s.status}` }));
+  return steps.map((s) => ({ id: s.id, state: s.status === 'queued' && s.kind === 'approval' ? 'gate' : (STATE[s.status] ?? 'queued'), label: `${s.title ?? s.id}: ${s.status}` }));
 }
 
 export function trackLabel(segs: Segment[]): string {
@@ -17,5 +18,6 @@ export function trackLabel(segs: Segment[]): string {
   if (n('working')) parts.push(`${n('working')} working`);
   if (n('waiting')) parts.push(`${n('waiting')} waiting`);
   if (n('failed')) parts.push(`${n('failed')} failed`);
+  if (n('gate')) parts.push(`${n('gate')} asks first`);
   return parts.join(', ');
 }
