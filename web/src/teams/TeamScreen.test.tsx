@@ -58,7 +58,13 @@ describe('the team screen (board 1)', () => {
     expect(screen.getByText('run 2 of ≤6 · $1.40 / $5.00')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'R-5A10 · 2 failing' })).toBeTruthy();
     expect(screen.getByText('check: npm test')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '2 of 3 steps done, 1 waiting' })).toBeTruthy();
+    // the agent's run is a task card: paused on its ship step, so it waits; open, its steps
+    const task = document.querySelector('[data-slot="task-card"]') as HTMLElement;
+    expect(task.dataset.state).toBe('waiting');
+    expect(within(task).getByText('R-5A21')).toBeTruthy();
+    expect(within(task).getByText('Spent $0.40')).toBeTruthy();
+    fireEvent.click(within(task).getByRole('button', { name: /probe timeout/ }));
+    expect(within(task).getByText('ship: awaiting')).toBeTruthy();
     const panel = screen.getByRole('complementary', { name: 'About this team' });
     expect(within(panel).getByRole('progressbar', { name: 'Keep main green progress' }).getAttribute('aria-valuenow')).toBe('33');
     expect(within(panel).getByText('looping')).toBeTruthy();

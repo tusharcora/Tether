@@ -4,9 +4,9 @@ import { PermissionGrant, type GrantScope } from '../components/assistant-ui/ele
 import { ApprovalCard } from '../components/beui/agents/approval-card';
 import type { ApprovalCardAnswers } from '../components/beui/agents/approval-card/types';
 import type { Route } from '../hooks';
-import { LivePlan } from '../runs/PlanCard';
 import { useNotify } from '../ui/notify';
 import type { ChatMessage, Diagram as DiagramData, Proposal, ToolAsk } from './api';
+import { RunTaskCard } from './taskCards';
 import type { Assistant } from './useAssistant';
 
 /** A run Tether proposes, as an approval card in review mode. Nothing starts until Start run is clicked. */
@@ -27,16 +27,7 @@ export function ProposalCard({ proposal: p, chat, onGo }: { proposal: Proposal; 
       >
         <p className="m-0 whitespace-pre-wrap text-sm">{p.task}</p>
       </ApprovalCard>
-      {p.status === 'started' && p.runId ? (
-        <button type="button" className="mt-1.5 border-0 bg-transparent p-0 text-sm text-foreground underline underline-offset-4" onClick={() => onGo({ tab: 'runs', id: p.runId })}>
-          Open run
-        </button>
-      ) : null}
-      {p.status === 'started' && p.runId ? (
-        <div className="mt-2">
-          <LivePlan runId={p.runId} />
-        </div>
-      ) : null}
+      {p.status === 'started' && p.runId ? <RunTaskCard runId={p.runId} task={p.task} onOpen={() => onGo({ tab: 'runs', id: p.runId })} /> : null}
     </div>
   );
 }
