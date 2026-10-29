@@ -2,10 +2,8 @@
  * Settings → Connectors: the Code Mode connectors as the map draws them. Public fields only: an MCP server's env and header
  * values, an account's token and a call's script text never leave (a call is shown as its first line, secrets redacted).
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { GithubAccount } from '../accounts/github.js';
-import type { ChatFile } from '../assistant/history.js';
+import { allChats } from '../assistant/history.js';
 import { redactText } from '../http/redact.js';
 import { loadMcpServers, publicMcp, type McpServer } from './mcpServers.js';
 import { mcpConnector } from './connectors/mcp.js';
@@ -20,22 +18,12 @@ const BUILTIN: { name: string; summary: string; permissions: string[] }[] = [
 
 const first = (s: string) => s.split('\n')[0]!.replace(/\s+/g, ' ').trim().slice(0, 120);
 
-/** The assistant's saved chats are Code Mode's log: the scripts it ran and the outside calls it asked about. */
-function chats(home: string): ChatFile[] {
-  const dir = join(home, 'assistant');
-  try {
-    return readdirSync(dir)
-      .filter((n) => n.endsWith('.json'))
-      .map((n) => JSON.parse(readFileSync(join(dir, n), 'utf8')) as ChatFile);
-  } catch {
-    return [];
-  }
-}
 /** Which connector an approval's description is about. */
 const askOwner = (what: string) => (/^(comment on|merge) /.test(what) ? 'github' : /^(GET|POST|PUT|PATCH|DELETE|HEAD) |^https?:/i.test(what) ? 'http' : undefined);
 
 export async function connectorsView(home: string, github: GithubAccount, secrets: Map<string, string> = new Map()): Promise<ConnectorView[]> {
-  const log = chats(home);
+  // the assistant's saved chats are Code Mode's log: the scripts it ran and the outside calls it asked about
+  const log = allChats(home);
   const scripts = log.flatMap((c) => c.messages.flatMap((m) => (m.tools ?? []).map((t) => ({ at: m.at, code: t.code, isError: t.isError }))));
   const asks = log.flatMap((c) => c.messages.flatMap((m) => (m.toolAsks ?? []).map((a) => ({ at: m.at, what: a.what, status: a.status }))));
   const recentFor = (name: string): ConnectorView['recent'] => [
