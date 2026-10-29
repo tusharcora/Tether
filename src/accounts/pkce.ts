@@ -41,15 +41,15 @@ export function checkCallback(requestUrl: string, expectedState: string): { code
 }
 
 /**
- * Run the whole flow: listen on a free loopback port, open the provider's page with `open`, wait for the callback (5 min
- * by default), then exchange the code with the verifier. Resolves to the token response; never logs it.
+ * The loopback half of a browser flow: listen on a free port (127.0.0.1 only), open the page `url` builds for that port,
+ * and wait for the callback (5 min by default). Its state is checked; resolves to the code, the port and the PKCE
+ * verifier for the exchange. One-shot: the listener closes when the callback (or the timeout) comes. Never logs.
  */
-export async function runPkceFlow(def: ProviderDef, o: { clientId: string; open: (url: string) => unknown; fetch?: typeof fetch; timeoutMs?: number }): Promise<{ accessToken: string; refreshToken?: string; scope?: string }> {
+export async function loopbackCode(o: { url: (port: number, pair: { challenge: string; state: string }) => string; open: (url: string) => unknown; timeoutMs?: number }): Promise<{ code: string; port: number; verifier: string }> {
   const pair = pkcePair();
   const server = createServer();
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
-  const redirectUri = loopbackRedirect(port);
   try {
     const code = await new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('no answer from the browser in time')), o.timeoutMs ?? 300_000);
@@ -61,18 +61,24 @@ export async function runPkceFlow(def: ProviderDef, o: { clientId: string; open:
         if ('error' in r) reject(new Error(r.error));
         else resolve(r.code);
       });
-      void Promise.resolve(o.open(authorizeUrl(def, { clientId: o.clientId, redirectUri, challenge: pair.challenge, state: pair.state }))).catch(reject);
+      void Promise.resolve(o.open(o.url(port, pair))).catch(reject);
     });
-    const res = await (o.fetch ?? fetch)(def.endpoints.token, {
-      method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: o.clientId, code_verifier: pair.verifier }).toString(),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const j = (await res.json().catch(() => ({}))) as { access_token?: unknown; refresh_token?: unknown; scope?: unknown; error?: unknown };
-    if (typeof j.access_token !== 'string') throw new Error(`${def.name} did not issue a token (${typeof j.error === 'string' ? j.error : `HTTP ${res.status}`})`);
-    return { accessToken: j.access_token, ...(typeof j.refresh_token === 'string' ? { refreshToken: j.refresh_token } : {}), ...(typeof j.scope === 'string' ? { scope: j.scope } : {}) };
+    return { code, port, verifier: pair.verifier };
   } finally {
     server.close();
   }
+}
+
+/** The whole standard OAuth flow: the loopback code, then the form exchange with the verifier. Resolves to the token response; never logs it. */
+export async function runPkceFlow(def: ProviderDef, o: { clientId: string; open: (url: string) => unknown; fetch?: typeof fetch; timeoutMs?: number }): Promise<{ accessToken: string; refreshToken?: string; scope?: string }> {
+  const { code, port, verifier } = await loopbackCode({ url: (p, pair) => authorizeUrl(def, { clientId: o.clientId, redirectUri: loopbackRedirect(p), challenge: pair.challenge, state: pair.state }), open: o.open, timeoutMs: o.timeoutMs });
+  const res = await (o.fetch ?? fetch)(def.endpoints.token, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: loopbackRedirect(port), client_id: o.clientId, code_verifier: verifier }).toString(),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = (await res.json().catch(() => ({}))) as { access_token?: unknown; refresh_token?: unknown; scope?: unknown; error?: unknown };
+  if (typeof j.access_token !== 'string') throw new Error(`${def.name} did not issue a token (${typeof j.error === 'string' ? j.error : `HTTP ${res.status}`})`);
+  return { accessToken: j.access_token, ...(typeof j.refresh_token === 'string' ? { refreshToken: j.refresh_token } : {}), ...(typeof j.scope === 'string' ? { scope: j.scope } : {}) };
 }

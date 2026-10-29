@@ -6,12 +6,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { userInfo } from 'node:os';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { AccountError, DEVICE_SETUP, type GithubAccount } from './github.js';
+import type { OpenRouterAccount } from './openrouter.js';
 import { PROVIDERS } from './registry.js';
 import { githubClientId, setGithubClientId } from './store.js';
 
 export interface AccountsRouteCtx {
   home: string;
   github: GithubAccount;
+  openrouter: OpenRouterAccount;
 }
 
 const localUser = () => {
@@ -40,11 +42,19 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
       available: d.available,
       scopes: d.scopes,
       ...(d.note ? { note: d.note } : {}),
-      account: d.id === 'github' ? (c.github.account() ?? null) : null,
+      account: d.id === 'github' ? (c.github.account() ?? null) : d.id === 'openrouter' ? (c.openrouter.account() ?? null) : null,
       ...(d.id === 'github' ? { cli: cli ? { login: cli.login } : null, device: githubClientId(c.home) ? { ready: true } : { ready: false, setup: DEVICE_SETUP } } : {}),
     }));
     return send(res, 200, { user: localUser(), providers }), true;
   }
+  if (p === '/api/accounts/openrouter' && m === 'POST') {
+    // the page to open; the server waits for the browser to come back
+    const started = await c.openrouter.start().catch((e: Error) => {
+      throw new HttpError(502, e.message);
+    });
+    return send(res, 200, started), true;
+  }
+  if (p === '/api/accounts/openrouter/flow' && m === 'GET') return send(res, 200, c.openrouter.flow()), true;
   if (p === '/api/accounts/github/cli' && m === 'POST') {
     const account = await c.github.adoptCli().catch(asHttp);
     return send(res, 200, { account }), true;
@@ -66,8 +76,8 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
   }
   const g = /^\/api\/accounts\/([a-z]+)$/.exec(p);
   if (g && m === 'DELETE') {
-    if (g[1] !== 'github') throw new HttpError(404, `no connection for "${g[1]}"`);
-    await c.github.disconnect();
+    if (g[1] !== 'github' && g[1] !== 'openrouter') throw new HttpError(404, `no connection for "${g[1]}"`);
+    await (g[1] === 'github' ? c.github : c.openrouter).disconnect();
     return send(res, 200, { ok: true }), true;
   }
   return false;

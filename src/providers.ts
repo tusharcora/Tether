@@ -125,6 +125,16 @@ export function removeEndpoint(cfg: Config, id: string): void {
   cfg.endpoints = next;
 }
 
+/** Point the `openrouter` endpoint at the connected account's key (`account:openrouter`), adding it from the preset when missing. */
+export function useAccountEndpoint(cfg: Config): void {
+  const cur = cfg.endpoints.openrouter;
+  const ep: EndpointConfig = { ...cur, baseUrl: cur?.baseUrl ?? PRESETS.find((p) => p.id === 'openrouter')!.baseUrl, apiKey: 'account:openrouter' };
+  const file = readFile(cfg.home);
+  const endpoints = { ...((file.endpoints as Record<string, EndpointConfig>) ?? {}), openrouter: ep };
+  writeFileSync(join(cfg.home, 'aorch.config.json'), JSON.stringify({ ...file, endpoints }, null, 2) + '\n');
+  cfg.endpoints = { ...cfg.endpoints, openrouter: ep };
+}
+
 /** Change one setting of an endpoint you added (usage key, org id). */
 export function updateEndpoint(cfg: Config, id: string, patch: Partial<Pick<EndpointConfig, 'usageKey' | 'orgId'>>): void {
   const cur = cfg.endpoints[id];

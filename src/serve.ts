@@ -33,7 +33,10 @@ export async function serveTether(o: { home?: string; vault?: string; host?: str
   const ctx = openContext(o);
   installExamples(ctx.cfg.home, o.examplesDir);
   await ctx.vault.ensure();
-  const server = await startServer({ engine: ctx.engine, store: ctx.store, vault: ctx.vault, registry: makeRegistry(ctx.cfg), cfg: ctx.cfg, host: o.host, port: o.port ?? 4177, webDir: o.webDir });
+  // one registry for the engine and the API: an agent added while serving (OpenRouter connected) is there for runs too
+  const server = await startServer({ engine: ctx.engine, store: ctx.store, vault: ctx.vault, registry: ctx.engine.opts.registry, cfg: ctx.cfg, host: o.host, port: o.port ?? 4177, webDir: o.webDir });
+  // runs paused on the free limit before this server started resume after the reset
+  ctx.engine.armLimitTimers();
   /** Returns how many runs it stopped. */
   const stopLive = () => ctx.store.list().filter((r) => ctx.engine.isLive(r.id) && ctx.engine.stop(r.id)).length;
   return { ...ctx, url: server.url, close: server.close, stopLive };
