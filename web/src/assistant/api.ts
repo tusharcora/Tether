@@ -1,7 +1,7 @@
 import type { AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
-export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Cite, Compare, OutcomeNode, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
+export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Cite, Compare, ContextUse, OutcomeNode, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
 export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
 /** `?ws=…&chat=…` with the parts that are set. */
@@ -35,6 +35,8 @@ export const assistantApi = {
   turnIntoRun: (ws: string | undefined, chat: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, chat, from }),
   tool: (ws: string | undefined, chat: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, chat, decision }),
   feedback: (ws: string | undefined, chat: string | undefined, id: string, value: 'up' | 'down' | null) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, chat, value }),
+  /** Compact now (a summary of the older messages) or, with `undo`, put the newest compaction's messages back. */
+  compact: (ws: string | undefined, chat: string, undo?: boolean) => api<{ messages: ChatMessage[] }>('POST', '/api/assistant/compact', { ws, chat, ...(undo ? { undo: true } : {}) }),
 };
 
 /**

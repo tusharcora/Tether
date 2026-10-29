@@ -1,5 +1,5 @@
 import { FileCode2, NotebookText, Play } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { SWITCH_MODEL } from '../../../src/openrouter';
 import type { Route } from '../hooks';
 import { ComparisonTable } from '../components/aicss/ComparisonTable';
@@ -10,6 +10,8 @@ import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, ProposalCard, ToolAskCard } from './cards';
 import { Thinking } from './Thinking';
+import { useNotify } from '../ui/notify';
+import { cn } from '../ui/cn';
 
 /** Where a citation goes: file:line opens Code, a run opens its page, a note opens the Graph. */
 export function routeOf(c: Cite): Route {
@@ -40,10 +42,10 @@ export const visibleText = (text: string) => {
 };
 
 /** `asked`: when the question was sent, so the finished timeline says how long Tether thought. */
-function TetherMessage({ m, asked, chat, onGo }: { m: ChatMessage; asked?: number; chat: Assistant; onGo: (r: Route) => void }) {
+function TetherMessage({ m, asked, chat, onGo, dim }: { m: ChatMessage; asked?: number; chat: Assistant; onGo: (r: Route) => void; dim?: boolean }) {
   const text = visibleText(m.text);
   return (
-    <div className="max-w-[92%]" data-role="tether">
+    <div className={cn('max-w-[92%]', dim && 'opacity-60')} data-role="tether">
       {m.tools?.length ? <Thinking tools={m.tools} ms={asked !== undefined ? m.at - asked : undefined} /> : null}
       {text || m.error ? (
         <StreamingResponse
@@ -81,22 +83,51 @@ function TetherMessage({ m, asked, chat, onGo }: { m: ChatMessage; asked?: numbe
   );
 }
 
-/** The conversation: your messages, and Tether's with their scripts, sources, comparison and cards. */
+/** Where a compaction sits: "38 earlier messages summarized · Show", Undo on the newest one; shown, its summary too. */
+function CompactRow({ m, open, newest, onToggle, chat }: { m: ChatMessage; open: boolean; newest: boolean; onToggle: () => void; chat: Assistant }) {
+  const notify = useNotify();
+  const n = m.compact!.count;
+  return (
+    <div className={cn('flex flex-col gap-1.5 text-xs text-muted-foreground', m.compactedBy && 'opacity-60')} data-role="summary">
+      <div className="flex items-center gap-2">
+        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+        <span>{m.compact!.auto ? `Tether summarized ${n} earlier messages to make room` : `${n} earlier messages summarized`}</span>
+        <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-foreground underline underline-offset-4" aria-expanded={open} onClick={onToggle}>
+          {open ? 'Hide' : 'Show'}
+        </button>
+        {newest && !m.compactedBy ? (
+          <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-foreground underline underline-offset-4 disabled:opacity-50" disabled={chat.compacting || !!chat.streaming} onClick={() => void chat.compact(true).catch(notify.fail)}>
+            Undo
+          </button>
+        ) : null}
+        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+      </div>
+      {open ? <p className="m-0 whitespace-pre-wrap rounded-lg bg-muted px-3 py-2 text-[13px]">{m.text}</p> : null}
+    </div>
+  );
+}
+
+/** The conversation: your messages, and Tether's with their scripts, sources, comparison and cards. Compacted messages fold under their summary. */
 export function Thread({ chat, onGo, empty }: { chat: Assistant; onGo: (r: Route) => void; empty: ReactNode }) {
   const live = chat.streaming;
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string) => setShown((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])));
+  const newest = chat.messages.findLast((m) => m.compact && !m.compactedBy)?.id;
   return (
     <>
       {chat.loading ? <p className="m-0 text-muted-foreground">Loading the chat…</p> : null}
       {chat.error ? <p className="m-0 text-danger">{chat.error}</p> : null}
       {!chat.loading && !chat.messages.length && !live ? <p className="m-0 text-muted-foreground">{empty}</p> : null}
       {chat.messages.map((m, i) =>
-        m.role === 'you' ? (
-          <div key={m.id} className="max-w-[80%] self-end rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap" data-role="you">
+        m.compactedBy && !shown.has(m.compactedBy) ? null : m.compact ? (
+          <CompactRow key={m.id} m={m} open={shown.has(m.id)} newest={m.id === newest} onToggle={() => toggle(m.id)} chat={chat} />
+        ) : m.role === 'you' ? (
+          <div key={m.id} className={cn('max-w-[80%] self-end rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap', m.compactedBy && 'opacity-60')} data-role="you">
             {m.text}
             {m.attachments?.length ? <div className="mt-1 text-xs text-muted-foreground">{m.attachments.map((a) => a.name).join(', ')}</div> : null}
           </div>
         ) : (
-          <TetherMessage key={m.id} m={m} asked={chat.messages.slice(0, i).findLast((x) => x.role === 'you')?.at} chat={chat} onGo={onGo} />
+          <TetherMessage key={m.id} m={m} asked={chat.messages.slice(0, i).findLast((x) => x.role === 'you')?.at} chat={chat} onGo={onGo} dim={!!m.compactedBy} />
         ),
       )}
       {live ? (

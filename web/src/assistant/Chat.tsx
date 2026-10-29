@@ -6,6 +6,7 @@ import { usePoll } from '../hooks';
 import { MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
+import { ContextRing } from './ContextRing';
 import { Thread } from './Thread';
 import type { Assistant } from './useAssistant';
 
@@ -77,6 +78,7 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
       accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml"
       favKey="tether.assistant.favModels"
       tags={tags}
+      extra={<ContextRing chat={chat} />}
     />
   );
 }
