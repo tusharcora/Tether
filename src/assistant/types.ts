@@ -1,6 +1,6 @@
 /**
- * The Tether assistant's chat, shared by the server (src/assistant) and the dashboard (web/src/assistant), the way web/src
- * imports src/types.ts. A chat is per project; each Tether message may carry citations, proposed runs (which start only on
+ * The Tether assistant's chats, shared by the server (src/assistant) and the dashboard (web/src/assistant), the way web/src
+ * imports src/types.ts. Chats are per project; each Tether message may carry citations, proposed runs (which start only on
  * the person's click), questions, blocked outside-world calls waiting for a decision, Code Mode runs and a comparison.
  */
 import type { TeamMode } from '../types.js';
@@ -83,8 +83,10 @@ export interface AssistantContext {
   selection?: { kind: 'run' | 'file' | 'note' | 'request' | 'workflow' | 'bot'; id: string; line?: number };
 }
 
-/** GET /api/assistant: the project's chat and who answers. */
+/** GET /api/assistant: one chat of the project (none named: a new chat, no messages) and who answers. */
 export interface ChatView {
+  id?: string;
+  title?: string;
   messages: ChatMessage[];
   /** The agent behind Tether (its crew binding) and its model. */
   agent: string;
@@ -97,7 +99,8 @@ export interface ChatView {
 
 /** The server-sent events of one turn (POST /api/assistant). */
 export type StreamEvent =
-  | { type: 'start'; you: ChatMessage; id: string }
+  /** `chat`: the chat the turn is in (made by this message when none was named). */
+  | { type: 'start'; you: ChatMessage; id: string; chat: string; title: string }
   | { type: 'delta'; text: string }
   | { type: 'tool'; tool: ToolRun }
   | { type: 'done'; message: ChatMessage }

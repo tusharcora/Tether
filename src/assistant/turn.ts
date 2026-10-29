@@ -17,7 +17,7 @@ import type { Store } from '../store.js';
 import type { AttentionItem } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
-import { loadChat, saveChat } from './history.js';
+import { loadAllow, newChatId, readChat, saveChat, titleOf, type Chat } from './history.js';
 import { buildPrompt } from './prompt.js';
 import { checkReply } from './reply.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type StreamEvent, type ToolRun } from './types.js';
@@ -63,9 +63,10 @@ const secretsFor = (home: string, ws: string | undefined): Map<string, string> =
   return m;
 };
 
-export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; body: TurnBody }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
+/** One turn in `o.chat`, or in a new chat this first message makes (the start event names it). */
+export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; chat?: Chat; body: TurnBody }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
   const { body } = o;
-  const chat = loadChat(c.home, o.ws);
+  const chat: Chat = o.chat ?? { id: newChatId(), title: titleOf(body.message), created: Date.now(), updated: Date.now(), messages: [], once: [] };
   if (body.answer) {
     const m = chat.messages.find((x) => x.id === body.answer!.message);
     if (m?.ask) m.ask = { ...m.ask, status: 'answered', result: body.answer.result.slice(0, 300) };
@@ -74,8 +75,9 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   const you: ChatMessage = { id: mid('m'), role: 'you', text: body.message.slice(0, MESSAGE_MAX), at: Date.now(), ...(attachments.length ? { attachments: attachments.map((a) => ({ name: a.name, size: a.text.length })) } : {}) };
   const id = mid('m');
   chat.messages.push(you);
+  chat.updated = you.at;
   saveChat(c.home, o.ws, chat);
-  emit({ type: 'start', you, id });
+  emit({ type: 'start', you, id, chat: chat.id, title: chat.title });
 
   const binding = assistantAgent(c.home);
   const agent = body.agent ?? binding.agent;
@@ -94,10 +96,9 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (end > sent) (emit({ type: 'delta', text: redact(text.slice(sent, end)) }), (sent = end));
   };
   const done = (m: ChatMessage): ChatMessage => {
-    const f = loadChat(c.home, o.ws);
-    f.messages = [...chat.messages, m];
-    f.once = [];
-    saveChat(c.home, o.ws, f);
+    // re-read for a rename made meanwhile; a chat deleted meanwhile stays deleted
+    const f = readChat(c.home, o.ws, chat.id);
+    if (f) saveChat(c.home, o.ws, { ...f, messages: [...chat.messages, m], once: [], updated: m.at });
     emit({ type: 'done', message: m });
     return m;
   };
@@ -141,7 +142,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       store: c.store,
       vault: c.vault,
       workdir: cwd,
-      grants: [...chat.always, ...chat.once],
+      grants: [...loadAllow(c.home, o.ws), ...chat.once],
       workspace: o.ws,
       onRun: (code) => {
         const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };

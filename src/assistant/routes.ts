@@ -1,13 +1,14 @@
 /**
- * /api/assistant*: Tether's chat over the loopback server (Host and Origin are checked by server.ts first).
- * The one path that starts a run is POST /api/assistant/proposals/:id with decision "start": a click on a card.
+ * /api/assistant*: Tether's chats over the loopback server (Host and Origin are checked by server.ts first). Every route
+ * that means one chat takes its id (`chat`), checked before any file is read. The one path that starts a run is
+ * POST /api/assistant/proposals/:id with decision "start": a click on a card.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
-import { loadChat, newChat, saveChat } from './history.js';
+import { isChatId, loadAllow, readChat, saveAllow, saveChat, type Chat } from './history.js';
 import { assistantAgent, mid, runTurn, type AssistantCtx, type TurnBody } from './turn.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ChatMessage, type ChatView, type Proposal, type StreamEvent } from './types.js';
 
@@ -42,6 +43,14 @@ function parseBody(b: Record<string, unknown>): TurnBody {
   };
 }
 
+/** The chat a request names: 400 for a malformed id, 404 for one the project does not have. */
+function chatIn(c: AssistantCtx, ws: string | undefined, v: unknown): Chat {
+  if (!isChatId(v)) throw new HttpError(400, '"chat" must be a chat id');
+  const chat = readChat(c.home, ws, v);
+  if (!chat) throw new HttpError(404, 'unknown chat');
+  return chat;
+}
+
 /** Find a proposal, tool ask or message in the chat. */
 const findProposal = (messages: ChatMessage[], id: string) => messages.flatMap((m) => m.proposals ?? []).find((p) => p.id === id);
 
@@ -53,9 +62,11 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
   if (p === '/api/assistant' && m === 'GET') {
     const ws = wsOf(url.searchParams.get('ws'));
     rootOf(c, ws);
+    const id = url.searchParams.get('chat');
+    const chat = id === null ? undefined : chatIn(c, ws, id);
     const { agent, model } = assistantAgent(c.home);
     const models = c.registry.has(agent) ? ((await c.registry.get(agent).listModels?.().catch(() => [])) ?? []) : [];
-    return send(res, 200, { messages: loadChat(c.home, ws).messages, agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}) } satisfies ChatView), true;
+    return send(res, 200, { ...(chat ? { id: chat.id, title: chat.title } : {}), messages: chat?.messages ?? [], agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}) } satisfies ChatView), true;
   }
 
   if (p === '/api/assistant' && m === 'POST') {
@@ -63,13 +74,14 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     const root = rootOf(c, ws);
     const body = parseBody(b);
+    const chat = b.chat === undefined ? undefined : chatIn(c, ws, b.chat);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     const ctl = new AbortController();
     // the person pressed Stop (or left): stop the agent
     res.on('close', () => !res.writableEnded && ctl.abort());
     const emit = (e: StreamEvent) => void (!res.destroyed && res.write(`data: ${JSON.stringify(e)}\n\n`));
     try {
-      await runTurn(c, { ws, root, body }, emit, ctl.signal);
+      await runTurn(c, { ws, root, chat, body }, emit, ctl.signal);
     } catch (e) {
       emit({ type: 'error', error: (e as Error).message.slice(0, 300) });
     }
@@ -77,18 +89,11 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     return true;
   }
 
-  if (p === '/api/assistant/new' && m === 'POST') {
-    const b = reqObject(await readJson(req));
-    const ws = wsOf(b.ws);
-    rootOf(c, ws);
-    return send(res, 200, { messages: newChat(c.home, ws).messages }), true;
-  }
-
   if (p === '/api/assistant/proposals' && m === 'POST') {
     const b = reqObject(await readJson(req));
     const ws = wsOf(b.ws);
     rootOf(c, ws);
-    const chat = loadChat(c.home, ws);
+    const chat = chatIn(c, ws, b.chat);
     const msg = chat.messages.find((x) => x.id === b.from && x.role === 'tether');
     if (!msg) throw new HttpError(404, 'unknown message');
     const task = msg.text.replace(/```tether[\s\S]*$/, '').trim().slice(0, 2000);
@@ -103,7 +108,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     const root = rootOf(c, ws);
     if (b.decision !== 'start' && b.decision !== 'dismiss') throw new HttpError(400, '"decision" must be "start" or "dismiss"');
-    const chat = loadChat(c.home, ws);
+    const chat = chatIn(c, ws, b.chat);
     const prop = findProposal(chat.messages, decodeURIComponent(g[1]!));
     if (!prop) throw new HttpError(404, 'unknown proposal');
     // a proposal is decided once: a second click returns what the first did
@@ -134,13 +139,14 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     rootOf(c, ws);
     if (b.decision !== 'once' && b.decision !== 'always' && b.decision !== 'deny') throw new HttpError(400, '"decision" must be "once", "always" or "deny"');
-    const chat = loadChat(c.home, ws);
+    const chat = chatIn(c, ws, b.chat);
     const ask = chat.messages.flatMap((x) => x.toolAsks ?? []).find((a) => a.id === decodeURIComponent(g![1]!));
     if (!ask) throw new HttpError(404, 'unknown approval');
     if (ask.status === 'pending') {
       ask.status = b.decision === 'deny' ? 'denied' : b.decision;
       if (b.decision === 'once') chat.once.push(ask.what);
-      if (b.decision === 'always' && !chat.always.includes(ask.what)) chat.always.push(ask.what);
+      const always = loadAllow(c.home, ws);
+      if (b.decision === 'always' && !always.includes(ask.what)) saveAllow(c.home, ws, [...always, ask.what]);
       saveChat(c.home, ws, chat);
     }
     return send(res, 200, { ask }), true;
@@ -151,7 +157,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     rootOf(c, ws);
     if (b.value !== null && b.value !== 'up' && b.value !== 'down') throw new HttpError(400, '"value" must be "up", "down" or null');
-    const chat = loadChat(c.home, ws);
+    const chat = chatIn(c, ws, b.chat);
     const msg = chat.messages.find((x) => x.id === decodeURIComponent(g![1]!));
     if (!msg) throw new HttpError(404, 'unknown message');
     if (b.value) msg.feedback = b.value;
