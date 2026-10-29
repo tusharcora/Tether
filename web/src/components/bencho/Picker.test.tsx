@@ -106,4 +106,26 @@ describe('Picker', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'before' }));
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
   });
+
+  it('renders group headings in order and keeps keyboard order across groups', async () => {
+    const grouped: PickerOption[] = [
+      { id: 'coder', name: 'coder', group: 'Agents' },
+      { id: 'core', name: 'Core team', group: 'Teams' },
+      { id: 'reviewer', name: 'reviewer', group: 'Agents' },
+      { id: 'anyone', name: 'anyone' },
+    ];
+    render(<Picker label="Who" options={grouped} value={[]} multiple onChange={() => {}} />);
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Who' }), { key: 'ArrowDown' });
+    const list = await screen.findByRole('listbox');
+    // ungrouped first with no heading, then each group in the order it was first seen
+    expect(within(list).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Agents', 'Teams']);
+    expect(within(within(list).getByRole('group', { name: 'Agents' })).getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['coder', 'reviewer']);
+    expect(within(list).getByText('Teams')).toBeTruthy();
+    expect(document.activeElement).toBe(within(list).getByRole('option', { name: 'anyone' }));
+    const order = ['coder', 'reviewer', 'Core team', 'anyone'];
+    for (const name of order) {
+      fireEvent.keyDown(list, { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(within(list).getByRole('option', { name }));
+    }
+  });
 });

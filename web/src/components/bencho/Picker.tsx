@@ -7,7 +7,7 @@
  */
 import { Check, ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../beui/lib/utils';
 
 export interface PickerOption {
@@ -19,6 +19,8 @@ export interface PickerOption {
   /** A face or a mark drawn before the name (and stacked in the pill when several are chosen). */
   lead?: ReactNode;
   disabled?: boolean;
+  /** Options that share a group sit under a small heading with its name; ungrouped options come first, with none. */
+  group?: string;
 }
 
 export interface PickerProps {
@@ -57,7 +59,10 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
 
   // a chosen value the list does not hold (a custom one) still shows in the pill and stays in the list
   const extra = value.filter((v) => v && !given.some((o) => o.id === v)).map((v): PickerOption => ({ id: v, name: v }));
-  const options = [...given, ...extra];
+  const all = [...given, ...extra];
+  // ungrouped first, then each group where it was first seen, so the arrows walk the list in the order it is drawn
+  const heads = [...new Set(all.flatMap((o) => (o.group ? [o.group] : [])))];
+  const options = [...all.filter((o) => !o.group), ...heads.flatMap((h) => all.filter((o) => o.group === h))];
   const chosen = value.map((v) => options.find((o) => o.id === v)).filter((o): o is PickerOption => !!o);
   const count = options.length + (custom ? 1 : 0);
   const enabled = (i: number) => i === options.length || !options[i]?.disabled;
@@ -130,6 +135,40 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), open ? close(false) : show());
   };
 
+  const row = (o: PickerOption, i: number) => {
+    const on = value.includes(o.id);
+    return (
+      <button
+        key={o.id}
+        type="button"
+        role="option"
+        aria-label={o.name}
+        aria-selected={on}
+        aria-disabled={o.disabled || undefined}
+        data-index={i}
+        tabIndex={i === active ? 0 : -1}
+        onClick={() => pick(o)}
+        onPointerEnter={() => !o.disabled && setActive(i)}
+        className={cn(
+          'flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-sm text-foreground outline-none transition-colors',
+          i === active && 'bg-muted',
+          o.disabled && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        <span className="grid size-7 flex-none place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium" aria-hidden="true">
+          {o.lead ?? o.name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="grid min-w-0 flex-1" aria-hidden="true">
+          <span className="truncate font-medium">{o.name}</span>
+          {o.hint ? <span className="truncate text-xs text-muted-foreground">{o.hint}</span> : null}
+        </span>
+        <span className="grid size-4 flex-none place-items-center" aria-hidden="true">
+          {on ? <Check size={14} strokeWidth={2} /> : null}
+        </span>
+      </button>
+    );
+  };
+
   const lap = 10;
   return (
     <div ref={root} className={cn('relative min-w-0', className)}>
@@ -192,37 +231,17 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
             className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1.5"
           >
             {options.length === 0 ? <div className="px-2.5 py-3 text-sm text-muted-foreground">Nothing to choose from.</div> : null}
-            {options.map((o, i) => {
-              const on = value.includes(o.id);
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  role="option"
-                  aria-label={o.name}
-                  aria-selected={on}
-                  aria-disabled={o.disabled || undefined}
-                  data-index={i}
-                  tabIndex={i === active ? 0 : -1}
-                  onClick={() => pick(o)}
-                  onPointerEnter={() => !o.disabled && setActive(i)}
-                  className={cn(
-                    'flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-sm text-foreground outline-none transition-colors',
-                    i === active && 'bg-muted',
-                    o.disabled && 'cursor-not-allowed opacity-50',
-                  )}
-                >
-                  <span className="grid size-7 flex-none place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium" aria-hidden="true">
-                    {o.lead ?? o.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="grid min-w-0 flex-1" aria-hidden="true">
-                    <span className="truncate font-medium">{o.name}</span>
-                    {o.hint ? <span className="truncate text-xs text-muted-foreground">{o.hint}</span> : null}
-                  </span>
-                  <span className="grid size-4 flex-none place-items-center" aria-hidden="true">
-                    {on ? <Check size={14} strokeWidth={2} /> : null}
-                  </span>
-                </button>
+            {[undefined, ...heads].map((h) => {
+              const rows = options.flatMap((o, i) => ((o.group || undefined) === h ? [row(o, i)] : []));
+              return h ? (
+                <div key={h} role="group" aria-label={h}>
+                  <div className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" aria-hidden="true">
+                    {h}
+                  </div>
+                  {rows}
+                </div>
+              ) : (
+                <Fragment key="">{rows}</Fragment>
               );
             })}
             {custom ? (
