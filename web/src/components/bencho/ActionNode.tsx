@@ -22,11 +22,11 @@ export interface NodeAction {
   danger?: boolean;
 }
 
-/** The button and half of it. Everything else with a size is measured off this one. */
+/** The button. Everything else with a size is measured off it; `lg` (goal nodes) uses LG_DOT. */
 export const DOT = 28;
-const R = DOT / 2;
-/** Centre to centre along the outline: a real distance, so the air between buttons is the same round any corner. */
-const SPACING = DOT + 8;
+export const LG_DOT = 40;
+/** Centre to centre along the outline is a button plus this: a real distance, so the air between buttons is the same round any corner. */
+const AIR = 8;
 /** Air between the card and the buttons' edges. */
 const GAP = 8;
 
@@ -45,15 +45,15 @@ export function ride(s: number, corner: number, off: number) {
   return { x: -corner + arc * Math.cos(th), y: corner - arc * Math.sin(th), nx: Math.cos(th), ny: -Math.sin(th) };
 }
 
-/** Where a folded button hides: far enough inside the card, on its diagonal, that none of it shows past the corner. */
-const hideAt = (corner: number) => (corner >= R + 2 ? corner * Math.SQRT2 : Math.max(R * Math.SQRT2 + 2, corner * Math.SQRT2 + corner + 2));
+/** Where a folded button (half size `r`) hides: far enough inside the card, on its diagonal, that none of it shows past the corner. */
+const hideAt = (corner: number, r: number) => (corner >= r + 2 ? corner * Math.SQRT2 : Math.max(r * Math.SQRT2 + 2, corner * Math.SQRT2 + corner + 2));
 
 /** The open position of each of `n` buttons, centred on the corner's midpoint so the fan is symmetrical about the diagonal. */
-export function fanSpots(n: number, corner: number) {
+export function fanSpots(n: number, corner: number, dot = DOT) {
   const c = clamp(corner, 0, 32);
-  const off = GAP + R;
+  const off = GAP + dot / 2;
   const mid = ((c + off) * Math.PI) / 4;
-  return Array.from({ length: n }, (_, i) => ride(mid + (i - (n - 1) / 2) * SPACING, c, off));
+  return Array.from({ length: n }, (_, i) => ride(mid + (i - (n - 1) / 2) * (dot + AIR), c, off));
 }
 
 /**
@@ -61,13 +61,15 @@ export function fanSpots(n: number, corner: number) {
  * hovered or holds focus, or while the host has `data-fan-open`. `tabbable` puts the buttons in the Tab order (the selected
  * card's), so a keyboard user reaches them without a tab stop on every card.
  */
-export function NodeActions({ actions, corner = 12, tabbable = false, label = 'Step actions', inset = false }: { actions: NodeAction[]; corner?: number; tabbable?: boolean; label?: string; /** Fold the buttons into the card's right edge instead of fanning round its corner: for a card inside a scrolling list, where nothing may hang outside it. */ inset?: boolean }) {
+export function NodeActions({ actions, corner = 12, tabbable = false, label = 'Step actions', inset = false, size = 'md' }: { actions: NodeAction[]; corner?: number; tabbable?: boolean; label?: string; /** Fold the buttons into the card's right edge instead of fanning round its corner: for a card inside a scrolling list, where nothing may hang outside it. */ inset?: boolean; /** `lg`: 40 px buttons with an 8 px invisible hit ring (goal nodes). */ size?: 'md' | 'lg' }) {
   const n = actions.length;
   if (!n) return null;
   const c = clamp(corner, 0, 32);
+  const dot = size === 'lg' ? LG_DOT : DOT;
+  const R = dot / 2;
   // inset: one row along the card's right edge, centred on it, the first button leftmost; the anchor is that edge's middle
-  const spots = inset ? actions.map((_, i) => ({ x: -R - (n - 1 - i) * (DOT + 6), y: 0, nx: 1, ny: 0 })) : fanSpots(n, c);
-  const deep = inset ? -8 : hideAt(c) / Math.SQRT2;
+  const spots = inset ? actions.map((_, i) => ({ x: -R - (n - 1 - i) * (dot + 6), y: 0, nx: 1, ny: 0 })) : fanSpots(n, c, dot);
+  const deep = inset ? -8 : hideAt(c, R) / Math.SQRT2;
   // the hit pad covers the air between the card and its buttons, so the fan does not fold from under a hand reaching for it
   const BLEED = 6;
   const box = spots.reduce((b, s) => ({ l: Math.min(b.l, s.x - R - BLEED), r: Math.max(b.r, s.x + R + BLEED), t: Math.min(b.t, s.y - R - BLEED), d: Math.max(b.d, s.y + R + BLEED) }), { l: 0, r: 0, t: 0, d: 0 });
@@ -81,7 +83,7 @@ export function NodeActions({ actions, corner = 12, tabbable = false, label = 'S
     all[(at + step + all.length) % all.length]?.focus();
   };
   return (
-    <div className={cn('nod-fan', inset && 'inset')} role="toolbar" aria-label={label} onKeyDown={onKey} style={{ '--n': n } as CSSProperties}>
+    <div className={cn('nod-fan', inset && 'inset', size === 'lg' && 'lg')} role="toolbar" aria-label={label} onKeyDown={onKey} style={{ '--n': n } as CSSProperties}>
       <span className="nod-pad" aria-hidden="true" style={{ left: box.l, top: box.t, width: box.r - box.l, height: box.d - box.t }} />
       {actions.map((a, i) => (
         <button
@@ -117,6 +119,7 @@ interface NodeProps {
   tabbable?: boolean;
   label?: string;
   inset?: boolean;
+  size?: 'md' | 'lg';
   /** The compact card (300 px wide, 16 px corner) with a mark, a title and a line, and a status dot on the mark. */
   compact?: boolean;
   mark?: ReactNode;
@@ -128,7 +131,7 @@ interface NodeProps {
 }
 
 /** A card with its actions folded into the corner: content from the caller, or with `compact` a mark, a title and a line. */
-export function ActionNode({ actions, children, className, corner, tabbable, label, inset, compact, mark, title, line, tone = 'idle', toneLabel }: NodeProps) {
+export function ActionNode({ actions, children, className, corner, tabbable, label, inset, size, compact, mark, title, line, tone = 'idle', toneLabel }: NodeProps) {
   const r = corner ?? (compact ? 16 : 12);
   return (
     <div className={cn('nod-host nod-card', compact && 'nod-compact', className)} style={{ borderRadius: r }}>
@@ -145,7 +148,7 @@ export function ActionNode({ actions, children, className, corner, tabbable, lab
         </div>
       ) : null}
       {children}
-      <NodeActions actions={actions} corner={r} tabbable={tabbable} label={label} inset={inset} />
+      <NodeActions actions={actions} corner={r} tabbable={tabbable} label={label} inset={inset} size={size} />
     </div>
   );
 }

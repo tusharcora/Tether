@@ -9,22 +9,31 @@
 /* the fan hangs off the host's top-right corner, a zero-size anchor the buttons are placed from */
 .nod-fan { position: absolute; top: 0; right: 0; width: 0; height: 0; pointer-events: none; z-index: 3; }
 .nod-fan.inset { top: 50%; right: 8px; }
-.nod-pad { position: absolute; pointer-events: none; }
+.nod-pad { position: absolute; pointer-events: auto; visibility: hidden; transition: visibility 0s linear 350ms; }
+.nod-fan.inset > .nod-pad { transition: none; }
 
 .nod-act {
   position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 28px; height: 28px; margin: 0; padding: 0;
   border: 1px solid var(--line2); border-radius: 50%; background: var(--s1); color: var(--ink); cursor: pointer; opacity: 0; pointer-events: none;
   transform: translate(var(--hx), var(--hy)) scale(0);
-  /* closing runs last out first back, so the fan folds into the corner in the order it came out of it */
-  transition: transform 180ms cubic-bezier(0.4, 0, 1, 1) calc((var(--n) - 1 - var(--i)) * 24ms), opacity 120ms ease calc((var(--n) - 1 - var(--i)) * 24ms), background-color 150ms ease, border-color 150ms ease;
+  /* closing waits 350 ms (a hand that slips off on the way to a button keeps the fan), then runs last out first back, so
+     the fan folds into the corner in the order it came out of it */
+  transition: transform 180ms cubic-bezier(0.4, 0, 1, 1) calc(350ms + (var(--n) - 1 - var(--i)) * 24ms), opacity 120ms ease calc(350ms + (var(--n) - 1 - var(--i)) * 24ms), background-color 150ms ease, border-color 150ms ease;
 }
+/* a fan folded into a list row closes at once, so the next row's is never covered */
+.nod-fan.inset > .nod-act { transition-delay: calc((var(--n) - 1 - var(--i)) * 24ms), calc((var(--n) - 1 - var(--i)) * 24ms), 0s, 0s; }
+/* lg (goal nodes): 40 px buttons, and a ring 8 px wide round each that takes the pointer without being drawn */
+.nod-fan.lg > .nod-act { width: 40px; height: 40px; }
+.nod-fan.lg > .nod-act::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; }
+.nod-fan.lg > .nod-act svg { width: 18px; height: 18px; }
 .nod-act svg { width: 14px; height: 14px; }
 .nod-act:hover:not(:disabled) { background: var(--s2); border-color: var(--edge); }
 .nod-act.danger:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); }
 .nod-act:disabled { color: var(--mut); cursor: not-allowed; }
 .nod-act:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 
-/* open: while the host is hovered or holds focus (a keyboard user in the toolbar), or when the host says so */
+/* open: while the host is hovered or holds focus (a keyboard user in the toolbar), or when the host says so; the pocket
+   (the pad) is part of the host, so the pointer on its way to a button never leaves it */
 .nod-host:hover > .nod-fan > .nod-act,
 .nod-host:focus-within > .nod-fan > .nod-act,
 .nod-host[data-fan-open] > .nod-fan > .nod-act {
@@ -34,10 +43,10 @@
 }
 .nod-host:hover > .nod-fan > .nod-pad,
 .nod-host:focus-within > .nod-fan > .nod-pad,
-.nod-host[data-fan-open] > .nod-fan > .nod-pad { pointer-events: auto; }
+.nod-host[data-fan-open] > .nod-fan > .nod-pad { visibility: visible; transition-delay: 0s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .nod-act, .nod-host:hover > .nod-fan > .nod-act, .nod-host:focus-within > .nod-fan > .nod-act, .nod-host[data-fan-open] > .nod-fan > .nod-act { transition-duration: 0.01ms; transition-delay: 0s; }
+  .nod-act, .nod-fan.inset > .nod-act, .nod-host:hover > .nod-fan > .nod-act, .nod-host:focus-within > .nod-fan > .nod-act, .nod-host[data-fan-open] > .nod-fan > .nod-act { transition-duration: 0.01ms; transition-delay: 0s; }
 }
 
 /* the compact card: 300 px wide, a mark with its status dot, a title and one line; content from the caller goes under it */
