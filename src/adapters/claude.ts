@@ -11,6 +11,7 @@ export function parseClaudeLine(
   onChunk: (t: string) => void,
   onSession: (id: string) => void,
   onDelta?: (t: string) => void,
+  onTool?: (name: string, input: unknown) => void,
 ): void {
   let o: any;
   try {
@@ -47,6 +48,7 @@ export function parseClaudeLine(
       } else if (b?.type === 'tool_use') {
         acc.toolCalls = (acc.toolCalls ?? 0) + 1;
         onChunk(toolChunk(String(b.name ?? 'tool'), b.input));
+        onTool?.(String(b.name ?? 'tool'), b.input);
       }
     }
   } else if (o.type === 'result') {
@@ -107,7 +109,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cwd: req.cwd,
       stdin: req.prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
-      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta),
+      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool),
     });
     if (r.spawnError) return { output: '', exitCode: 127, error: `claude: ${r.spawnError}` };
     const exitCode = r.aborted ? 130 : acc.isError ? 1 : (r.code ?? 1);
