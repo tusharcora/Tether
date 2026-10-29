@@ -32,7 +32,9 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
   const [level, setLevel] = useState<Level>(t?.level ?? 'balanced');
   const [usd, setUsd] = useState(String(t?.limits.usdPerDay ?? 10));
   const [runs, setRuns] = useState(String(t?.limits.runsPerDay ?? 20));
-  const [project, setProject] = useState(t?.project ?? p.project?.id ?? p.projects[0]?.id ?? '');
+  // the project list can arrive after the form opens: until one is picked, follow the current project
+  const [picked, setProject] = useState(t?.project);
+  const project = picked ?? p.project?.id ?? p.projects[0]?.id ?? '';
   const [learn, setLearn] = useState(t?.learn ?? true);
   const [busy, setBusy] = useState(false);
   const ids = { agents: useId(), approve: useId() };

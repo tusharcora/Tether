@@ -43,7 +43,10 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
   const end = useRef<HTMLLIElement>(null);
   const v = view.data;
   const count = v?.messages.length ?? 0;
-  useEffect(() => end.current?.scrollIntoView?.({ block: 'end' }), [count]);
+  // a block body: newer Chrome's scrollIntoView returns a promise, which React would take for a cleanup
+  useEffect(() => {
+    end.current?.scrollIntoView?.({ block: 'end' });
+  }, [count]);
 
   if (!v) return <Loading loading={!view.error} lines={6} label="Loading the team">{view.error ? <InlineError message={view.error} onRetry={() => void view.refresh()} /> : null}</Loading>;
   const t = v.team;

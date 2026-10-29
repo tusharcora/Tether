@@ -166,6 +166,8 @@ describe('a task', () => {
     const ship = r.card('approval')!;
     expect(ship.card).toMatchObject({ what: 'ship', status: 'pending', node: 'ship', detail: expect.stringContaining('test -f fix.txt passed') });
     expect(r.teams.view(r.team.id).status).toBe('needs');
+    // paused at the approval is not the end of the run: nothing is reported as failed or done yet
+    expect(r.msgs().filter((m) => /failed|^Done/.test(m.text))).toEqual([]);
     await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
     await r.engine.wait(runId);
     await r.idle();

@@ -336,7 +336,8 @@ export class Teams {
       });
     } else if (t === 'run.finished') {
       this.syncCard(teamId, e.runId);
-      this.job(this.finished(teamId, e.runId));
+      // a run waiting on an approval also "finishes" its pass, as paused: that is not its end
+      if (e.event.status !== 'paused') this.job(this.finished(teamId, e.runId));
     }
   }
 
