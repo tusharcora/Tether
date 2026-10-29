@@ -36,7 +36,7 @@ const pathOf = (url: string): string => {
   }
 };
 
-/** Hand the last response to a bot (a run), to Tether (a team run), or turn the request into a workflow gate. */
+/** Hand the last response to a bot (a run), to Tether (a team run), or turn the request into a workflow gate. The API client docks it on the right. */
 export function SendToAgent(p: SendToAgentProps) {
   const notify = useNotify();
   const { crew } = useCrew();
@@ -70,8 +70,7 @@ export function SendToAgent(p: SendToAgentProps) {
   };
 
   return (
-    <aside className="send-agent" aria-label="Send to agent">
-      <h3>Send to agent</h3>
+    <div className="send-agent">
       <div className="bot-grid" role="group" aria-label="Bot">
         {bots.map(([id, c]) => (
           <button key={id} type="button" className="bot-pick" aria-pressed={bot === id} aria-label={`${c.name}, ${c.title}`} onClick={() => setBot(id)}>
@@ -100,6 +99,6 @@ export function SendToAgent(p: SendToAgentProps) {
       <Button variant="ghost" disabled={!p.requestId} onClick={() => p.requestId && p.onUseAsGate({ run: p.requestId, ...(p.env ? { env: p.env } : {}) })}>
         Use as gate in a workflow
       </Button>
-    </aside>
+    </div>
   );
 }

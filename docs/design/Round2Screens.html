@@ -1,0 +1,523 @@
+<title>Tether Builder and Crew</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Owner's mix: Builder = Canvas + Outline as two modes of one workflow; Crew = Lineup slots + bench, in the Canvas's floating-tool frame. */
+:root{
+  --page:#e7e7e4; --bg:#ffffff; --side:#f7f7f6; --s1:#ffffff; --s2:#f1f1ef; --s3:#e4e4e1;
+  --ink:#1d1d1f; --ink2:#55555a; --mut:#8e8e93; --line:rgba(0,0,0,.08); --line2:rgba(0,0,0,.13);
+  --hov:rgba(0,0,0,.045); --sel:rgba(0,0,0,.075);
+  --acc:#2563eb; --accBg:rgba(37,99,235,.1); --accInk:#1d4ed8;
+  --warn:#b45309; --warnBg:#fdf1d8; --ok:#047857; --okBg:#e7f6ef; --bad:#b91c1c;
+  --shadow:0 0 0 1px rgba(0,0,0,.06),0 24px 60px -24px rgba(0,0,0,.28);
+  --float:0 0 0 1px rgba(0,0,0,.07),0 10px 30px -8px rgba(0,0,0,.2);
+  --f:"Geist",ui-sans-serif,system-ui,-apple-system,sans-serif; --m:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -24px rgba(0,0,0,.9);
+  --float:0 0 0 1px rgba(255,255,255,.08),0 12px 30px -8px rgba(0,0,0,.7); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#000; --bg:#121214; --side:#18181b; --s1:#1f1f23; --s2:#232328; --s3:#2e2e34;
+  --ink:#ececee; --ink2:#a6a6ad; --mut:#76767d; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --hov:rgba(255,255,255,.045); --sel:rgba(255,255,255,.08);
+  --acc:#3b82f6; --accBg:rgba(59,130,246,.18); --accInk:#93c5fd;
+  --warn:#fbbf24; --warnBg:rgba(251,191,36,.14); --ok:#34d399; --okBg:rgba(52,211,153,.12); --bad:#f87171;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -24px rgba(0,0,0,.9);
+  --float:0 0 0 1px rgba(255,255,255,.08),0 12px 30px -8px rgba(0,0,0,.7); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font:13px/1.5 var(--f);-webkit-font-smoothing:antialiased;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 56px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:5px}
+.wrap{max-width:1280px;margin:0 auto}
+.mono{font-family:var(--m)} .mut{color:var(--mut)}
+.head h1{font-size:24px;letter-spacing:-.03em;margin:0}
+.head p{margin:4px 0 18px;color:var(--mut);font-size:14px;max-width:76ch}
+.lbl{font:12px var(--m);color:var(--mut);margin:26px 0 8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.win{position:relative;background:var(--bg);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;height:620px;display:grid;grid-template-columns:56px minmax(0,1fr)}
+.rail{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 0}
+.rail i{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--mut)}
+.rail i.on{background:var(--sel);color:var(--ink)}
+.rail svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rail .lights{display:flex;gap:4px;margin-bottom:10px}.rail .lights b{width:8px;height:8px;border-radius:50%;background:#ff5f57}.rail .lights b:nth-child(2){background:#febc2e}.rail .lights b:nth-child(3){background:#28c840}
+.main{position:relative;min-width:0;overflow:hidden;background:radial-gradient(circle at 1px 1px,var(--line2) 1px,transparent 1.3px) 0 0/22px 22px,var(--side)}
+.face{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;background:var(--s3)}
+.face i{width:3.5px;height:6px;border-radius:2px;background:#18181b}
+.face.ink i{background:var(--ink)}
+.face.lg{width:60px;height:60px;gap:8px}.face.lg i{width:6px;height:12px;border-radius:3px}
+.face.md{width:40px;height:40px;gap:5px}.face.md i{width:4.5px;height:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;background:var(--s2);font:11.5px var(--m);color:var(--ink2);white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;font:11px var(--m);padding:1px 8px;border-radius:99px;white-space:nowrap}
+.pill.live{background:var(--accBg);color:var(--accInk)} .pill.ok{background:var(--okBg);color:var(--ok)} .pill.q{background:var(--s2);color:var(--mut)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-weight:500;font-size:12.5px;white-space:nowrap}
+.btn.ink{background:var(--ink);color:var(--bg)} .btn.ghost{border-color:var(--line2);background:var(--s1)}
+.kbd{font:500 10.5px var(--m);color:var(--mut);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 4px;line-height:15px}
+.flt{position:absolute;background:var(--bg);border-radius:12px;box-shadow:var(--float);display:flex;align-items:center;gap:8px;padding:6px 8px;z-index:6}
+.seg{display:inline-flex;background:var(--s2);border-radius:8px;padding:2px;position:relative}
+.seg button{position:relative;z-index:1;border:0;background:none;padding:5px 12px;border-radius:6px;cursor:pointer;color:var(--mut);font-weight:500;font-size:12.5px;display:flex;align-items:center;gap:6px}
+.seg button[aria-pressed="true"]{color:var(--ink)}
+.seg .pillbg{position:absolute;top:2px;bottom:2px;border-radius:6px;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.12);transition:left .3s cubic-bezier(.3,1.25,.5,1),width .3s cubic-bezier(.3,1.25,.5,1)}
+.seg svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8}
+[hidden]{display:none!important}
+
+/* shared docked editor */
+.dock{position:absolute;top:64px;right:16px;width:290px;background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:14px;z-index:6;animation:pop .22s cubic-bezier(.2,1.1,.3,1)}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+.dock h4{margin:0 0 10px;font-size:14px;display:flex;align-items:center;gap:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:12.5px}
+.dock .row:first-of-type{border-top:0}
+.tog{width:30px;height:18px;border-radius:9px;background:var(--s3);position:relative;flex:none;cursor:pointer;border:0;padding:0}
+.tog.on{background:var(--ink)} .tog::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--bg);transition:left .2s}
+.tog.on::after{left:14px}
+.prompt{margin-top:8px;border:1px solid var(--line2);border-radius:8px;padding:8px;font-size:12px;color:var(--ink2);background:var(--side);line-height:1.5}
+.dock .x{margin-left:auto;border:0;background:none;color:var(--mut);cursor:pointer;font-size:16px}
+
+/* builder: canvas mode */
+.stage{position:absolute;inset:0}
+.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;width:168px;background:var(--s1);border:1px solid var(--line2);border-radius:14px;padding:10px 12px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s;z-index:2}
+.node:hover{transform:translateY(-2px)}
+.node.sel{border-color:var(--ink);box-shadow:0 0 0 4px var(--accBg)}
+.node .t{display:flex;align-items:center;gap:8px}
+.node b{font-weight:600;font-size:13px}
+.node small{display:block;font:11px var(--m);color:var(--mut)}
+.node .p{margin-top:8px;font-size:11.5px;color:var(--ink2);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.node.gate{border-style:dashed;border-color:var(--warn)}
+.cmd{left:50%;bottom:18px;transform:translateX(-50%);padding:6px}
+.cmd .add{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:8px;background:var(--ink);color:var(--bg);font-weight:500}
+.cmd .q{display:flex;gap:2px}
+.cmd .q span{height:30px;display:inline-flex;align-items:center;padding:0 10px;border-radius:8px;color:var(--ink2);font-size:12.5px;cursor:pointer}
+.cmd .q span:hover{background:var(--hov)}
+/* builder: outline mode */
+.outline{position:absolute;inset:0;overflow:auto;padding:76px 330px 40px 40px}
+.paper{max-width:600px;margin:0 auto}
+.paper h2{font-size:28px;letter-spacing:-.035em;margin:0}
+.paper .desc{color:var(--ink2);font-size:14px;margin:6px 0 22px}
+.flow{position:relative;padding-left:28px}
+.flow::before{content:"";position:absolute;left:10px;top:10px;bottom:10px;width:2px;background:var(--line2);border-radius:2px}
+.blk{position:relative;margin-bottom:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--s1);transition:border-color .15s,box-shadow .15s;cursor:pointer}
+.blk:hover{border-color:var(--line2)}
+.blk.sel{border-color:var(--ink);box-shadow:0 0 0 4px var(--accBg)}
+.blk::before{content:attr(data-n);position:absolute;left:-28px;top:12px;width:22px;height:22px;border-radius:50%;background:var(--bg);border:2px solid var(--line2);font:600 10px var(--m);display:grid;place-items:center;color:var(--ink2)}
+.blk.sel::before{border-color:var(--ink);color:var(--ink)}
+.blk .t{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.blk .t b{font-weight:600;font-size:14px}
+.blk p{margin:6px 0 0;color:var(--ink2);font-size:13px}
+.blk .sent{margin-top:6px;font-size:12.5px;color:var(--warn)}
+.slashhint{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12.5px;padding:2px 12px 12px}
+
+/* crew: lineup on the canvas */
+.lineup{position:absolute;inset:0;overflow:auto;padding:74px 24px 190px}
+.slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;max-width:900px}
+.slot{position:relative;border-radius:18px;border:1px solid var(--line);background:var(--s1);padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s,background .2s;min-width:0}
+.slot:hover{transform:translateY(-3px);box-shadow:var(--float)}
+.slot.sel{border-color:var(--ink);box-shadow:0 0 0 4px var(--accBg)}
+.slot.over{border:1.5px dashed var(--acc);background:var(--accBg);transform:scale(1.02)}
+.slot.swapped{animation:swap .5s cubic-bezier(.2,1.2,.3,1)}
+@keyframes swap{0%{transform:scale(.94)}60%{transform:scale(1.04)}100%{transform:none}}
+.slot .role{font:11px var(--m);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.slot .who{display:flex;align-items:center;gap:12px}
+.slot .who b{font-size:15px;font-weight:600;display:block}
+.slot .who small{display:block;font-size:12px;color:var(--ink2)}
+.slot .ft{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mut);border-top:1px solid var(--line);padding-top:8px}
+.bench{left:16px;right:16px;bottom:16px;flex-direction:column;align-items:stretch;padding:10px 12px;gap:8px;transform-origin:bottom center;transition:transform .3s cubic-bezier(.2,1.1,.3,1),opacity .2s}
+.bench.off{transform:translateY(20px);opacity:0;pointer-events:none}
+.bench .bh{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.bench .bh b{font-size:13px}
+.bench input{height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--side);color:var(--ink);padding:0 10px;font:12.5px var(--f);width:200px}
+.strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+.sub{flex:none;width:148px;border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--side);display:flex;flex-direction:column;gap:6px;cursor:grab;transition:transform .15s,box-shadow .15s}
+.sub:hover{transform:translateY(-2px)}
+.sub.dragging{opacity:.4}
+.sub b{font-size:12.5px;font-weight:600}
+.sub small{font-size:11.5px;color:var(--mut);line-height:1.35}
+.toast{position:absolute;left:50%;top:70px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;font-size:12.5px;z-index:9;animation:pop .2s both;white-space:nowrap}
+.note{font-size:13px;color:var(--mut);margin-top:10px}
+/* shared */
+.jump{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:20;display:flex;gap:4px;flex-wrap:wrap;background:color-mix(in srgb,var(--page) 85%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:10px;margin:0 0 6px;box-shadow:0 0 0 1px var(--line)}
+.jump a{padding:5px 10px;border-radius:7px;color:var(--ink2);text-decoration:none;font-size:12.5px}
+.jump a:hover{background:var(--hov);color:var(--ink)}
+.toast2{position:absolute;left:50%;top:70px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;font-size:12.5px;z-index:9;animation:pop .2s both;white-space:nowrap}
+.dockl{position:absolute;top:64px;left:16px;bottom:16px;width:236px;background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:10px;z-index:5;display:flex;flex-direction:column;gap:4px;overflow:auto}
+.dockl .h{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--mut);padding:6px 8px 4px}
+.tree .n{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.tree .n:hover{background:var(--hov)} .tree .n.on{background:var(--sel);color:var(--ink);font-weight:500}
+.meth{font:600 10.5px var(--m);width:34px;flex:none} .meth.get{color:var(--ok)} .meth.post{color:var(--warn)}
+/* api */
+.center{position:absolute;top:64px;left:268px;right:16px;bottom:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;padding:2px}
+.cardp{background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:12px 14px}
+.url{display:flex;gap:8px;align-items:center;border:1px solid var(--line2);border-radius:9px;padding:5px 5px 5px 10px;font:12.5px var(--m);background:var(--side)}
+.url .u{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabs2{display:flex;gap:14px;font-size:12.5px;border-bottom:1px solid var(--line);margin:10px 0 8px}
+.tabs2 span{padding:6px 0;color:var(--mut);cursor:pointer} .tabs2 span.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.kv{display:grid;grid-template-columns:140px minmax(0,1fr);gap:4px 12px;font:12px var(--m)}
+.kv span:nth-child(odd){color:var(--mut)}
+.json{font:12px/1.75 var(--m);white-space:pre;overflow:auto;background:var(--side);border-radius:9px;padding:10px 12px;color:var(--ink2)}
+.tk{color:var(--accInk)} .st{color:var(--ok)} .nu{color:var(--warn)}
+.checks{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.picker{position:absolute;z-index:8;width:300px;background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:10px;animation:pop .2s}
+.picker .ph{font-size:12px;color:var(--mut);margin:2px 4px 8px}
+.picker .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.picker .grid div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;padding:8px 2px;border-radius:9px;cursor:pointer;color:var(--ink2)}
+.picker .grid div:hover{background:var(--hov);color:var(--ink)}
+/* graph */
+.gsvg{position:absolute;inset:0;width:100%;height:100%}
+.gsvg .e{stroke:var(--line2);stroke-width:1.2;transition:stroke .2s,stroke-width .2s}
+.gsvg .e.hi{stroke:var(--acc);stroke-width:2}
+.gsvg .nd{cursor:pointer;transition:opacity .2s}
+.gsvg.dim .nd:not(.hi){opacity:.25}
+.glab{position:absolute;inset:0;pointer-events:none}
+.gl{position:absolute;font-size:11.5px;color:var(--ink2);white-space:nowrap;transform:translate(12px,-50%);transition:opacity .2s}
+.glab.dim .gl:not(.hi){opacity:.25}
+.gl.hi{color:var(--ink);font-weight:500}
+.zoom{left:16px;bottom:16px;flex-direction:column;padding:4px;gap:2px}
+.zoom span{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;cursor:pointer;color:var(--ink2);font-size:14px}
+.zoom span:hover{background:var(--hov)}
+.legend{left:50%;bottom:16px;transform:translateX(-50%);font-size:11.5px;color:var(--mut);gap:14px}
+.legend i{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px;background:var(--ink2)}
+.search{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:8px;background:var(--side);color:var(--mut);font-size:12.5px;min-width:220px}
+.search input{border:0;background:transparent;outline:none;color:var(--ink);font:12.5px var(--f);flex:1;min-width:0}
+.notes .n{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.notes .n:hover{background:var(--hov)}
+.notes .n small{margin-left:auto;font:11px var(--m);color:var(--mut)}
+/* triggers */
+.tlist{position:absolute;top:64px;left:24px;right:330px;display:flex;flex-direction:column;gap:12px}
+.trig{background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:14px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:12px;align-items:center;cursor:pointer;border:1px solid transparent;transition:border-color .2s,transform .2s}
+.trig:hover{transform:translateY(-2px)} .trig.sel{border-color:var(--ink);box-shadow:var(--float),0 0 0 4px var(--accBg)}
+.trig .ic{width:38px;height:38px;border-radius:10px;background:var(--s2);display:grid;place-items:center;color:var(--ink2)}
+.trig .ic svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.trig b{font-size:14px;font-weight:600}
+.trig small{display:block;color:var(--mut);font-size:12px}
+.flowline{display:flex;align-items:center;gap:6px;font:11.5px var(--m);color:var(--ink2);margin-top:8px;flex-wrap:wrap}
+.flowline .arr{color:var(--mut)}
+.log{left:24px;right:330px;bottom:16px;flex-direction:column;align-items:stretch;padding:10px 12px;gap:2px}
+.log .lh{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:4px}
+.log .l{display:grid;grid-template-columns:64px minmax(0,1fr) 40px auto;gap:10px;font:12px var(--m);padding:5px 0;border-top:1px solid var(--line);align-items:center}
+.log .l:first-of-type{border-top:0}
+.c-ok{color:var(--ok)} .c-bad{color:var(--bad)}
+.field{display:flex;gap:6px;margin-top:8px}
+.field input{flex:1;min-width:0;height:30px;border-radius:8px;border:1px solid var(--line2);background:var(--side);color:var(--ink);padding:0 10px;font:12.5px var(--f)}
+/* settings */
+.snav{position:absolute;top:64px;left:16px;width:180px;background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:6px;z-index:5}
+.snav a{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:7px;color:var(--ink2);text-decoration:none;font-size:13px;cursor:pointer}
+.snav a:hover{background:var(--hov)} .snav a.on{background:var(--sel);color:var(--ink);font-weight:500}
+.spage{position:absolute;inset:0;overflow:auto;padding:64px 24px 24px 216px;scroll-behavior:smooth}
+.scard{background:var(--bg);border-radius:14px;box-shadow:var(--float);padding:14px 16px;margin-bottom:14px;max-width:660px;scroll-margin-top:64px}
+.scard h3{margin:0 0 6px;font-size:15px;letter-spacing:-.01em}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
+.srow:first-of-type{border-top:0}
+.srow small{display:block;color:var(--mut);font-size:12px}
+.how{font-size:12.5px;color:var(--ink2);padding:8px 10px;background:var(--side);border-radius:8px;margin-top:6px;line-height:1.55}
+details summary{cursor:pointer;color:var(--mut);font-size:12.5px;list-style:none;padding:2px 0}
+details summary::-webkit-details-marker{display:none}
+details[open] summary{color:var(--ink)}
+@media (max-width:900px){.dockl,.snav{display:none}.center,.tlist,.log{left:16px;right:16px}.spage{padding-left:16px}.log{position:relative;left:auto;right:auto}}
+@media (max-width:900px){.win{height:auto;min-height:620px}.slots{grid-template-columns:repeat(2,minmax(0,1fr))}.outline{padding:76px 16px 40px}.dock{position:absolute;left:16px;right:16px;width:auto;top:auto;bottom:16px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="head"><h1>Round 2 · all six screens</h1><p>One language for the tool screens: the work fills the window on a quiet dotted backdrop, tools float at the edges, and editors dock on the right instead of taking a permanent column. Builder has two modes (<b>Canvas</b> and <b>Outline</b>); Crew is a lineup with a bench. API client, Graph, Triggers and Settings follow the same rules.</p></div>
+  <nav class="jump" aria-label="Screens"><a href="#builder">Builder</a><a href="#crew">Crew</a><a href="#api">API client</a><a href="#graph">Graph</a><a href="#triggers">Triggers</a><a href="#settings">Settings</a></nav>
+
+  <div class="lbl" id="builder"><span>Builder · switch Canvas ⇄ Outline at the top; click any step</span><span>the editor on the right is shared by both modes</span></div>
+  <div class="win">
+    <nav class="rail" aria-hidden="true"><span class="lights"><b></b><b></b><b></b></span><i><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></i><i><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg></i><i class="on"><svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14"/></svg></i><i><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg></i></nav>
+    <div class="main" id="bMain">
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">plan-code-review</b><span class="pill ok"><span class="dot"></span>saved</span></div>
+      <div class="flt" style="left:50%;top:14px;transform:translateX(-50%);padding:4px"><div class="seg" role="group" aria-label="View" id="mode"><span class="pillbg"></span><button type="button" data-m="canvas" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 7h5v4H4zM15 13h5v4h-5zM9 9h3a3 3 0 0 1 3 3v3"/></svg>Canvas</button><button type="button" data-m="outline" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Outline</button></div></div>
+      <div class="flt" style="right:16px;top:14px"><span class="mut" style="font-size:12px">$5 cap</span><button class="btn ghost" type="button" id="wfSettings">Settings</button><button class="btn ink" type="button">Run ▸</button></div>
+      <div class="stage" id="canvas"><svg class="wires" id="wires"></svg></div>
+      <div class="outline" id="outline" hidden><div class="paper"><h2>Plan, code, review</h2><p class="desc">Scout plans, Brick designs, Bolt writes the change, Probe tests it, Lens reviews it, and you approve the merge.</p><div class="flow" id="flow"></div></div></div>
+      <div class="flt cmd" id="addbar"><span class="add">+ Add step <span class="kbd" style="color:inherit;border-color:currentColor;opacity:.6">⌘K</span></span><span class="q"><span>Agent</span><span>Gate</span><span>Approval</span><span>Skill</span><span>HTTP</span><span>Webhook</span></span></div>
+      <div id="bDock"></div>
+    </div>
+  </div>
+
+  <div class="lbl" id="crew"><span>Crew · the lineup on the canvas. Drag a bench bot onto a role, or click a role for its card</span><span>Library toggles the bench</span></div>
+  <div class="win">
+    <nav class="rail" aria-hidden="true"><span class="lights"><b></b><b></b><b></b></span><i><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></i><i><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg></i><i><svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14"/></svg></i><i class="on"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg></i></nav>
+    <div class="main" id="cMain">
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">Crew</b><span class="mut" style="font-size:12px" id="cCount">8 roles · 2 working</span></div>
+      <div class="flt" style="right:16px;top:14px"><button class="btn ghost" type="button" id="libBtn" aria-pressed="true">Library <span class="mono mut">68</span></button><button class="btn ghost" type="button">Crew packs</button><button class="btn ink" type="button">+ New bot</button></div>
+      <div class="lineup"><div class="slots" id="slots"></div></div>
+      <div class="flt bench" id="bench"><div class="bh"><b>Bench · Everything Claude Code</b><span style="display:flex;gap:8px;align-items:center"><input id="benchQ" type="search" placeholder="Search 68 bots" aria-label="Search bench"><span class="mut" style="font-size:12px">drag onto a role</span></span></div><div class="strip" id="strip"></div></div>
+      <div id="cDock"></div>
+    </div>
+  </div>
+  <!-- API client -->
+  <div class="lbl" id="api"><span>API client · the tree docks left; request and response float as cards; Send to agent is a crew picker</span><span>click requests, Send, Send to agent</span></div>
+  <div class="win">
+    <nav class="rail" data-on="api" aria-hidden="true"></nav>
+    <div class="main" id="aMain">
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">API client</b><span class="chip">orders-api ▾</span><span class="chip">env · local ▾</span></div>
+      <div class="flt" style="right:16px;top:14px"><button class="btn ghost" type="button">Secrets</button><button class="btn ghost" type="button">Import · Export ▾</button><button class="btn ink" type="button">+ New request</button></div>
+      <aside class="dockl"><div class="search" style="min-width:0"><span>⌕</span><input type="search" placeholder="Filter requests" aria-label="Filter requests" id="apiQ"></div><div class="tree" id="apiTree"></div></aside>
+      <div class="center" id="apiCenter"></div>
+    </div>
+  </div>
+
+  <!-- Graph -->
+  <div class="lbl" id="graph"><span>Graph · the vault fills the window; hover a note to light its links, click it to read it on the right</span><span>Notes toggles the list</span></div>
+  <div class="win">
+    <nav class="rail" data-on="graph" aria-hidden="true"></nav>
+    <div class="main" id="gMain">
+      <svg class="gsvg" id="gsvg"></svg><div class="glab" id="glab"></div>
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">Graph</b><span class="mut" style="font-size:12px">21 notes · 32 links</span></div>
+      <div class="flt" style="left:50%;top:14px;transform:translateX(-50%)"><label class="search"><span>⌕</span><input id="gQ" type="search" placeholder="Find a note" aria-label="Find a note"></label><span class="chip">All types ▾</span></div>
+      <div class="flt" style="right:16px;top:14px"><button class="btn ghost" type="button" id="gNotes" aria-pressed="false">Notes <span class="mono mut">21</span></button></div>
+      <div class="flt zoom" aria-hidden="true"><span>＋</span><span>－</span><span>⤢</span></div>
+      <div class="flt legend"><span><i style="border-radius:2px"></i>run</span><span><i style="border-radius:50%"></i>workflow</span><span><i style="clip-path:polygon(50% 0,100% 100%,0 100%)"></i>role</span><span><i style="transform:rotate(45deg) scale(.8)"></i>file</span></div>
+      <div id="gDock"></div>
+    </div>
+  </div>
+
+  <!-- Triggers -->
+  <div class="lbl" id="triggers"><span>Triggers · each trigger is a card that says what it starts; deliveries stream in a floating log</span><span>click a trigger, or Setup</span></div>
+  <div class="win">
+    <nav class="rail" data-on="triggers" aria-hidden="true"></nav>
+    <div class="main" id="tMain">
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">Triggers</b><span class="mut" style="font-size:12px">2 on · webhook ready</span></div>
+      <div class="flt" style="right:16px;top:14px"><button class="btn ghost" type="button" id="tSetup">Setup &amp; test</button><button class="btn ink" type="button">+ New trigger</button></div>
+      <div class="tlist" id="tList" style="top:70px"></div>
+      <div class="flt log" id="tLog"></div>
+      <div id="tDock"></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="lbl" id="settings"><span>Settings · a real page, not a drawer; sections float as cards, long help folds away</span><span>click the section list</span></div>
+  <div class="win">
+    <nav class="rail" data-on="settings" aria-hidden="true"></nav>
+    <div class="main" id="sMain">
+      <div class="flt" style="left:16px;top:14px"><b style="font-size:14px;padding:0 4px">Settings</b><span class="mut" style="font-size:12px">this Mac</span></div>
+      <nav class="snav" id="sNav"><a data-sec="s-acc" class="on">Accounts</a><a data-sec="s-agents">Agents</a><a data-sec="s-look">Appearance</a><a data-sec="s-store">Storage</a><a data-sec="s-server">Server</a></nav>
+      <div class="spage" id="sPage">
+        <section class="scard" id="s-acc"><h3>Accounts</h3>
+          <div class="srow"><span><b>GitHub</b><small>using your gh login as @you · Tether keeps only who you are</small></span><span class="pill ok"><span class="dot"></span>connected</span></div>
+          <div class="srow"><span><b>Google</b><small>connect when a feature needs it</small></span><span class="pill q">coming</span></div>
+          <details><summary>How connecting works ▸</summary><div class="how">Tether can use your existing <span class="mono">gh</span> login, or sign in with GitHub's device flow (needs your OAuth App client id). Tokens live in the macOS Keychain and never leave this Mac.</div></details>
+        </section>
+        <section class="scard" id="s-agents"><h3>Agents on this Mac</h3>
+          <div class="srow"><span><b>Claude Code</b><small>2.1 · Code Mode through MCP · resumes</small></span><span class="pill ok">ready</span></div>
+          <div class="srow"><span><b>Codex</b><small>0.48 · Code Mode experimental</small></span><span class="pill ok">ready</span></div>
+          <div class="srow"><span><b>OpenCode</b><small>0.15 · direct tools</small></span><span class="pill ok">ready</span></div>
+          <div class="srow"><span><b>Ollama · qwen3:32b</b><small>127.0.0.1:11434 · local, $0.00</small></span><span class="pill ok">ready</span></div>
+          <div class="srow"><span><b>LM Studio</b><small>not running</small></span><button class="btn ghost" type="button">Check again</button></div>
+        </section>
+        <section class="scard" id="s-look"><h3>Appearance</h3>
+          <div class="srow"><span><b>Theme</b></span><div class="seg" id="sTheme"><span class="pillbg"></span><button type="button" data-t="light" aria-pressed="false">Light</button><button type="button" data-t="dark" aria-pressed="false">Dark</button><button type="button" data-t="sys" aria-pressed="true">Match system</button></div></div>
+          <div class="srow"><span><b>Motion</b><small>badges, graph dots and slide-ins</small></span><button class="tog on" type="button" aria-label="Motion" data-tg></button></div>
+        </section>
+        <section class="scard" id="s-store"><h3>Storage</h3>
+          <div class="srow"><span><b>Home</b><small class="mono">~/.aorch</small></span><button class="btn ghost" type="button">Copy path</button></div>
+          <div class="srow"><span><b>Notes vault</b><small class="mono">~/.aorch/vault</small></span><button class="btn ghost" type="button">Copy path</button></div>
+          <div class="srow"><span><b>Run worktrees</b><small>3 kept · 41 MB</small></span><button class="btn ghost" type="button">Clean up</button></div>
+        </section>
+        <section class="scard" id="s-server"><h3>Server</h3>
+          <div class="srow"><span><b>Listening</b><small class="mono">127.0.0.1:4177 · loopback only</small></span><span class="pill ok"><span class="dot"></span>connected</span></div>
+          <div class="srow"><span><b>Webhook secret</b><small>signs GitHub deliveries</small></span><button class="btn ghost" type="button">Rotate</button></div>
+          <details><summary>Why loopback only ▸</summary><div class="how">The API starts agents and writes files, so it only listens on this Mac. Requests need a loopback Host and same-origin Origin; webhooks are the only outside route and must be signed.</div></details>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">Mockup only. Nothing here saves; in the app every control keeps today's behaviour.</p>
+</div>
+
+<script>
+(() => {
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const CREW=[
+ {id:'tether',role:'orchestrator',name:'Tether',job:'turns requests into workflows',model:'claude opus',c:null},
+ {id:'scout',role:'planner',name:'Scout',job:'reads the repo, writes the plan',model:'claude sonnet',c:'#d6d3d1'},
+ {id:'brick',role:'architect',name:'Brick',job:'designs structure and interfaces',model:'claude opus',c:'#fdba74'},
+ {id:'bolt',role:'coder',name:'Bolt',job:'writes the change',model:'codex',c:'#93c5fd',write:true,busy:true},
+ {id:'probe',role:'tester',name:'Probe',job:'runs your test command',model:'npm test',c:'#86efac'},
+ {id:'lens',role:'reviewer',name:'Lens',job:'reviews the diff, gives a verdict',model:'ollama · qwen3',c:'#fca5a5',busy:true},
+ {id:'boss',role:'manager',name:'Boss',job:'splits work, checks what comes back',model:'claude sonnet',c:'#bef264'},
+ {id:'gate',role:'approver',name:'Gate',job:'approves. That is you.',model:'a person',c:'#fde68a',person:true},
+];
+const BENCH=[['Code Reviewer','reviews diffs for quality and security','claude sonnet','#bae6fd'],['Database Reviewer','checks migrations and queries','claude sonnet','#a5f3fc'],['Build Error Resolver','fixes failing builds fast','claude haiku','#fecaca'],['Doc Updater','keeps docs in step with code','claude haiku','#d9f99d'],['Planner','breaks big work into steps','claude sonnet','#fde68a'],['Security Reviewer','looks for unsafe patterns','claude opus','#fbcfe8'],['TDD Guide','writes the test first','claude sonnet','#bbf7d0'],['Refactor Cleaner','removes dead code','claude haiku','#fed7aa']];
+const face=(c,cls='')=>`<span class="face ${cls} ${c?'':'ink'}" style="${c?'background:'+c:''}"><i></i><i></i></span>`;
+const STEPS=[
+ {id:'plan',bot:'scout',title:'Plan',kind:'agent',p:'Read the routes and write a short plan with risks.',ro:true},
+ {id:'arch',bot:'brick',title:'Design',kind:'agent',p:'Turn the plan into interfaces and the files to touch.',ro:true},
+ {id:'code',bot:'bolt',title:'Code',kind:'agent',p:'Make the change in the worktree, small steps.',ro:false},
+ {id:'tests',bot:'probe',title:'Tests',kind:'gate',p:'npm test --silent',ro:false},
+ {id:'review',bot:'lens',title:'Review',kind:'agent',p:'Review the diff and end with VERDICT: PASS or FAIL.',ro:true},
+ {id:'approve',bot:'gate',title:'Approve',kind:'approval',p:'Pause until you approve the merge.',ro:false},
+];
+const bot=id=>CREW.find(b=>b.id===id);
+let sel='code', mode='canvas';
+
+/* ---------- Builder ---------- */
+const POS={plan:[30,190],arch:[200,120],code:[370,190],tests:[540,120],review:[540,330],approve:[710,240]};
+const cv=$('#canvas');
+STEPS.forEach(s=>{const b=bot(s.bot);cv.insertAdjacentHTML('beforeend',`<div class="node ${s.kind==='gate'?'gate':''}" data-s="${s.id}" style="left:${POS[s.id][0]}px;top:${POS[s.id][1]}px"><div class="t">${face(b.c)}<span><b>${s.title}</b><small>${b.name.toLowerCase()} · ${s.kind}</small></span></div><div class="p">${esc(s.p)}</div></div>`);});
+const EDGES=[['plan','arch'],['arch','code'],['code','tests'],['tests','review'],['review','approve'],['tests','code','loop']];
+function wire(){
+  const svg=$('#wires'),R=cv.getBoundingClientRect();if(!R.width)return;svg.setAttribute('viewBox',`0 0 ${R.width} ${R.height}`);
+  const r=id=>cv.querySelector(`[data-s="${id}"]`).getBoundingClientRect();
+  svg.innerHTML=EDGES.map(([a,b,l])=>{const A=r(a),B=r(b);
+    if(l){const x1=A.left+A.width/2-R.left,y1=A.top-R.top,x2=B.left+B.width/2-R.left,y2=B.top-R.top;return `<path d="M${x1} ${y1} C${x1} ${y1-70},${x2} ${y2-70},${x2} ${y2}" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-dasharray="5 5"/><text x="${(x1+x2)/2}" y="${Math.min(y1,y2)-46}" text-anchor="middle" font-size="11" font-family="Geist Mono,monospace" fill="var(--warn)">if it fails · back to Code ×2</text>`;}
+    const down=B.top>A.bottom; const x1=down?A.left+A.width/2-R.left:A.right-R.left, y1=down?A.bottom-R.top:A.top+A.height/2-R.top, x2=down?B.left+B.width/2-R.left:B.left-R.left, y2=down?B.top-R.top:B.top+B.height/2-R.top;
+    const d=down?`M${x1} ${y1} C${x1} ${y1+40},${x2} ${y2-40},${x2} ${y2}`:`M${x1} ${y1} C${x1+40} ${y1},${x2-40} ${y2},${x2} ${y2}`;
+    return `<path d="${d}" fill="none" stroke="var(--line2)" stroke-width="1.8"/><circle cx="${x2}" cy="${y2}" r="3" fill="var(--ink2)"/>`;}).join('');
+}
+new ResizeObserver(wire).observe(cv);
+function flow(){
+  $('#flow').innerHTML=STEPS.map((s,i)=>{const b=bot(s.bot);return `<div class="blk ${s.id===sel?'sel':''}" data-n="${i+1}" data-s="${s.id}"><div class="t">${face(b.c)}<b>${s.title}</b><span class="mut">· ${b.name} on ${b.model}</span>${s.ro?'<span class="chip">read-only</span>':''}${s.kind!=='agent'?`<span class="chip">${s.kind}</span>`:''}</div><p>${esc(s.p)}</p>${s.kind==='gate'?'<div class="sent">If it fails, the output goes back to Code, up to 2 times.</div>':''}</div>`;}).join('')+'<div class="slashhint">＋ type <span class="kbd">/</span> to add a step</div>';
+}
+function bDock(){
+  if(!sel){$('#bDock').innerHTML='';return;}
+  if(sel==='__wf'){$('#bDock').innerHTML=`<div class="dock"><h4>Workflow settings <button class="x" type="button" data-close aria-label="Close">×</button></h4><div class="row"><span class="mut">Spend cap</span><span class="chip">$5</span></div><div class="row"><span class="mut">Steps in parallel</span><span class="chip">4</span></div><div class="row"><span class="mut">Step timeout</span><span class="chip">30 min</span></div><div class="row"><span class="mut">Upstream output</span><span class="chip">all ancestors ▾</span></div><div class="row"><span class="mut">Setup command</span><span class="chip">npm ci</span></div></div>`;return;}
+  const s=STEPS.find(x=>x.id===sel),b=bot(s.bot);
+  $('#bDock').innerHTML=`<div class="dock"><h4>${face(b.c)} ${s.title} <span class="pill q">${s.kind}</span><button class="x" type="button" data-close aria-label="Close">×</button></h4>
+    <div class="row"><span class="mut">Bot</span><span class="chip">${b.name} ▾</span></div>
+    <div class="row"><span class="mut">Model</span><span class="chip">${b.model} ▾</span></div>
+    <div class="row"><span class="mut">Read-only</span><button class="tog ${s.ro?'on':''}" type="button" data-ro aria-label="Read-only"></button></div>
+    ${s.kind==='gate'?'<div class="row"><span class="mut">On failure</span><span class="chip">back to Code ×2</span></div>':''}
+    <div class="prompt" contenteditable="true">${esc(s.p)}</div></div>`;
+}
+function select(id){sel=id;cv.querySelectorAll('.node').forEach(n=>n.classList.toggle('sel',n.dataset.s===id));flow();bDock();}
+function setMode(m){mode=m;$$('#mode [data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));$('#canvas').hidden=m!=='canvas';$('#outline').hidden=m!=='outline';$('#addbar').hidden=m!=='canvas';movePill();if(m==='canvas')requestAnimationFrame(wire);}
+function movePill(){const b=$(`#mode [data-m="${mode}"]`),p=$('#mode .pillbg');p.style.left=b.offsetLeft+'px';p.style.width=b.offsetWidth+'px';}
+$('#mode').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(b)setMode(b.dataset.m);});
+cv.addEventListener('click',e=>{const n=e.target.closest('.node');select(n?n.dataset.s:null);});
+$('#flow').addEventListener('click',e=>{const k=e.target.closest('.blk');if(k)select(k.dataset.s);});
+$('#bDock').addEventListener('click',e=>{if(e.target.closest('[data-close]'))select(null);const t=e.target.closest('[data-ro]');if(t){const s=STEPS.find(x=>x.id===sel);s.ro=!s.ro;t.classList.toggle('on',s.ro);flow();}});
+$('#wfSettings').addEventListener('click',()=>{sel='__wf';cv.querySelectorAll('.node').forEach(n=>n.classList.remove('sel'));flow();bDock();});
+setMode('canvas');select('code');
+
+/* ---------- Crew ---------- */
+let csel=null;
+function slots(){
+  $('#slots').innerHTML=CREW.map(b=>`<div class="slot ${csel===b.id?'sel':''}" data-id="${b.id}" tabindex="0"><span class="role">${b.role}</span><div class="who">${face(b.c,'md')}<span><b>${esc(b.name)}</b><small>${esc(b.job)}</small></span></div><div class="ft"><span class="chip">${esc(b.model)}</span><span>${b.busy?'<span class="pill live"><span class="dot"></span>working</span>':b.person?'you':'idle'}</span></div></div>`).join('');
+}
+function strip(){const q=$('#benchQ').value.trim().toLowerCase();$('#strip').innerHTML=BENCH.filter(x=>!q||(x[0]+x[1]).toLowerCase().includes(q)).map((x,i)=>`<div class="sub" draggable="true" data-b="${BENCH.indexOf(x)}">${face(x[3])}<b>${x[0]}</b><small>${x[1]}</small></div>`).join('')||'<span class="mut">No bot matches.</span>';}
+function cDock(){
+  if(!csel){$('#cDock').innerHTML='';return;}
+  const b=CREW.find(x=>x.id===csel);
+  $('#cDock').innerHTML=`<div class="dock"><h4>${face(b.c)} ${esc(b.name)} <span class="pill q">${b.role}</span><button class="x" type="button" data-close aria-label="Close">×</button></h4>
+    ${b.person?'<div class="prompt">Gate is the approval step: a person, not a model. Runs pause here until you decide.</div>':`
+    <div class="row"><span class="mut">Agent</span><span class="chip">${b.model.includes('ollama')?'ollama':b.model.includes('codex')?'codex':'claude'} ▾</span></div>
+    <div class="row"><span class="mut">Model</span><span class="chip">${esc(b.model)} ▾</span></div>
+    <div class="row"><span class="mut">Can write files</span><button class="tog ${b.write?'on':''}" type="button" aria-label="Can write"></button></div>
+    <div class="row"><span class="mut">Tools</span><span class="chip">Code Mode</span></div>
+    <div class="prompt" contenteditable="true">${esc(b.job[0].toUpperCase()+b.job.slice(1))}. Keep changes small and explain what you skipped.</div>
+    <div class="row" style="margin-top:8px"><span class="mut">Evolve</span><span class="chip">2 proposals ▸</span></div>`}</div>`;
+}
+$('#slots').addEventListener('click',e=>{const s=e.target.closest('.slot');if(!s)return;csel=csel===s.dataset.id?null:s.dataset.id;slots();cDock();});
+$('#cDock').addEventListener('click',e=>{if(e.target.closest('[data-close]')){csel=null;slots();cDock();}const t=e.target.closest('.tog');if(t)t.classList.toggle('on');});
+$('#benchQ').addEventListener('input',strip);
+$('#libBtn').addEventListener('click',e=>{const on=e.currentTarget.getAttribute('aria-pressed')!=='true';e.currentTarget.setAttribute('aria-pressed',on);$('#bench').classList.toggle('off',!on);});
+let dragB=null;
+$('#strip').addEventListener('dragstart',e=>{const s=e.target.closest('.sub');if(!s)return;dragB=+s.dataset.b;s.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(dragB));});
+$('#strip').addEventListener('dragend',e=>{e.target.closest('.sub')?.classList.remove('dragging');$$('.slot.over').forEach(x=>x.classList.remove('over'));});
+$('#slots').addEventListener('dragover',e=>{const s=e.target.closest('.slot');if(!s||dragB==null)return;const b=CREW.find(x=>x.id===s.dataset.id);if(b.person)return;e.preventDefault();$$('.slot.over').forEach(x=>x!==s&&x.classList.remove('over'));s.classList.add('over');});
+$('#slots').addEventListener('dragleave',e=>{const s=e.target.closest('.slot');if(s&&!s.contains(e.relatedTarget))s.classList.remove('over');});
+$('#slots').addEventListener('drop',e=>{e.preventDefault();const s=e.target.closest('.slot');if(!s||dragB==null)return;const b=CREW.find(x=>x.id===s.dataset.id),n=BENCH[dragB];
+  const old=b.name;Object.assign(b,{name:n[0],job:n[1],model:n[2],c:n[3],busy:false});slots();const el=$(`.slot[data-id="${b.id}"]`);el.classList.add('swapped');
+  const t=document.createElement('div');t.className='toast';t.textContent=`${n[0]} now plays ${b.role} (was ${old}). Applies to the next run.`;$('#cMain').appendChild(t);setTimeout(()=>t.remove(),2600);dragB=null;if(csel===b.id)cDock();});
+slots();strip();
+
+/* ---------- rails for the new windows ---------- */
+const IC={home:'M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',runs:'M6 4l14 8-14 8z',builder:'M3 3h7v7H3zM14 14h7v7h-7zM10 6.5h4a3 3 0 0 1 3 3V14',crew:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',api:'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4',graph:'M6 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 7l8 1M7.5 8.2l1.8 7.4',triggers:'M13 2L3 14h9l-1 8 10-12h-9z',settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3'};
+$$('nav.rail[data-on]').forEach(r=>{r.innerHTML='<span class="lights"><b></b><b></b><b></b></span>'+Object.keys(IC).map(k=>`<i class="${k===r.dataset.on?'on':''}"><svg viewBox="0 0 24 24"><path d="${IC[k]}"/></svg></i>`).join('');});
+const toastIn=(host,msg)=>{const t=document.createElement('div');t.className='toast2';t.textContent=msg;host.appendChild(t);setTimeout(()=>t.remove(),2400);};
+
+/* ---------- API client ---------- */
+const REQ=[
+ {g:'orders',id:'list',m:'GET',name:'List orders',url:'{{base}}/v1/orders?limit=20',status:'200 OK',ms:84,size:'2.1 KB',body:`{\n  <span class="tk">"items"</span>: [\n    { <span class="tk">"id"</span>: <span class="st">"ord_8f21"</span>, <span class="tk">"total"</span>: <span class="nu">129.5</span>, <span class="tk">"status"</span>: <span class="st">"paid"</span> },\n    { <span class="tk">"id"</span>: <span class="st">"ord_8f20"</span>, <span class="tk">"total"</span>: <span class="nu">42</span>, <span class="tk">"status"</span>: <span class="st">"refunded"</span> }\n  ],\n  <span class="tk">"next"</span>: <span class="st">"ord_8f1f"</span>\n}`,checks:['status is 200','items ≤ 20','x-ratelimit-remaining present']},
+ {g:'orders',id:'create',m:'POST',name:'Create order',url:'{{base}}/v1/orders',status:'201 Created',ms:132,size:'412 B',body:`{ <span class="tk">"id"</span>: <span class="st">"ord_8f22"</span>, <span class="tk">"status"</span>: <span class="st">"pending"</span> }`,checks:['status is 201','body.id starts with ord_']},
+ {g:'auth',id:'login',m:'POST',name:'Log in',url:'{{base}}/v1/auth/login',status:'200 OK',ms:58,size:'318 B',body:`{ <span class="tk">"session"</span>: <span class="st">"••••••"</span>, <span class="tk">"expiresAt"</span>: <span class="st">"2026-10-28T23:59:59Z"</span> }`,checks:['status is 200','sets a session cookie']},
+];
+let req='list', apiTab='Response';
+function apiTree(){const q=$('#apiQ').value.trim().toLowerCase();const groups=[...new Set(REQ.map(r=>r.g))];$('#apiTree').innerHTML=groups.map(g=>{const items=REQ.filter(r=>r.g===g&&(!q||r.name.toLowerCase().includes(q)));return items.length?`<div class="h"><span>${g}</span><span>${items.length}</span></div>`+items.map(r=>`<div class="n ${r.id===req?'on':''}" data-r="${r.id}"><span class="meth ${r.m.toLowerCase()}">${r.m}</span>${r.name}</div>`).join(''):'';}).join('')||'<div class="h">No request matches.</div>';}
+function apiCenter(){const r=REQ.find(x=>x.id===req);
+ $('#apiCenter').innerHTML=`<div class="cardp"><div class="url"><span class="meth ${r.m.toLowerCase()}">${r.m}</span><span class="u">${esc(r.url)}</span><button class="btn ink" type="button" data-send>Send</button></div>
+  <div class="tabs2">${['Params','Headers','Body','Checks'].map(t=>`<span class="${t===apiTab?'on':''}" data-tab="${t}">${t}</span>`).join('')}</div>
+  <div class="kv">${apiTab==='Checks'?r.checks.map(c=>`<span>check</span><span>${esc(c)}</span>`).join(''):apiTab==='Headers'?'<span>accept</span><span>application/json</span><span>authorization</span><span>Bearer {{token}} · secret</span>':apiTab==='Body'?'<span>body</span><span>'+(r.m==='GET'?'none':'{ "items": [ … ] }')+'</span>':'<span>limit</span><span>20</span><span>status</span><span>any</span>'}</div></div>
+  <div class="cardp"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="pill ok">${r.status}</span><span class="mono mut" style="font-size:12px">${r.ms} ms · ${r.size}</span><span style="flex:1"></span><button class="btn ghost" type="button" data-agent>Send to agent ▾</button></div>
+  <div class="json" style="margin-top:10px">${r.body}</div><div class="checks">${r.checks.map(c=>`<span class="pill ok">✓ ${esc(c)}</span>`).join('')}</div></div>`;}
+$('#apiTree').addEventListener('click',e=>{const n=e.target.closest('[data-r]');if(n){req=n.dataset.r;apiTree();apiCenter();}});
+$('#apiQ').addEventListener('input',apiTree);
+$('#apiCenter').addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab]');if(t){apiTab=t.dataset.tab;apiCenter();return;}
+  if(e.target.closest('[data-send]')){const r=REQ.find(x=>x.id===req);toastIn($('#aMain'),`${r.status} · ${r.ms} ms · ${r.checks.length} checks passed`);return;}
+  const a=e.target.closest('[data-agent]');
+  if(a){const old=$('#aMain .picker');if(old){old.remove();return;}const R=$('#aMain').getBoundingClientRect(),B=a.getBoundingClientRect();
+    const p=document.createElement('div');p.className='picker';p.style.top=(B.bottom-R.top+6)+'px';p.style.right=(R.right-B.right)+'px';
+    p.innerHTML=`<div class="ph">Hand this request and its response to…</div><div class="grid">${CREW.filter(b=>!b.person).map(b=>`<div data-to="${esc(b.name)}">${face(b.c)}${esc(b.name)}</div>`).join('')}<div data-to="library">${face('#e4e4e7')}Library…</div></div>`;$('#aMain').appendChild(p);}
+});
+$('#aMain').addEventListener('click',e=>{const d=e.target.closest('[data-to]');if(!d)return;$('#aMain .picker')?.remove();toastIn($('#aMain'),d.dataset.to==='library'?'Pick a bot from the library':`Sent to ${d.dataset.to} with the request and response`);});
+apiTree();apiCenter();
+
+/* ---------- Graph ---------- */
+const GN=[['README','file',.50,.48],['rate limits','role',.33,.30],['auth flow','role',.66,.26],['R-141','run',.20,.56],['R-144','run',.38,.68],['sessions vs JWT','file',.80,.48],['R-142','run',.68,.70],['orders API','workflow',.52,.18],['Lens notes','file',.24,.82],['gates','workflow',.56,.84],['plan-code-review','workflow',.42,.44],['coder','role',.30,.50],['reviewer','role',.62,.56]];
+const GE=[[0,1],[0,2],[0,7],[1,3],[1,4],[2,5],[2,6],[5,6],[4,9],[3,8],[1,7],[0,9],[10,11],[10,12],[10,4],[11,3],[12,6],[10,0]];
+const gm=$('#gMain');let gsel=null;
+function gDraw(){
+  const R=gm.getBoundingClientRect();if(!R.width)return;const W=R.width,H=R.height,P=n=>[n[2]*W,n[3]*H];
+  const shape=(n,i)=>{const [x,y]=P(n);const c='var(--ink2)';if(n[1]==='run')return `<rect class="nd" data-i="${i}" x="${x-7}" y="${y-7}" width="14" height="14" rx="3" fill="${c}"/>`;if(n[1]==='workflow')return `<circle class="nd" data-i="${i}" cx="${x}" cy="${y}" r="8" fill="${c}"/>`;if(n[1]==='role')return `<path class="nd" data-i="${i}" d="M${x} ${y-9}L${x+9} ${y+7}L${x-9} ${y+7}Z" fill="${c}"/>`;return `<path class="nd" data-i="${i}" d="M${x} ${y-8}L${x+8} ${y}L${x} ${y+8}L${x-8} ${y}Z" fill="${c}"/>`;};
+  $('#gsvg').setAttribute('viewBox',`0 0 ${W} ${H}`);
+  $('#gsvg').innerHTML=GE.map(([a,b],k)=>{const [x1,y1]=P(GN[a]),[x2,y2]=P(GN[b]);return `<line class="e" data-k="${k}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;}).join('')+GN.map(shape).join('');
+  $('#glab').innerHTML=GN.map((n,i)=>{const [x,y]=P(n);return `<span class="gl" data-i="${i}" style="left:${x}px;top:${y}px">${esc(n[0])}</span>`;}).join('');
+  if(gsel!=null)gLight(gsel);
+}
+function gLight(i){const svg=$('#gsvg'),lab=$('#glab');const nb=new Set([i]);svg.querySelectorAll('.e').forEach(e=>{const [a,b]=GE[+e.dataset.k];const on=i!=null&&(a===i||b===i);e.classList.toggle('hi',on);if(on){nb.add(a);nb.add(b);}});
+  svg.classList.toggle('dim',i!=null);lab.classList.toggle('dim',i!=null);svg.querySelectorAll('.nd').forEach(n=>n.classList.toggle('hi',nb.has(+n.dataset.i)));lab.querySelectorAll('.gl').forEach(n=>n.classList.toggle('hi',i!=null&&nb.has(+n.dataset.i)));}
+function gDock(){
+  if($('#gNotes').getAttribute('aria-pressed')==='true'&&gsel==null){$('#gDock').innerHTML=`<div class="dock" style="max-height:calc(100% - 80px);overflow:auto"><h4>All notes <span class="pill q">21</span><button class="x" type="button" data-close aria-label="Close">×</button></h4><div class="notes">${GN.map((n,i)=>`<div class="n" data-gi="${i}">${esc(n[0])}<small>${n[1]}</small></div>`).join('')}</div></div>`;return;}
+  if(gsel==null){$('#gDock').innerHTML='';return;}
+  const n=GN[gsel],links=GE.filter(([a,b])=>a===gsel||b===gsel).map(([a,b])=>GN[a===gsel?b:a][0]);
+  $('#gDock').innerHTML=`<div class="dock"><h4>${esc(n[0])} <span class="pill q">${n[1]}</span><button class="x" type="button" data-close aria-label="Close">×</button></h4><div class="prompt" style="margin-top:0">${n[1]==='run'?'Team run · merged · 6m 12s · $0.42. Gates passed after one fix loop.':n[1]==='role'?'What the crew learned in this area, linked from the runs that touched it.':'A note in your vault. Runs link here when they read or write it.'}</div><div class="row" style="margin-top:8px"><span class="mut">Links</span><span class="mono mut">${links.length}</span></div><div class="notes">${links.map(l=>`<div class="n" data-gi="${GN.findIndex(x=>x[0]===l)}">${esc(l)}</div>`).join('')}</div></div>`;
+}
+$('#gsvg').addEventListener('mouseover',e=>{const n=e.target.closest('.nd');if(n&&gsel==null)gLight(+n.dataset.i);});
+$('#gsvg').addEventListener('mouseout',e=>{if(e.target.closest('.nd')&&gsel==null)gLight(null);});
+$('#gsvg').addEventListener('click',e=>{const n=e.target.closest('.nd');gsel=n?+n.dataset.i:null;gLight(gsel);gDock();});
+$('#gDock').addEventListener('click',e=>{if(e.target.closest('[data-close]')){gsel=null;$('#gNotes').setAttribute('aria-pressed','false');gLight(null);gDock();return;}const n=e.target.closest('[data-gi]');if(n){gsel=+n.dataset.gi;gLight(gsel);gDock();}});
+$('#gNotes').addEventListener('click',e=>{const on=e.currentTarget.getAttribute('aria-pressed')!=='true';e.currentTarget.setAttribute('aria-pressed',on);gsel=null;gLight(null);gDock();});
+$('#gQ').addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();const i=q?GN.findIndex(n=>n[0].toLowerCase().includes(q)):-1;gsel=null;gLight(i>=0?i:null);});
+new ResizeObserver(gDraw).observe(gm);
+
+/* ---------- Triggers ---------- */
+const TR=[
+ {id:'pr',icon:'M6 3v12M18 9v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 9a9 9 0 0 1-9 9',name:'Pull request opened',sub:'GitHub · acme/orders-api',runs:'full-review',then:'comments on the PR',on:true,last:'2m ago'},
+ {id:'hook',icon:'M13 2L3 14h9l-1 8 10-12h-9z',name:'Signed webhook',sub:'POST /api/webhooks/github · x-hub-signature-256',runs:'plan-code-review',then:'you approve the merge',on:true,last:'1h ago'},
+];
+let tsel=null;
+function tList(){$('#tList').innerHTML=TR.map(t=>`<div class="trig ${t.id===tsel?'sel':''}" data-t="${t.id}"><span class="ic"><svg viewBox="0 0 24 24"><path d="${t.icon}"/></svg></span><div style="min-width:0"><b>${t.name}</b><small>${esc(t.sub)}</small><div class="flowline"><span class="chip">${t.name.toLowerCase()}</span><span class="arr">→</span><span class="chip">runs ${t.runs}</span><span class="arr">→</span><span class="chip">${t.then}</span></div></div><span style="display:flex;flex-direction:column;align-items:flex-end;gap:8px"><button class="tog ${t.on?'on':''}" type="button" aria-label="On" data-on="${t.id}"></button><small class="mono">${t.last}</small></span></div>`).join('');}
+const LOG=[['14:02:11','pull request #212 opened','202','started R-145','ok'],['13:40:57','signed webhook POST','202','started R-143','ok'],['11:15:03','webhook, bad signature','401','ignored','bad'],['10:02:40','pull request #208 synchronize','202','started R-139','ok']];
+$('#tLog').innerHTML=`<div class="lh"><span>Deliveries</span><span>live</span></div>`+LOG.map(l=>`<div class="l"><span class="mut">${l[0]}</span><span>${l[1]}</span><span class="${l[4]==='ok'?'c-ok':'c-bad'}">${l[2]}</span><span class="mut">${l[3]}</span></div>`).join('');
+function tDock(){
+  if(tsel==='__setup'){$('#tDock').innerHTML=`<div class="dock"><h4>Setup &amp; test<button class="x" type="button" data-close aria-label="Close">×</button></h4><div class="row"><span class="mut">Payload URL</span><span class="chip">…/api/webhooks/github ⧉</span></div><div class="row"><span class="mut">Content type</span><span class="chip">application/json</span></div><div class="row"><span class="mut">Events</span><span class="chip">Pull requests</span></div><div class="row"><span class="mut">Secret</span><span class="chip">set · rotate</span></div><details style="margin-top:6px"><summary>Expose it with a tunnel ▸</summary><div class="how">This server only listens on your Mac. Run <span class="mono">cloudflared tunnel --url http://127.0.0.1:4177</span> and paste the URL into GitHub. No tunnel? <span class="mono">tether pr watch</span> polls instead.</div></details><div class="mut" style="font-size:12px;margin-top:10px">Test with a PR</div><div class="field"><input placeholder="https://github.com/acme/orders-api/pull/212" aria-label="PR link"><button class="btn ink" type="button" data-dry>Dry run</button></div></div>`;return;}
+  if(!tsel){$('#tDock').innerHTML='';return;}
+  const t=TR.find(x=>x.id===tsel);
+  $('#tDock').innerHTML=`<div class="dock"><h4>${t.name}<button class="x" type="button" data-close aria-label="Close">×</button></h4><div class="row"><span class="mut">Repository</span><span class="chip">acme/orders-api ▾</span></div><div class="row"><span class="mut">When</span><span class="chip">${t.id==='pr'?'opened, synchronize ▾':'any signed POST'}</span></div><div class="row"><span class="mut">Runs</span><span class="chip">${t.runs} ▾</span></div><div class="row"><span class="mut">Then</span><span class="chip">${t.then}</span></div><div class="row"><span class="mut">On</span><button class="tog ${t.on?'on':''}" type="button" aria-label="On" data-on="${t.id}"></button></div></div>`;
+}
+$('#tList').addEventListener('click',e=>{const o=e.target.closest('[data-on]');if(o){const t=TR.find(x=>x.id===o.dataset.on);t.on=!t.on;tList();tDock();return;}const c=e.target.closest('[data-t]');if(c){tsel=tsel===c.dataset.t?null:c.dataset.t;tList();tDock();}});
+$('#tDock').addEventListener('click',e=>{if(e.target.closest('[data-close]')){tsel=null;tList();tDock();return;}const o=e.target.closest('[data-on]');if(o){const t=TR.find(x=>x.id===o.dataset.on);t.on=!t.on;tList();tDock();return;}if(e.target.closest('[data-dry]'))toastIn($('#tMain'),'Dry run: would start full-review on #212 and comment on the PR');});
+$('#tSetup').addEventListener('click',()=>{tsel='__setup';tList();tDock();});
+tList();
+
+/* ---------- Settings ---------- */
+const sp=$('#sPage');
+$('#sNav').addEventListener('click',e=>{const a=e.target.closest('[data-sec]');if(!a)return;$('#'+a.dataset.sec).scrollIntoView({behavior:'smooth',block:'start'});});
+sp.addEventListener('scroll',()=>{let cur='s-acc';$$('#sPage .scard').forEach(s=>{if(s.offsetTop-sp.scrollTop<120)cur=s.id;});$$('#sNav [data-sec]').forEach(a=>a.classList.toggle('on',a.dataset.sec===cur));},{passive:true});
+function themePill(){const b=$('#sTheme [aria-pressed="true"]'),p=$('#sTheme .pillbg');p.style.left=b.offsetLeft+'px';p.style.width=b.offsetWidth+'px';}
+$('#sTheme').addEventListener('click',e=>{const b=e.target.closest('[data-t]');if(!b)return;$$('#sTheme [data-t]').forEach(x=>x.setAttribute('aria-pressed',x===b));themePill();});
+$('#sPage').addEventListener('click',e=>{const t=e.target.closest('[data-tg]');if(t)t.classList.toggle('on');});
+new ResizeObserver(themePill).observe($('#sTheme'));
+})();
+</script>

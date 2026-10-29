@@ -5,6 +5,7 @@ import { fmtUsd } from './api';
 import { crewFor, useCrew } from './crewStore';
 import { NodeActions, type NodeAction } from './components/bencho/ActionNode';
 import { Face, moodFor } from './Face';
+import { loopLabel, stepPreview, stepTitle } from './builder/stepText';
 import { stepDesc } from './ui/studio/status';
 import { StatusBadge } from './ui/studio/StatusBadge';
 import { cn } from './ui/cn';
@@ -231,7 +232,7 @@ export function Canvas(props: CanvasProps) {
                 <g className={cn('loop', { live: loops > 0 && props.statuses?.[n.fixNode!]?.status === 'running' })} key={n.id}>
                   <path d={`M ${x1} ${y1} C ${x1} ${y1 + depth}, ${x2} ${y2 + depth}, ${x2} ${y2}`} markerEnd="url(#arrow)" />
                   <text x={(x1 + x2) / 2} y={Math.max(y1, y2) + depth * 0.75 + 4} textAnchor="middle">
-                    {props.statuses ? `fix loop ${loops}/${n.maxLoops ?? 2}` : `fix loop ≤${n.maxLoops ?? 2}`}
+                    {props.statuses ? `fix loop ${loops}/${n.maxLoops ?? 2}` : loopLabel(n, props.nodes)}
                   </text>
                 </g>
               );
@@ -252,33 +253,14 @@ export function Canvas(props: CanvasProps) {
             >
               <div className="port in" data-port-in data-id={n.id} />
               <div className="node-head" data-node-head>
-                <Face id={crewFor(n, crew)} mood={mood} size={22} animate={mood === 'working' || mood === 'waiting' ? 'always' : undefined} />
-                <span className="node-title">{n.title ?? n.role ?? n.kind}</span>
-                <span className="chip id">{n.id}</span>
+                <Face id={crewFor(n, crew)} mood={mood} size={28} animate={mood === 'working' || mood === 'waiting' ? 'always' : undefined} />
+                <span className="node-names">
+                  <span className="node-title">{stepTitle(n)}</span>
+                  <span className="node-sub">{`${(crew[crewFor(n, crew)]?.name ?? 'bot').toLowerCase()} · ${n.kind}`}</span>
+                </span>
               </div>
               <div className="node-body">
-                {n.kind === 'agent' ? (
-                  <>
-                    <div className="meta">
-                      <span className="chip agent" title={n.agent ? undefined : 'follows its bot; set in Crew'}>
-                        {n.agent ?? `↳ ${crew[crewFor(n, crew)]?.name ?? 'bot'}`}
-                      </span>
-                      {n.model ? <span className="chip">{n.model}</span> : null}
-                    </div>
-                    <div className="flags">
-                      {n.readOnly ? <span title="read-only: cannot modify files">ro</span> : null}
-                      {n.includeDiff ? <span title="sees the diff">diff</span> : null}
-                      {n.verdict ? <span title="must end with VERDICT: PASS|FAIL">verdict</span> : null}
-                      {n.vault === false ? <span title="vault context off">no-kg</span> : null}
-                    </div>
-                  </>
-                ) : null}
-                {n.kind === 'gate' ? (
-                  <div className="cmd" title={n.command}>
-                    $ {n.command ?? '…'}
-                  </div>
-                ) : null}
-                {n.kind === 'approval' ? <div className="cmd muted">human sign-off</div> : null}
+                <div className="node-preview">{stepPreview(n)}</div>
                 {st ? (
                   <div className="run-line">
                     <StatusBadge desc={stepDesc(n, st)} />
@@ -288,7 +270,7 @@ export function Canvas(props: CanvasProps) {
                 ) : null}
               </div>
               <div className="port out" data-port-out data-id={n.id} />
-              {props.nodeActions ? <NodeActions actions={props.nodeActions(n.id)} tabbable={props.selected === n.id} label={`${n.title ?? n.role ?? n.kind} actions`} /> : null}
+              {props.nodeActions ? <NodeActions actions={props.nodeActions(n.id)} tabbable={props.selected === n.id} label={`${stepTitle(n)} actions`} /> : null}
             </div>
           );
         })}

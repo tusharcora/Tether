@@ -43,11 +43,13 @@ beforeEach(() => {
   routeApi(routes);
 });
 
+const notesList = () => fireEvent.click(screen.getByRole('button', { name: /^Notes/ }));
+
 describe('Graph', () => {
   it('draws the vault, reads a note and lists what it connects to', async () => {
     const onNote = vi.fn();
     renderApp(<GraphView onNote={onNote} />);
-    expect(await screen.findByText('vault · 3 notes · 2 links · 1 unresolved')).toBeTruthy();
+    expect(await screen.findByText('3 notes · 2 links · 1 unresolved')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: /^Run r1, run/ }));
     expect(onNote).toHaveBeenLastCalledWith('runs/r1.md');
     expect(await screen.findByText('body of Run r1')).toBeTruthy();
@@ -57,14 +59,33 @@ describe('Graph', () => {
     expect(within(reader).getByRole('button', { name: /linked from Loose note/ })).toBeTruthy();
   });
 
-  it('lets the board fill the page height beside the reader', async () => {
+  it('lets the board fill the frame, with its tools at the bottom-left and the hops under the title', async () => {
     const { container } = renderApp(<GraphView onNote={() => {}} />);
-    await screen.findByText('vault · 3 notes · 2 links · 1 unresolved');
-    // every box between the page and the board body flexes, so the board isn't stuck at its min-height
-    const body = container.querySelector('.gv-body')!;
-    expect(body.closest('.gv-load')?.parentElement?.className).toBe('gv-page');
-    expect(cssRule('graph/graph.css', '.gv-load')).toContain('flex: 1');
-    expect(cssRule('graph/graph.css', '.gb')).not.toContain('min-height: 520px');
+    await screen.findByText('3 notes · 2 links · 1 unresolved');
+    expect(screen.getByRole('heading', { level: 1, name: 'Graph' })).toBeTruthy();
+    // Loading's wrapper is positioned inline: sized to the screen, the board inside it fills the screen
+    expect(container.querySelector('.tf-screen > .gv-load .gb')).toBeTruthy();
+    expect(cssRule('graph/graph.css', '.gv-load')).toContain('height: 100%');
+    expect(cssRule('graph/graph.css', '.gv-load')).toContain('box-sizing: border-box');
+    expect(cssRule('graph/graph.css', '.gb')).toContain('height: 100%');
+    expect(cssRule('graph/graph.css', '.gb-tools')).toContain('bottom: 16px');
+    expect(cssRule('graph/graph.css', '.gb-tools')).toContain('left: 16px');
+    expect(cssRule('graph/graph.css', '.gv-hops')).toContain('top: 64px');
+    expect([...container.querySelectorAll('.gv-legend span')].map((e) => e.textContent)).toEqual(['runs', 'roles', 'notes']);
+  });
+
+  it('opens the note list from Notes and a note reader from a click, one at a time', async () => {
+    renderApp(<GraphView onNote={() => {}} />);
+    await screen.findByRole('button', { name: /^Run r1,/ });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    notesList();
+    expect(screen.getByRole('complementary', { name: 'All notes' })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'All notes' })).getByRole('row', { name: 'Coder' }));
+    expect(await screen.findByText('body of Coder')).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'All notes' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Note' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Note' })).toBeNull();
   });
 
   it('navigates by a connected note and searches by a tag', async () => {
@@ -88,18 +109,24 @@ describe('Graph', () => {
     expect(container.querySelectorAll('.gb-node.dim')).toHaveLength(2);
   });
 
-  it('hides a note type from its filter button', async () => {
+  it('hides a note type from the Note types menu, and reloads from it', async () => {
     const { container } = renderApp(<GraphView />);
     await screen.findByRole('button', { name: /^Run r1,/ });
-    const runs = screen.getByRole('button', { name: 'runs 1' });
-    expect(runs.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(runs);
-    expect(runs.getAttribute('aria-pressed')).toBe('false');
+    const types = () => fireEvent.click(screen.getByRole('button', { name: 'Note types' }));
+    types();
+    expect(screen.getByRole('menuitem', { name: 'runs 1' }).getAttribute('aria-current')).toBe('true');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'runs 1' }));
     expect(container.querySelector('[data-gn="runs/r1.md"]')!.classList.contains('is-hidden')).toBe(true);
+    types();
+    expect(screen.getByRole('menuitem', { name: 'runs 1' }).getAttribute('aria-current')).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Reload' })));
+    expect(calls('GET', '/api/vault/graph')).toHaveLength(2);
   });
 
   it('moves through the All notes list with the keyboard', async () => {
     renderApp(<GraphView />);
+    await screen.findByRole('button', { name: /^Run r1,/ });
+    notesList();
     const list = await screen.findByRole('navigation', { name: 'All notes' });
     const items = within(list).getAllByRole('row').slice(1);
     expect(items.map((r) => r.getAttribute('aria-label'))).toEqual(['Coder', 'Loose note', 'Run r1']);
@@ -108,7 +135,9 @@ describe('Graph', () => {
     expect(document.activeElement).toBe(items[1]);
     fireEvent.click(items[2]!);
     expect(await screen.findByText('body of Run r1')).toBeTruthy();
-    expect(items[2]!.getAttribute('aria-current')).toBe('true');
+    // the reader takes the dock from the list (one panel at a time)
+    expect(screen.getByRole('complementary', { name: 'Note' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'All notes' })).toBeNull();
   });
 
   it('opens the note a deep link names', async () => {
@@ -161,6 +190,7 @@ describe('Graph', () => {
     await screen.findByRole('button', { name: /^Run r1,/ });
     const search = screen.getByLabelText('Search the vault');
     fireEvent.change(search, { target: { value: 'e' } });
+    notesList();
     const list = screen.getByRole('navigation', { name: 'All notes' });
     expect(within(list).getAllByRole('row').slice(1).map((r) => r.getAttribute('aria-label'))).toEqual(['Coder', 'Loose note']);
     fireEvent.keyDown(search, { key: 'Enter' });

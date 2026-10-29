@@ -1,35 +1,48 @@
-/* Triggers (Studio Live board): trigger rows, a test panel, webhook setup and a delivery log. Tokens only. */
-.tg-page { height: 100%; overflow: auto; }
-.tg-wrap { max-width: 1240px; margin: 0 auto; padding: 0 0 40px; display: flex; flex-direction: column; gap: 20px; }
-.tg-body { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; padding: 0 24px; }
-.tg-main-col { flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
-.tg-side { flex: 1 1 320px; min-width: 0; }
-.tg-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.tg-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 8px; margin: 0 -8px; border-bottom: 1px solid var(--line); border-radius: 8px;
-  transition: background-color var(--t-fast) var(--ease);
+/* Triggers in the tool frame (mockup #triggers): trigger cards in a column, the delivery log floats along the bottom, the
+   form and Setup & test share the dock. Loading's wrapper is positioned inline (AsciiReveal): sized to the screen. Tokens only. */
+.tg-load { box-sizing: border-box; height: 100%; }
+.tg-load[aria-busy="true"] { padding: 72px 24px 0; }
+.tg-cards { position: absolute; inset: 0; overflow: auto; padding: 70px 24px 300px; }
+.tg-screen.docked .tg-cards { padding-right: 352px; }
+.tg-title { margin: 0; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.tg-fact { font-size: 12px; color: var(--mut); }
+.tg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+.tg-card {
+  display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid transparent; border-radius: 14px; background: var(--s1); box-shadow: var(--tf-float);
+  transition: transform var(--t-med) var(--ease), border-color var(--t-med) var(--ease);
 }
-.tg-row:hover { background: var(--s2); }
-.tg-row.paused .tg-main, .tg-row.paused .tg-last { opacity: .6; }
+.tg-card:hover { transform: translateY(-2px); }
+.tg-card.on { border-color: var(--ink); }
+.tg-card.paused .tg-card-text, .tg-card.paused .tg-last { opacity: .6; }
+.tg-card-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.tg-ic { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--s2); color: var(--mut); }
+.tg-card-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tg-src { font-size: 12px; color: var(--mut); overflow-wrap: anywhere; }
+.tg-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; color: var(--mut); }
+.tg-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.tg-empty { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.tg-row-actions { padding-top: 10px; border-top: 1px solid var(--line); }
+/* the delivery log (mockup .log): a wide bar along the bottom that stops short of the assistant launcher */
+.tg-logbar { flex-direction: column; align-items: stretch; max-height: 34%; overflow: auto; padding: 10px 12px; }
+.tg-screen.docked .tg-logbar { right: 352px; }
+@media (prefers-reduced-motion: reduce) { .tg-card:hover { transform: none; } }
 .tg-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--edge); }
 .tg-dot[data-status='active'] { background: var(--ok); }
 .tg-dot[data-status='error'] { background: var(--bad); }
 .tg-dot[data-status='paused'] { background: transparent; box-shadow: inset 0 0 0 2px var(--edge); }
-.tg-main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .tg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .tg-id { font-family: var(--font-code); font-weight: 500; color: var(--ink); }
 .tg-status { font-size: 12px; color: var(--mut); }
 .tg-chip { font-family: var(--font-code); font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 6px; background: var(--s2); color: var(--mut); margin-left: 6px; }
-.tg-line .tg-chip { margin-left: 0; }
-.tg-target { font-size: 13px; color: var(--mut); overflow-wrap: anywhere; }
 .tg-meta { font-size: 12px; color: var(--mut); overflow-wrap: anywhere; }
-.tg-last { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+.tg-last { display: flex; align-items: center; gap: 8px; }
 .tg-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tg-form { display: flex; flex-direction: column; gap: 12px; }
 .tg-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tg-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 @media (max-width: 899px) {
-  .tg-body { padding: 0 16px; }
+  .tg-cards, .tg-screen.docked .tg-cards { padding: 116px 16px 300px; }
+  .tg-card { flex-wrap: wrap; }
   .tg-pair { grid-template-columns: 1fr; }
 }
 .tg-test, .tg-setup { display: flex; flex-direction: column; gap: 12px; }
@@ -38,12 +51,13 @@
 .tg-result p { margin: 0; }
 .tg-dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 12px; margin: 0; font-size: 13px; }
 .tg-dl dt { color: var(--mut); padding-top: 6px; }
+.tf-dock .tg-dl { grid-template-columns: 1fr; }
 .tg-dl dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 .tg-code { padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-family: var(--font-code); font-size: 12.5px; }
 .tg-secret { user-select: all; }
 .tg-block { flex: 1 1 100%; min-width: 0; }
 .tg-log { display: flex; flex-direction: column; gap: 10px; }
-.tg-log-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-log-tools { display: flex; gap: 8px; }
 .tg-deliveries { border-top: 1px solid var(--line); }
 @keyframes tg-fresh { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .tg-delivery.fresh > td { animation: tg-fresh var(--t-slow) var(--ease) both; }

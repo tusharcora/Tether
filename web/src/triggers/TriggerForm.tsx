@@ -1,13 +1,12 @@
 import { Button } from '../components/beui/kit/Button';
 import { Checkbox, Input, Select } from '../components/beui/kit/fields';
-import { Drawer, DrawerContent, useDrawerItem } from '../components/beui/kit/overlays';
 import { NONE, fromNone } from '../ui/cn';
 import { EVENTS, type Form, type Workspace } from './types';
 import './triggers.css';
 
-/** The trigger form, in a right drawer. Every field of today's form; the id is locked while editing. */
+/** The trigger form, in the Triggers dock. Every field of today's form; the id is locked while editing. */
 export function TriggerForm(p: {
-  form: Form | null;
+  form: Form;
   editing: boolean;
   workspaces: Workspace[];
   agents: Record<string, { ok: boolean; models: string[] }>;
@@ -16,12 +15,9 @@ export function TriggerForm(p: {
   onSave: () => void;
   onClose: () => void;
 }) {
-  const f = useDrawerItem(p.form);
-  const models = p.agents[f?.agent ?? '']?.models ?? [];
+  const f = p.form;
+  const models = p.agents[f.agent]?.models ?? [];
   return (
-    <Drawer open={!!p.form} onOpenChange={(o) => !o && p.onClose()}>
-      <DrawerContent side="right" title={p.editing ? `Edit ${f?.id ?? ''}` : 'New trigger'}>
-        {f ? (
           <form
             className="tg-form"
             aria-label={p.editing ? 'Edit trigger' : 'New trigger'}
@@ -91,8 +87,5 @@ export function TriggerForm(p: {
               </Button>
             </div>
           </form>
-        ) : null}
-      </DrawerContent>
-    </Drawer>
   );
 }

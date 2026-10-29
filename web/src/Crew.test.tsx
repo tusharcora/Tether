@@ -1,10 +1,11 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { Crew } from './Crew';
-import { calls, routeApi } from './test/fixtures';
+import { calls, makeRow, routeApi } from './test/fixtures';
+import { cssRule } from './test/css';
 import { renderApp } from './test/render';
 
 const look = { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: '#3fb97c', accent: 'auto' };
@@ -13,6 +14,7 @@ const bots = [{ id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', person
 const crewReply = { bots, packs: [], parts: { body: ['pebble'], eyes: ['dots'], mouth: ['none'], top: ['none'], side: ['none'], pattern: ['none'] }, kinds: [{ kind: 'agent', blurb: 'does a job' }, { kind: 'verdict', blurb: 'passes or fails' }], style: 'pebble', styles: [{ id: 'pebble', blurb: 'pixel bots' }, { id: 'sigil', blurb: 'glyphs' }], shapes: {}, glyphs: {}, evolve: {}, ecc: null as { ref: string; at: string } | null, eccDefault: 'v2.2.3' };
 const botsReply = { crew: [{ role: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', binding: null as { agent: string; model?: string } | null }], agents: { claude: { ok: true, models: ['opus'] }, codex: { ok: true, models: [] } } };
 const routes = {
+  'GET /api/runs': [],
   'GET /api/crew': crewReply,
   'GET /api/bots': botsReply,
   'PUT /api/bots/coder': {},
@@ -35,6 +37,7 @@ beforeEach(() => {
   vi.mocked(api).mockReset();
   routeApi(routes);
 });
+const moreMenu = async () => fireEvent.click(await screen.findByRole('button', { name: 'More crew actions' }));
 
 describe('Crew', () => {
   it('shows the ascii skeleton while the crew loads', () => {
@@ -94,7 +97,7 @@ describe('Crew', () => {
     expect(await screen.findByRole('button', { name: /Edit Bolt/ })).toBeTruthy();
   });
 
-  it('counts the crew in the header and opens Evolve for the selected bot', async () => {
+  it('counts the roles in the top bar and opens Evolve for the selected bot from the menu', async () => {
     routeApi({
       ...routes,
       'GET /api/harness/coder': { bot: 'coder', evolvable: true, current: { version: 1, persona: 'Writes code', guidance: [], skills: [] }, versions: [{ version: 1, at: '2026-10-20T10:00:00Z' }], total: 1 },
@@ -103,26 +106,88 @@ describe('Crew', () => {
     });
     const onBot = vi.fn();
     renderApp(<Crew onBot={onBot} />);
-    expect(await screen.findByText('crew · 1 built-in · 0 yours')).toBeTruthy();
-    const evolve = screen.getByRole('button', { name: 'Evolve' }) as HTMLButtonElement;
-    expect(evolve.disabled).toBe(true);
+    expect(await screen.findByText('1 role · 0 working')).toBeTruthy();
+    await moreMenu();
+    expect((screen.getByRole('menuitem', { name: 'Evolve…' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /Edit Bolt/ }));
     expect(onBot).toHaveBeenCalledWith('coder');
     expect(screen.getByRole('button', { name: /Edit Bolt/ }).getAttribute('aria-pressed')).toBe('true');
-    expect(evolve.disabled).toBe(false);
-    fireEvent.click(evolve);
+    expect(within(screen.getByRole('complementary', { name: 'Bot card' })).getByRole('button', { name: /^Evolve/ })).toBeTruthy();
+    await moreMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Evolve…' }));
     expect(await screen.findByRole('region', { name: 'Evolve Bolt' })).toBeTruthy();
   });
 
-  it('finds bots by name or when-to-use', async () => {
+  it('finds library bots by name or when-to-use', async () => {
     twoBots();
     renderApp(<Crew />);
     await screen.findByRole('button', { name: /Edit Go Reviewer/ });
     fireEvent.change(screen.getByLabelText('Find a bot'), { target: { value: 'use for go' } });
-    expect(screen.queryByRole('button', { name: /Edit Bolt/ })).toBeNull();
     expect(screen.getByRole('button', { name: /Edit Go Reviewer/ })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Find a bot'), { target: { value: 'zzz' } });
+    expect(screen.queryByRole('button', { name: /Edit Go Reviewer/ })).toBeNull();
     expect(screen.getByText('No bots match')).toBeTruthy();
+    // the search narrows the library, never the lineup
+    expect(screen.getByRole('button', { name: /Edit Bolt/ })).toBeTruthy();
+  });
+
+  it('lines up the built-in roles with who is working, and you on Gate', async () => {
+    const gate = { ...bots[0]!, id: 'approval', name: 'Gate', title: 'approver', kind: 'approval', persona: 'A person.' };
+    routeApi({
+      ...routes,
+      'GET /api/crew': { ...crewReply, bots: [...bots, gate] },
+      'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'approval', name: 'Gate', title: 'approver', kind: 'approval', binding: null }] },
+      'GET /api/runs': [makeRow({ live: true, steps: [{ id: 'code', status: 'running', bot: 'coder' }] })],
+    });
+    renderApp(<Crew />);
+    const roles = await screen.findByRole('region', { name: 'Roles' });
+    expect(within(roles).getAllByRole('button', { name: /^Edit / }).map((b) => b.getAttribute('aria-label'))).toEqual(['Edit Bolt', 'Edit Gate']);
+    expect(await screen.findByText('2 roles · 1 working')).toBeTruthy();
+    expect(within(roles).getByText('working')).toBeTruthy();
+    expect(within(roles).getByText('you')).toBeTruthy();
+    expect(within(roles).getByText('a person')).toBeTruthy();
+  });
+
+  it('opens a slot or a library bot in the dock, and Esc closes it', async () => {
+    twoBots();
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
+    const dock = screen.getByRole('complementary', { name: 'Bot card' });
+    expect((within(dock).getByLabelText('Name') as HTMLInputElement).value).toBe('Bolt');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Bot card' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Edit Go Reviewer/ }));
+    await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Go Reviewer'));
+  });
+
+  it('lets the lineup fill the screen and keeps Swap… whole on narrow slots', () => {
+    // Loading's wrapper is positioned inline (AsciiReveal): sized to the screen, the absolute lineup inside it fills the screen too
+    expect(cssRule('crew/crew.css', '.cw-load')).toContain('height: 100%');
+    expect(cssRule('crew/crew.css', '.cw-load')).toContain('box-sizing: border-box');
+    expect(cssRule('crew/crew.css', '.cw-slot-swap')).toContain('flex: none');
+  });
+
+  it('hides and shows the library from Library', async () => {
+    renderApp(<Crew />);
+    const lib = await screen.findByRole('button', { name: /Library/ });
+    expect(lib.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(lib);
+    expect(screen.queryByLabelText('Find a bot')).toBeNull();
+    fireEvent.click(lib);
+    expect(screen.getByLabelText('Find a bot')).toBeTruthy();
+    // a bottom-wide bar: it stops short of the assistant launcher
+    expect(document.querySelector('.cw-bench')!.classList.contains('tf-wide')).toBe(true);
+  });
+
+  it('keeps Crew packs, Evolve, Import and Remove ECC in one menu', async () => {
+    renderApp(<Crew />);
+    await moreMenu();
+    expect((screen.getByRole('menuitem', { name: 'Evolve…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('menuitem', { name: 'Import ECC…' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Remove ECC…' })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Crew packs…' }));
+    expect(await screen.findByRole('dialog', { name: 'Crew packs' })).toBeTruthy();
   });
 
   it('asks before switching bots with unsaved edits', async () => {
@@ -200,22 +265,121 @@ describe('Crew', () => {
   });
 });
 
+describe('a library bot plays a role (§15.1)', () => {
+  const quill = { id: 'quill', name: 'Quill', title: 'poet', kind: 'agent', persona: 'Writes poems', look };
+  const gate = { ...bots[0]!, id: 'approval', name: 'Gate', title: 'approver', kind: 'approval', persona: 'A person.' };
+  const row = (b: { id: string; name: string; title: string; kind: string }) => ({ role: b.id, name: b.name, title: b.title, kind: b.kind, binding: null });
+  /** Bolt (built-in), Quill (your own agent bot), and with `gate` also Gate and Go Reviewer (a verdict bot from ECC). */
+  const withQuill = (o: { coderEdited?: boolean; gate?: boolean; refuse?: Error } = {}) => {
+    const coder = { ...bots[0]!, ...(o.coderEdited ? { edited: true } : {}) };
+    const all = [coder, ...(o.gate ? [gate] : []), quill, ...(o.gate ? [goBot] : [])];
+    routeApi({
+      ...routes,
+      'GET /api/crew': { ...crewReply, bots: all, ...(o.gate ? { ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } } : {}) },
+      'GET /api/bots': { ...botsReply, crew: all.map(row) },
+      'PUT /api/crew/coder': o.refuse ?? {},
+      'DELETE /api/crew/coder': {},
+    });
+  };
+  const slotOf = (name: string) => screen.getByRole('button', { name: `Edit ${name}` }).closest('.cw-slot')!;
+  const dropQuillOnBolt = async () => {
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Quill/ }));
+    fireEvent.dragOver(slotOf('Bolt'));
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+  };
+
+  it('links a bench bot to a same-kind role by drag and drop; Undo deletes the fresh override', async () => {
+    withQuill();
+    renderApp(<Crew />);
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Quill/ }));
+    fireEvent.dragOver(slotOf('Bolt'));
+    expect(slotOf('Bolt').classList.contains('over')).toBe(true);
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toEqual({ id: 'coder', name: 'Quill', title: 'coder', kind: 'agent', persona: 'Writes poems', look });
+    expect(screen.getByText('Quill now plays coder. Applies to the next run.')).toBeTruthy();
+    expect(slotOf('Bolt').classList.contains('over')).toBe(false);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+    expect(calls('DELETE', '/api/crew/coder')).toHaveLength(1);
+    expect(screen.queryByText('Quill now plays coder. Applies to the next run.')).toBeNull();
+  });
+
+  it('Undo puts back an earlier override', async () => {
+    withQuill({ coderEdited: true });
+    renderApp(<Crew />);
+    await dropQuillOnBolt();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+    expect(calls('PUT', '/api/crew/coder')[1]![2]).toMatchObject({ id: 'coder', name: 'Bolt', persona: 'Writes the change' });
+    expect(calls('DELETE', '/api/crew/coder')).toHaveLength(0);
+  });
+
+  it('dims other kinds and Gate while dragging and refuses their drop', async () => {
+    withQuill({ gate: true });
+    renderApp(<Crew />);
+    fireEvent.dragStart(await screen.findByRole('button', { name: /Edit Go Reviewer/ }));
+    expect(slotOf('Bolt').classList.contains('dim')).toBe(true);
+    expect(slotOf('Gate').classList.contains('dim')).toBe(true);
+    fireEvent.dragOver(slotOf('Bolt'));
+    expect(slotOf('Bolt').classList.contains('over')).toBe(false);
+    await act(async () => fireEvent.drop(slotOf('Bolt')));
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(0);
+    fireEvent.dragEnd(screen.getByRole('button', { name: /Edit Go Reviewer/ }));
+    expect(slotOf('Bolt').classList.contains('dim')).toBe(false);
+  });
+
+  it('Swap… picks a same-kind bot from the keyboard; Gate has no Swap', async () => {
+    withQuill({ gate: true });
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Swap Bolt…' }));
+    expect(screen.queryByRole('button', { name: 'Swap Gate…' })).toBeNull();
+    const dlg = await screen.findByRole('dialog', { name: 'Swap Bolt' });
+    expect(within(dlg).queryByText('Go Reviewer')).toBeNull();
+    await act(async () => fireEvent.click(within(dlg).getByRole('button', { name: /Quill/ })));
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ name: 'Quill', kind: 'agent' });
+    expect(await screen.findByText('Quill now plays coder. Applies to the next run.')).toBeTruthy();
+  });
+
+  it("asks before a drop replaces the open bot's unsaved edits", async () => {
+    withQuill();
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Bolt' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'changed' } });
+    await dropQuillOnBolt();
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(0);
+    expect(await screen.findByText('Discard your changes to Bolt?')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Discard' })));
+    expect(calls('PUT', '/api/crew/coder')).toHaveLength(1);
+  });
+
+  it('a refused drop shows the error and no note', async () => {
+    withQuill({ refuse: new Error('too many bots; remove some first') });
+    renderApp(<Crew />);
+    await dropQuillOnBolt();
+    expect(await screen.findByText('too many bots; remove some first')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+});
+
 describe('crew sources and faces', () => {
-  it('filters by source and shows when-to-use', async () => {
-    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, { id: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', persona: '', look, source: 'ecc@v2.2.3', whenToUse: 'Use for Go' }], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } }, 'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] } });
+  it('filters the library by source and shows when-to-use', async () => {
+    const quill = { ...bots[0]!, id: 'quill', name: 'Quill', builtin: false };
+    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [...crewReply.bots, quill, goBot], ecc: { ref: 'v2.2.3', at: '2026-10-24T00:00:00Z' } }, 'GET /api/bots': { ...botsReply, crew: [...botsReply.crew, { role: 'quill', name: 'Quill', title: 'coder', kind: 'agent', binding: null }, { role: 'go-reviewer', name: 'Go Reviewer', title: 'go reviewer', kind: 'verdict', binding: null }] } });
     renderApp(<Crew />);
     expect(await screen.findByText('Use for Go')).toBeTruthy();
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Built-in/ }));
-    fireEvent.click(screen.getByRole('tab', { name: /Built-in/ }));
-    expect(screen.queryByText('Go Reviewer')).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Built-in/ })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Yours/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Yours/ }));
+    expect(screen.queryByRole('button', { name: /Edit Go Reviewer/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Edit Quill/ })).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole('tab', { name: /ECC/ }));
     fireEvent.click(screen.getByRole('tab', { name: /ECC/ }));
-    expect(screen.getByText('Go Reviewer')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Edit Go Reviewer/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Edit Quill/ })).toBeNull();
   });
 
   it('imports ECC after confirming in a dialog', async () => {
     renderApp(<Crew />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Import ECC…' }));
+    await moreMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import ECC…' }));
     expect(await screen.findByText(/v2\.2\.3/)).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Import' })));
     expect(calls('POST', '/api/crew/import')[0]![2]).toEqual({ source: 'ecc' });
@@ -235,7 +399,9 @@ describe('crew sources and faces', () => {
     renderApp(<Crew />);
     await screen.findByText('Bolt');
     expect(screen.queryByRole('tab', { name: /ECC/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Remove ECC' })).toBeNull();
+    expect(screen.queryAllByText(/ECC/)).toHaveLength(0);
+    await moreMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Remove ECC…' })).toBeNull();
     const ecc = screen.queryAllByText(/ECC/);
     expect(ecc).toHaveLength(1);
     expect(ecc[0]!.closest('button')?.textContent).toBe('Import ECC…');
@@ -297,16 +463,18 @@ describe('crew sources and faces', () => {
 
     it('shows an ECC badge, offers update and removes ECC after confirming', async () => {
       renderApp(<Crew />);
-      expect(await screen.findByRole('button', { name: 'Update ECC…' })).toBeTruthy();
+      await moreMenu();
+      expect(screen.getByRole('menuitem', { name: 'Update ECC…' })).toBeTruthy();
       expect(screen.getAllByText('ECC').length).toBeGreaterThan(0);
-      fireEvent.click(screen.getByRole('button', { name: 'Remove ECC' }));
-      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Remove' })));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove ECC…' }));
+      await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Remove' })));
       expect(calls('DELETE', '/api/crew?source=ecc')).toHaveLength(1);
     });
 
     it('shows the version change in the update dialog', async () => {
       renderApp(<Crew />);
-      fireEvent.click(await screen.findByRole('button', { name: 'Update ECC…' }));
+      await moreMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Update ECC…' }));
       expect(await screen.findByText('Version v2.2.3 → v2.2.3')).toBeTruthy();
     });
   });

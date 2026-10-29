@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { calls, routeApi } from './test/fixtures';
+import { cssRule } from './test/css';
 import { renderApp } from './test/render';
 import { Triggers } from './Triggers';
 
@@ -31,6 +32,9 @@ beforeEach(() => {
   routeApi(baseRoutes());
 });
 
+const openCard = async (id = 'acme-full-review') => fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^Open ${id}`) }));
+const setupDock = async () => fireEvent.click(await screen.findByRole('button', { name: 'Setup & test' }));
+
 describe('Triggers', () => {
   it('shows the ascii skeleton while triggers load', () => {
     routeApi({ 'GET /api/triggers': new Promise(() => {}), 'GET /api/triggers/deliveries': [], 'GET /api/triggers/setup': setup(true), 'GET /api/workspaces': [], 'GET /api/pipelines': [], 'GET /api/bots': { agents: {} } });
@@ -42,6 +46,7 @@ describe('Triggers', () => {
     renderApp(<Triggers />);
     fireEvent.click(await screen.findByRole('switch', { name: /Pause acme-full-review/ }));
     await waitFor(() => expect(calls('PATCH', '/api/triggers/acme-full-review')[0]![2]).toEqual({ enabled: false }));
+    await openCard();
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' })));
     expect(calls('DELETE', '/api/triggers/acme-full-review')).toHaveLength(1);
@@ -54,7 +59,8 @@ describe('Triggers', () => {
 
   it('saves a new trigger with split lists', async () => {
     renderApp(<Triggers />);
-    fireEvent.click(await screen.findByRole('button', { name: 'New trigger' }));
+    fireEvent.click(await screen.findByRole('button', { name: '+ New trigger' }));
+    expect(screen.getByRole('complementary', { name: 'Trigger' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Repo'), { target: { value: 'acme/api' } });
     fireEvent.change(screen.getByLabelText('Events'), { target: { value: 'opened, labeled' } });
     fireEvent.change(screen.getByLabelText('Only with labels'), { target: { value: 'aorch' } });
@@ -64,6 +70,7 @@ describe('Triggers', () => {
 
   it('dry-runs and fires only after confirming', async () => {
     renderApp(<Triggers />);
+    await setupDock();
     fireEvent.change(await screen.findByLabelText('Pull request'), { target: { value: 'https://github.com/acme/api/pull/12' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Dry run' })));
     expect(await screen.findByText(/Would start a run/)).toBeTruthy();
@@ -75,6 +82,7 @@ describe('Triggers', () => {
 
   it('asks before regenerating an existing secret and shows the new one', async () => {
     renderApp(<Triggers />);
+    await setupDock();
     fireEvent.click(await screen.findByRole('button', { name: 'Regenerate secret' }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Regenerate' })));
     expect(await screen.findByText('new-secret-value')).toBeTruthy();
@@ -125,8 +133,15 @@ describe('Triggers', () => {
     fireEvent.click(within(log).getByRole('row', { name: /acme\/api#41, skipped/ }));
     expect((await within(log).findAllByText('Delivery details')).length).toBeGreaterThan(0);
     expect(within(log).getByRole('log').textContent).toContain('reason   draft PR (include drafts is off)');
+    await openCard();
     fireEvent.click(screen.getByRole('button', { name: 'Log' }));
     await waitFor(() => expect(calls('GET', '/api/triggers/deliveries?trigger=acme-full-review&limit=50').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    expect(screen.getByRole('menuitem', { name: 'acme-full-review' }).getAttribute('aria-current')).toBe('true');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'all triggers' }));
+    await waitFor(() => expect(calls('GET', '/api/triggers/deliveries?limit=50').length).toBeGreaterThan(1));
+    // the log is a bottom-wide bar that stops short of the assistant launcher
+    expect(log.closest('.tf-bar')!.classList.contains('tf-wide')).toBe(true);
   });
 
   it('draws Event → Filter → Workflow for the selected trigger, with the fans and "All events" when nothing filters', async () => {
@@ -140,16 +155,51 @@ describe('Triggers', () => {
     await waitFor(() => expect(calls('PATCH', '/api/triggers/acme-full-review')[0]![2]).toEqual({ enabled: false }));
     // Test fire is the existing test panel, which calls the existing endpoint
     fireEvent.click(within(flow).getByRole('button', { name: 'Test fire' }));
-    expect(document.activeElement).toBe(screen.getByLabelText('Pull request'));
+    // the test panel now opens in the dock, which focuses the field once it is up
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Pull request')));
     fireEvent.change(screen.getByLabelText('Pull request'), { target: { value: 'https://github.com/acme/api/pull/12' } });
     fireEvent.click(screen.getByRole('button', { name: 'Dry run' }));
     await waitFor(() => expect(calls('POST', '/api/triggers/acme-full-review/test')[0]![2]).toEqual({ pr: 'https://github.com/acme/api/pull/12', fire: false }));
   });
 
-  it('takes you to the test panel from the header', async () => {
+  it('opens Setup & test in the dock with the PR field focused, and Test on a trigger picks it there', async () => {
+    triggers = [trig(), trig({ id: 'acme-two' })];
     renderApp(<Triggers />);
     await screen.findByRole('switch', { name: /Pause acme-full-review/ });
-    fireEvent.click(screen.getByRole('button', { name: 'Test a trigger' }));
-    expect(document.activeElement).toBe(screen.getByLabelText('Pull request'));
+    await setupDock();
+    const dock = screen.getByRole('complementary', { name: 'Setup & test' });
+    expect(within(dock).getByText('Payload URL')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Pull request')));
+    await openCard('acme-two');
+    expect(screen.queryByRole('complementary', { name: 'Setup & test' })).toBeNull();
+    fireEvent.click(within(screen.getByRole('complementary', { name: 'Trigger' })).getByRole('button', { name: 'Test' }));
+    expect(screen.getByRole('complementary', { name: 'Setup & test' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Trigger to test' }).textContent).toContain('acme-two');
+  });
+
+  it('opens a trigger card in the dock to edit it, and Esc closes it', async () => {
+    renderApp(<Triggers />);
+    await openCard();
+    const dock = screen.getByRole('complementary', { name: 'Trigger' });
+    expect(within(dock).getByRole('heading', { name: 'acme-full-review' })).toBeTruthy();
+    expect((within(dock).getByLabelText('Repo') as HTMLInputElement).value).toBe('acme/api');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Trigger' })).toBeNull();
+  });
+
+  it('sizes the loading wrapper to the screen so the cards and the log sit in the frame', () => {
+    // AsciiReveal positions the wrapper inline; the absolute card column inside it needs it to fill the screen
+    expect(cssRule('triggers/triggers.css', '.tg-load')).toContain('height: 100%');
+    expect(cssRule('triggers/triggers.css', '.tg-cards')).toContain('inset: 0');
+    // the webhook setup is one column inside the 320 px dock
+    expect(cssRule('triggers/triggers.css', '.tf-dock .tg-dl')).toContain('grid-template-columns: 1fr');
+  });
+
+  it('says so in one quiet line when there are no triggers, with New trigger and Setup & test', async () => {
+    triggers = [];
+    renderApp(<Triggers />);
+    expect(await screen.findByText(/^No triggers yet/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '+ New trigger' }).length).toBeGreaterThan(1);
+    expect(screen.getAllByRole('button', { name: 'Setup & test' }).length).toBeGreaterThan(1);
   });
 });

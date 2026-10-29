@@ -1,12 +1,9 @@
 import { Button } from '../components/beui/kit/Button';
 import { DataTable, type Column } from '../components/beui/kit/DataTable';
 import { SearchField } from '../components/beui/kit/fields';
-import { SegmentedControl } from '../components/beui/kit/controls';
-import { NONE } from '../ui/cn';
 import { ago } from '../api';
 import type { HistoryRow, HttpTree, TreeCollection, TreeRequest } from './client';
 
-const ENV_DOTS = ['var(--acc)', 'var(--ok)', 'var(--warn)', 'var(--bad)', 'var(--mut)'];
 /** A send that took this long or longer is "slow" (amber in the latency strip). */
 export const SLOW_MS = 1000;
 
@@ -87,85 +84,48 @@ export interface TreeProps {
   onFilter: (q: string) => void;
   onOpen: (id: string) => void;
   onNew: () => void;
-  onImport: () => void;
-  onSecrets: () => void;
-  onEnv: (name: string | null) => void;
-  onEditEnv: (name?: string) => void;
-  history: HistoryRow[];
-  /** The history entry shown in the response view, if one was opened from the strip. */
-  shownHistory?: number;
-  onHistory: (row: HistoryRow) => void;
-  /** The history could not be loaded: said instead of an empty strip. */
-  historyError?: string;
 }
 
+/** The left dock (spec §8): a filter, the saved requests by folder, and New request at its foot. */
 export function Tree(p: TreeProps) {
-  const envs = p.tree?.environments ?? [];
-  const bars = latencyBars(p.history);
-  const byId = new Map(p.history.map((h) => [h.id, h]));
   return (
     <div className="tree">
-      <div className="env-switch">
-        <SegmentedControl
-          label="Environment"
-          options={[{ value: NONE, label: 'No env' }, ...envs.map((e, i) => ({ value: e, label: e, accessory: <span className="env-dot" style={{ background: ENV_DOTS[i % ENV_DOTS.length] }} aria-hidden="true" /> }))]}
-          value={p.tree?.activeEnv ?? NONE}
-          onValueChange={(v) => p.onEnv(v === NONE ? null : v)}
-        />
-        <div className="row">
-          {p.tree?.activeEnv ? (
-            <Button size="sm" variant="ghost" onClick={() => p.onEditEnv(p.tree!.activeEnv!)}>
-              Edit env
-            </Button>
-          ) : null}
-          <Button size="sm" variant="ghost" onClick={() => p.onEditEnv()}>
-            New env
-          </Button>
-          <Button size="sm" variant="ghost" onClick={p.onSecrets}>
-            Secrets
-          </Button>
-        </div>
-      </div>
-      <SearchField label="Filter requests" value={p.filter} onValueChange={p.onFilter} />
-      <div className="row">
-        <Button size="sm" variant="secondary" onClick={p.onNew}>
-          New request
-        </Button>
-        <Button size="sm" variant="ghost" onClick={p.onImport}>
-          Import
-        </Button>
-      </div>
+      <SearchField label="Filter requests" value={p.filter} onValueChange={p.onFilter} placeholder="Filter requests" />
       <nav className="tree-scroll" aria-label="Saved requests">
         {p.tree ? <Branch c={p.tree.root} q={p.filter} selected={p.selected} onOpen={p.onOpen} /> : null}
       </nav>
-      {p.historyError ? (
-        <p className="resp-error" role="alert">{`History: ${p.historyError}`}</p>
-      ) : (
-        <>
-          <div className="latency" role="group" aria-label="Last 20 sends">
-            {bars.map((b) => (
-              <button key={b.id} type="button" className="lat" data-amber={b.amber ? '' : undefined} aria-pressed={p.shownHistory === b.id} aria-label={b.label} title={b.label} style={{ height: `${b.pct}%` }} onClick={() => p.onHistory(byId.get(b.id)!)} />
-            ))}
-          </div>
-          {p.history.length ? (
-            <details className="history">
-              <summary>History</summary>
-              <DataTable<HistoryRow>
-                bare
-                aria-label="Send history"
-                className="history-table"
-                columns={HISTORY_COLUMNS}
-                rows={p.history.slice(0, 20)}
-                rowKey={(h) => String(h.id)}
-                defaultSort={{ id: 'when', dir: 'desc' }}
-                rowLabel={(h) => `${h.method} ${pathOf(h.url)}, ${h.status || 'error'}`}
-                selectedKey={p.shownHistory === undefined ? null : String(p.shownHistory)}
-                onRowClick={p.onHistory}
-              />
-            </details>
-          ) : null}
-        </>
-      )}
+      <Button size="sm" variant="secondary" onClick={p.onNew}>
+        New request
+      </Button>
+    </div>
+  );
+}
+
+/** The response card's History tab: the last 20 sends as a strip (amber when slow or failed) and as a sortable table; a pick opens that exchange. */
+export function History(p: { history: HistoryRow[]; shownHistory?: number; onHistory: (row: HistoryRow) => void; historyError?: string }) {
+  const bars = latencyBars(p.history);
+  const byId = new Map(p.history.map((h) => [h.id, h]));
+  if (p.historyError) return <p className="resp-error" role="alert">{`History: ${p.historyError}`}</p>;
+  if (!p.history.length) return <p className="sl-quiet">No sends yet.</p>;
+  return (
+    <div className="history">
+      <div className="latency" role="group" aria-label="Last 20 sends">
+        {bars.map((b) => (
+          <button key={b.id} type="button" className="lat" data-amber={b.amber ? '' : undefined} aria-pressed={p.shownHistory === b.id} aria-label={b.label} title={b.label} style={{ height: `${b.pct}%` }} onClick={() => p.onHistory(byId.get(b.id)!)} />
+        ))}
+      </div>
+      <DataTable<HistoryRow>
+        bare
+        aria-label="Send history"
+        className="history-table"
+        columns={HISTORY_COLUMNS}
+        rows={p.history.slice(0, 20)}
+        rowKey={(h) => String(h.id)}
+        defaultSort={{ id: 'when', dir: 'desc' }}
+        rowLabel={(h) => `${h.method} ${pathOf(h.url)}, ${h.status || 'error'}`}
+        selectedKey={p.shownHistory === undefined ? null : String(p.shownHistory)}
+        onRowClick={p.onHistory}
+      />
     </div>
   );
 }

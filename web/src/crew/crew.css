@@ -1,28 +1,70 @@
-/* Crew (Studio Live board): a card grid with a side editor. Tokens only. */
-.cw-page { height: 100%; overflow: auto; display: flex; flex-direction: column; }
-.cw-page > .sl-screen-header { border-bottom: 1px solid var(--line); }
-.cw-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
-.cw-main { min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
-.cw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; align-content: start; }
-.cw-card {
-  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--s1);
-  color: var(--ink); font: inherit; text-align: left; cursor: pointer;
-  transition: transform var(--t-med) var(--ease), border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
+/* Crew in the tool frame (mockup docs/design/Round2Screens.html #crew): role slots on the backdrop, the library along the bottom. Tokens only. */
+/* Loading's wrapper (AsciiReveal sets position: relative inline) fills the screen, so the lineup inside it does too; the skeleton sits under the bars */
+.cw-load { box-sizing: border-box; height: 100%; padding: 72px 24px 0; }
+.cw-lineup { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; padding: 72px 24px 24px; }
+.cw-screen.lib .cw-lineup { padding-bottom: 220px; }
+.cw-screen.docked .cw-lineup { padding-right: 352px; }
+.cw-title { margin: 0; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.cw-fact, .cw-count { font-size: 12px; color: var(--mut); }
+.cw-count { font-family: var(--font-code); }
+
+/* a role slot (mockup .slot) */
+.cw-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; max-width: 960px; }
+.cw-slot {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--s1);
+  transition: transform var(--t-med) var(--ease), border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease), background-color var(--t-med) var(--ease);
 }
-.cw-card:hover { transform: translateY(-2px); border-color: var(--line2); }
-.cw-card.on { border-color: var(--acc); box-shadow: 0 0 0 3px var(--accBg); }
-.cw-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.cw-card-head .face { flex: none; border-radius: 14px; }
-.cw-card-names { display: flex; flex-direction: column; min-width: 0; }
-.cw-card-name { font-weight: 600; }
-.cw-card-title { font-size: 12.5px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cw-card-when { font-size: 12.5px; line-height: 1.45; color: var(--mut); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.cw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-slot:hover { transform: translateY(-2px); border-color: var(--line2); }
+.cw-slot.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--accBg); }
+.cw-slot-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.cw-slot-role { font: 11px var(--font-code); letter-spacing: .06em; text-transform: uppercase; color: var(--mut); }
+.cw-slot-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cw-slot-who .face { flex: none; border-radius: 12px; }
+.cw-slot-names { display: flex; flex-direction: column; min-width: 0; }
+.cw-slot-names b { font-size: 15px; font-weight: 600; }
+.cw-slot-job { font-size: 12px; line-height: 1.4; color: var(--mut); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cw-slot-ft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--mut); }
+.cw-slot-state { margin-left: auto; }
+.cw-slot-swap { flex: none; white-space: nowrap; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
+.cw-slot-swap:hover { background: var(--s2); color: var(--ink); }
+/* while a library bot is dragged: roles of its kind take it, the rest dim and refuse it */
+.cw-slot.dim { opacity: .4; }
+.cw-slot.over { border: 1.5px dashed var(--acc); background: var(--accBg); transform: scale(1.02); }
+/* "<bot> now plays <role>", with Undo, under the top bars */
+.cw-note {
+  position: absolute; z-index: 8; top: 70px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px);
+  padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 12.5px; animation: tf-pop .2s var(--ease);
+}
+.cw-note button { padding: 3px 10px; border: 0; border-radius: 7px; background: var(--bg); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; }
+/* the Swap… picker's list */
+.cw-swap-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; margin-top: 10px; overflow: auto; }
+.cw-swap { display: flex; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: 9px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.cw-swap:hover, .cw-swap:focus-visible { background: var(--s2); }
+.cw-swap .face { flex: none; border-radius: 8px; }
+.cw-swap-text { display: flex; flex-direction: column; min-width: 0; }
+.cw-swap-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mut); }
+
+/* the library (mockup .bench): a wide floating bar along the bottom */
+.cw-bench { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; }
+.cw-screen.docked .cw-bench { right: 352px; }
+.cw-bench-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cw-bench-head > b { font-size: 13px; }
+.cw-bench-q { width: 220px; margin-left: auto; }
+.cw-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.cw-sub {
+  flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 156px; padding: 10px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--side); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.cw-sub:hover { transform: translateY(-2px); }
+.cw-sub.on { border-color: var(--ink); }
+.cw-sub-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cw-sub-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.cw-sub-head .face { flex: none; border-radius: 9px; }
+.cw-sub-when { font-size: 11.5px; line-height: 1.35; color: var(--mut); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cw-chip { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 6px; background: var(--s2); color: var(--mut); white-space: nowrap; }
 .cw-chip.mono { font-family: var(--font-code); }
-.cw-chip.ghost { background: transparent; border: 1px solid var(--line2); }
-.cw-side { border-left: 1px solid var(--line); background: var(--s1); padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: auto; }
-.cw-side-empty { margin: 0; color: var(--mut); }
+
+/* the bot card in the dock */
 .cw-editor, .cw-runs-on { display: flex; flex-direction: column; gap: 12px; }
 .cw-runs-on { padding-top: 16px; border-top: 1px solid var(--line); }
 .cw-editor-head { display: flex; align-items: center; gap: 14px; }
@@ -30,15 +72,18 @@
 .cw-editor-head .face { border-radius: 20px; }
 .cw-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cw-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.cw-packs { display: flex; flex-direction: column; gap: 10px; }
-.cw-pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+
+/* Crew packs (a dialog from the menu) */
+.cw-pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; max-height: 60vh; overflow: auto; }
 .cw-pack { display: flex; flex-direction: column; gap: 10px; }
 .cw-pack h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
 .cw-pack p { margin: 0; }
 .cw-pack-faces { display: flex; flex-wrap: wrap; gap: 4px; }
-@media (max-width: 1199px) { .cw-body { grid-template-columns: minmax(0, 1fr) 300px; } }
+
+@media (prefers-reduced-motion: reduce) { .cw-slot:hover, .cw-sub:hover, .cw-slot.over { transform: none; } }
 @media (max-width: 899px) {
-  .cw-body { grid-template-columns: minmax(0, 1fr); }
-  .cw-main { padding: 16px; }
-  .cw-pair { grid-template-columns: 1fr; }
+  .cw-lineup, .cw-screen.lib .cw-lineup, .cw-screen.docked .cw-lineup { padding: 120px 16px 230px; }
+  .cw-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cw-bench, .cw-screen.docked .cw-bench { left: 8px; right: var(--tf-launcher); bottom: 8px; }
+  .cw-bench-q { width: 100%; margin-left: 0; }
 }
