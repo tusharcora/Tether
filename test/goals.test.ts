@@ -6,7 +6,7 @@ import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { link } from '../src/bindings.js';
 import { writePipeline } from '../src/config.js';
 import { Engine } from '../src/engine.js';
-import { Goals, judge, parseCounts } from '../src/goals/loop.js';
+import { Goals, judge, parseCounts, type GoalHooks } from '../src/goals/loop.js';
 import { ensureGoals, GoalStore } from '../src/goals/store.js';
 import type { Goal } from '../src/goals/types.js';
 import { startServer } from '../src/server.js';
@@ -30,7 +30,7 @@ class Planner implements AgentAdapter {
   }
 }
 
-function rig(mock: Record<string, unknown> = { writeFile: { path: 'done.txt', content: 'ok\n' } }) {
+function rig(mock: Record<string, unknown> = { writeFile: { path: 'done.txt', content: 'ok\n' } }, hooks?: GoalHooks) {
   const home = tmp('home-');
   const repo = makeRepo();
   const ws = initWorkspace(home, repo).workspace;
@@ -40,9 +40,9 @@ function rig(mock: Record<string, unknown> = { writeFile: { path: 'done.txt', co
   const store = Store.open(':memory:');
   const engine = new Engine(store, { home, registry });
   writePipeline(home, pipe([{ id: 'code', role: 'coder', mock }], []));
-  const goals = new Goals({ home, store, engine, registry });
+  const goals = new Goals({ home, store, engine, registry, hooks });
   const goal = (o: Partial<Goal> = {}): Goal => ({ id: `g${Math.random().toString(36).slice(2, 8)}`, workspace: ws.id, title: 'Add done.txt', kind: 'loop', status: 'active', check: { kind: 'command', command: 'test -f done.txt' }, budgetUsd: 5, maxRuns: 3, approval: 'ask', workflow: 'test', createdAt: Date.now(), spentUsd: 0, ...o });
-  return { home, store, goals, goal, planner, ws };
+  return { home, store, goals, goal, planner, ws, engine, repo };
 }
 const until = async (f: () => boolean) => {
   for (let i = 0; i < 300 && !f(); i++) await new Promise((r) => setTimeout(r, 50));
@@ -61,6 +61,44 @@ describe('goals store', () => {
     expect(s.get('g1')?.title).toBe('T');
     expect(s.items('g1').map((i) => i.text)).toEqual(['one']);
     expect(db.prepare('SELECT COUNT(*) AS n FROM events').get()).toEqual({ n: 1 });
+  });
+
+  it('adds the team and agent columns to a goals table made before teams', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`CREATE TABLE goals (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, check_json TEXT, budget_usd REAL NOT NULL,
+      max_runs INTEGER NOT NULL, approval TEXT NOT NULL, workflow TEXT NOT NULL, due_date TEXT, created_at INTEGER NOT NULL, spent_usd REAL NOT NULL DEFAULT 0, reason TEXT, last_check TEXT, pending TEXT)`);
+    db.exec("INSERT INTO goals (id, workspace, title, kind, status, budget_usd, max_runs, approval, workflow, created_at) VALUES ('old', 'w', 'Old', 'tracker', 'active', 5, 3, 'ask', 'team', 1)");
+    const s = new GoalStore(db as never);
+    expect(s.get('old')).not.toHaveProperty('team');
+    s.insert({ id: 'g2', workspace: 'w', title: 'T', kind: 'loop', status: 'active', budgetUsd: 5, maxRuns: 3, approval: 'auto', workflow: 'team', createdAt: 2, spentUsd: 0, team: 'core', agent: 'coder' });
+    expect(s.get('g2')).toMatchObject({ team: 'core', agent: 'coder' });
+    ensureGoals(db as never);
+  });
+});
+
+describe('a goal owned by a team agent', () => {
+  it('starts its runs through the team hook and pauses when the team is blocked', async () => {
+    let blocked: string | undefined;
+    const started: string[] = [];
+    const r = rig(
+      {},
+      {
+        blocked: () => blocked,
+        start: async (g, plan) => {
+          started.push(plan.task);
+          if (started.length === 2) blocked = "Today's limit is reached";
+          return r.engine.start({ pipeline: pipe([{ id: 'code', role: 'coder' }], []), task: plan.task, repo: r.repo });
+        },
+      },
+    );
+    // the agent proposes on its own binding, not Tether's
+    link(r.home, 'coder', { agent: 'planner' });
+    link(r.home, 'orchestrator', { agent: 'nope' });
+    const g = r.goals.create(r.goal({ approval: 'auto', maxRuns: 5, team: 'core', agent: 'coder' }));
+    await until(() => r.goals.db.must(g.id).status === 'paused');
+    expect(r.goals.db.must(g.id).reason).toBe("Today's limit is reached");
+    expect(started).toEqual(['create done.txt', 'create done.txt']);
+    expect(r.goals.db.items(g.id)).toHaveLength(2);
   });
 });
 
