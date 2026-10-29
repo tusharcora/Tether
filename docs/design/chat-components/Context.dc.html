@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Context window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes cx-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes cx-spin{to{transform:rotate(360deg)}}
+.cx-in{animation:cx-in .22s cubic-bezier(.2,.8,.2,1) both}
+.cx-seg{transition:width .7s cubic-bezier(.2,.8,.2,1),opacity .2s}
+.cx-spin{animation:cx-spin .9s linear infinite}
+.cx-row{cursor:default;border-radius:6px}
+.cx-row:hover{background:#18181b}
+@media (prefers-reduced-motion: reduce){.cx-in,.cx-spin{animation:none}.cx-seg{transition:none}}
+</style>
+</helmet>
+<div style="width: 1000px; height: 720px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; position: relative">
+  <div style="position: absolute; left: 160px; right: 160px; top: 40px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.6; color: #a1a1aa">
+    <span style="align-self: flex-end; background: #18181b; color: #f4f4f5; border-radius: 14px; padding: 8px 13px">…and the evolve tests?</span>
+    <span>They time out only under the full suite's load. Rerun alone, all 94 pass.</span>
+  </div>
+
+  <sc-if value="{{open}}" hint-placeholder-val="{{true}}">
+    <div class="cx-in" role="dialog" aria-label="Context window" style="position: absolute; left: 470px; bottom: 132px; width: 360px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; box-shadow: 0 18px 40px rgba(0,0,0,.5); display: flex; flex-direction: column">
+      <div style="padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; font-size: 14px"><span style="color: #a1a1aa">Context</span><b style="margin-left: 6px; font-weight: 600">{{pct}}%</b><span style="flex: 1"></span><span style="font-family: 'Geist Mono', monospace; font-size: 12.5px; color: #a1a1aa">{{usedK}}k of 200k · opus</span></div>
+        <div style="display: flex; gap: 2px; height: 8px">
+          <sc-for list="{{segs}}" as="g" hint-placeholder-count="6"><span class="cx-seg" style="{{g.bar}}"></span></sc-for>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; font-size: 13px">
+          <sc-for list="{{segs}}" as="g" hint-placeholder-count="6">
+            <span class="cx-row" onMouseEnter="{{g.enter}}" onMouseLeave="{{leave}}" style="display: flex; gap: 8px; align-items: center; padding: 3px 4px"><span style="{{g.swatch}}"></span><span style="flex: 1; color: {{g.labelColor}}">{{g.label}}</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #a1a1aa">{{g.k}}k</span></span>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border-top: 1px solid rgba(255,255,255,.07); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+        <div style="display: flex; flex-direction: column; gap: 5px"><span style="display: flex"><span style="color: #a1a1aa">OpenRouter free</span><b style="margin-left: 6px; font-weight: 500">32 of 50</b><span style="flex: 1"></span><span style="color: #a1a1aa">resets 20:00</span></span><span style="height: 4px; background: #26262b; border-radius: 999px"><span style="display: block; width: 64%; height: 4px; background: #2563eb; border-radius: 999px"></span></span></div>
+        <div style="display: flex"><span style="color: #a1a1aa">NVIDIA</span><b style="margin-left: 6px; font-weight: 500">about 40 a minute</b><span style="flex: 1"></span><span style="color: #a1a1aa">no daily cap</span></div>
+      </div>
+      <div style="border-top: 1px solid rgba(255,255,255,.07); padding: 10px 12px 10px 16px; display: flex; align-items: center; gap: 10px; font-size: 13px">
+        <span style="flex: 1; color: #a1a1aa">{{footer}}</span>
+        <button onClick="{{compact}}" style="font-family: inherit; font-size: 13px; font-weight: 500; background: {{btnBg}}; color: {{btnColor}}; border: 0; border-radius: 8px; padding: 0 12px; height: 30px; cursor: pointer">{{btn}}</button>
+      </div>
+    </div>
+    <sc-if value="{{hasFly}}" hint-placeholder-val="{{false}}">
+      <div class="cx-in" style="position: absolute; left: 842px; bottom: 300px; width: 150px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.5)">
+        <b style="font-size: 12.5px; font-weight: 500">{{fly.title}}</b>
+        <sc-for list="{{fly.rows}}" as="r" hint-placeholder-count="3"><span style="display: flex; gap: 6px"><span style="flex: 1; color: #a1a1aa">{{r.n}}</span><span style="font-family: 'Geist Mono', monospace">{{r.v}}</span></span></sc-for>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <div style="position: absolute; left: 160px; right: 160px; bottom: 40px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-size: 15px; color: #71717a">Ask Tether…</span>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button aria-label="Add files" style="width: 30px; height: 30px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: #d4d4d8">+</button>
+      <span style="font-size: 13px; background: #18181b; border-radius: 999px; padding: 5px 12px">opus ▾</span>
+      <span style="flex: 1"></span>
+      <button onClick="{{toggle}}" aria-label="Context {{pct}}% used" style="width: 30px; height: 30px; border-radius: 999px; border: 0; background: #18181b; display: flex; align-items: center; justify-content: center; cursor: pointer">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: {{ring}}; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 999px; background: #18181b"></span></span>
+      </button>
+      <button aria-label="Dictate" style="width: 30px; height: 30px; border-radius: 999px; border: 0; background: #18181b; color: #d4d4d8">●</button>
+      <button aria-label="Send" style="width: 30px; height: 30px; border-radius: 999px; border: 0; background: #f4f4f5; color: #09090b">↑</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":720}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { open: true, hover: null, phase: 'full' }; }
+renderVals() {
+const s = this.state;
+const msgs = s.phase === 'small' ? 12.4 : 104.3;
+const parts = [
+  ['prompt', "Tether's prompt", 6.2, '#93c5fd', [["Who Tether is", '2.4k'], ['Project + page', '3.8k']]],
+  ['tools', 'Tools', 9.8, '#34d399', [['run_code', '2.1k'], ['GitHub, Linear MCP', '6.4k'], ['Code Mode notes', '1.3k']]],
+  ['memory', 'Memory', 2.1, '#fbbf24', [['14 lessons', '2.1k']]],
+  ['messages', 'Messages', msgs, '#2563eb', [[s.phase === 'small' ? 'Summary + last 4' : '38 messages', msgs + 'k']]],
+  ['reserved', 'Reserved', 8, '#52525b', [['Room for the reply', '8k']]],
+];
+const used = parts.reduce((a, p) => a + p[2], 0);
+const free = +(200 - used).toFixed(1);
+const all = parts.concat([['free', 'Free', free, '#26262b', [['Left for this chat', free + 'k']]]]);
+const pct = Math.round((used / 200) * 100);
+const h = all.find((p) => p[0] === s.hover);
+return {
+  open: s.open, toggle: () => this.setState({ open: !s.open }),
+  pct, usedK: used.toFixed(1),
+  segs: all.map((p) => ({ label: p[1], k: p[2],
+    bar: 'display: block; height: 8px; border-radius: 3px; width: ' + (p[2] / 2) + '%; background: ' + p[3] + '; opacity: ' + (s.hover && s.hover !== p[0] ? '.35' : '1'),
+    swatch: 'width: 9px; height: 9px; border-radius: 3px; background: ' + p[3] + (p[0] === 'free' ? '; border: 1px solid #52525b' : ''),
+    labelColor: s.hover && s.hover !== p[0] ? '#71717a' : '#e4e4e7',
+    enter: () => this.setState({ hover: p[0] }) })),
+  leave: () => this.setState({ hover: null }),
+  hasFly: !!h, fly: h ? { title: h[1] + ' · ' + h[2] + 'k', rows: h[4].map((r) => ({ n: r[0], v: r[1] })) } : { title: '', rows: [] },
+  footer: s.phase === 'busy' ? 'Summarizing older messages…' : s.phase === 'small' ? 'Compacted: 38 messages → summary + last 4' : Math.round(180 - used) + 'k until auto-compact',
+  btn: s.phase === 'busy' ? 'Compacting…' : s.phase === 'small' ? 'Undo' : 'Compact now',
+  btnBg: s.phase === 'full' ? 'rgba(59,130,246,.18)' : '#18181b', btnColor: s.phase === 'full' ? '#93c5fd' : '#a1a1aa',
+  compact: () => {
+    if (s.phase === 'small') return this.setState({ phase: 'full' });
+    if (s.phase === 'busy') return;
+    this.setState({ phase: 'busy' });
+    setTimeout(() => this.setState({ phase: 'small' }), 1400);
+  },
+  ring: 'conic-gradient(#2563eb ' + pct * 3.6 + 'deg, #3f3f46 0deg)',
+};
+}
+}
+</script>
+</body>
+</html>

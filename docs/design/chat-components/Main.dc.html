@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thinking timeline</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes th-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes th-spin{to{transform:rotate(360deg)}}
+@keyframes th-shimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
+.th-in{animation:th-in .3s ease-out both}
+.th-spin{animation:th-spin .9s linear infinite}
+.th-shimmer{background:linear-gradient(90deg,#71717a 0%,#f4f4f5 45%,#71717a 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:th-shimmer 1.6s linear infinite}
+@media (prefers-reduced-motion: reduce){.th-in,.th-spin,.th-shimmer{animation:none}.th-shimmer{color:#f4f4f5;background:none}}
+</style>
+</helmet>
+<div style="width: 1000px; height: 720px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex; justify-content: center; padding: 36px 0; box-sizing: border-box">
+  <div style="width: 680px; display: flex; flex-direction: column; gap: 18px">
+    <div style="align-self: flex-end; background: #18181b; border-radius: 14px; padding: 9px 14px; font-size: 15px">Why does Back go to the New chat screen after I send?</div>
+
+    <div style="display: flex; flex-direction: column; gap: 0; font-size: 14.5px">
+      <button onClick="{{toggle}}" style="align-self: flex-start; display: flex; align-items: center; gap: 10px; background: transparent; border: 0; color: #f4f4f5; font-family: inherit; font-size: 14.5px; padding: 0 0 10px; cursor: pointer">
+        <span style="width: 18px; color: #a1a1aa; display: inline-block; transform: {{chev}}">›</span>
+        <span style="{{headStyle}}">{{head}}</span>
+        <span style="color: #71717a">{{headTime}}</span>
+      </button>
+      <sc-if value="{{open}}" hint-placeholder-val="{{true}}">
+        <div style="position: relative; padding-left: 28px; display: flex; flex-direction: column; gap: 12px">
+          <span style="position: absolute; left: 8px; top: 8px; bottom: 8px; width: 1px; background: #26262b"></span>
+          <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+            <div class="th-in" style="{{s.row}}">
+              <span style="{{s.markWrap}}">
+                <sc-if value="{{s.isSearch}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2.2" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4"></path></svg></sc-if>
+                <sc-if value="{{s.isDot}}" hint-placeholder-val="{{false}}"><span style="{{s.dot}}"></span></sc-if>
+                <sc-if value="{{s.isDead}}" hint-placeholder-val="{{false}}"><span style="color: #52525b; font-size: 12px">✕</span></sc-if>
+                <sc-if value="{{s.isLive}}" hint-placeholder-val="{{false}}"><span class="th-spin" style="width: 12px; height: 12px; border-radius: 999px; border: 2px solid #3f3f46; border-top-color: #f4f4f5; display: block"></span></sc-if>
+                <sc-if value="{{s.isDone}}" hint-placeholder-val="{{false}}"><span style="width: 16px; height: 16px; border-radius: 999px; background: #2563eb; color: #fff; font-size: 10px; display: flex; align-items: center; justify-content: center">✓</span></sc-if>
+              </span>
+              <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+                <span class="{{s.textCls}}" style="{{s.textStyle}}">{{s.text}} <span style="color: #71717a">{{s.note}}</span></span>
+                <sc-if value="{{s.isSearch}}" hint-placeholder-val="{{false}}">
+                  <span style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+                    <span style="font-size: 12.5px; background: #18181b; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 3px 10px"><b style="font-size: 10px; color: #60a5fa">TS</b> turn.ts</span>
+                    <span style="font-size: 12.5px; background: #18181b; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 3px 10px"><b style="font-size: 10px; color: #60a5fa">TS</b> history.ts</span>
+                    <span style="font-size: 12.5px; background: #18181b; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 3px 10px"><b style="font-size: 10px; color: #60a5fa">TSX</b> App.tsx</span>
+                    <span style="font-size: 12.5px; background: #18181b; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 3px 10px">R-7D92 run</span>
+                    <span style="font-size: 12.5px; color: #71717a">+3 more</span>
+                  </span>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{done}}" hint-placeholder-val="{{false}}">
+      <div class="th-in" style="display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.6; color: #e4e4e7">
+        <span>Creating a chat adds a history entry for <code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">#/chats/new</code> and then pushes <code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">#/chats/&lt;id&gt;</code> on top, so Back lands on the empty screen. Replacing the entry instead fixes it.</span>
+        <span style="display: flex; gap: 6px"><a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">web/src/hooks.ts:193</a><a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">web/src/App.tsx:125</a></span>
+      </div>
+    </sc-if>
+    <span style="flex: 1"></span>
+    <button onClick="{{replay}}" style="align-self: center; font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 12px; height: 30px; cursor: pointer">Replay</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":720}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { t: 0, open: true }; }
+componentDidMount() { this.timer = setInterval(() => this.state.t < 150 && this.setState({ t: this.state.t + 1 }), 100); }
+componentWillUnmount() { clearInterval(this.timer); }
+renderVals() {
+const t = this.state.t;
+const all = [
+  { at: 0, kind: 'search', text: 'Searched the codebase' },
+  { at: 15, kind: 'dot', text: 'Read 6 files about chats and routes' },
+  { at: 30, kind: 'dead', text: 'Dead end: history.ts keeps no title index' },
+  { at: 45, kind: 'dot', text: 'Mapped how a new chat gets its id' },
+  { at: 60, kind: 'sub', text: 'Ran 12 assistant tests' },
+  { at: 75, kind: 'sub', text: '2 tests cover the start event' },
+  { at: 90, kind: 'merge', text: 'Merged the test results' },
+  { at: 105, kind: 'dot', text: 'Found the history entry New chat leaves behind' },
+  { at: 120, kind: 'dot', text: 'Drafted a 2-step fix' },
+  { at: 140, kind: 'done', text: 'Finished thinking', note: '1 file to change · 2 steps' },
+];
+const shown = all.filter((s) => s.at <= t);
+const done = t >= 140;
+const last = shown.length - 1;
+const secs = Math.floor(t / 10);
+const steps = shown.map((s, i) => {
+  const live = !done && i === last && s.kind !== 'done';
+  const dim = s.kind === 'dead' || s.kind === 'sub';
+  const indent = s.kind === 'dead' || s.kind === 'sub' ? 'margin-left: 22px; ' : '';
+  return {
+    text: s.text, note: s.note || '',
+    isSearch: s.kind === 'search' && !live, isDead: s.kind === 'dead' && !live, isLive: live, isDone: s.kind === 'done',
+    isDot: (s.kind === 'dot' || s.kind === 'sub' || s.kind === 'merge') && !live,
+    dot: s.kind === 'merge' ? 'width: 8px; height: 8px; border-radius: 999px; border: 1.5px solid #a1a1aa; display: block' : 'width: 7px; height: 7px; border-radius: 999px; background: ' + (s.kind === 'sub' ? '#52525b' : '#a1a1aa') + '; display: block',
+    row: 'display: flex; gap: 12px; align-items: flex-start; position: relative; ' + indent,
+    markWrap: 'position: absolute; left: ' + (indent ? '-50px' : '-28px') + '; top: 3px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; background: #0a0a0b',
+    textCls: live ? 'th-shimmer' : '',
+    textStyle: s.kind === 'done' ? 'color: #f4f4f5; font-weight: 500' : dim ? 'color: #71717a' : 'color: #d4d4d8',
+  };
+});
+return {
+  steps, done, open: this.state.open,
+  head: done ? 'Thought for 14s' : 'Thinking', headTime: done ? '' : secs + 's',
+  headStyle: done ? 'color: #a1a1aa' : 'color: #f4f4f5',
+  chev: this.state.open ? 'rotate(90deg)' : 'none',
+  toggle: () => this.setState({ open: !this.state.open }),
+  replay: () => this.setState({ t: 0, open: true }),
+};
+}
+}
+</script>
+</body>
+</html>
