@@ -56,7 +56,8 @@ export function loadTeams(home: string): TeamsFile {
 }
 export const saveTeams = (home: string, f: TeamsFile): void => write(teamsFile(home), f);
 
-const startOfDay = (now: number) => new Date(now).setHours(0, 0, 0, 0);
+/** Local midnight: "a day" for the team limits is the owner's day. */
+export const startOfDay = (now: number) => new Date(now).setHours(0, 0, 0, 0);
 
 export function readState(home: string, id: string): TeamState {
   const j = read(stateFile(home, id));
