@@ -328,6 +328,14 @@ describe('goal fields added after teams', () => {
     ensureGoals(db as never);
   });
 
+  it('a goal that ended before endedAt existed is not stamped with today when it is edited later', () => {
+    const r = rig();
+    r.goals.db.insert(r.goal({ id: 'old', kind: 'tracker', status: 'met', check: undefined }));
+    r.goals.update('old', { description: 'edited later' });
+    r.goals.editItem('old', r.goals.addItem('old', { text: 'one' }).id, { done: true });
+    expect(r.goals.db.must('old')).not.toHaveProperty('endedAt');
+  });
+
   it('endedAt is set when a goal is met and when stopped, and cleared on resume', async () => {
     const r = rig();
     const met = r.goals.create(r.goal({ check: { kind: 'command', command: 'true' } }));

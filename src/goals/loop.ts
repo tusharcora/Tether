@@ -98,9 +98,11 @@ export class Goals {
     this.jobs.add(j);
   }
   private save(goal: Goal): Goal {
-    // the one place status lands: a goal that is met or stopped keeps the moment it ended; a resumed one loses it
+    // the one place status lands: a goal that becomes met or stopped keeps the moment it did; a resumed one loses it. One
+    // that ended before endedAt existed stays without it (the page falls back to its last item), not stamped with today.
     const ended = goal.status === 'met' || goal.status === 'stopped';
-    const g = { ...goal, endedAt: ended ? (goal.endedAt ?? Date.now()) : undefined };
+    const now = ended && !goal.endedAt && this.db.get(goal.id)?.status !== goal.status;
+    const g = { ...goal, endedAt: ended ? (now ? Date.now() : goal.endedAt) : undefined };
     this.db.save(g);
     for (const l of this.listeners) l(g);
     return g;
