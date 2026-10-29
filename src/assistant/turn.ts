@@ -17,7 +17,7 @@ import type { Store } from '../store.js';
 import type { AttentionItem } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
-import { loadAllow, newChatId, readChat, saveChat, titleOf, type Chat } from './history.js';
+import { loadAllow, newChatId, readChat, saveChat as saveChatFile, titleOf, type Chat } from './history.js';
 import { buildPrompt } from './prompt.js';
 import { checkReply } from './reply.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type StreamEvent, type ToolRun } from './types.js';
@@ -63,9 +63,13 @@ const secretsFor = (home: string, ws: string | undefined): Map<string, string> =
   return m;
 };
 
-/** One turn in `o.chat`, or in a new chat this first message makes (the start event names it). */
-export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; chat?: Chat; body: TurnBody }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
+/**
+ * One turn in `o.chat`, or in a new chat this first message makes (the start event names it). A team agent's turn passes
+ * `who` (its identity) and `extra` (fenced team context and memory) and is `ephemeral`: nothing lands in the assistant's chats.
+ */
+export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; chat?: Chat; body: TurnBody; who?: string; extra?: string; ephemeral?: boolean }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
   const { body } = o;
+  const saveChat: typeof saveChatFile = (...a) => void (!o.ephemeral && saveChatFile(...a));
   const chat: Chat = o.chat ?? { id: newChatId(), title: titleOf(body.message), created: Date.now(), updated: Date.now(), messages: [], once: [] };
   if (body.answer) {
     const m = chat.messages.find((x) => x.id === body.answer!.message);
@@ -134,6 +138,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500 }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
+      who: o.who,
+      extra: o.extra,
     });
     const cm = await openCodeModeFor({
       engine: c.engine,
