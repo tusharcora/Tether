@@ -1,5 +1,6 @@
 // npm run app: package the built server and dashboard as dist-app/Tether-darwin-arm64/Tether.app (Apple Silicon), then sign
-// it ad hoc for this Mac (no Developer ID: macOS may ask the first time, right-click → Open). Run after `npm run build`.
+// it for this Mac with a local certificate when there is one, else ad hoc (no Developer ID: macOS may ask the first time,
+// right-click → Open). Run after `npm run build`.
 // TETHER_APP_OUT picks another output folder — use one outside iCloud-synced folders, where macOS keeps re-adding
 // Finder info to the bundle and a strict signature check fails (e.g. TETHER_APP_OUT=~/dev/tether-app npm run app).
 import { packager } from '@electron/packager';
@@ -53,7 +54,18 @@ const ok = (args) => {
 // appears; they sit outside the signature but a strict check refuses them, so let the bundle settle, then clear and check.
 await sleep(2000);
 execFileSync('xattr', ['-cr', app]);
-execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
+// a stable identity keeps macOS privacy grants (Documents access) across rebuilds; an ad hoc one changes with every build.
+// TETHER_SIGN_IDENTITY wins, then an Xcode "Apple Development" certificate, then one named "Tether Local Signing".
+const identities = (() => {
+  try {
+    return [...execFileSync('security', ['find-identity', '-v', '-p', 'codesigning'], { encoding: 'utf8' }).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  } catch {
+    return [];
+  }
+})();
+const identity = process.env.TETHER_SIGN_IDENTITY || identities.find((n) => n.startsWith('Apple Development:')) || identities.find((n) => n === 'Tether Local Signing') || '-';
+console.log(`signing with ${identity === '-' ? 'an ad hoc signature (no signing certificate found; macOS will ask again after each rebuild)' : `"${identity}"`}`);
+execFileSync('codesign', ['--force', '--deep', '--sign', identity, app], { stdio: 'inherit' });
 let strict = false;
 for (let i = 0; i < 5 && !strict; i++) {
   execFileSync('xattr', ['-cr', app]);
@@ -61,4 +73,4 @@ for (let i = 0; i < 5 && !strict; i++) {
   if (!strict) await sleep(1000);
 }
 if (!strict && !ok(['--verify', '--deep', app])) throw new Error(`the signature of ${app} does not verify`);
-console.log(`\nTether.app (Electron ${electronVersion}, arm64, ad-hoc signed${strict ? '' : '; macOS keeps re-adding Finder info in this iCloud folder, so only the non-strict check ran'}):\n  ${app}\n`);
+console.log(`\nTether.app (Electron ${electronVersion}, arm64, ${identity === '-' ? 'ad-hoc signed' : 'signed for this Mac'}${strict ? '' : '; macOS keeps re-adding Finder info in this iCloud folder, so only the non-strict check ran'}):\n  ${app}\n`);
