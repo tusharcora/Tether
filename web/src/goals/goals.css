@@ -49,6 +49,14 @@
 .gav-face.team { border-radius: 7px; background: var(--s3); box-shadow: none; }
 .gav-face.removed { background: var(--s2); box-shadow: none; color: var(--mut); }
 .gav-more { margin-left: 4px; font-size: 12px; color: var(--mut); }
+/* a step's compact picker: its faces and a "+" circle */
+.ap-plus { box-sizing: border-box; display: grid; place-items: center; width: 22px; height: 22px; border: 1px dashed var(--edge); border-radius: 50%; color: var(--mut); }
+.ap-compact button[role="combobox"]:hover .ap-plus { border-style: solid; color: var(--ink); }
+/* the detail page's Owner: read-only, set by team chat */
+.gl-owner { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--s2); font-size: 12px; color: var(--ink); white-space: nowrap; }
+.gl-owner-k { color: var(--mut); }
+.gl-owner .gav-face { border-color: var(--s2); }
+.gl-titlebar .gn-tile { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
 
 /* Up next and Done: 44 px rows; under the pointer a row opens into the full node */
 .gr-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }

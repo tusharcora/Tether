@@ -39,6 +39,7 @@ export const goalsApi = {
   next: (id: string, action: 'start' | 'skip', plan?: string) => api<GoalView>('POST', `/api/goals/${id}/next`, { action, ...(plan ? { plan } : {}) }),
   addItem: (id: string, text: string) => api('POST', `/api/goals/${id}/items`, { text }),
   toggleItem: (id: string, item: number, done: boolean) => api('PATCH', `/api/goals/${id}/items/${item}`, { done }),
+  assignItem: (id: string, item: number, assignees: Assignee[]) => api('PATCH', `/api/goals/${id}/items/${item}`, { assignees }),
 };
 
 export const STATUS_LABEL: Record<GoalStatus, string> = { active: 'Working', needs_you: 'Needs you', paused: 'Paused', met: 'Met', stopped: 'Stopped' };

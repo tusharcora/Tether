@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { TodoList, type TodoItem } from '../components/beui/agents/todo-list';
 import { Button } from '../components/beui/kit/Button';
 import type { Route } from '../hooks';
-import type { GoalView } from './goalsApi';
+import { AssigneePicker } from './AssigneePicker';
+import type { Assignee, GoalView } from './goalsApi';
 import './goals.css';
 
 /** A tracker: a checklist of manual items and linked runs, and an add-item field (Turn into a loop is in the goal's bar). */
-export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onGo: (r: Route) => void; /** Opened from the arc's Add a step. */ focusAdd?: boolean }) {
+export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: boolean) => void; onAdd: (text: string) => void; onGo: (r: Route) => void; onAssign: (item: number, who: Assignee[]) => void; /** Opened from the arc's Add a step. */ focusAdd?: boolean }) {
   const [text, setText] = useState('');
   const items: TodoItem[] = p.goal.items.map((i) => {
     const run = i.kind === 'run';
     const done = i.done || i.runStatus === 'done';
+    const who = <AssigneePicker compact label={`Who works on ${i.text.split('\n')[0]}`} value={i.assignees ?? []} onChange={(v) => p.onAssign(i.id, v)} />;
     return {
       id: String(i.id),
       status: done ? 'completed' : run && i.runStatus === 'running' ? 'in-progress' : 'pending',
@@ -20,11 +22,15 @@ export function Tracker(p: { goal: GoalView; onToggle: (item: number, done: bool
           <button type="button" className="gt-run" onClick={() => p.onGo({ tab: 'runs', id: i.runId })}>
             {i.runId} · {i.runStatus ?? 'unknown'}
           </button>
+          {who}
         </span>
       ) : (
-        <button type="button" className="gt-toggle" role="checkbox" aria-checked={done} onClick={() => p.onToggle(i.id, !done)}>
-          {i.text}
-        </button>
+        <span className="gt-item">
+          <button type="button" className="gt-toggle" role="checkbox" aria-checked={done} onClick={() => p.onToggle(i.id, !done)}>
+            {i.text}
+          </button>
+          {who}
+        </span>
       ),
     };
   });

@@ -3,8 +3,9 @@ import { Button } from '../components/beui/kit/Button';
 import { Input, Select, Switch } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
+import { Textarea } from '../components/kept/textarea/textarea';
 import type { WorkspaceRow } from '../home/workspaces';
-import { goalsApi, type GoalCheck, type GoalView } from './goalsApi';
+import { goalsApi, TYPE_LABEL, type GoalCheck, type GoalType, type GoalView } from './goalsApi';
 import './goals.css';
 
 type Kind = GoalCheck['kind'];
@@ -29,9 +30,15 @@ function CheckFields(p: { check: GoalCheck; onChange: (c: GoalCheck) => void }) 
 
 const BLANK: GoalCheck = { kind: 'command', command: '' };
 
+const TYPES = (Object.keys(TYPE_LABEL) as GoalType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }));
+/** The four goal types, in the New goal form and Settings. */
+export const TypeField = (p: { value: GoalType; onChange: (t: GoalType) => void }) => <SegmentedControl label="Type" options={TYPES} value={p.value} onValueChange={(v) => p.onChange(v as GoalType)} />;
+
 /** New goal (in the Goals dock): a title and a project; with a finish check it is an outcome loop, without one a tracker. */
-export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; workflows: string[]; onCreated: (g: GoalView) => void; onCancel: () => void }) {
+export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; workflows: string[]; /** Preset by the create menu. */ type?: GoalType; onCreated: (g: GoalView) => void; onCancel: () => void }) {
   const [title, setTitle] = useState('');
+  const [type, setType] = useState<GoalType>(p.type ?? 'feature');
+  const [desc, setDesc] = useState('');
   const [ws, setWs] = useState<string>();
   const [workflow, setWorkflow] = useState('team');
   const [withCheck, setWithCheck] = useState(false);
@@ -50,6 +57,8 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
     try {
       const g = await goalsApi.create({
         title,
+        type,
+        ...(desc.trim() ? { description: desc.trim() } : {}),
         workspace: project,
         workflow,
         ...(withCheck ? { check: { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) }, budgetUsd: Number(budget), maxRuns: Number(runs), approval } : {}),
@@ -73,6 +82,8 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
     >
       <p className="mut gd-note">{withCheck ? 'An outcome loop: Tether runs until the check passes or a cap is hit.' : 'A tracker: a checklist of items and linked runs.'}</p>
       <Input label="Title" value={title} placeholder="Login tests green" maxLength={200} autoFocus onChange={(e) => setTitle(e.target.value)} />
+      <TypeField value={type} onChange={setType} />
+      <Textarea label="Description" rows={2} maxLength={500} placeholder="One or two sentences (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
       <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />
       <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Team' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
       <div className="gd-switch">

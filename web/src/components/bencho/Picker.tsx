@@ -39,13 +39,15 @@ export interface PickerProps {
   hideLabel?: boolean;
   /** Adds a text row at the end of the list: type another value and press Enter to choose it (for a free-text field). */
   custom?: { label: string; placeholder?: string };
+  /** Draw this small control in place of the pill (a step's faces and a "+"); the list opens under it at its own width. */
+  trigger?: ReactNode;
   className?: string;
   id?: string;
 }
 
 const OPEN = { duration: 0.2, ease: [0.16, 1, 0.3, 1] } as const;
 
-export function Picker({ label, options: given, value, onChange, multiple = false, placeholder = 'Choose', disabled, hideLabel, custom, className, id }: PickerProps) {
+export function Picker({ label, options: given, value, onChange, multiple = false, placeholder = 'Choose', disabled, hideLabel, custom, trigger, className, id }: PickerProps) {
   const reduce = useReducedMotion();
   const auto = useId();
   const base = id ?? auto;
@@ -171,7 +173,7 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
 
   const lap = 10;
   return (
-    <div ref={root} className={cn('relative min-w-0', className)}>
+    <div ref={root} className={cn('relative min-w-0', trigger && 'inline-block', className)}>
       <span id={labelId} className={cn('mb-2 block text-sm font-medium text-foreground', hideLabel && 'sr-only')}>
         {label}
       </span>
@@ -186,9 +188,13 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
         disabled={disabled}
         onClick={() => (open ? close(false) : show())}
         onKeyDown={onPillKey}
-        className="flex h-11 w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 text-left text-sm text-foreground outline-none transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className={
+          trigger
+            ? 'flex items-center gap-1 rounded-full border-0 bg-transparent p-0.5 text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+            : 'flex h-11 w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 text-left text-sm text-foreground outline-none transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+        }
       >
-        {chosen.length ? (
+        {trigger ?? (chosen.length ? (
           <>
             <span className="relative flex flex-none items-center" style={{ width: multiple ? 28 + (chosen.length - 1) * (28 - lap) : 28, height: 28 }} aria-hidden="true">
               <AnimatePresence initial={false}>
@@ -211,8 +217,8 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
           </>
         ) : (
           <span className="min-w-0 flex-1 truncate text-muted-foreground">{placeholder}</span>
-        )}
-        <ChevronDown className={cn('size-4 flex-none text-muted-foreground transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />
+        ))}
+        {trigger ? null : <ChevronDown className={cn('size-4 flex-none text-muted-foreground transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />}
       </button>
 
       <AnimatePresence>
@@ -228,7 +234,7 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
             transition={reduce ? { duration: 0.1 } : OPEN}
             style={{ originY: 0 }}
-            className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1.5"
+            className={cn('absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1.5', trigger ? 'w-60' : 'right-0')}
           >
             {options.length === 0 ? <div className="px-2.5 py-3 text-sm text-muted-foreground">Nothing to choose from.</div> : null}
             {[undefined, ...heads].map((h) => {

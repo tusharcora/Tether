@@ -4,6 +4,7 @@ import { api, fmtUsd } from '../api';
 import type { NodeAction } from '../components/bencho/ActionNode';
 import { Button } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
+import { Textarea } from '../components/kept/textarea/textarea';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import type { WorkspaceRow } from '../home/workspaces';
@@ -16,11 +17,12 @@ import { StatusBadge, type Tone } from '../ui/studio/StatusBadge';
 import { Dock, FloatBar, ToolScreen } from '../ui/studio/ToolFrame';
 import { useCreateIntent } from '../ui/useCreateIntent';
 import { cn } from '../ui/cn';
-import { Avatars, Roster } from './Avatars';
+import { AssigneePicker } from './AssigneePicker';
+import { Avatars, Roster, useWho } from './Avatars';
 import { endOf, GoalNode, sections, TypeTile } from './GoalNode';
-import { copyOf, goalsApi, inProject, STATUS_LABEL, type GoalView } from './goalsApi';
+import { copyOf, goalsApi, inProject, STATUS_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
 import { LoopFlow } from './LoopFlow';
-import { CheckDialog, NewGoalForm } from './NewGoalDialog';
+import { CheckDialog, NewGoalForm, TypeField } from './NewGoalDialog';
 import { Tracker } from './Tracker';
 import './goals.css';
 
@@ -194,6 +196,11 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
   };
   const runs = g.items.filter((i) => i.kind === 'run').length;
   const loop = g.kind === 'loop';
+  const whoIs = useWho();
+  // the Owner (set by team chat) runs the work; read-only here
+  const owner: Assignee[] = [...(g.agent ? [{ kind: 'agent' as const, id: g.agent }] : []), ...(g.team ? [{ kind: 'team' as const, id: g.team }] : [])];
+  /** Set who works on a step, then take the goal as it now stands. */
+  const assign = (item: number, who: Assignee[]) => void run(async () => (await goalsApi.assignItem(g.id, item, who), api<GoalView>('GET', `/api/goals/${g.id}`)));
 
   return (
     <>
@@ -201,8 +208,17 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
         <Button size="sm" variant="ghost" aria-label="Back to goals" title="Goals" onClick={onBack}>
           <ArrowLeft size={15} aria-hidden="true" />
         </Button>
+        <TypeTile type={g.type} />
         <h2 className="gl-title">{g.title}</h2>
         <Badge g={g} />
+        {owner.length ? (
+          <span className="gl-owner" role="group" aria-label="Owner">
+            <span className="gl-owner-k">Owner</span>
+            <Avatars who={owner} size={22} />
+            <span className="gl-owner-name">{owner.map((a) => whoIs(a).name).join(' · ')}</span>
+          </span>
+        ) : null}
+        <AssigneePicker compact value={g.assignees ?? []} onChange={(v) => void run(() => goalsApi.patch(g.id, { assignees: v }))} />
         <span className="gl-kind">
           {loop ? `Outcome loop · ${g.workflow === 'team' ? 'Team' : `Workflow ${g.workflow}`}` : 'Tracker'}
           {g.status === 'met' ? ` · ${fmtUsd(g.spentUsd)} · ${runs} ${runs === 1 ? 'run' : 'runs'}` : ''}
@@ -255,12 +271,14 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
               start: (plan) => void run(() => goalsApi.next(g.id, 'start', plan)),
               skip: () => void run(() => goalsApi.next(g.id, 'skip')),
               duplicate,
+              assign,
             }}
           />
         ) : (
           <Tracker
             goal={g}
             focusAdd={focusAdd}
+            onAssign={assign}
             onGo={onGo}
             onToggle={(item, done) => void run(async () => (await goalsApi.toggleItem(g.id, item, done), api<GoalView>('GET', `/api/goals/${g.id}`)))}
             onAdd={(text) => void run(async () => (await goalsApi.addItem(g.id, text), api<GoalView>('GET', `/api/goals/${g.id}`)))}
@@ -304,6 +322,8 @@ function GoalSettings(p: { goal: GoalView; onClose: () => void; onSaved: (g: Goa
   const [budget, setBudget] = useState(String(p.goal.budgetUsd));
   const [runs, setRuns] = useState(String(p.goal.maxRuns));
   const [due, setDue] = useState(p.goal.dueDate ?? '');
+  const [type, setType] = useState<GoalType>(typeOf(p.goal));
+  const [desc, setDesc] = useState(p.goal.description ?? '');
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string>();
   const loop = p.goal.kind === 'loop';
@@ -340,13 +360,22 @@ function GoalSettings(p: { goal: GoalView; onClose: () => void; onSaved: (g: Goa
       onSubmit={async (e) => {
         e.preventDefault();
         try {
-          p.onSaved(await goalsApi.patch(p.goal.id, { ...(loop ? { budgetUsd: Number(budget), maxRuns: Number(runs) } : {}), dueDate: due || null }));
+          p.onSaved(
+            await goalsApi.patch(p.goal.id, {
+              ...(loop ? { budgetUsd: Number(budget), maxRuns: Number(runs) } : {}),
+              dueDate: due || null,
+              ...(type !== typeOf(p.goal) ? { type } : {}),
+              ...(desc.trim() !== (p.goal.description ?? '') ? { description: desc.trim() } : {}),
+            }),
+          );
           p.onClose();
         } catch (err) {
           setError((err as Error).message);
         }
       }}
     >
+      <TypeField value={type} onChange={setType} />
+      <Textarea label="Description" rows={3} maxLength={500} value={desc} onChange={(e) => setDesc(e.target.value)} />
       {loop ? (
         <div className="gd-row">
           <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />

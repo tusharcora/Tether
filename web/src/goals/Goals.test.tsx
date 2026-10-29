@@ -321,3 +321,84 @@ describe('New goal', () => {
     expect(screen.queryByRole('complementary', { name: 'New goal' })).toBeNull();
   });
 });
+
+const roster = { teams: [{ id: 'core', name: 'Core', place: 'tether' as const, project: 'w', agents: ['coder'], status: 'idle' as const }], agents: [{ id: 'coder', name: 'Bolt', specialty: 'coder' }, { id: 'reviewer', name: 'Lens', specialty: 'reviewer' }] };
+
+describe('owner and assignees', () => {
+  it('assignee picker saves via PATCH, with Teams and Agents as groups', async () => {
+    const set = vi.fn();
+    routeApi({ 'PATCH /api/goals/g1': (b: object) => ({ ...loop(), ...b }) });
+    renderApp(<Goals {...props([loop()], { selected: 'g1', teams: roster, goals: { goals: [loop()], error: undefined, set, drop: vi.fn() } })} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Assignees' }));
+    const list = screen.getByRole('listbox');
+    expect(within(list).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Teams', 'Agents']);
+    fireEvent.click(within(list).getByRole('option', { name: 'Core' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ assignees: [{ kind: 'team', id: 'core' }] }));
+    await waitFor(() => expect(set).toHaveBeenCalled());
+  });
+
+  it('lists every assignee as chosen, a removed one included', () => {
+    routeApi({});
+    const six = [{ kind: 'team' as const, id: 'core' }, { kind: 'team' as const, id: 'gone' }, ...['coder', 'reviewer', 'tester', 'ghost'].map((id) => ({ kind: 'agent' as const, id }))];
+    renderApp(<Goals {...props([loop({ assignees: six })], { selected: 'g1', teams: roster })} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Assignees' }));
+    const chosen = within(screen.getByRole('listbox')).getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true');
+    expect(chosen.map((o) => o.getAttribute('aria-label'))).toEqual(['Core', 'gone (removed)', 'Bolt', 'Lens', 'Probe', 'ghost (removed)']);
+  });
+
+  it('step picker saves via item PATCH, on a loop run and a tracker row', async () => {
+    routeApi({ 'PATCH /api/goals/g1/items/1': { id: 1 }, 'GET /api/goals/g1': loop() });
+    renderApp(<Goals {...props([loop()], { selected: 'g1', teams: roster })} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Who works on Run 1' }));
+    fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name: 'Bolt' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1/items/1')[0]?.[2]).toEqual({ assignees: [{ kind: 'agent', id: 'coder' }] }));
+  });
+
+  it('a tracker row has the compact step picker too', async () => {
+    routeApi({ 'PATCH /api/goals/t1/items/2': { id: 2 }, 'GET /api/goals/t1': tracker() });
+    renderApp(<Goals {...props([tracker()], { selected: 't1', teams: roster })} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Who works on Update docs' }));
+    fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name: 'Core' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/t1/items/2')[0]?.[2]).toEqual({ assignees: [{ kind: 'team', id: 'core' }] }));
+  });
+
+  it('owner pill shows team/agent when set and is read-only', () => {
+    routeApi({});
+    const { unmount } = renderApp(<Goals {...props([loop({ team: 'core', agent: 'coder' })], { selected: 'g1', teams: roster })} />);
+    const owner = screen.getByRole('group', { name: 'Owner' });
+    expect(owner.textContent).toContain('Bolt');
+    expect(owner.textContent).toContain('Core');
+    expect(within(owner).queryByRole('button')).toBeNull();
+    expect(within(owner).queryByRole('combobox')).toBeNull();
+    unmount();
+    renderApp(<Goals {...props([loop()], { selected: 'g1', teams: roster })} />);
+    expect(screen.queryByRole('group', { name: 'Owner' })).toBeNull();
+  });
+});
+
+describe('type and description', () => {
+  it('settings changes type and description', async () => {
+    routeApi({ 'PATCH /api/goals/g1': (b: object) => ({ ...loop(), ...b }) });
+    renderApp(<Goals {...props([loop()], { selected: 'g1' })} />);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Goal actions' })).getByRole('button', { name: 'Settings' }));
+    const dock = screen.getByRole('complementary', { name: 'Goal settings' });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Bug fix' }));
+    fireEvent.change(within(dock).getByLabelText('Description'), { target: { value: 'Users get logged out after a minute.' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 5, maxRuns: 4, dueDate: null, type: 'bugfix', description: 'Users get logged out after a minute.' }));
+  });
+
+  it('new goal form sends type and description', async () => {
+    routeApi({ 'GET /api/pipelines': [], 'POST /api/goals': tracker() });
+    renderApp(<Goals {...props([])} />);
+    fireEvent.click(screen.getByRole('button', { name: '+ New goal' }));
+    const dock = screen.getByRole('complementary', { name: 'New goal' });
+    fireEvent.change(within(dock).getByLabelText('Title'), { target: { value: 'Tidy auth' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Refactor' }));
+    fireEvent.change(within(dock).getByLabelText('Description'), { target: { value: 'Split the session module.' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Create goal' }));
+    await waitFor(() => expect(calls('POST', '/api/goals')).toHaveLength(1));
+    expect(calls('POST', '/api/goals')[0]?.[2]).toMatchObject({ title: 'Tidy auth', type: 'refactor', description: 'Split the session module.' });
+  });
+});
+
