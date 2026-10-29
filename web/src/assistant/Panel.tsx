@@ -1,14 +1,14 @@
-import { PanelRight, PictureInPicture2, SquarePen, X } from 'lucide-react';
+import { Maximize2, PanelRight, PictureInPicture2, Plus, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { TetherFace } from '../components/faces/TetherFace';
 
 /**
- * The assistant's panel: floating (384×560, springing from the launcher's corner) or docked (420 px beside the screen).
- * The header holds Tether's face, its name and what it knows ("knows <project> · sees the <page> page"), New chat, dock or
- * pop out (not on a phone), and close.
+ * The mini chat (mockup boards 4, 5): floating (380×520, springing from the launcher's corner) or docked (420 px beside
+ * the screen). The header holds Tether's face, the chat's title (the switcher), New chat, full screen, dock or pop out
+ * (not on a phone) and close; under it, what Tether sees ("Sees: Runs · R-4F21").
  */
-export function Panel(p: { mode: 'float' | 'docked'; context: string; canDock: boolean; onDock: (on: boolean) => void; onNewChat: () => void; onClose: () => void; children: ReactNode }) {
+export function Panel(p: { mode: 'float' | 'docked'; switcher: ReactNode; context: string; canDock: boolean; onDock: (on: boolean) => void; onNewChat: () => void; onFullScreen: () => void; onClose: () => void; children: ReactNode }) {
   const reduce = useReducedMotion();
   const float = p.mode === 'float';
   const enter = reduce ? { opacity: 0 } : float ? { opacity: 0, scale: 0.94, y: 10 } : { opacity: 0, x: 20 };
@@ -22,13 +22,13 @@ export function Panel(p: { mode: 'float' | 'docked'; context: string; canDock: b
       transition={{ duration: float ? 0.28 : 0.26, ease: [0.2, 0.8, 0.2, 1] }}
     >
       <header className="tether-head">
-        <TetherFace size={30} eyeScale={1.15} within=".tether-panel" />
-        <div className="tether-head-text">
-          <div className="tether-head-title">Tether</div>
-          <div className="tether-head-ctx">{p.context}</div>
-        </div>
+        <TetherFace size={22} eyeScale={1.15} within=".tether-panel" />
+        {p.switcher}
         <button type="button" className="tether-icon-btn" aria-label="New chat" title="New chat" onClick={p.onNewChat}>
-          <SquarePen size={15} strokeWidth={1.8} aria-hidden="true" />
+          <Plus size={16} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+        <button type="button" className="tether-icon-btn" aria-label="Open full screen" title="Open full screen" onClick={p.onFullScreen}>
+          <Maximize2 size={14} strokeWidth={1.8} aria-hidden="true" />
         </button>
         {p.canDock ? (
           float ? (
@@ -45,6 +45,7 @@ export function Panel(p: { mode: 'float' | 'docked'; context: string; canDock: b
           <X size={16} strokeWidth={1.8} aria-hidden="true" />
         </button>
       </header>
+      <div className="tether-sees">{p.context}</div>
       <div className="tether-body">{p.children}</div>
     </motion.section>
   );

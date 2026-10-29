@@ -362,7 +362,19 @@ function Shell() {
           </main>
           {settingsPage}
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
-          <Assistant shell={shell} chat={chat} project={projects.current} route={screen} phone={phone} hidden={onChatScreen} onNewChat={() => setActiveChat(undefined)} onGo={go} />
+          <Assistant
+            shell={shell}
+            chat={chat}
+            chats={chats.data?.chats ?? []}
+            project={projects.current}
+            route={screen}
+            phone={phone}
+            hidden={onChatScreen}
+            onPick={setActiveChat}
+            onFullScreen={() => (shell.close(), go({ tab: 'chats', id: activeChat ?? 'new' }))}
+            onAllChats={() => go({ tab: 'chats' })}
+            onGo={go}
+          />
         </div>
       )}
       {welcome && settingsPage ? <div className="st-alone">{settingsPage}</div> : null}

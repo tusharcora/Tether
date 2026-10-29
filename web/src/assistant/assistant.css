@@ -11,13 +11,23 @@
 @keyframes tether-ring { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.32); } }
 
 .tether-panel { display: flex; flex-direction: column; min-height: 0; background: var(--bg); color: var(--ink); font-size: 13.5px; }
-.tether-panel.float { position: fixed; right: 20px; bottom: 88px; z-index: 40; width: 384px; height: 560px; max-height: calc(100vh - 108px); border-radius: 16px; overflow: hidden; box-shadow: 0 0 0 1px var(--line2), 0 18px 50px rgba(0, 0, 0, .18); transform-origin: bottom right; }
-.shell.phone .tether-panel.float { right: 8px; left: 8px; width: auto; bottom: calc(128px + env(safe-area-inset-bottom)); height: min(560px, calc(100vh - 150px)); }
+.tether-panel.float { position: fixed; right: 20px; bottom: 88px; z-index: 40; width: 380px; height: 520px; max-height: calc(100vh - 108px); border-radius: 16px; overflow: hidden; box-shadow: 0 0 0 1px var(--line2), 0 18px 50px rgba(0, 0, 0, .18); transform-origin: bottom right; }
+.shell.phone .tether-panel.float { right: 8px; left: 8px; width: auto; bottom: calc(128px + env(safe-area-inset-bottom)); height: min(520px, calc(100vh - 150px)); }
 .tether-panel.docked { width: 420px; height: 100%; border-left: 1px solid var(--line); }
-.tether-head { display: flex; flex: none; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line); --tf-slab: var(--ink); --tf-eye: var(--bg); }
-.tether-head-text { flex: 1; min-width: 0; }
-.tether-head-title { font-size: 14px; font-weight: 600; }
-.tether-head-ctx { overflow: hidden; color: var(--mut); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.tether-head { position: relative; display: flex; flex: none; align-items: center; gap: 4px; height: 44px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); --tf-slab: var(--ink); --tf-eye: var(--bg); }
+.tether-sees { flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); color: var(--mut); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the title is the chat switcher (mockup board 5): a popover under the header */
+.tether-switch { flex: 1; min-width: 0; }
+.tether-switch-btn { display: flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.tether-switch-btn:hover { background: var(--s2); }
+.tether-switch-btn svg { flex: none; color: var(--mut); }
+.tether-switch-title { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.tether-switch-pop { position: absolute; top: 40px; left: 8px; z-index: 2; display: flex; flex-direction: column; gap: 2px; width: 300px; max-width: calc(100% - 16px); padding: 6px; box-sizing: border-box; border: 1px solid var(--line2); border-radius: 10px; background: var(--s1); box-shadow: 0 12px 30px rgba(0, 0, 0, .18); }
+.tether-switch-pop > :first-child { margin-bottom: 4px; }
+.tether-switch-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.tether-switch-item:hover, .tether-switch-item:focus-visible, .tether-switch-item[aria-current] { background: var(--s2); }
+.tether-switch-all { margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; color: var(--mut); font-size: 12px; }
+.tether-switch-empty { margin: 4px 8px; color: var(--mut); font-size: 12px; }
 .tether-icon-btn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--mut); cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .tether-icon-btn:hover { background: var(--s2); color: var(--ink); }
 .tether-body { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow-x: hidden; }

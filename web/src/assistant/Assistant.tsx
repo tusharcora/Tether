@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import type { Route, Screen } from '../hooks';
+import type { ChatSummary } from './api';
 import { Chat } from './Chat';
+import { ChatSwitcher } from './ChatSwitcher';
 import { contextLine, contextOf } from './context';
 import { Launcher } from './Launcher';
 import { Panel } from './Panel';
@@ -20,14 +22,21 @@ export interface AssistantProps {
   phone: boolean;
   /** On a full-screen chat the launcher and the panel step aside. */
   hidden?: boolean;
-  onNewChat: () => void;
+  /** The project's chats, newest first, for the switcher. */
+  chats: ChatSummary[];
+  /** Make a chat the active one (none: a new chat). */
+  onPick: (id: string | undefined) => void;
+  /** The active chat full screen. */
+  onFullScreen: () => void;
+  onAllChats: () => void;
   /** Where a citation or a started run goes. */
   onGo: (r: Route) => void;
 }
 
 /**
- * Tether, the assistant (spec §4): the launcher on every screen, opening a floating panel or a panel docked beside the
- * screen. Rendered inside the shell grid: docked, it is the grid's third column; floating, it is fixed over the screen.
+ * Tether, the assistant (spec §4): the launcher on every screen, opening the mini chat (floating) or a panel docked beside
+ * the screen, both on the active chat. Rendered inside the shell grid: docked, it is the grid's third column; floating,
+ * it is fixed over the screen.
  */
 export function Assistant(p: AssistantProps) {
   const { shell, chat } = p;
@@ -39,7 +48,16 @@ export function Assistant(p: AssistantProps) {
   };
   const panel =
     shell.mode === 'closed' ? null : (
-      <Panel mode={shell.mode} context={contextLine(p.project?.name, p.route.tab)} canDock={!p.phone} onDock={shell.dock} onNewChat={p.onNewChat} onClose={close}>
+      <Panel
+        mode={shell.mode}
+        switcher={<ChatSwitcher title={chat.title ?? 'New chat'} chats={p.chats} current={chat.chatId} onPick={p.onPick} onAll={p.onAllChats} />}
+        context={contextLine(p.route)}
+        canDock={!p.phone}
+        onDock={shell.dock}
+        onNewChat={() => p.onPick(undefined)}
+        onFullScreen={p.onFullScreen}
+        onClose={close}
+      >
         <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} />
       </Panel>
     );
