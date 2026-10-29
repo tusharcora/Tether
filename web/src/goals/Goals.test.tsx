@@ -165,6 +165,12 @@ describe('the goals page', () => {
     expect(title.closest('.gn-node')).toBeTruthy();
   });
 
+  it('takes a column off while a panel is docked, and the status shrinks rather than spill out of the node', () => {
+    const css = cssText('goals/goals.css');
+    expect(css).toMatch(/\.gl-screen\.docked \.gn-grid \{ grid-template-columns: repeat\(2,minmax\(0,1fr\)\)/);
+    expect(css).toMatch(/\.gn-status \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis/);
+  });
+
   it('lifts and dims with CSS only, and not under reduced motion', () => {
     const css = cssText('goals/goals.css');
     // keyboard focus lifts and dims; a mouse click (which focuses the button in Chromium) leaves nothing stuck

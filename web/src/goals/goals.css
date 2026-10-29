@@ -13,6 +13,8 @@
 
 /* Now: three equal columns; every module is a 168 px node and a 48 px strip, so nothing in a row moves */
 .gn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+/* a docked panel takes 352 px: the grid gives up a column rather than squeeze the nodes */
+.gl-screen.docked .gn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .gn-mod { display: flex; flex-direction: column; gap: 8px; min-width: 0; transition: opacity var(--t-med) var(--ease); }
 .nod-card.gn-node { box-sizing: border-box; height: 168px; display: flex; flex-direction: column; padding: 16px 18px; border-color: var(--line); background: var(--s1); transition: transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease); }
 .nod-card.gn-node.t-needs { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
@@ -36,7 +38,7 @@
 .gn-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 15.5px; font-weight: 500; line-height: 19px; }
 .gn-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 10px 0 0; font-size: 13px; line-height: 18px; color: var(--mut); }
 .gn-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; margin-top: auto; }
-.gn-status { margin-left: auto; font-size: 12.5px; color: var(--mut); white-space: nowrap; }
+.gn-status { min-width: 0; margin-left: auto; overflow: hidden; font-size: 12.5px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
 .gn-strip { box-sizing: border-box; flex: none; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 8px 0 14px; border-radius: 14px; background: color-mix(in srgb, var(--s1) 70%, var(--bg)); font-size: 13px; }
 .gn-strip-label { flex: none; font-weight: 500; }
 .gn-strip.t-needs .gn-strip-label { color: var(--warn); }
@@ -95,6 +97,7 @@
 
 @media (max-width: 1199px) {
   .gn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gl-screen.docked .gn-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 899px) {
   .gl-screen { overflow: auto; }
