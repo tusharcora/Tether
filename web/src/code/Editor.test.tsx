@@ -41,12 +41,31 @@ describe('Editor', () => {
     expect(viewOf(container).state.doc.toString()).toBe('reloaded');
   });
 
-  it('marks the lines a run changed and clears them', () => {
-    const { container, rerender } = render(<Editor {...base} marks={[{ start: 2, lines: 2 }, { start: 9, lines: 1 }]} />);
-    const marked = () => [...container.querySelectorAll('.cm-line.cm-run-line')].map((l) => l.textContent);
-    expect(marked()).toEqual(['// two', 'let b = "s";']);
-    rerender(<Editor {...base} marks={[]} />);
-    expect(marked()).toEqual([]);
+  it('marks every run in the gutter; live wins; the picked run is tinted', () => {
+    // a hunk past the end (the run's version was longer) and a pure deletion mark nothing
+    const runs = [
+      { hunks: [{ start: 1, lines: 2 }], live: true },
+      { hunks: [{ start: 2, lines: 2 }, { start: 9, lines: 1 }, { start: 4, lines: 0 }], live: false, picked: true },
+    ];
+    const { container, rerender } = render(<Editor {...base} runs={runs} />);
+    const gutter = (cls: string) => [...container.querySelectorAll(`.cm-gutterElement.${cls}`)].map((e) => e.textContent);
+    const tinted = () => [...container.querySelectorAll('.cm-line.cm-run-line')].map((l) => l.textContent);
+    expect(gutter('cm-run-live')).toEqual(['1', '2']);
+    expect(gutter('cm-run-done')).toEqual(['3']);
+    expect(tinted()).toEqual(['// two', 'let b = "s";']);
+    expect(container.querySelector('.cm-run-line-live')).toBeNull();
+    rerender(<Editor {...base} runs={[{ ...runs[0]!, picked: true }]} />);
+    expect(container.querySelectorAll('.cm-line.cm-run-line.cm-run-line-live')).toHaveLength(2);
+    rerender(<Editor {...base} runs={[]} />);
+    expect([...gutter('cm-run-live'), ...gutter('cm-run-done'), ...tinted()]).toEqual([]);
+  });
+
+  it('reports the cursor line and column', () => {
+    const onCursor = vi.fn();
+    const { container } = render(<Editor {...base} onCursor={onCursor} />);
+    expect(onCursor).toHaveBeenLastCalledWith(1, 1);
+    act(() => viewOf(container).dispatch({ selection: { anchor: TEXT.indexOf('two') } }));
+    expect(onCursor).toHaveBeenLastCalledWith(2, 4);
   });
 
   it('highlights a line it was asked to show, then lets it fade', () => {

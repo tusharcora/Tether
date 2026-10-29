@@ -200,7 +200,9 @@ describe('the CodeMirror theme', () => {
     const theme = read('code/cmTheme.ts');
     expect(theme.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|oklch\(/g) ?? []).toEqual([]);
     for (const token of ['--ink', '--ok', '--warn', '--mut', '--s3']) expect(theme).toContain(`var(${token})`);
-    expect(theme).not.toMatch(/var\(--acc/);
+    // blue means live: only the live-run marks take the accent
+    expect(theme).toMatch(/cm-run-live'.*var\(--acc\)/);
+    expect(theme.replace(/^\s*'[^'\n]*cm-run[^'\n]*-live':.*$/gm, '')).not.toMatch(/var\(--acc/);
   });
 });
 

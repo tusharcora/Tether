@@ -29,8 +29,8 @@ function CheckFields(p: { check: GoalCheck; onChange: (c: GoalCheck) => void }) 
 
 const BLANK: GoalCheck = { kind: 'command', command: '' };
 
-/** New goal: a title and a project; with a finish check it is an outcome loop, without one a tracker. */
-export function NewGoalDialog(p: { open: boolean; onOpenChange: (o: boolean) => void; projects: WorkspaceRow[]; current?: string; workflows: string[]; onCreated: (g: GoalView) => void }) {
+/** New goal (in the Goals dock): a title and a project; with a finish check it is an outcome loop, without one a tracker. */
+export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; workflows: string[]; onCreated: (g: GoalView) => void; onCancel: () => void }) {
   const [title, setTitle] = useState('');
   const [ws, setWs] = useState<string>();
   const [workflow, setWorkflow] = useState('team');
@@ -55,10 +55,6 @@ export function NewGoalDialog(p: { open: boolean; onOpenChange: (o: boolean) => 
         ...(withCheck ? { check: { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) }, budgetUsd: Number(budget), maxRuns: Number(runs), approval } : {}),
         ...(due ? { dueDate: due } : {}),
       });
-      p.onOpenChange(false);
-      setTitle('');
-      setCheck(BLANK);
-      setWithCheck(false);
       p.onCreated(g);
     } catch (e) {
       setError((e as Error).message);
@@ -68,54 +64,49 @@ export function NewGoalDialog(p: { open: boolean; onOpenChange: (o: boolean) => 
   };
 
   return (
-    <Dialog open={p.open} onOpenChange={p.onOpenChange}>
-      {p.open ? (
-        <DialogContent title="New goal" description={withCheck ? 'An outcome loop: Tether runs until the check passes or a cap is hit.' : 'A tracker: a checklist of items and linked runs.'}>
-          <form
-            className="gd"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-          >
-            <Input label="Title" value={title} placeholder="Login tests green" maxLength={200} autoFocus onChange={(e) => setTitle(e.target.value)} />
-            <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />
-            <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Team' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
-            <div className="gd-switch">
-              <div>
-                <strong>Add a finish check</strong>
-                <p className="mut">Tether re-runs it after every run until it passes.</p>
-              </div>
-              <Switch aria-label="Add a finish check" checked={withCheck} onCheckedChange={setWithCheck} />
-            </div>
-            {withCheck ? (
-              <>
-                <CheckFields check={check} onChange={setCheck} />
-                <div className="gd-row">
-                  <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />
-                  <Input label="Max runs" type="number" min={1} max={50} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
-                </div>
-                <SegmentedControl label="Approval" options={[{ value: 'ask', label: 'Ask each run' }, { value: 'auto', label: 'Auto' }]} value={approval} onValueChange={(v) => setApproval(v as 'ask' | 'auto')} />
-              </>
-            ) : null}
-            <Input label="Due date (optional)" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-            {error ? (
-              <p className="sl-alert" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="row end">
-              <Button type="button" variant="secondary" onClick={() => p.onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" loading={busy} disabled={!title.trim() || !project || (withCheck && !check.command.trim())}>
-                Create goal
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
+    <form
+      className="gd"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <p className="mut gd-note">{withCheck ? 'An outcome loop: Tether runs until the check passes or a cap is hit.' : 'A tracker: a checklist of items and linked runs.'}</p>
+      <Input label="Title" value={title} placeholder="Login tests green" maxLength={200} autoFocus onChange={(e) => setTitle(e.target.value)} />
+      <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />
+      <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Team' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
+      <div className="gd-switch">
+        <div>
+          <strong>Add a finish check</strong>
+          <p className="mut">Tether re-runs it after every run until it passes.</p>
+        </div>
+        <Switch aria-label="Add a finish check" checked={withCheck} onCheckedChange={setWithCheck} />
+      </div>
+      {withCheck ? (
+        <>
+          <CheckFields check={check} onChange={setCheck} />
+          <div className="gd-row">
+            <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />
+            <Input label="Max runs" type="number" min={1} max={50} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
+          </div>
+          <SegmentedControl label="Approval" options={[{ value: 'ask', label: 'Ask each run' }, { value: 'auto', label: 'Auto' }]} value={approval} onValueChange={(v) => setApproval(v as 'ask' | 'auto')} />
+        </>
       ) : null}
-    </Dialog>
+      <Input label="Due date (optional)" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+      {error ? (
+        <p className="sl-alert" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="row end">
+        <Button type="button" variant="secondary" onClick={p.onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" loading={busy} disabled={!title.trim() || !project || (withCheck && !check.command.trim())}>
+          Create goal
+        </Button>
+      </div>
+    </form>
   );
 }
 
