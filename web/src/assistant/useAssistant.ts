@@ -12,6 +12,8 @@ export interface Streaming {
 }
 
 export interface Assistant {
+  /** The project the chat is in (none: the chats with no project). */
+  ws?: string;
   /** The open chat; none is a new chat, saved by its first message. */
   chatId?: string;
   title?: string;
@@ -57,6 +59,7 @@ export interface SendOptions {
   context?: AssistantContext;
   model?: string;
   agent?: string;
+  bot?: string;
   attachments?: { name: string; text: string }[];
   answer?: { message: string; result: string };
   regenerate?: string;
@@ -168,7 +171,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       setStreaming(draft);
     };
     try {
-      await streamTurn({ ws: forWs, ...(forChat ? { chat: forChat } : {}), message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}), ...(o.regenerate ? { regenerate: o.regenerate } : {}) }, onEvent, ctl.signal);
+      await streamTurn({ ws: forWs, ...(forChat ? { chat: forChat } : {}), message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.bot ? { bot: o.bot } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}), ...(o.regenerate ? { regenerate: o.regenerate } : {}) }, onEvent, ctl.signal);
     } catch (e) {
       if (forKey === ref.current.key) {
         const stopped = ctl.signal.aborted;
@@ -189,6 +192,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
   const chat = () => ref.current.chatId;
 
   return {
+    ws,
     chatId,
     title,
     messages,

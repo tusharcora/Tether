@@ -18,10 +18,11 @@ import { StoppedRun } from '../components/assistant-ui/elements/stopped-run';
 import { Timeline } from '../components/assistant-ui/elements/timeline';
 import { Citations, type CitationItem } from '../components/beui/agents/citations';
 import { StreamingResponse } from '../components/beui/agents/streaming-response';
-import type { ArtifactRef, ChatMessage, Cite } from './api';
+import { assistantApi, type ArtifactRef, type ChatMessage, type Cite } from './api';
 import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, DiagramCard, ProposalCard, ToolAskCard } from './cards';
+import { promptFrom } from './Prompts';
 import { Thinking } from './Thinking';
 import { useNotify } from '../ui/notify';
 import { cn } from '../ui/cn';
@@ -109,6 +110,26 @@ function ReplyActions({ m, text, chat }: { m: ChatMessage; text: string; chat: A
         />
       ) : null}
     </>
+  );
+}
+
+/** A message you sent, with Save as prompt under it (on hover or focus) for the prompt library. */
+function YourMessage({ m, chat }: { m: ChatMessage; chat: Assistant }) {
+  const notify = useNotify();
+  const save = () => {
+    const p = promptFrom(m.text);
+    void assistantApi.savePrompt(chat.ws, p).then(() => notify.ok('Saved as a prompt', p.name), notify.fail);
+  };
+  return (
+    <div className={cn('group flex max-w-[80%] flex-col items-end gap-1 self-end', m.compactedBy && 'opacity-60')}>
+      <div className="rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap" data-role="you">
+        {m.text}
+        {m.attachments?.length ? <div className="mt-1 text-xs text-muted-foreground">{m.attachments.map((a) => a.name).join(', ')}</div> : null}
+      </div>
+      <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100" onClick={save}>
+        Save as prompt
+      </button>
+    </div>
   );
 }
 
@@ -232,10 +253,7 @@ export function Thread({ chat, onGo, empty, project, onArtifact }: { chat: Assis
         m.compactedBy && !shown.has(m.compactedBy) ? null : m.compact ? (
           <CompactRow key={m.id} m={m} open={shown.has(m.id)} newest={m.id === newest} onToggle={() => toggle(m.id)} chat={chat} />
         ) : m.role === 'you' ? (
-          <div key={m.id} className={cn('max-w-[80%] self-end rounded-xl bg-muted px-3 py-2 whitespace-pre-wrap', m.compactedBy && 'opacity-60')} data-role="you">
-            {m.text}
-            {m.attachments?.length ? <div className="mt-1 text-xs text-muted-foreground">{m.attachments.map((a) => a.name).join(', ')}</div> : null}
-          </div>
+          <YourMessage key={m.id} m={m} chat={chat} />
         ) : (
           <TetherMessage key={m.id} m={m} {...asked(chat.messages.slice(0, i).findLast((x) => x.role === 'you'))} chat={chat} onGo={onGo} dim={!!m.compactedBy} project={project} onArtifact={onArtifact} />
         ),

@@ -378,7 +378,7 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} /> : null}
-            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} /> : null}
+            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} /> : null}
             {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
               <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
             ) : null}

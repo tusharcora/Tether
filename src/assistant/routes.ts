@@ -10,6 +10,7 @@ import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { artifactsDir, deleteArtifact, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
+import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } from './prompts.js';
 import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
@@ -44,6 +45,7 @@ function parseBody(b: Record<string, unknown>): TurnBody {
     ...(context ? { context } : {}),
     ...(typeof b.model === 'string' && b.model ? { model: b.model.slice(0, 120) } : {}),
     ...(typeof b.agent === 'string' && b.agent ? { agent: b.agent.slice(0, 40) } : {}),
+    ...(typeof b.bot === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(b.bot) ? { bot: b.bot } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(ans && typeof ans.message === 'string' && typeof ans.result === 'string' ? { answer: { message: ans.message, result: ans.result } } : {}),
   };
@@ -249,6 +251,22 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const v = url.searchParams.get('v');
     if (v !== null && !/^\d{1,4}$/.test(v)) throw new HttpError(400, '"v" must be a version number');
     return send(res, 200, readArtifact(dir, id, v === null ? undefined : Number(v))), true;
+  }
+
+  // The person's saved prompts (no project: Tether's own file)
+  if (p === '/api/assistant/prompts' && (m === 'GET' || m === 'POST')) {
+    if (m === 'GET') return send(res, 200, { prompts: listPrompts(promptsFile(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))))) }), true;
+    const b = reqObject(await readJson(req, 100_000));
+    return send(res, 200, { prompt: createPrompt(promptsFile(c.home, rootOf(c, wsOf(b.ws))), b) }), true;
+  }
+  if ((g = p.match(/^\/api\/assistant\/prompts\/([^/]+)$/)) && (m === 'PATCH' || m === 'DELETE')) {
+    const id = decodeURIComponent(g[1]!);
+    if (m === 'DELETE') {
+      if (!deletePrompt(promptsFile(c.home, rootOf(c, wsOf(url.searchParams.get('ws')))), id)) throw new HttpError(404, 'no such prompt');
+      return send(res, 200, { ok: true }), true;
+    }
+    const b = reqObject(await readJson(req, 100_000));
+    return send(res, 200, { prompt: updatePrompt(promptsFile(c.home, rootOf(c, wsOf(b.ws))), id, b) }), true;
   }
 
   // Discard a stopped or failed reply

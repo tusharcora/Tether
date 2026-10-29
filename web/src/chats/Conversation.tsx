@@ -16,7 +16,7 @@ import './chats.css';
  * the same menu under ⋯; the thread in a centred 760 px column with the composer pinned under it. A pressed artifact card
  * opens the artifact in a panel beside the thread.
  */
-export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void> }) {
+export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void>; onNewChat?: () => void }) {
   const notify = useNotify();
   const [renaming, setRenaming] = useState<string>();
   /** Escape leaves the title as it was (the field's blur would save it). */
@@ -62,7 +62,7 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
       </header>
       <div className="chat-split">
         <div className="chat-col">
-          <Chat chat={p.chat} project={p.project?.name} context={p.context} onGo={p.onGo} wide placeholder="Reply to Tether…" onArtifact={setArtifact} />
+          <Chat chat={p.chat} project={p.project?.name} context={p.context} onGo={p.onGo} wide placeholder="Reply to Tether…" onArtifact={setArtifact} onNewChat={p.onNewChat} />
         </div>
         {artifact ? (
           <aside className="chat-artifact">

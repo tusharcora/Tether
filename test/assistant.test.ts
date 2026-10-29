@@ -497,6 +497,36 @@ describe('artifacts', () => {
   });
 });
 
+describe('the composer’s prompts and mentions', () => {
+  it('saves, lists, edits and deletes prompts per project, checked at the door', async () => {
+    const t = await boot();
+    const made = await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: 'Explain', body: 'Explain {{file}}' });
+    expect(made.json.prompt).toMatchObject({ name: 'Explain', variables: ['file'] });
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'prompts.json'), 'utf8')).toContain('Explain {{file}}');
+    expect((await t.call('GET', '/api/assistant/prompts?ws=api')).json.prompts).toHaveLength(1);
+    // another project's (here: no project's) prompts are its own
+    expect((await t.call('GET', '/api/assistant/prompts')).json.prompts).toEqual([]);
+    const id = made.json.prompt.id as string;
+    expect((await t.call('PATCH', `/api/assistant/prompts/${id}`, { ws: 'api', name: 'Explain a file' })).json.prompt.name).toBe('Explain a file');
+    expect((await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: '', body: 'x' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/assistant/prompts/${encodeURIComponent('../x')}`, { ws: 'api', name: 'y' })).status).toBe(400);
+    expect((await t.call('DELETE', `/api/assistant/prompts/${id}?ws=api`)).status).toBe(200);
+    expect((await t.call('DELETE', `/api/assistant/prompts/${id}?ws=api`)).status).toBe(404);
+  });
+
+  it('an @mentioned crew bot answers on its own binding; one with no binding leaves it to Tether', async () => {
+    const t = await boot();
+    const r = await t.turn({ message: '@Bolt what is the limit?', bot: 'coder' });
+    expect(r.done!.message.context?.agent).toBe('mock');
+    expect(t.agent.prompts).toHaveLength(0);
+    const r2 = await t.turn({ message: '@Lens hi', bot: 'reviewer' });
+    expect(r2.done!.message.context?.agent).toBe('scripted');
+    // not a bot id: ignored
+    const r3 = await t.turn({ message: 'hi', bot: '../x' });
+    expect(r3.done!.message.context?.agent).toBe('scripted');
+  });
+});
+
 describe('an agent turn (teams)', () => {
   it('speaks as the given agent with the extra context, and saves no chat', async () => {
     const t = await boot();

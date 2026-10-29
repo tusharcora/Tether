@@ -1,7 +1,7 @@
-import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
+import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, SavedPrompt, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
-export type { ArtifactKind, ArtifactMeta, ArtifactRef, ArtifactView, AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
+export type { ArtifactKind, ArtifactMeta, ArtifactRef, ArtifactView, SavedPrompt, AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
 export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
 /** `?ws=…&chat=…` with the parts that are set. */
@@ -13,6 +13,8 @@ const q = (o: Record<string, string | undefined>) => {
 export const chatsPath = (ws: string | undefined, search?: string) => `/api/assistant/chats${q({ ws, q: search })}`;
 /** Where the project's artifacts are listed (the Artifacts screen polls it). */
 export const artifactsPath = (ws: string | undefined) => `/api/assistant/artifacts${q({ ws })}`;
+/** Where the project's saved prompts are read (the prompt library). */
+export const promptsPath = (ws: string | undefined) => `/api/assistant/prompts${q({ ws })}`;
 
 export interface SendBody {
   ws?: string;
@@ -22,6 +24,8 @@ export interface SendBody {
   context?: AssistantContext;
   model?: string;
   agent?: string;
+  /** An @mentioned crew bot: the turn runs on its agent and model. */
+  bot?: string;
   attachments?: { name: string; text: string }[];
   /** This message answers the question card on that Tether message; the card collapses to `result`. */
   answer?: { message: string; result: string };
@@ -46,6 +50,8 @@ export const assistantApi = {
   /** An artifact with one version's content (the latest unless `v`). */
   artifact: (ws: string | undefined, id: string, v?: number) => api<ArtifactView>('GET', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws, v: v === undefined ? undefined : String(v) })}`),
   removeArtifact: (ws: string | undefined, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws })}`),
+  savePrompt: (ws: string | undefined, p: { name: string; body: string }) => api<{ prompt: SavedPrompt }>('POST', '/api/assistant/prompts', { ws, ...p }),
+  removePrompt: (ws: string | undefined, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/prompts/${encodeURIComponent(id)}${q({ ws })}`),
 };
 
 /**

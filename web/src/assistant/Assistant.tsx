@@ -64,7 +64,7 @@ export function Assistant(p: AssistantProps) {
         onFullScreen={p.onFullScreen}
         onClose={close}
       >
-        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} idle={<RunningNow onGo={p.onGo} />} onArtifact={setArtifact} />
+        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} idle={<RunningNow onGo={p.onGo} />} onArtifact={setArtifact} onNewChat={() => p.onPick(undefined)} />
       </Panel>
     );
   const closeArtifact = () => setArtifact(undefined);

@@ -5,11 +5,19 @@
  * recognition (hidden where there is none) instead of inserting a canned prompt. Left out because the assistant has no
  * field for them: the Plan / Ask / Build modes, effort levels and the @ context menu; and the demo-only parts: the Pro
  * banner and modal, the video tour and the theme switcher (the palette follows Tether's data-theme).
+ * Slash commands and @mentions come from the assistant-ui composer element's matchers and menu; the keyboard is ours.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { CheckIcon } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { CheckIcon, Cpu } from 'lucide-react';
+import { applyMention, ComposerCommandItem, ComposerMenu, ComposerPersonItem, useMentionMatches, useSlashMatches, type ComposerCommand, type ComposerPerson } from '../assistant-ui/elements/composer';
 import { ModelSelector, ModelSelectorContent, ModelSelectorEmpty, ModelSelectorGroup, ModelSelectorInput, ModelSelectorItem, ModelSelectorList, ModelSelectorLogo, ModelSelectorName, ModelSelectorTrigger } from '../ai-elements/model-selector';
 import './AIComposer.css';
+
+/** A slash command: what "/name" does when it is picked. */
+export interface SlashCommand extends ComposerCommand {
+  run: () => void;
+}
+export type { ComposerPerson };
 
 export interface AIComposerProps {
   value: string;
@@ -40,6 +48,16 @@ export interface AIComposerProps {
   extra?: ReactNode;
   /** A group heading for a model instead of its maker's (NVIDIA's hosted models listed together). */
   groupOf?: (m: string) => string | undefined;
+  /** "/" lists the commands that match (with /model when there is a model to pick); arrows move, Enter or Tab runs, Escape closes. */
+  commands?: SlashCommand[];
+  /** Who an @mention can name: "@" lists them the same way, and picking one puts the name in. */
+  people?: ComposerPerson[];
+}
+
+/** The slash or mention menu as the keyboard sees it: which list is open (none: closed) and the highlighted row. */
+export function menuState(value: string, closedAt: string | undefined, slash: number, mention: number): 'commands' | 'mention' | undefined {
+  if (closedAt === value) return undefined;
+  return slash ? 'commands' : mention ? 'mention' : undefined;
 }
 
 /** Who made a model, for its group and its models.dev logo. OpenRouter and NVIDIA ids name it before the slash. No logo: models.dev has none. */
@@ -130,6 +148,23 @@ export function AIComposer(p: AIComposerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const rec = useRef<Recognition | null>(null);
   const Speech = useMemo(speech, []);
+  const menuId = useId();
+  const all = useMemo<SlashCommand[]>(() => [...(p.commands ?? []), ...(p.models.length > 1 ? [{ name: 'model', description: 'Choose a model', icon: Cpu, run: () => setMenuOpen(true) }] : [])], [p.commands, p.models.length]);
+  const slash = useSlashMatches(p.value, all) as SlashCommand[];
+  const mentions = useMentionMatches(p.value, p.people);
+  const [hl, setHl] = useState(0);
+  // Escape closes the menu until the text changes
+  const [closedAt, setClosedAt] = useState<string>();
+  const menu = menuState(p.value, closedAt, slash.length, mentions.length);
+  const rows = menu === 'commands' ? slash.length : mentions.length;
+  const at = Math.min(hl, Math.max(0, rows - 1));
+  useEffect(() => setHl(0), [p.value]);
+  const choose = (i: number) => {
+    if (menu === 'commands') {
+      p.onValueChange('');
+      slash[i]!.run();
+    } else p.onValueChange(applyMention(p.value, mentions[i]!.name));
+  };
 
   const auto = p.model === undefined;
   const shown = p.model ?? p.autoModel;
@@ -172,6 +207,13 @@ export function AIComposer(p: AIComposerProps) {
     p.onSubmit(p.value.trim(), p.model);
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu && !e.nativeEvent.isComposing) {
+      const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? rows - 1 : 0;
+      if (step) return void (e.preventDefault(), setHl((at + step) % rows));
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') return void (e.preventDefault(), choose(at));
+      // the menu only: the panel or dialog around the composer stays open
+      if (e.key === 'Escape') return void (e.preventDefault(), e.stopPropagation(), setClosedAt(p.value));
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
@@ -230,113 +272,125 @@ export function AIComposer(p: AIComposerProps) {
         </div>
       ) : null}
 
-      <section className="aic-card">
-        <textarea
-          rows={1}
-          value={p.value}
-          onChange={(e) => p.onValueChange(e.target.value)}
-          onKeyDown={onKey}
-          className="aic-prompt-input"
-          placeholder={p.placeholder}
-          aria-label={p['aria-label']}
-        />
+      <div className="relative">
+        {menu ? (
+          <ComposerMenu open id={menuId} role="listbox" aria-label={menu === 'commands' ? 'Commands' : 'Mention'}>
+            {menu === 'commands'
+              ? slash.map((c, i) => <ComposerCommandItem key={c.name} id={`${menuId}-${i}`} role="option" aria-selected={i === at} tabIndex={-1} command={c} active={i === at} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(i)} />)
+              : mentions.map((m, i) => <ComposerPersonItem key={m.name} id={`${menuId}-${i}`} role="option" aria-selected={i === at} tabIndex={-1} person={m} active={i === at} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(i)} />)}
+          </ComposerMenu>
+        ) : null}
+        <section className="aic-card">
+          <textarea
+            rows={1}
+            value={p.value}
+            onChange={(e) => p.onValueChange(e.target.value)}
+            onKeyDown={onKey}
+            className="aic-prompt-input"
+            placeholder={p.placeholder}
+            aria-label={p['aria-label']}
+            aria-autocomplete={p.commands || p.people ? 'list' : undefined}
+            aria-controls={menu ? menuId : undefined}
+            aria-activedescendant={menu ? `${menuId}-${at}` : undefined}
+          />
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <button type="button" onClick={() => fileInput.current?.click()} className="aic-pill aic-grow aic-add" aria-label="Add files">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0" style={{ color: 'var(--icon-primary)' }} aria-hidden="true">
-                <path d="M8 2.5V13.5M2.5 8H13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
-              <span className="aic-grow-label">Add files</span>
-            </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <button type="button" onClick={() => fileInput.current?.click()} className="aic-pill aic-grow aic-add" aria-label="Add files">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0" style={{ color: 'var(--icon-primary)' }} aria-hidden="true">
+                  <path d="M8 2.5V13.5M2.5 8H13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span className="aic-grow-label">Add files</span>
+              </button>
 
-            {p.models.length > 1 ? (
-              <ModelSelector open={menuOpen} onOpenChange={setMenuOpen}>
-                <ModelSelectorTrigger asChild>
-                  <button type="button" className="aic-model-trigger" aria-label={`Model: ${auto ? 'Auto' : shown}`}>
-                    {auto ? null : <MakerLogo model={shown ?? ''} />}
-                    <span className={`truncate ${auto ? 'pl-1.5' : ''}`}>{auto ? 'Auto' : shown}</span>
-                    {auto && p.autoModel ? <span className="truncate font-normal" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
-                    <Chevron />
-                  </button>
-                </ModelSelectorTrigger>
-                <ModelSelectorContent title="Choose a model" className="sm:max-w-md">
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList className="max-h-[min(60vh,520px)]">
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                    <ModelSelectorGroup>
-                      <ModelSelectorItem value="auto" keywords={['auto', p.autoModel ?? '']} onSelect={() => pick(undefined)}>
-                        <ModelSelectorName>
-                          Auto{p.autoModel ? <span className="ml-1.5" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
-                        </ModelSelectorName>
-                        {auto ? <CheckIcon className="ml-auto size-4" /> : <div className="ml-auto size-4" />}
-                      </ModelSelectorItem>
-                    </ModelSelectorGroup>
-                    {groups.map(([heading, list]) => (
-                      <ModelSelectorGroup heading={heading} key={heading}>
-                        {list.map((m) => {
-                          const fav = favs.includes(m);
-                          return (
-                            <ModelSelectorItem key={m} value={`${heading}:${m}`} keywords={[m]} onSelect={() => pick(m)}>
-                              <MakerLogo model={m} />
-                              <ModelSelectorName>{m}</ModelSelectorName>
-                              {p.tags?.[m]?.map((t) => (
-                                <span key={t} className={`aic-tag${t === 'free' ? ' free' : ''}`}>
-                                  {t}
-                                </span>
-                              ))}
-                              <button type="button" onClick={(e) => toggleFav(e, m)} className={`aic-star ${fav ? 'starred' : ''}`} aria-label={fav ? `Unstar ${m}` : `Star ${m}`} aria-pressed={fav}>
-                                <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill={fav ? '#FACC15' : 'none'} stroke={fav ? '#FACC15' : 'currentColor'} strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
-                                  <path d={STAR} />
-                                </svg>
-                              </button>
-                              {!auto && m === p.model ? <CheckIcon className="size-4" /> : <div className="size-4" />}
-                            </ModelSelectorItem>
-                          );
-                        })}
+              {p.models.length > 1 ? (
+                <ModelSelector open={menuOpen} onOpenChange={setMenuOpen}>
+                  <ModelSelectorTrigger asChild>
+                    <button type="button" className="aic-model-trigger" aria-label={`Model: ${auto ? 'Auto' : shown}`}>
+                      {auto ? null : <MakerLogo model={shown ?? ''} />}
+                      <span className={`truncate ${auto ? 'pl-1.5' : ''}`}>{auto ? 'Auto' : shown}</span>
+                      {auto && p.autoModel ? <span className="truncate font-normal" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
+                      <Chevron />
+                    </button>
+                  </ModelSelectorTrigger>
+                  <ModelSelectorContent title="Choose a model" className="sm:max-w-md">
+                    <ModelSelectorInput placeholder="Search models..." />
+                    <ModelSelectorList className="max-h-[min(60vh,520px)]">
+                      <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                      <ModelSelectorGroup>
+                        <ModelSelectorItem value="auto" keywords={['auto', p.autoModel ?? '']} onSelect={() => pick(undefined)}>
+                          <ModelSelectorName>
+                            Auto{p.autoModel ? <span className="ml-1.5" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
+                          </ModelSelectorName>
+                          {auto ? <CheckIcon className="ml-auto size-4" /> : <div className="ml-auto size-4" />}
+                        </ModelSelectorItem>
                       </ModelSelectorGroup>
-                    ))}
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
-            ) : null}
-          </div>
+                      {groups.map(([heading, list]) => (
+                        <ModelSelectorGroup heading={heading} key={heading}>
+                          {list.map((m) => {
+                            const fav = favs.includes(m);
+                            return (
+                              <ModelSelectorItem key={m} value={`${heading}:${m}`} keywords={[m]} onSelect={() => pick(m)}>
+                                <MakerLogo model={m} />
+                                <ModelSelectorName>{m}</ModelSelectorName>
+                                {p.tags?.[m]?.map((t) => (
+                                  <span key={t} className={`aic-tag${t === 'free' ? ' free' : ''}`}>
+                                    {t}
+                                  </span>
+                                ))}
+                                <button type="button" onClick={(e) => toggleFav(e, m)} className={`aic-star ${fav ? 'starred' : ''}`} aria-label={fav ? `Unstar ${m}` : `Star ${m}`} aria-pressed={fav}>
+                                  <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill={fav ? '#FACC15' : 'none'} stroke={fav ? '#FACC15' : 'currentColor'} strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+                                    <path d={STAR} />
+                                  </svg>
+                                </button>
+                                {!auto && m === p.model ? <CheckIcon className="size-4" /> : <div className="size-4" />}
+                              </ModelSelectorItem>
+                            );
+                          })}
+                        </ModelSelectorGroup>
+                      ))}
+                    </ModelSelectorList>
+                  </ModelSelectorContent>
+                </ModelSelector>
+              ) : null}
+            </div>
 
-          <div className="flex flex-shrink-0 items-center gap-2">
-            {p.extra}
-            {Speech ? (
-              <button type="button" onClick={toggleRecord} className={`aic-pill aic-grow aic-record ${recording ? 'recording' : ''}`} aria-label={recording ? 'Stop dictation' : 'Dictate'} aria-pressed={recording}>
-                <span className="flex flex-shrink-0 items-center justify-center" style={{ color: recording ? undefined : 'var(--icon-primary)' }}>
-                  {recording ? (
-                    <span className="aic-recording-dot" />
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <rect x="5.5" y="1.8" width="5" height="7.6" rx="2.5" stroke="currentColor" strokeWidth="1.45" />
-                      <path d="M3.2 7.2C3.2 9.85 5.35 12 8 12C10.65 12 12.8 9.85 12.8 7.2" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
-                      <path d="M8 12V14.2M5.8 14.2H10.2" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
-                    </svg>
-                  )}
-                </span>
-                <span className="aic-grow-label">{recording ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Record'}</span>
-              </button>
-            ) : null}
+            <div className="flex flex-shrink-0 items-center gap-2">
+              {p.extra}
+              {Speech ? (
+                <button type="button" onClick={toggleRecord} className={`aic-pill aic-grow aic-record ${recording ? 'recording' : ''}`} aria-label={recording ? 'Stop dictation' : 'Dictate'} aria-pressed={recording}>
+                  <span className="flex flex-shrink-0 items-center justify-center" style={{ color: recording ? undefined : 'var(--icon-primary)' }}>
+                    {recording ? (
+                      <span className="aic-recording-dot" />
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <rect x="5.5" y="1.8" width="5" height="7.6" rx="2.5" stroke="currentColor" strokeWidth="1.45" />
+                        <path d="M3.2 7.2C3.2 9.85 5.35 12 8 12C10.65 12 12.8 9.85 12.8 7.2" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+                        <path d="M8 12V14.2M5.8 14.2H10.2" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="aic-grow-label">{recording ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Record'}</span>
+                </button>
+              ) : null}
 
-            {p.loading ? (
-              <button type="button" onClick={p.onStop} disabled={!p.onStop} className="aic-submit ready" aria-label="Stop generating">
-                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                  <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" />
-                </svg>
-              </button>
-            ) : (
-              <button type="button" onClick={submit} disabled={!ready} className={`aic-submit ${ready ? 'ready' : ''}`} aria-label="Send prompt">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 12.8V3.2M8 3.2L3.8 7.4M8 3.2L12.2 7.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            )}
+              {p.loading ? (
+                <button type="button" onClick={p.onStop} disabled={!p.onStop} className="aic-submit ready" aria-label="Stop generating">
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                    <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" />
+                  </svg>
+                </button>
+              ) : (
+                <button type="button" onClick={submit} disabled={!ready} className={`aic-submit ${ready ? 'ready' : ''}`} aria-label="Send prompt">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 12.8V3.2M8 3.2L3.8 7.4M8 3.2L12.2 7.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

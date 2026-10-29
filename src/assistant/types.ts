@@ -195,6 +195,14 @@ export interface ChatMessage {
   compactedBy?: string;
 }
 
+/** A prompt the person saved (GET /api/assistant/prompts): `variables` are its body's `{{name}}` tokens. */
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  body: string;
+  variables: string[];
+}
+
 /** What the person is looking at, sent with every message so Tether can use it. */
 export interface AssistantContext {
   /** The screen: home, inbox, runs, code, builder, crew, api, graph, triggers. */
