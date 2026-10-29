@@ -148,7 +148,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       store: c.store,
       vault: c.vault,
       workdir: cwd,
-      grants: [...loadAllow(c.home, o.ws), ...chat.once],
+      // an agent's turn in a team never borrows the owner's outside-world grants
+      grants: o.ephemeral ? [] : [...loadAllow(c.home, o.ws), ...chat.once],
       workspace: o.ws,
       onRun: (code) => {
         const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };

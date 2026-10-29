@@ -51,7 +51,8 @@ export interface Step {
 export type ApprovalWhat = 'plan' | 'ship' | 'next';
 export type Card =
   | { kind: 'run'; runId: string; title: string; steps: Step[]; status: RunStatus; costUsd: number }
-  | { kind: 'loop'; goalId: string }
+  /** `said`: what the channel last said about the loop, "<runs posted>|<status>", so each change is posted once. */
+  | { kind: 'loop'; goalId: string; said?: string }
   | { kind: 'approval'; what: ApprovalWhat; title: string; detail?: string; runId?: string; node?: string; goalId?: string; status: 'pending' | 'approved' | 'rejected'; by?: string; at?: number; reason?: string }
   | { kind: 'proposal'; agent: string; task: string; status: 'proposed' | 'started' | 'dismissed'; runId?: string }
   | { kind: 'pr'; url: string; number: number; title: string; merged?: boolean };
