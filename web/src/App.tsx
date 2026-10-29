@@ -26,7 +26,9 @@ import { OpenFolderDialog } from './projects/OpenFolderDialog';
 import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
-import { TEAMS_PATH, type TeamSummary } from './teams/teamsApi';
+import { NewTeam } from './teams/NewTeam';
+import { TeamScreen } from './teams/TeamScreen';
+import { TEAMS_PATH, type TeamsReply } from './teams/teamsApi';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
 import { Button } from './components/beui/kit/Button';
@@ -112,7 +114,7 @@ function Shell() {
   /** The project's chats: the sidebar's Chats section and the mini chat's switcher. */
   const chats = usePoll<{ chats: ChatSummary[] }>(chatsPath(projects.current?.id), CHATS_MS);
   /** Every team, for the sidebar's Teams section (its dots: working, needs you). */
-  const teams = usePoll<{ teams: TeamSummary[] }>(TEAMS_PATH, COUNTS_MS);
+  const teams = usePoll<TeamsReply>(TEAMS_PATH, COUNTS_MS);
   /**
    * Tether: the panel (mini chat) and the full-screen chat show one active chat per project. A chat screen's route makes its
    * chat the active one; a new chat's first message makes the chat (and, on New chat, moves to it); a chat that is gone
@@ -375,6 +377,12 @@ function Shell() {
             ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} /> : null}
             {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} /> : null}
+            {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
+              <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
+            ) : null}
+            {screen.tab === 'teams' && screen.id && screen.id !== 'new' ? (
+              <TeamScreen key={screen.id} id={screen.id} goals={goals.goals} agents={teams.data?.agents ?? []} projects={list} onGo={go} onChanged={() => void teams.refresh()} onNewAgent={() => createNew('bot')} />
+            ) : null}
             {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} /> : null}
           </main>
           {settingsPage}
