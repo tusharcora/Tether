@@ -706,6 +706,8 @@ export interface AgentResult {
 
 export interface AgentUsage {
   inputTokens?: number;
+  /** Input tokens of the call's first model request: what the prompt (with system prompt and tools) took, before any tool output. */
+  promptTokens?: number;
   outputTokens?: number;
   /** Tool calls the model made (every tool: run_code and the agent's own). */
   toolCalls?: number;

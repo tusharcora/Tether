@@ -83,6 +83,15 @@ describe('claude stream parsing', () => {
     expect(acc.isError).toBe(true);
   });
 
+  it("keeps the first request's prompt tokens (what the prompt took) beside the totals", () => {
+    const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
+    const feed = (o: unknown) => parseClaudeLine(JSON.stringify(o), acc, () => {}, () => {});
+    feed({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'x' }], usage: { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 1000, output_tokens: 5 } } });
+    feed({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 50, cache_read_input_tokens: 1200, output_tokens: 9 } } });
+    feed({ type: 'result', result: 'ok', usage: { input_tokens: 60, cache_read_input_tokens: 2200, output_tokens: 14 }, num_turns: 2 });
+    expect(acc.usage).toEqual({ inputTokens: 2260, outputTokens: 14, turns: 2, promptTokens: 1010 });
+  });
+
   it('caps oversized argv prompts, keeping head and tail', () => {
     const big = 'H'.repeat(80_000) + 'M'.repeat(80_000) + 'T'.repeat(80_000);
     const c = capPrompt(big, 100_000);
