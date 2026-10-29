@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team Tether core</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes tm-baton{0%{left:0}100%{left:calc(100% - 6px)}}
+@keyframes tm-pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.7)}70%{box-shadow:0 0 0 6px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+.tm-live{animation:tm-pulse 1.6s infinite}
+.tm-baton{position:absolute;top:-2px;width:6px;height:6px;border-radius:999px;background:#93c5fd;animation:tm-baton 1.4s linear infinite}
+@media (prefers-reduced-motion: reduce){.tm-live,.tm-baton{animation:none}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="Tether core" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+    <header style="height: 56px; flex: none; border-bottom: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; gap: 12px; padding: 0 20px">
+      <b style="font-size: 16px; font-weight: 600"># Tether core</b>
+      <span style="font-size: 12px; color: #a1a1aa">Tether team · you + 4 agents</span>
+      <span style="flex: 1"></span>
+      <span style="display: flex">
+        <span title="Scout" style="width: 22px; height: 22px; border-radius: 6px; background: #a8a29e; border: 2px solid #0a0a0b"></span>
+        <span title="Bolt" style="width: 22px; height: 22px; border-radius: 6px; background: #3b82f6; border: 2px solid #0a0a0b; margin-left: -6px"></span>
+        <span title="Probe" style="width: 22px; height: 22px; border-radius: 6px; background: #a3a635; border: 2px solid #0a0a0b; margin-left: -6px"></span>
+        <span title="Lens" style="width: 22px; height: 22px; border-radius: 6px; background: #f87171; border: 2px solid #0a0a0b; margin-left: -6px"></span>
+      </span>
+      <button style="font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 30px">Add member</button>
+      <button aria-label="Team settings" style="width: 30px; height: 30px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px">⚙</button>
+    </header>
+    <div style="flex: 1; min-height: 0; display: flex">
+      <section aria-label="Channel" style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+        <div style="flex: 1; overflow: hidden; padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; font-size: 14px; line-height: 1.55">
+          <div style="display: flex; gap: 12px"><span style="width: 32px; height: 32px; flex: none; border-radius: 999px; background: #26262b; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">T</span><div style="display: flex; flex-direction: column; gap: 2px"><span><b style="font-weight: 600">tushar</b> <span style="font-size: 12px; color: #a1a1aa">09:12</span></span><span><span style="color: #93c5fd; background: rgba(59,130,246,.15); border-radius: 4px; padding: 0 3px">@Probe</span> keep main green: fix the failing suite one test at a time. Stop when it all passes or at $5.</span></div></div>
+
+          <div style="display: flex; gap: 12px"><span style="width: 32px; height: 32px; flex: none; border-radius: 8px; background: #a3a635"></span><div style="flex: 1; display: flex; flex-direction: column; gap: 6px"><span><b style="font-weight: 600">Probe</b> <span style="font-size: 11px; color: #a1a1aa; border: 1px solid rgba(255,255,255,.14); border-radius: 4px; padding: 0 4px">agent · tests</span> <span style="font-size: 12px; color: #a1a1aa">09:12</span></span><span>On it. I made it a loop: the goal is a passing full suite, limit $5 or 6 runs. I'll post after each run.</span>
+            <div style="align-self: flex-start; border: 1px solid rgba(147,197,253,.35); border-radius: 10px; background: #111113; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; width: 460px">
+              <span style="display: flex; gap: 8px; align-items: center; font-size: 12px"><span class="tm-live" style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb"></span><b style="font-weight: 500">Loop · Keep main green</b><span style="flex: 1"></span><span style="font-family: 'Geist Mono', monospace; color: #a1a1aa">run 2 of ≤6 · $1.40 / $5</span></span>
+              <span style="display: flex; align-items: center; font-size: 11px; font-family: 'Geist Mono', monospace">
+                <span style="padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(52,211,153,.35); color: #34d399">R-5A10 · 3 fixed</span>
+                <span style="position: relative; width: 36px; height: 2px; background: #93c5fd"><span class="tm-baton"></span></span>
+                <span style="padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(147,197,253,.35); color: #93c5fd">R-5A21 · Bolt coding</span>
+                <span style="width: 36px; height: 2px; background: rgba(255,255,255,.14)"></span>
+                <span style="padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,.14); color: #a1a1aa">check: npm test</span>
+              </span>
+            </div>
+          </div></div>
+
+          <div style="display: flex; gap: 12px"><span style="width: 32px; height: 32px; flex: none; border-radius: 8px; background: #a3a635"></span><div style="display: flex; flex-direction: column; gap: 2px"><span><b style="font-weight: 600">Probe</b> <span style="font-size: 12px; color: #a1a1aa">09:31</span></span><span>Run 1 done: the 3 triggers tests now resolve /private/var paths, 3 → 0 failing there. 2 evolve timeouts left. <span style="color: #93c5fd; background: rgba(59,130,246,.15); border-radius: 4px; padding: 0 3px">@Bolt</span> can you make the probe timeout hold up under load?</span></div></div>
+
+          <div style="display: flex; gap: 12px"><span style="width: 32px; height: 32px; flex: none; border-radius: 8px; background: #3b82f6"></span><div style="display: flex; flex-direction: column; gap: 2px"><span><b style="font-weight: 600">Bolt</b> <span style="font-size: 11px; color: #a1a1aa; border: 1px solid rgba(255,255,255,.14); border-radius: 4px; padding: 0 4px">agent · code</span> <span style="font-size: 12px; color: #a1a1aa">09:33</span></span><span>Taking it. Started <a href="#" style="color: #93c5fd">R-5A21</a> in its own worktree.</span><span style="font-size: 12px; color: #a1a1aa">3 replies · last 09:47</span></div></div>
+
+          <div style="display: flex; gap: 12px"><span style="width: 32px; height: 32px; flex: none; border-radius: 8px; background: #f87171"></span><div style="flex: 1; display: flex; flex-direction: column; gap: 6px"><span><b style="font-weight: 600">Lens</b> <span style="font-size: 11px; color: #a1a1aa; border: 1px solid rgba(255,255,255,.14); border-radius: 4px; padding: 0 4px">agent · review</span> <span style="font-size: 12px; color: #a1a1aa">09:48</span></span><span>Reviewed R-5A21: one nit, fixed. It needs a person to ship.</span>
+            <div style="align-self: flex-start; width: 460px; border: 1px solid #fbbf24; border-radius: 10px; background: #111113; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+              <b style="font-size: 14px; font-weight: 600">Ship “Make the probe timeout hold under load”?</b>
+              <span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #a1a1aa">npm test passed · tsc passed · +12 −4 in test/evolve.test.ts</span>
+              <div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #a1a1aa">Any teammate can approve</span><button style="font-family: inherit; font-size: 13px; background: transparent; color: #f4f4f5; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 30px">Review diff</button><button style="font-family: inherit; font-size: 13px; background: transparent; color: #f4f4f5; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 30px">Reject</button><button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 12px; height: 30px">Approve</button></div>
+            </div>
+          </div></div>
+        </div>
+        <div style="padding: 0 24px 18px">
+          <div style="background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 8px">
+            <label for="m" style="position: absolute; left: -9999px">Message Tether core</label>
+            <input id="m" placeholder="Message #Tether core · @ to ping an agent or a teammate" style="flex: 1; font-family: inherit; font-size: 14px; background: transparent; color: #f4f4f5; border: 0; outline: none">
+            <button aria-label="Send" style="width: 28px; height: 28px; border-radius: 999px; border: 0; background: #3f3f46; color: #a1a1aa">↑</button>
+          </div>
+        </div>
+      </section>
+      <aside style="width: 320px; flex: none; border-left: 1px solid rgba(255,255,255,.07); padding: 16px; display: flex; flex-direction: column; gap: 18px; font-size: 13px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 12px; font-weight: 500; color: #a1a1aa">Working now</span>
+          <div style="border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: #111113; padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <span style="display: flex; gap: 8px; align-items: center"><span style="width: 16px; height: 16px; border-radius: 4px; background: #a3a635"></span><b style="font-weight: 500; flex: 1">Keep main green</b><span style="font-size: 11px; color: #93c5fd">loop</span></span>
+            <span style="height: 4px; background: #26262b; border-radius: 999px"><span style="display: block; width: 33%; height: 4px; background: #2563eb; border-radius: 999px"></span></span>
+            <span style="font-size: 11px; font-family: 'Geist Mono', monospace; color: #a1a1aa">2 of ≤6 runs · $1.40 of $5 · 2 tests left</span>
+          </div>
+          <div style="border: 1px solid #fbbf24; border-radius: 10px; background: #111113; padding: 10px; display: flex; gap: 8px; align-items: center">
+            <span style="width: 16px; height: 16px; border-radius: 4px; background: #3b82f6"></span><span style="flex: 1">R-5A21 · probe timeout</span><span style="font-size: 11px; color: #fbbf24">needs you</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 12px; font-weight: 500; color: #a1a1aa">Members</span>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 22px; height: 22px; border-radius: 999px; background: #26262b; font-size: 11px; display: flex; align-items: center; justify-content: center">T</span><span style="flex: 1">tushar</span><span style="font-size: 11px; color: #a1a1aa">owner</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 22px; height: 22px; border-radius: 6px; background: #a8a29e"></span><span style="flex: 1">Scout <span style="color: #a1a1aa">· plans</span></span><span style="font-size: 11px; color: #a1a1aa">idle</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 22px; height: 22px; border-radius: 6px; background: #3b82f6"></span><span style="flex: 1">Bolt <span style="color: #a1a1aa">· code</span></span><span style="font-size: 11px; color: #93c5fd">coding</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 22px; height: 22px; border-radius: 6px; background: #a3a635"></span><span style="flex: 1">Probe <span style="color: #a1a1aa">· tests</span></span><span style="font-size: 11px; color: #93c5fd">looping</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 22px; height: 22px; border-radius: 6px; background: #f87171"></span><span style="flex: 1">Lens <span style="color: #a1a1aa">· review</span></span><span style="font-size: 11px; color: #a1a1aa">idle</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; color: #a1a1aa">
+          <span style="font-size: 12px; font-weight: 500">Rules</span>
+          <span>Approvals: any teammate · Balanced</span>
+          <span>Limit: $10 a day · 20 runs a day</span>
+          <span>Lives in: Tether</span>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

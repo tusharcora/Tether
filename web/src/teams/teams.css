@@ -1,0 +1,115 @@
+/* Teams (spec docs/superpowers/specs/2026-10-29-teams-design.md, boards docs/design/teams): the team screen (board 1), New
+   team (board 2) and the agent profile on the Crew card (board 3). Studio tokens only. */
+
+/* the team screen: a 56 px header, the channel and its composer, a 320 px right panel */
+.tm { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.tm-head { display: flex; flex: none; align-items: center; gap: 12px; height: 56px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.tm-head h1 { margin: 0; font-size: 16px; font-weight: 600; }
+.tm-head h1 span { color: var(--mut); font-family: var(--mono); }
+.tm-sub, .tm-muted { color: var(--mut); font-size: 12px; }
+.tm-gap, .tm-grow { flex: 1; min-width: 0; }
+.tm-body { display: flex; flex: 1; min-height: 0; }
+.tm-channel { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.tm-msgs { display: flex; flex: 1; flex-direction: column; gap: 16px; min-height: 0; margin: 0; padding: 18px 24px; overflow: auto; list-style: none; font-size: 14px; line-height: 1.55; }
+.tm-empty { color: var(--mut); font-size: 13px; }
+.tm-msg { display: flex; gap: 12px; }
+.tm-msg-main { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.tm-msg-head { display: flex; align-items: baseline; gap: 6px; }
+.tm-msg-head b { font-weight: 600; }
+.tm-msg-head time { color: var(--mut); font-size: 12px; }
+.tm-pill { padding: 0 5px; border: 1px solid var(--line2); border-radius: 4px; color: var(--mut); font-size: 11px; }
+.tm-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tm-text.pending { color: var(--mut); }
+.tm-mention { padding: 0 3px; border-radius: 4px; background: var(--accBg); color: var(--accInk); }
+.tm-avatar { display: flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: var(--s2); font-size: 12px; font-weight: 600; }
+.tm-avatar.small { width: 22px; height: 22px; font-size: 11px; }
+.tm-mono { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+
+/* cards in the channel: runs, loops, approvals, proposals, PRs */
+.tm-card { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; box-sizing: border-box; width: 100%; max-width: 480px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; background: var(--s1); color: var(--ink); font-size: 13px; }
+.tm-card.loop { border-color: var(--accBg); }
+.tm-card.ask.pending { border-color: var(--warn); }
+.tm-card b { font-weight: 600; }
+.tm-card-top, .tm-row { display: flex; align-items: center; gap: 8px; }
+.tm-card-top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-detail { color: var(--mut); white-space: pre-wrap; max-height: 160px; overflow: auto; }
+.tm-decided { font-size: 12px; }
+.tm-decided.approved { color: var(--ok); }
+.tm-decided.rejected { color: var(--bad); }
+.tm-reject { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--mut); }
+.tm-reject textarea, .tm-edit { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
+.tm-pr { flex-direction: row; align-items: center; text-decoration: none; }
+.tm-pr b { flex: 1; }
+.tm-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accInk); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.tm-link:focus-visible, .tm-chip:focus-visible, .tm-work:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.tm-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--mut); }
+.tm-dot.live { background: var(--acc); animation: tm-pulse 1.6s infinite; }
+@keyframes tm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.tm-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin: 0; padding: 0; list-style: none; }
+.tm-chain li + li::before { content: ''; display: inline-block; width: 24px; height: 2px; margin: 0 2px; vertical-align: middle; background: var(--line2); }
+.tm-chip { padding: 3px 7px; border: 1px solid var(--line2); border-radius: 6px; background: none; color: var(--mut); font-family: var(--mono); font-size: 11px; cursor: pointer; }
+.tm-chip.live { border-color: var(--acc); color: var(--accInk); }
+.tm-chip.done { border-color: var(--ok); color: var(--ok); }
+.tm-tag { flex: none; font-size: 11px; color: var(--mut); }
+.tm-tag.live { color: var(--accInk); }
+.tm-tag.needs { color: var(--warn); }
+.tm-tag.done { color: var(--ok); }
+
+/* the composer: the box draws the border; the suggestions open above it */
+.tm-composer { position: relative; display: flex; align-items: flex-end; gap: 8px; margin: 0 24px 18px; padding: 8px 8px 8px 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s1); }
+.tm-composer:focus-within { border-color: var(--edge); }
+.tm-composer textarea { flex: 1; min-height: 28px; max-height: 160px; padding: 4px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; resize: none; field-sizing: content; }
+.tm-composer textarea:focus, .tm-composer textarea:focus-visible { outline: none; box-shadow: none; }
+.tm-suggest { position: absolute; bottom: calc(100% + 6px); left: 8px; z-index: 5; min-width: 240px; margin: 0; padding: 4px; border: 1px solid var(--line2); border-radius: 10px; background: var(--s1); list-style: none; }
+.tm-suggest li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.tm-suggest li[aria-selected='true'] { background: var(--s2); }
+
+/* the right panel */
+.tm-panel { display: flex; flex: none; flex-direction: column; gap: 18px; box-sizing: border-box; width: 320px; padding: 16px; overflow: auto; border-left: 1px solid var(--line); font-size: 13px; }
+.tm-panel section { display: flex; flex-direction: column; gap: 6px; }
+.tm-panel h2 { margin: 0; color: var(--mut); font-size: 12px; font-weight: 500; }
+.tm-work { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--s1); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.tm-work.needs { border-color: var(--warn); }
+.tm-work-top { display: flex; align-items: center; gap: 8px; }
+.tm-work-top b { flex: 1; min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tm-bar { display: block; height: 4px; border-radius: 999px; background: var(--s2); }
+.tm-bar span { display: block; height: 4px; border-radius: 999px; background: var(--acc); }
+.tm-members { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tm-members li { display: flex; align-items: center; gap: 8px; }
+.tm-state { color: var(--mut); font-size: 11px; }
+.tm-state:is(.coding, .looping, .answering, .reviewing) { color: var(--accInk); }
+.tm-state.waiting { color: var(--warn); }
+.tm-rules span { color: var(--mut); }
+
+/* New team and team settings (board 2) */
+.tm-new { box-sizing: border-box; height: 100%; overflow: auto; padding: 32px 24px 64px; }
+.tm-form { display: flex; flex-direction: column; gap: 20px; max-width: 760px; margin: 0 auto; }
+.tm-form-top { display: flex; align-items: center; gap: 8px; }
+.tm-form-top h1 { flex: 1; margin: 0; font-size: 22px; font-weight: 600; }
+.tm-fieldset { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.tm-fieldset legend { margin-bottom: 8px; padding: 0; font-size: 13px; font-weight: 500; }
+.tm-form-note { margin: 0; color: var(--mut); font-size: 12px; }
+.tm-form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.tm-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.tm-limits legend { grid-column: 1 / -1; }
+.tm-agents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tm-agent { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.tm-agent:has(input:checked) { border-color: var(--edge); background: var(--s1); }
+.tm-agent span { display: flex; flex-direction: column; font-size: 13px; }
+.tm-agent span span { color: var(--mut); font-size: 12px; }
+.tm-radio { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.tm-form-danger { padding-top: 12px; border-top: 1px solid var(--line); }
+.tm-dialog { max-width: 820px; }
+@media (max-width: 899px) { .tm-panel { display: none; } .tm-form-pair, .tm-limits, .tm-agents { grid-template-columns: 1fr; } }
+
+/* the agent profile on the Crew card (board 3) */
+.ap { display: flex; flex-direction: column; gap: 14px; }
+.ap-lessons { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ap-lessons li { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.ap-lessons li > span:first-child { flex: 1; }
+.ap-when { color: var(--mut); font-size: 12px; white-space: nowrap; }
+.ap-forget { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--mut); cursor: pointer; }
+.ap-forget:hover { background: var(--s2); color: var(--ink); }
+.ap-forget:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.ap-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.ap-list li { display: flex; align-items: center; gap: 8px; }

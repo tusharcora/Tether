@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar with Teams</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav aria-label="Main" style="width: 244px; height: 900px; box-sizing: border-box; background: #0f0f11; border-right: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column; padding: 12px 8px; gap: 2px; font-family: Geist, ui-sans-serif, system-ui, sans-serif; font-size: 14px; color: #d4d4d8">
+  <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; margin-bottom: 10px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f4f4f5" stroke-width="2.4" aria-hidden="true"><path d="M12 3v7M5 19l6-4M19 19l-6-4"></path></svg>
+    <b style="flex: 1; font-weight: 600; color: #f4f4f5">agent-orchest…</b>
+    <span style="color: #a1a1aa">▾</span>
+  </div>
+  <sc-for list="{{top}}" as="item" hint-placeholder-count="4">
+    <a href="#" style="{{item.style}}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{item.d}}"></path></svg>
+      <span style="flex: 1">{{item.label}}</span>
+      <span style="font-size: 11px; color: #fbbf24">{{item.badge}}</span>
+    </a>
+  </sc-for>
+  <div style="display: flex; align-items: center; padding: 16px 4px 4px 10px">
+    <span style="flex: 1; font-size: 12px; font-weight: 500; color: #a1a1aa">Teams</span>
+    <button aria-label="New team" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #d4d4d8; font-size: 16px">+</button>
+  </div>
+  <sc-for list="{{teams}}" as="t" hint-placeholder-count="3">
+    <a href="#" style="{{t.style}}">
+      <span style="width: 16px; text-align: center; color: #a1a1aa; font-family: 'Geist Mono', monospace">{{t.mark}}</span>
+      <span style="flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{t.name}}</span>
+      <span style="{{t.dot}}"></span>
+    </a>
+  </sc-for>
+  <div style="display: flex; align-items: center; padding: 16px 4px 4px 10px">
+    <span style="flex: 1; font-size: 12px; font-weight: 500; color: #a1a1aa">Chats</span>
+    <button aria-label="New chat" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #d4d4d8; font-size: 16px">+</button>
+  </div>
+  <a href="#" style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 6px; text-decoration: none; font-size: 13px; color: #a1a1aa">Why did the README run fail?</a>
+  <a href="#" style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 6px; text-decoration: none; font-size: 13px; color: #a1a1aa">All chats →</a>
+  <div style="font-size: 12px; font-weight: 500; color: #a1a1aa; padding: 16px 10px 6px">Workspace</div>
+  <sc-for list="{{work}}" as="item" hint-placeholder-count="7">
+    <a href="#" style="{{item.style}}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{item.d}}"></path></svg>
+      <span style="flex: 1">{{item.label}}</span>
+    </a>
+  </sc-for>
+  <div style="flex: 1"></div>
+  <div style="border-top: 1px solid rgba(255,255,255,.07); margin-top: 8px; padding: 12px 8px 0; display: flex; align-items: center; gap: 10px">
+    <span style="width: 22px; height: 22px; border-radius: 999px; background: #26262b; color: #f4f4f5; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center">T</span>
+    <b style="flex: 1; font-weight: 500; color: #f4f4f5">tushar</b>
+    <span style="font-size: 12px; color: #a1a1aa">Settings</span>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"text","default":"Tether core"},"$preview":{"width":244,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const active = this.props.active ?? 'Tether core';
+const base = 'display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; text-decoration: none; ';
+const on = 'background: #1d1d21; color: #f4f4f5; font-weight: 500';
+const st = (l) => base + (l === active ? on : 'color: #d4d4d8');
+const mk = (label, d, badge) => ({ label, d, badge: badge || '', style: st(label) });
+const dot = (c) => c ? 'width: 7px; height: 7px; border-radius: 999px; background: ' + c : 'display: none';
+return {
+top: [
+mk('Search', 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-4-4'),
+mk('Home', 'M3 10.5L12 3l9 7.5V21H3z'),
+mk('Inbox', 'M3 13h5l1 3h6l1-3h5M5 5h14l2 8v6H3v-6z', '1'),
+mk('Runs', 'M7 4v16l13-8z')
+],
+teams: [
+{ name: 'Tether core', mark: '#', style: st('Tether core'), dot: dot('#2563eb') },
+{ name: 'tether-dev', mark: 'S', style: st('tether-dev'), dot: dot('#fbbf24') },
+{ name: 'On the go', mark: 'T', style: st('On the go'), dot: dot('') }
+],
+work: [
+mk('Code', 'M8 6l-6 6 6 6M16 6l6 6-6 6'),
+mk('Builder', 'M6 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6M18 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6M9 6h6a3 3 0 0 1 3 3v6'),
+mk('Crew', 'M9 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8M2 21a7 7 0 0 1 14 0'),
+mk('Goals', 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8'),
+mk('API client', 'M4 8h14l-3-3M20 16H6l3 3'),
+mk('Graph', 'M5 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M19 3a2 2 0 1 0 0 4a2 2 0 1 0 0-4M19 17a2 2 0 1 0 0 4a2 2 0 1 0 0-4M7 12l10-6M7 12l10 6'),
+mk('Triggers', 'M13 2L4 14h7l-1 8 9-12h-7z')
+]
+};
+}
+}
+</script>
+</body>
+</html>

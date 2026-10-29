@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AdapterRegistry } from '../adapters/index.js';
 import { checkReply } from '../assistant/reply.js';
+import { loadBindings } from '../bindings.js';
 import { assistantAgent } from '../assistant/turn.js';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
@@ -46,11 +47,19 @@ export function judge(check: GoalCheck, code: number | null, out: string): Pick<
   return { ok: code === 0 && (m[1] === '<=' ? value <= Number(m[2]) : value >= Number(m[2])), value };
 }
 
+/** How a team's loop starts its runs (the agent's workflow, on the chain's branch) and why its team lets nothing start. */
+export interface GoalHooks {
+  start(g: Goal, plan: Plan): Promise<string>;
+  blocked(g: Goal): string | undefined;
+}
+
 export interface GoalsDeps {
   home: string;
   store: Store;
   engine: Engine;
   registry: AdapterRegistry;
+  /** For goals with a `team`. */
+  hooks?: GoalHooks;
 }
 
 export class Goals {
@@ -159,6 +168,7 @@ export class Goals {
     const attempts = this.db.items(id).filter((i) => i.kind === 'run').length;
     if (g.spentUsd >= g.budgetUsd) return this.stop(g, `Budget reached ($${g.spentUsd.toFixed(2)} of $${g.budgetUsd.toFixed(2)})`);
     if (attempts >= g.maxRuns) return this.stop(g, `Run cap reached (${attempts} of ${g.maxRuns})`);
+    if (this.teamBlocked(g)) return;
     const { plan, costUsd } = await this.propose(g);
     g = this.db.must(id);
     g = this.save({ ...g, spentUsd: g.spentUsd + costUsd });
@@ -167,11 +177,19 @@ export class Goals {
     else this.save({ ...g, status: 'needs_you', pending: plan });
   }
 
-  /** The default crew agent proposes the next run; with no agent set up, a plain task from the check's output. */
+  /** A team goal whose team lets nothing new start (its daily limit) pauses with the reason; a run in flight finishes. */
+  private teamBlocked(g: Goal): boolean {
+    const why = g.team ? this.d.hooks?.blocked(g) : undefined;
+    if (why) this.save({ ...g, status: 'paused', reason: why, pending: undefined });
+    return !!why;
+  }
+
+  /** The default crew agent (a team goal: its own agent) proposes the next run; with no agent set up, a plain task from the check's output. */
   private async propose(g: Goal): Promise<{ plan: Plan; costUsd: number }> {
     const last = g.lastCheck;
     const plan: Plan = { task: `${g.title}\n\nMake this check pass: ${g.check!.command}\n\nIts last output:\n${last?.tail ?? ''}`.slice(0, 2000), why: last?.summary ?? 'The check is failing' };
-    const { agent, model } = assistantAgent(this.d.home);
+    const bound = g.agent ? loadBindings(this.d.home)[g.agent] : undefined;
+    const { agent, model } = g.agent ? { agent: bound?.agent ?? 'claude', model: bound?.model } : assistantAgent(this.d.home);
     if (!this.d.registry.has(agent)) return { plan, costUsd: 0 };
     const root = projectRoot(this.d.home, g.workspace);
     const tries = this.db
@@ -204,10 +222,13 @@ export class Goals {
     const repo = resolve(projectRoot(this.d.home, g.workspace));
     const budgetUsd = Math.min(Math.max(g.budgetUsd - g.spentUsd, 0.01), TEAM_MAX_BUDGET_USD);
     const auto = g.approval === 'auto';
+    if (this.teamBlocked(g)) return;
     let runId: string;
     try {
       runId =
-        g.workflow === 'team'
+        g.team && this.d.hooks
+          ? await this.d.hooks.start(g, plan)
+          : g.workflow === 'team'
           ? await this.d.engine.startTeam({ task: plan.task, repo, budgetUsd, background: true, ...(auto ? { mode: 'autonomous' as const } : {}) })
           : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto });
     } catch (e) {

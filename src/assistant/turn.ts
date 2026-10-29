@@ -17,7 +17,7 @@ import type { Store } from '../store.js';
 import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
-import { loadAllow, newChatId, readChat, saveChat, titleOf, type Chat } from './history.js';
+import { loadAllow, newChatId, readChat, saveChat as saveChatFile, titleOf, type Chat } from './history.js';
 import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
@@ -113,9 +113,13 @@ const secretsFor = (home: string, ws: string | undefined): Map<string, string> =
   return m;
 };
 
-/** One turn in `o.chat`, or in a new chat this first message makes (the start event names it). */
-export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; chat?: Chat; body: TurnBody }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
+/**
+ * One turn in `o.chat`, or in a new chat this first message makes (the start event names it). A team agent's turn passes
+ * `who` (its identity) and `extra` (fenced team context and memory) and is `ephemeral`: nothing lands in the assistant's chats.
+ */
+export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; chat?: Chat; body: TurnBody; who?: string; extra?: string; ephemeral?: boolean }, emit: (e: StreamEvent) => void, signal: AbortSignal): Promise<ChatMessage> {
   const { body } = o;
+  const saveChat: typeof saveChatFile = (...a) => void (!o.ephemeral && saveChatFile(...a));
   const chat: Chat = o.chat ?? { id: newChatId(), title: titleOf(body.message), created: Date.now(), updated: Date.now(), messages: [], once: [] };
   if (body.answer) {
     const m = chat.messages.find((x) => x.id === body.answer!.message);
@@ -154,7 +158,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   };
   const fail = (error: string) => done({ id, role: 'tether', text: redact(text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
   if (!c.registry.has(agent)) return fail(`"${agent}" is not set up. Link a model to Tether in the Crew tab.`);
-  const latest = latestContext(chat.messages)?.use;
+  // a team agent's turn keeps no chat, so there is nothing to compact
+  const latest = o.ephemeral ? undefined : latestContext(chat.messages)?.use;
   if (latest && overflows(latest, you.text.length + attachments.reduce((a, x) => a + x.text.length, 0))) {
     // the context would run full: summarize older messages first, and say so in the thread
     try {
@@ -196,6 +201,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500 }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
+      who: o.who,
+      extra: o.extra,
     };
     const prompt = buildPrompt(input);
     const cm = await openCodeModeFor({
@@ -205,7 +212,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       store: c.store,
       vault: c.vault,
       workdir: cwd,
-      grants: [...loadAllow(c.home, o.ws), ...chat.once],
+      // an agent's turn in a team never borrows the owner's outside-world grants
+      grants: o.ephemeral ? [] : [...loadAllow(c.home, o.ws), ...chat.once],
       workspace: o.ws,
       onRun: (code) => {
         const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };

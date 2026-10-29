@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Bolt</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="none" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; display: flex; gap: 24px; padding: 26px 32px; overflow: hidden">
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; gap: 16px; align-items: center">
+        <span style="width: 64px; height: 64px; border-radius: 16px; background: #3b82f6; display: flex; align-items: center; justify-content: center; gap: 8px"><i style="width: 5px; height: 12px; background: #0a0a0b; border-radius: 3px"></i><i style="width: 5px; height: 12px; background: #0a0a0b; border-radius: 3px"></i></span>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600">Bolt</h1>
+          <span style="font-size: 14px; color: #a1a1aa">Code · writes the change in a run worktree, small steps, tests alongside</span>
+        </div>
+        <span style="font-size: 12px; color: #93c5fd; border: 1px solid rgba(147,197,253,.35); border-radius: 999px; padding: 3px 10px">coding · R-5A21</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #a1a1aa">Personality
+          <textarea rows="3" style="font-family: inherit; font-size: 14px; line-height: 1.5; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 8px 10px; resize: none">Direct and brief. Says what it changed and why in two lines. Asks before touching anything outside the task.</textarea>
+        </label>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #a1a1aa">Specialty and model
+          <button style="font-family: inherit; text-align: left; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 10px; height: 36px">Coder ▾</button>
+          <button style="font-family: inherit; text-align: left; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 10px; height: 36px; display: flex; align-items: center; gap: 8px"><span style="flex: 1">nemotron-3.5-super-vl-120b-a12b · NVIDIA</span><span style="font-size: 11px; color: #34d399">free · 40/min</span> ▾</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; color: #a1a1aa">Skills</span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; font-family: 'Geist Mono', monospace">
+          <span style="border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 3px 10px">typescript</span>
+          <span style="border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 3px 10px">tdd-workflow</span>
+          <span style="border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 3px 10px">react-components</span>
+          <span style="border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 3px 10px">git-commits</span>
+          <button style="font-family: inherit; font-size: 12px; background: transparent; color: #93c5fd; border: 1px dashed rgba(147,197,253,.4); border-radius: 999px; padding: 3px 10px">+ add skill</button>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: center"><span style="flex: 1; font-size: 13px; color: #a1a1aa">Memory · lessons Bolt carries into every team (no transcripts)</span><button style="font-family: inherit; font-size: 12px; background: transparent; color: #f87171; border: 1px solid rgba(248,113,113,.4); border-radius: 8px; padding: 0 10px; height: 28px">Forget all</button></div>
+        <div style="border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: #111113; display: flex; flex-direction: column; font-size: 13px">
+          <div style="display: flex; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.07); align-items: center"><span style="flex: 1">The full test suite times out under load; rerun the failing files alone before calling a test broken.</span><span style="font-size: 11px; color: #a1a1aa">Tether core · Oct 29</span><button aria-label="Forget this" style="background: transparent; border: 0; color: #a1a1aa">✕</button></div>
+          <div style="display: flex; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.07); align-items: center"><span style="flex: 1">Commits: plain conventional messages, no co-author trailers.</span><span style="font-size: 11px; color: #a1a1aa">tether-dev · Oct 28</span><button aria-label="Forget this" style="background: transparent; border: 0; color: #a1a1aa">✕</button></div>
+          <div style="display: flex; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.07); align-items: center"><span style="flex: 1">Keys never go in argv, logs or URLs; read them from stdin or the Keychain.</span><span style="font-size: 11px; color: #a1a1aa">Tether core · Oct 28</span><button aria-label="Forget this" style="background: transparent; border: 0; color: #a1a1aa">✕</button></div>
+          <div style="display: flex; gap: 10px; padding: 10px 12px; align-items: center"><span style="flex: 1">Tether has no Tailwind preflight: borders need border-solid and a colour.</span><span style="font-size: 11px; color: #a1a1aa">Tether core · Oct 28</span><button aria-label="Forget this" style="background: transparent; border: 0; color: #a1a1aa">✕</button></div>
+        </div>
+      </div>
+    </div>
+
+    <aside style="width: 320px; flex: none; display: flex; flex-direction: column; gap: 18px; font-size: 13px">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; font-weight: 500; color: #a1a1aa">Teams</span>
+        <a href="#" style="display: flex; gap: 8px; align-items: center; text-decoration: none; color: inherit; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; padding: 8px 10px; background: #111113"><span style="color: #a1a1aa; font-family: 'Geist Mono', monospace">#</span><span style="flex: 1">Tether core</span><span style="font-size: 11px; color: #93c5fd">coding</span></a>
+        <a href="#" style="display: flex; gap: 8px; align-items: center; text-decoration: none; color: inherit; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; padding: 8px 10px; background: #111113"><span style="color: #a1a1aa; font-family: 'Geist Mono', monospace">S</span><span style="flex: 1">tether-dev</span><span style="font-size: 11px; color: #a1a1aa">idle</span></a>
+        <a href="#" style="display: flex; gap: 8px; align-items: center; text-decoration: none; color: inherit; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; padding: 8px 10px; background: #111113"><span style="color: #a1a1aa; font-family: 'Geist Mono', monospace">T</span><span style="flex: 1">On the go</span><span style="font-size: 11px; color: #a1a1aa">idle</span></a>
+        <button style="align-self: flex-start; font-family: inherit; font-size: 12px; background: transparent; color: #93c5fd; border: 0; padding: 0">+ Add to a team</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; font-weight: 500; color: #a1a1aa">Recent work</span>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb"></span><span style="flex: 1">R-5A21 · probe timeout</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #a1a1aa">live</span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #34d399"></span><span style="flex: 1">R-5A10 · triggers paths</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #a1a1aa">$0.62</span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #34d399"></span><span style="flex: 1">R-4F21 · README CLI section</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #a1a1aa">$0.38</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; color: #a1a1aa">
+        <span style="font-size: 12px; font-weight: 500">Answers when</span>
+        <span>@mentioned, or handed a task or loop</span>
+        <span>Never acts unprompted</span>
+      </div>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

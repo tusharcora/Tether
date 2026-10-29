@@ -38,6 +38,9 @@ export function ensureGoals(db: Db): void {
     );
     CREATE INDEX IF NOT EXISTS goal_items_goal ON goal_items(goal_id, id);
   `);
+  // teams (2026-10-29): a loop owned by a team agent
+  const cols = new Set((db.prepare('PRAGMA table_info(goals)').all() as { name: string }[]).map((c) => c.name));
+  for (const c of ['team', 'agent']) if (!cols.has(c)) db.exec(`ALTER TABLE goals ADD COLUMN ${c} TEXT`);
 }
 
 const json = <T>(s: unknown): T | undefined => (typeof s === 'string' ? (JSON.parse(s) as T) : undefined);
@@ -59,6 +62,8 @@ const toGoal = (r: Row): Goal => ({
   ...(r.reason ? { reason: r.reason as string } : {}),
   ...(r.last_check ? { lastCheck: json<CheckResult>(r.last_check) } : {}),
   ...(r.pending ? { pending: json<Plan>(r.pending) } : {}),
+  ...(r.team ? { team: r.team as string } : {}),
+  ...(r.agent ? { agent: r.agent as string } : {}),
 });
 const toItem = (r: Row): GoalItem => ({
   id: r.id as number,
@@ -89,8 +94,8 @@ export class GoalStore {
   }
   insert(g: Goal): void {
     this.db
-      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)')
-      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.createdAt);
+      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)')
+      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.createdAt, g.team ?? null, g.agent ?? null);
   }
   /** Replace the fields that change after creation. */
   save(g: Goal): void {

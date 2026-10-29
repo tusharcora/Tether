@@ -49,6 +49,9 @@ export interface Goal {
   reason?: string;
   lastCheck?: CheckResult;
   pending?: Plan;
+  /** Loop work in a team: the team's id and the agent (crew bot) that owns it. Its runs start through the team. */
+  team?: string;
+  agent?: string;
 }
 export interface GoalItem {
   id: number;

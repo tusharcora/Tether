@@ -47,6 +47,8 @@ export interface Lesson {
   runs: number;
   status: 'tentative' | 'confident';
   updatedAt: string;
+  /** Set on an agent's lesson learned in a team (the team's id). */
+  team?: string;
 }
 export type NewLesson = Omit<Lesson, 'id' | 'status' | 'updatedAt'>;
 
@@ -195,7 +197,7 @@ export function mergeLessons(existing: Lesson[], incoming: NewLesson[], minRuns 
       }
     }
     if (!hit) {
-      hit = { id: idOf(inc.bot, inc.polarity, text), bot: inc.bot, text, polarity: inc.polarity, topic: boundText(inc.topic, 40) || 'note', provenance: inc.provenance, evidence: [], runs: 0, status: 'tentative', updatedAt: at };
+      hit = { id: idOf(inc.bot, inc.polarity, text), bot: inc.bot, text, polarity: inc.polarity, topic: boundText(inc.topic, 40) || 'note', provenance: inc.provenance, evidence: [], runs: 0, status: 'tentative', updatedAt: at, ...(inc.team ? { team: inc.team } : {}) };
       list.push(hit);
     }
     const seen = new Set(hit.evidence.map(evKey));
@@ -237,6 +239,7 @@ function clean(raw: unknown, bot: string): Lesson | undefined {
     runs: 0,
     status: 'tentative',
     updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt.slice(0, 40) : new Date(0).toISOString(),
+    ...(typeof o.team === 'string' && TEAM_RE.test(o.team) ? { team: o.team } : {}),
   };
 }
 
@@ -323,6 +326,43 @@ export function saveLessons(home: string, bot: string, ls: Lesson[]): Lesson[] {
     throw e;
   }
   return list;
+}
+
+// ---------- agent memory (teams) ----------
+
+const TEAM_RE = /^[a-z0-9_-]{1,40}$/;
+/** Lessons one finished task or loop may add (spec §6.2: "at most a few"). */
+export const TEAM_LESSONS_MAX = 3;
+
+/** A quote or who-said-what: memory crosses teams, so a lesson never carries a person's words or a name tied to them (spec §4). */
+export const isQuote = (t: string): boolean => /["“”„«»]|(^|\s)@\w|\b(said|says|told|asked|wrote|mentioned|according to)\b/i.test(t);
+
+/**
+ * An agent's lessons from a team task or loop: the agent's own words (untrusted, provenance 'check'), quotes dropped, at most
+ * three, merged into its one lesson list (similar ones become one; the 200 cap drops the oldest). Returns the stored list.
+ */
+export function addTeamLessons(home: string, bot: string, team: string, run: string, texts: string[], now = new Date()): Lesson[] {
+  if (!TEAM_RE.test(team)) throw new Error(`invalid team id: ${team}`);
+  const incoming: NewLesson[] = texts
+    .map((t) => boundText(t))
+    .filter((t) => t && hasWords(t) && !isQuote(t))
+    .slice(0, TEAM_LESSONS_MAX)
+    .map((text) => ({ bot, text, polarity: 'do', topic: 'team', provenance: 'check', team, evidence: [{ run, node: 'team', signal: 'team', source: 'verdict' }], runs: 1 }));
+  if (!incoming.length) return loadLessons(home, bot);
+  return saveLessons(home, bot, mergeLessons(loadLessons(home, bot), incoming, DEFAULT_MIN_RUNS, now));
+}
+
+/** Forget some of a bot's lessons, or all of them. Returns the ids removed. */
+export function forgetLessons(home: string, bot: string, ids?: string[]): string[] {
+  const all = loadLessons(home, bot);
+  const gone = all.filter((l) => !ids || ids.includes(l.id));
+  if (gone.length) saveLessons(home, bot, all.filter((l) => !gone.includes(l)));
+  return gone.map((l) => l.id);
+}
+
+/** Forgotten lessons' vault notes become retired stubs, so retrieval cannot hand them out again (the Vault API has no delete). */
+export async function retireNotes(vault: Vault, bot: string, ids: string[]): Promise<void> {
+  for (const id of ids) await vault.writeNote(`lessons/${bot}/${id}.md`, retiredNote(id)).catch(() => {});
 }
 
 // ---------- reflecting ----------

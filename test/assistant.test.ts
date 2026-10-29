@@ -6,7 +6,7 @@ import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { Engine } from '../src/engine.js';
 import { deleteChat, listChats, loadAllow, readChat } from '../src/assistant/history.js';
-import { builtinStep } from '../src/assistant/turn.js';
+import { builtinStep, runTurn } from '../src/assistant/turn.js';
 import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { startServer } from '../src/server.js';
@@ -335,6 +335,26 @@ describe('POST /api/assistant', () => {
     const t = await boot();
     expect((await t.call('POST', '/api/assistant', { ws: 'api' })).status).toBe(400);
     expect((await t.call('POST', '/api/assistant', { ws: 'nope', message: 'x' })).status).toBe(404);
+  });
+});
+
+describe('an agent turn (teams)', () => {
+  it('speaks as the given agent with the extra context, and saves no chat', async () => {
+    const t = await boot();
+    t.agent.reply = 'On it.';
+    const m = await runTurn(
+      { home: t.home, store: t.store, engine: t.engine, registry: t.registry, vault: new Vault(tmp('vault-')), needs: () => [] },
+      { ws: 'api', root: t.dir, body: { message: 'what is the limit?', agent: 'scripted' }, who: 'You are Bolt, an agent in the team "core".', extra: '<team>\nyou: hi\n</team>', ephemeral: true },
+      () => {},
+      new AbortController().signal,
+    );
+    expect(m.text).toBe('On it.');
+    const p = t.agent.prompts.at(-1)!;
+    expect(p.startsWith('You are Bolt')).toBe(true);
+    expect(p).not.toContain('You are Tether');
+    expect(p).not.toContain('Nothing needs the person');
+    expect(p).toContain('<team>\nyou: hi\n</team>');
+    expect(listChats(t.home, 'api')).toEqual([]);
   });
 });
 

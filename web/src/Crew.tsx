@@ -10,6 +10,7 @@ import { BotEditor } from './crew/BotEditor';
 import { canPlay, playAs } from './crew/roles';
 import { Slot } from './crew/Lineup';
 import { RunsOn } from './crew/RunsOn';
+import { AgentProfile } from './teams/AgentProfile';
 import { SwapPicker } from './crew/SwapPicker';
 import type { AgentInfo, Binding, CrewReply, Filter, ImportReply, Meta, Pack, Row } from './crew/types';
 import { applyCrew, loadCrewDefs, type BotDef, type FaceLook } from './crewStore';
@@ -28,6 +29,8 @@ const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a'
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
 const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
 const NO_BINDING: Binding = { agent: '', model: '', toolStyle: 'code', codeReads: false };
+/** Bots that can be team agents (spec Teams §6.1): those that call a model or run a command, not a person or Tether. */
+const TEAM_KINDS = new Set(['agent', 'verdict', 'gate']);
 const bindingOf = (b: Row['binding']): Binding => ({ agent: b?.agent ?? '', model: b?.model ?? '', toolStyle: b?.toolStyle ?? 'code', codeReads: !!b?.codeReads });
 
 export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** The Create menu asked for a new bot (a counter). */ create?: number }) {
@@ -367,6 +370,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
           }}
         />
       ) : null}
+      {!isNew && selRow && TEAM_KINDS.has(b.kind) ? <AgentProfile key={selRow.role} bot={selRow.role} name={b.name} title={b.title} /> : null}
       {!isNew && evolvable ? (
         <div className="cw-actions">
           <Button variant="secondary" size="sm" onClick={() => setEvolving(selRow)}>

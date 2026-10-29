@@ -11,6 +11,11 @@
 .sl-side.collapsed .sl-side-dot { opacity: 1; }
 .sl-side-dot.needs { background: var(--warn); }
 .sl-side-dot.live { background: var(--acc); }
+/* Teams rows: the place mark (# Tether, S Slack, T Telegram) in the icon cell and a status dot (blue working, amber needs you) */
+.sl-side-mark { width: 16px; font-family: var(--mono); font-size: 13px; color: var(--mut); text-align: center; }
+.sl-side-status { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.sl-side-status.live { background: var(--acc); }
+.sl-side-status.needs { background: var(--warn); }
 /* fixed to the viewport, level with the row's centre (the aside clips its own box) */
 .sl-side-tip { position: fixed; z-index: 30; padding: 6px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12.5px; font-weight: 500; white-space: nowrap; pointer-events: none; transform: translateY(-50%); box-shadow: 0 8px 20px rgba(0, 0, 0, .18); animation: sl-tip-in var(--t-fast) var(--ease) both; }
 @keyframes sl-tip-in { from { opacity: 0; transform: translate(-4px, -50%); } to { opacity: 1; transform: translateY(-50%); } }
