@@ -93,6 +93,17 @@ describe('the full-screen chat', () => {
     expect(within(mini).getByText('an old question')).toBeTruthy();
   });
 
+  it('lists the chats on All chats, where Pop out opens the mini chat on that chat', async () => {
+    render(<App />);
+    fireEvent.click(within(await chatsSection()).getByRole('button', { name: 'All chats' }));
+    expect(location.hash).toBe('#/chats');
+    fireEvent.click(await screen.findByRole('button', { name: 'Old chat, Answer only' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Chat preview' })).getByRole('button', { name: 'Pop out' }));
+    const mini = await screen.findByRole('region', { name: 'Tether assistant' });
+    expect(within(mini).getByRole('button', { name: 'Switch chat (Old chat)' })).toBeTruthy();
+    expect(localStorage.getItem('tether.assistant.chat.shop')).toBe('c2');
+  });
+
   it('renames and deletes the chat from its title menu', async () => {
     startAt('#/chats/c2');
     render(<App />);

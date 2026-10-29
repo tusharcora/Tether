@@ -6,6 +6,7 @@ import { assistantApi } from './assistant/api';
 import { useActiveChat, useAssistant } from './assistant/useAssistant';
 import { useAssistantShell } from './assistant/useAssistantShell';
 import { contextOf } from './assistant/context';
+import { AllChats } from './chats/AllChats';
 import { Conversation } from './chats/Conversation';
 import { NewChat } from './chats/NewChat';
 import { Builder } from './Builder';
@@ -356,6 +357,19 @@ function Shell() {
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
+            {screen.tab === 'chats' && !screen.id ? (
+              <AllChats
+                key={projects.current?.id ?? '_'}
+                ws={projects.current?.id}
+                project={projects.current}
+                active={activeChat}
+                onOpen={(id) => go({ tab: 'chats', id })}
+                onPopOut={(id) => (setActiveChat(id), shell.open('float'))}
+                onNew={newChat}
+                onGo={go}
+                onTurnDone={(id) => id === activeChat && chat.refresh()}
+              />
+            ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} /> : null}
             {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onDelete={() => deleteChat(screen.id!)} /> : null}
             {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} /> : null}
