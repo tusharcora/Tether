@@ -8,6 +8,7 @@ import { StepTodos } from '../ui/studio/StepTodos';
 import { ApprovalBar } from './ApprovalBar';
 import { LimitBar } from './LimitBar';
 import { OutputLog } from './OutputLog';
+import { PlanCard } from './PlanCard';
 import { RunFiles } from './RunFiles';
 import { RunGraph } from './RunGraph';
 import { RunHeader } from './RunHeader';
@@ -50,6 +51,8 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
       <div className="run-page">
         <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} onDetails={() => openRun('changes')} />
         <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
+        {/* the page says when Tether is planning; the card comes with the steps */}
+        {hasNodes ? <PlanCard run={r} compact /> : null}
         <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} onAct={p.onAct} onViewDiff={() => openRun('changes')} />
         {r.kind === 'team' ? <TeamPanel run={r} send={(path, body) => p.onAct(path, body)} /> : null}
         {planning ? <QuietLine>Tether is planning…</QuietLine> : null}

@@ -4,6 +4,7 @@ import { ago, fmtUsd } from '../api';
 import { ToolResult, ToolResultOutput } from '../components/beui/agents/tool-result';
 import { Button } from '../components/beui/kit/Button';
 import { ActionNode, type NodeTone } from '../components/bencho/ActionNode';
+import { LivePlan } from '../runs/PlanCard';
 import type { GoalView } from './goalsApi';
 import './goals.css';
 
@@ -101,7 +102,10 @@ export function LoopFlow({ goal: g, checking, act }: { goal: GoalView; checking:
                 { id: 'retry', label: 'Retry', icon: <RotateCcw />, onSelect: () => act.retry(i.runId!), disabled: running },
                 { id: 'diff', label: 'View diff', icon: <FileDiff />, onSelect: () => act.diff(i.runId!) },
               ]}
-            />
+            >
+              {/* the goal's current run, live */}
+              {!finished && i.runId ? <LivePlan runId={i.runId} /> : null}
+            </ActionNode>
           </li>
         );
       })}

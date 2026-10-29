@@ -63,23 +63,29 @@ button.sl-row-title:hover { text-decoration: underline; text-underline-offset: 2
 .sl-facestack > .face:first-child { margin-left: 0; }
 .sl-facestack-more { margin-left: 6px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
 
-/* StepTrack */
-.sl-steptrack { display: flex; align-items: center; gap: 3px; height: 6px; min-width: 0; }
-.sl-seg { position: relative; flex: 1 1 0; height: 6px; overflow: hidden; border-radius: 2px; background: var(--s3); }
-.sl-seg.s-done { background: var(--ok); }
-.sl-seg.s-failed { background: var(--bad); }
-.sl-seg.s-waiting { background: var(--warn); animation: sl-pulse 1.4s var(--ease) infinite; }
-/* queued and skipped use --edge (3:1); --s3 or --line2 would fade to about 1.3:1 */
-.sl-seg.s-queued { background: var(--edge); }
-.sl-seg.s-working, .sl-seg.s-planning { background: var(--accBg); }
-/* stripes: a solid --acc fill cut by a mask (not a gradient fill), moving while the step works */
-.sl-seg.s-working::after, .sl-seg.s-planning::after {
-  content: ''; position: absolute; inset: 0 -12px 0 0; background: var(--acc);
-  -webkit-mask-image: repeating-linear-gradient(135deg, black 0 4px, transparent 4px 8px); mask-image: repeating-linear-gradient(135deg, black 0 4px, transparent 4px 8px);
-  animation: sl-stripes .8s linear infinite;
-}
-@keyframes sl-stripes { to { transform: translateX(-11.3px); } }
-.sl-seg.s-skipped { flex: 0 0 10px; height: 1px; background: var(--edge); }
+/* StepTrack (agent-work board): a dot per step joined by lines. Done ✓ green, working rings blue, waiting amber, an approval
+   still ahead an amber ◆, failed red. Queued uses --edge (3:1); --s3 or --line2 would fade to about 1.3:1. */
+.sl-steptrack { display: flex; align-items: center; height: 16px; min-width: 0; }
+.sl-link { flex: 1 1 0; min-width: 4px; height: 2px; background: var(--edge); }
+.sl-link.done { background: var(--ok); }
+.sl-seg { flex: none; display: grid; place-items: center; width: 14px; height: 14px; box-sizing: border-box; border: 2px solid var(--edge); border-radius: 50%; font-size: 8px; line-height: 1; }
+.sl-seg.s-done { border-color: var(--ok); background: var(--ok); color: var(--bg); }
+.sl-seg.s-failed { border-color: var(--bad); background: var(--bad); color: var(--bg); }
+.sl-seg.s-working, .sl-seg.s-planning { border-color: var(--acc); animation: sl-ring 1.6s var(--ease) infinite; }
+.sl-seg.s-working::after, .sl-seg.s-planning::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--acc); }
+@keyframes sl-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--acc) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+.sl-seg.s-waiting { border-color: var(--warn); background: var(--warn); animation: sl-pulse 1.4s var(--ease) infinite; }
+.sl-seg.s-gate { border-color: var(--warn); color: var(--warn); }
+.sl-seg.s-skipped { width: 6px; height: 6px; border: 0; background: var(--edge); }
+
+/* Tag tones (agent-work board): a trigger red, an agent blue, a step that asks first amber */
+.sl-tag.t-trigger { background: var(--badBg); color: var(--bad); }
+.sl-tag.t-agent { background: var(--accBg); color: var(--accInk); }
+.sl-tag.t-asks { background: var(--warnBg); color: var(--warn); }
+
+/* ToolChip: a file, run, note or connector a step touched, with a small type mark */
+.sl-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 2px 8px; overflow: hidden; border: 1px solid var(--line2); border-radius: 7px; background: var(--s2); color: var(--ink); font-size: 12px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.sl-chip-mark { flex: none; font-size: 9.5px; font-weight: 600; letter-spacing: .02em; color: var(--mut); }
 
 /* The Tether glyph: one drawing per theme, the other hidden */
 .sl-glyph { display: inline-grid; flex: none; }

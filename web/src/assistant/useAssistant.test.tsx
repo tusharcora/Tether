@@ -6,12 +6,13 @@ import { useActiveChat, useAssistant } from './useAssistant';
 
 const api = vi.hoisted(() => ({
   chat: vi.fn(),
+  compact: vi.fn(),
   turn: undefined as undefined | ((body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => Promise<void>),
   bodies: [] as unknown[],
 }));
 vi.mock('./api', async (orig) => ({
   ...(await orig<typeof import('./api')>()),
-  assistantApi: { chat: api.chat },
+  assistantApi: { chat: api.chat, compact: api.compact },
   streamTurn: (body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => (api.bodies.push(body), api.turn!(body, on, signal)),
 }));
 
@@ -40,6 +41,24 @@ describe('useAssistant', () => {
     expect(result.current.title).toBe('hi');
     expect(result.current.messages.map((m) => m.text)).toEqual(['hi', 'Hello']);
     expect(api.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the server’s messages when a turn compacted first, and after Compact now', async () => {
+    const folded = [{ id: 'x', role: 'you', text: 'old', at: 1, compactedBy: 's' }, { id: 's', role: 'tether', text: 'sum', at: 2, compact: { count: 1, auto: true } }];
+    api.turn = async (_b, on) => {
+      on({ type: 'start', you: { id: 'y', role: 'you', text: 'hi', at: 3 }, id: 'r', chat: 'c2', title: 'Old chat' });
+      on({ type: 'compacted', messages: [...folded, { id: 'y', role: 'you', text: 'hi', at: 3 }] as never });
+      on({ type: 'done', message: { id: 'r', role: 'tether', text: 'Hello', at: 4 } });
+    };
+    const { result } = renderHook(() => useAssistant('api', 'c2', true));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(() => result.current.send('hi'));
+    expect(result.current.messages.map((m) => m.id)).toEqual(['x', 's', 'y', 'r']);
+    api.compact.mockResolvedValueOnce({ messages: [{ id: 'x', role: 'you', text: 'old', at: 1 }] });
+    await act(() => result.current.compact(true));
+    expect(api.compact).toHaveBeenCalledWith('api', 'c2', true);
+    expect(result.current.messages.map((m) => m.id)).toEqual(['x']);
+    expect(result.current.compacting).toBe(false);
   });
 
   it('calls gone for a chat that is not there', async () => {

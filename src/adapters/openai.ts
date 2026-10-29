@@ -257,7 +257,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
       ];
       let tools: unknown[] | undefined = cm ? CODE_TOOLS(cm) : TOOLS(writable);
       let last = '';
-      const usage = { inputTokens: 0, outputTokens: 0, toolCalls: 0, turns: 0 };
+      const usage: { inputTokens: number; outputTokens: number; toolCalls: number; turns: number; promptTokens?: number } = { inputTokens: 0, outputTokens: 0, toolCalls: 0, turns: 0 };
       const done = (r: AgentResult): AgentResult => ({ ...r, usage });
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (req.signal.aborted) return fail('aborted', last);
@@ -284,6 +284,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
         }
         if (r.status !== 200) return fail(`${this.id}: HTTP ${r.status}${r.errorText ? `: ${r.errorText}` : ''}`, last);
         usage.turns++;
+        if (usage.turns === 1 && r.usage?.prompt_tokens !== undefined) usage.promptTokens = r.usage.prompt_tokens;
         usage.inputTokens += r.usage?.prompt_tokens ?? 0;
         usage.outputTokens += r.usage?.completion_tokens ?? 0;
         const m = r.message;

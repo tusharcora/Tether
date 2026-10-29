@@ -38,3 +38,15 @@
 /* the prompt is one field: the composer draws the border, the textarea inside keeps none (global textarea rules would add one) */
 .tether-panel form textarea { width: 100%; padding-top: 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; font-family: inherit; font-size: 14px; resize: none; }
 .tether-panel form textarea:focus, .tether-panel form textarea:focus-visible { outline: none; box-shadow: none; }
+
+/* The thinking timeline (board 1): steps fade in, the current one spins and its label shimmers; reduced motion: still text */
+@keyframes th-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes th-spin { to { transform: rotate(360deg); } }
+@keyframes th-shimmer { 0% { -webkit-mask-position: 150% 0; mask-position: 150% 0; } 100% { -webkit-mask-position: -50% 0; mask-position: -50% 0; } }
+.th-in { animation: th-in .3s ease-out both; }
+.th-spin { animation: th-spin .9s linear infinite; }
+/* the shimmer is a light band moving through a mask over solid ink (a mask, not a gradient fill) */
+.th-shimmer { color: var(--ink); -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, .45) 0%, #000 45%, rgba(0, 0, 0, .45) 90%); mask-image: linear-gradient(90deg, rgba(0, 0, 0, .45) 0%, #000 45%, rgba(0, 0, 0, .45) 90%); -webkit-mask-size: 200% 100%; mask-size: 200% 100%; animation: th-shimmer 1.6s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .th-shimmer { -webkit-mask-image: none; mask-image: none; }
+}

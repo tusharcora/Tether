@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PR and merge conflicts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes pr-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes pr-spin{to{transform:rotate(360deg)}}
+.pr-in{animation:pr-in .3s ease-out both}
+.pr-spin{animation:pr-spin .9s linear infinite}
+@media (prefers-reduced-motion: reduce){.pr-in,.pr-spin{animation:none}}
+</style>
+</helmet>
+<div style="width: 1000px; height: 760px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex; justify-content: center; padding: 30px 0; box-sizing: border-box">
+  <div style="width: 700px; display: flex; flex-direction: column; gap: 14px">
+    <div style="align-self: flex-end; background: #18181b; border-radius: 14px; padding: 8px 13px; font-size: 15px">Ship the Back fix</div>
+    <span style="font-size: 13.5px; color: #a1a1aa">› Worked for 41s</span>
+
+    <div style="background: #111113; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 8px"><b style="font-size: 15px; font-weight: 600">Fix Back after a new chat</b><span style="color: #71717a; font-size: 15px">{{prNum}}</span><span style="flex: 1"></span><span style="font-size: 12.5px; color: {{pillColor}}">{{pill}}</span></div>
+      <div style="position: relative; display: flex; flex-direction: column; gap: 9px; font-size: 13.5px">
+        <span style="position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: #2563eb; opacity: .55"></span>
+        <span style="position: absolute; left: 25px; top: 10px; bottom: 10px; width: 2px; background: #3f3f46"></span>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+          <div class="pr-in" style="display: flex; align-items: center; gap: 10px; position: relative">
+            <span style="width: 34px; height: 16px; flex: none; position: relative"><span style="{{r.dot}}"></span></span>
+            <span style="color: {{r.color}}; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{r.title}}</span>
+            <sc-if value="{{r.hasTag}}" hint-placeholder-val="{{false}}"><span style="{{r.tagStyle}}">{{r.tag}}</span></sc-if>
+            <sc-if value="{{r.hasBadge}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; color: #fbbf24; border: 1px solid rgba(251,191,36,.5); border-radius: 999px; padding: 0 6px">{{r.badge}}</span></sc-if>
+            <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #71717a; width: 66px; text-align: right">{{r.sha}}</span>
+            <span style="font-size: 12.5px; color: #a1a1aa; width: 92px; text-align: right">{{r.who}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{showChecks}}" hint-placeholder-val="{{false}}">
+        <div class="pr-in" style="display: flex; gap: 6px; flex-wrap: wrap">
+          <span style="font-size: 12.5px; border: 1px solid rgba(52,211,153,.35); border-radius: 999px; padding: 3px 10px"><span style="color: #34d399">✓</span> Tests <span style="color: #a1a1aa">812 passed</span></span>
+          <span style="font-size: 12.5px; border: 1px solid rgba(52,211,153,.35); border-radius: 999px; padding: 3px 10px"><span style="color: #34d399">✓</span> Types <span style="color: #a1a1aa">passed</span></span>
+          <span style="font-size: 12.5px; border: 1px solid rgba(52,211,153,.35); border-radius: 999px; padding: 3px 10px"><span style="color: #34d399">✓</span> Build <span style="color: #a1a1aa">passed</span></span>
+          <span style="font-size: 12.5px; border: 1px solid rgba(52,211,153,.35); border-radius: 999px; padding: 3px 10px"><span style="color: #34d399">✓</span> Lens <span style="color: #a1a1aa">approved</span></span>
+        </div>
+      </sc-if>
+      <div style="display: flex; align-items: center; gap: 10px; border-top: 1px solid rgba(255,255,255,.07); padding-top: 10px; font-size: 13.5px">
+        <sc-if value="{{busy}}" hint-placeholder-val="{{true}}"><span class="pr-spin" style="width: 12px; height: 12px; border-radius: 999px; border: 2px solid #3f3f46; border-top-color: #f4f4f5"></span></sc-if>
+        <span style="flex: 1; color: {{statusColor}}">{{status}}</span>
+        <sc-if value="{{hasAction}}" hint-placeholder-val="{{false}}"><button onClick="{{act}}" style="font-family: inherit; font-size: 13px; font-weight: 500; background: {{actBg}}; color: {{actColor}}; border: 0; border-radius: 8px; padding: 0 12px; height: 30px; cursor: pointer">{{actLabel}}</button></sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{explain}}" hint-placeholder-val="{{false}}">
+      <span class="pr-in" style="font-size: 15px; line-height: 1.6; color: #e4e4e7">PR <b>#21</b> is open, but <code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">main</code> moved on: Lens renamed the chat route helper and Maya restyled the chat header, both in <code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">App.tsx</code>. I can merge main in and resolve them.</span>
+    </sc-if>
+    <span style="flex: 1"></span>
+
+    <div style="display: flex; gap: 6px; align-items: center">
+      <span style="font-size: 12.5px; background: #111113; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 4px 10px; display: flex; gap: 6px; align-items: center"><span style="width: 7px; height: 7px; border-radius: 999px; background: {{chipDot}}"></span>{{chip}}</span>
+      <span style="font-size: 12.5px; background: #111113; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 4px 10px; font-family: 'Geist Mono', monospace"><span style="color: #34d399">+38</span> <span style="color: #f87171">−9</span></span>
+      <span style="flex: 1"></span>
+      <button onClick="{{next}}" style="font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 12px; height: 30px; cursor: pointer">{{nextLabel}}</button>
+    </div>
+    <div style="background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; padding: 12px 14px; font-size: 15px; color: #71717a">Ask Tether…</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":760}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { st: 0, fixed: 0 }; }
+componentDidMount() { this.t = setInterval(() => { if (this.state.st === 3) { const f = this.state.fixed + 1; this.setState(f >= 3 ? { st: 4, fixed: 3 } : { fixed: f }); } }, 1100); }
+componentWillUnmount() { clearInterval(this.t); }
+renderVals() {
+const { st, fixed } = this.state;
+const lane = (x, color, hollow) => 'position: absolute; left: ' + x + 'px; top: 3px; width: 10px; height: 10px; border-radius: 999px; ' + (hollow ? 'border: 2px solid ' + color + '; background: #111113; box-sizing: border-box' : 'background: ' + color);
+const conflict = st === 2 || st === 3;
+const rows = [];
+if (st >= 2) rows.push({ title: 'Merge into main', sha: '', who: st === 5 ? 'merged' : st === 4 ? 'ready' : (3 - fixed) + ' conflicts', color: '#a1a1aa', dot: lane(1, st >= 4 ? '#34d399' : '#fbbf24') });
+if (st >= 3) rows.push({ title: 'Merge main into fix/back-after-new-chat', sha: st >= 4 ? 'e41b07c' : '', who: st >= 4 ? 'Bolt · now' : fixed + '/3', color: '#f4f4f5', dot: lane(1, '#2563eb', true), tag: 'fix/back-after-new-chat', hasTag: true });
+rows.push({ title: 'Replace the history entry on create', sha: 'a1c9e02', who: 'Bolt · now', color: '#f4f4f5', dot: lane(1, '#2563eb'), tag: st < 3 ? 'fix/back-after-new-chat' : '', hasTag: st < 3 });
+rows.push({ title: 'Rename the chat route helper', sha: '5be27d4', who: 'Lens · 6m', color: conflict ? '#fbbf24' : '#a1a1aa', dot: lane(19, conflict ? '#fbbf24' : '#71717a'), badge: '2', hasBadge: conflict, tag: 'main', hasTag: !conflict });
+rows.push({ title: 'Test: Back after a new chat', sha: '7f3d1a8', who: 'Bolt · 12m', color: '#f4f4f5', dot: lane(1, '#2563eb') });
+rows.push({ title: 'Restyle the chat header', sha: 'c70a92e', who: 'Maya · 25m', color: conflict ? '#fbbf24' : '#a1a1aa', dot: lane(19, conflict ? '#fbbf24' : '#71717a'), badge: '1', hasBadge: conflict });
+rows.push({ title: 'Merge PR #16 Tether chats', sha: '3428754', who: '1 h', color: '#71717a', dot: lane(19, '#52525b'), tag: 'main', hasTag: true });
+const tagStyle = (t) => 'font-family: \'Geist Mono\', monospace; font-size: 11px; border-radius: 4px; padding: 1px 6px; ' + (t === 'main' ? 'background: #26262b; color: #a1a1aa' : 'background: rgba(59,130,246,.15); color: #93c5fd');
+const S = [
+  ['Pushing 2 commits to origin', true, '', '#d4d4d8', 'Draft', '#a1a1aa', 'Pushing', '#93c5fd'],
+  ['Opening PR #21 on GitHub', true, '', '#d4d4d8', 'Draft', '#a1a1aa', 'Creating PR', '#93c5fd'],
+  ['main moved on: 3 conflicts in App.tsx', false, 'Resolve', '#fbbf24', '● Open', '#34d399', '#21 3 conflicts', '#fbbf24'],
+  ['Resolving conflict ' + Math.min(fixed + 1, 3) + ' of 3', true, '', '#d4d4d8', '● Open', '#34d399', '#21 Resolving', '#93c5fd'],
+  ['Ready to merge · any teammate can merge', false, 'Merge', '#34d399', '● Open', '#34d399', '#21 Ready to merge', '#34d399'],
+  ['Merged into main · branch deleted', false, '', '#34d399', 'Merged', '#a1a1aa', '#21 Merged', '#a1a1aa'],
+][st];
+return {
+  rows: rows.map((r) => ({ hasTag: false, hasBadge: false, tag: '', badge: '', ...r, tagStyle: tagStyle(r.tag) })),
+  prNum: st >= 2 ? '#21' : '', pill: S[4], pillColor: S[5],
+  status: S[0], busy: S[1], statusColor: S[3], hasAction: !!S[2], actLabel: S[2],
+  actBg: S[2] === 'Merge' ? '#f4f4f5' : 'rgba(251,191,36,.18)', actColor: S[2] === 'Merge' ? '#09090b' : '#fbbf24',
+  act: () => this.setState(st === 2 ? { st: 3, fixed: 0 } : { st: 5 }),
+  showChecks: st >= 4, explain: st >= 2 && st <= 3,
+  chip: S[6], chipDot: S[7],
+  next: () => this.setState(st >= 5 ? { st: 0, fixed: 0 } : st === 2 ? { st: 3, fixed: 0 } : st === 3 ? { st: 4, fixed: 3 } : { st: st + 1 }),
+  nextLabel: st >= 5 ? 'Replay' : 'Next state',
+};
+}
+}
+</script>
+</body>
+</html>

@@ -50,6 +50,24 @@ export interface ToolRun {
   ms?: number;
 }
 
+/**
+ * What one turn sent the model, part by part in characters (with what makes each part up), and how big the answering
+ * model's context is. Saved on the reply (and on a summary message, re-measured) so the composer's ring reads the chat.
+ */
+export interface ContextUse {
+  parts: Record<'prompt' | 'tools' | 'memory' | 'messages', [label: string, chars: number][]>;
+  /** The input tokens of the turn's first model request, when the agent reports them. */
+  tokens?: number;
+  /** `tokens` is Tether's estimate (after a compaction), not the agent's report. */
+  about?: true;
+  agent: string;
+  model?: string;
+  /** The model's context window in tokens; unknown: no ring. */
+  size?: number;
+  /** A free-tier limit that applies to this model. */
+  limit?: 'openrouter' | 'nvidia';
+}
+
 /** A comparison of runs, models or bots (cost, time, tests, files). */
 export interface Compare {
   title?: string;
@@ -74,6 +92,12 @@ export interface ChatMessage {
   costUsd?: number;
   /** The turn failed: what to tell the person. */
   error?: string;
+  /** What the turn sent the model (the composer's context ring). */
+  context?: ContextUse;
+  /** A summary of `count` earlier messages (Compact now, or auto-compact when the context ran full). */
+  compact?: { count: number; auto?: true };
+  /** Folded into that summary message: kept in the chat, left out of the prompt, shown collapsed. */
+  compactedBy?: string;
 }
 
 /** What the person is looking at, sent with every message so Tether can use it. */
@@ -130,6 +154,8 @@ export type StreamEvent =
   | { type: 'start'; you: ChatMessage; id: string; chat: string; title: string }
   | { type: 'delta'; text: string }
   | { type: 'tool'; tool: ToolRun }
+  /** Older messages were summarized before this turn (auto-compact): the chat's messages as they are now. */
+  | { type: 'compacted'; messages: ChatMessage[] }
   | { type: 'done'; message: ChatMessage }
   | { type: 'error'; error: string };
 

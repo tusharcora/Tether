@@ -6,7 +6,7 @@
  * field for them: the Plan / Ask / Build modes, effort levels and the @ context menu; and the demo-only parts: the Pro
  * banner and modal, the video tour and the theme switcher (the palette follows Tether's data-theme).
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { CheckIcon } from 'lucide-react';
 import { ModelSelector, ModelSelectorContent, ModelSelectorEmpty, ModelSelectorGroup, ModelSelectorInput, ModelSelectorItem, ModelSelectorList, ModelSelectorLogo, ModelSelectorName, ModelSelectorTrigger } from '../ai-elements/model-selector';
 import './AIComposer.css';
@@ -34,6 +34,8 @@ export interface AIComposerProps {
   favKey?: string;
   /** Short tags per model shown on its row (OpenRouter: free, tools, images). */
   tags?: Record<string, string[]>;
+  /** Shown before Record (the chat's context ring). */
+  extra?: ReactNode;
   /** A group heading for a model instead of its maker's (NVIDIA's hosted models listed together). */
   groupOf?: (m: string) => string | undefined;
 }
@@ -299,6 +301,7 @@ export function AIComposer(p: AIComposerProps) {
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2">
+            {p.extra}
             {Speech ? (
               <button type="button" onClick={toggleRecord} className={`aic-pill aic-grow aic-record ${recording ? 'recording' : ''}`} aria-label={recording ? 'Stop dictation' : 'Dictate'} aria-pressed={recording}>
                 <span className="flex flex-shrink-0 items-center justify-center" style={{ color: recording ? undefined : 'var(--icon-primary)' }}>

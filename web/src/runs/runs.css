@@ -74,3 +74,24 @@ button.out-line:hover .out-text { text-decoration: underline; text-underline-off
 .file-bar { display: flex; height: 6px; overflow: hidden; border-radius: 2px; background: var(--s3); }
 .file-add { background: var(--ok); }
 .file-del { background: var(--bad); }
+
+/* PlanCard (agent-work board): a run's steps with their state dot (the step track's), the live one's latest activity */
+.plan-card { display: flex; flex-direction: column; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--s1); font-size: 13.5px; }
+.plan-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.plan-head b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.plan-cost { flex: none; font-family: var(--font-code); font-size: 12px; color: var(--mut); }
+.plan-steps { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.plan-row { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.plan-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.plan-step.p-todo .plan-title, .plan-step.p-skipped .plan-title { color: var(--mut); }
+.plan-right { flex: none; font-size: 12.5px; color: var(--mut); }
+.plan-step.p-live .plan-right { color: var(--accInk); }
+.plan-step.p-waiting .plan-right { color: var(--warn); }
+.plan-step.p-failed .plan-right { color: var(--bad); }
+.plan-subs { display: flex; flex-direction: column; gap: 6px; margin: 0 0 6px 6px; padding: 2px 0 4px 17px; border-left: 1px solid var(--edge); list-style: none; font-size: 12.5px; color: var(--mut); }
+.plan-subs li { overflow-wrap: anywhere; animation: plan-in .3s ease-out both; }
+.plan-subs li.newest { color: var(--accInk); }
+@keyframes plan-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.plan-card.compact { flex-direction: row; align-items: center; gap: 14px; padding: 10px 14px; }
+.plan-track { flex: 0 1 260px; }
+.plan-now { flex: 1; min-width: 0; overflow: hidden; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }

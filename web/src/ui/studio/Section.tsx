@@ -30,9 +30,18 @@ export const RowList = (p: { label?: string; children: ReactNode }) => (
 /** An empty section: one quiet line, never an icon tile. */
 export const QuietLine = (p: { children: ReactNode }) => <p className="sl-quiet">{p.children}</p>;
 
-export const Tag = (p: { children: ReactNode; title?: string }) => (
-  <span className="sl-tag" title={p.title}>
+/** A small label; a tone marks a trigger (red), an agent (blue) or a step that asks first (amber). */
+export const Tag = (p: { children: ReactNode; title?: string; tone?: 'trigger' | 'agent' | 'asks' }) => (
+  <span className={cn('sl-tag', p.tone && `t-${p.tone}`)} title={p.title}>
     {p.children}
+  </span>
+);
+
+/** A file, run, note or connector a step touched, with its type mark ("TS", "run"). */
+export const ToolChip = (p: { label: string; mark?: string; title?: string }) => (
+  <span className="sl-chip" title={p.title}>
+    {p.mark ? <b className="sl-chip-mark">{p.mark}</b> : null}
+    {p.label}
   </span>
 );
 

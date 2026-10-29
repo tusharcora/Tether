@@ -11,6 +11,7 @@ export function parseClaudeLine(
   onChunk: (t: string) => void,
   onSession: (id: string) => void,
   onDelta?: (t: string) => void,
+  onTool?: (name: string, input: unknown) => void,
 ): void {
   let o: any;
   try {
@@ -35,6 +36,11 @@ export function parseClaudeLine(
     const mcp = tools.filter((t) => t.startsWith('mcp__'));
     if (mcp.length) onChunk(`[code mode] MCP tools: ${mcp.join(', ')}\n`);
   } else if (o.type === 'assistant' && Array.isArray(o.message?.content)) {
+    const u = o.message.usage;
+    if (u && typeof u === 'object' && acc.usage?.promptTokens === undefined) {
+      const n = (k: string) => (typeof u[k] === 'number' ? (u[k] as number) : 0);
+      acc.usage = { ...acc.usage, promptTokens: n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens') };
+    }
     for (const b of o.message.content) {
       if (b?.type === 'text' && typeof b.text === 'string') {
         acc.text += b.text + '\n';
@@ -42,6 +48,7 @@ export function parseClaudeLine(
       } else if (b?.type === 'tool_use') {
         acc.toolCalls = (acc.toolCalls ?? 0) + 1;
         onChunk(toolChunk(String(b.name ?? 'tool'), b.input));
+        onTool?.(String(b.name ?? 'tool'), b.input);
       }
     }
   } else if (o.type === 'result') {
@@ -51,7 +58,7 @@ export function parseClaudeLine(
     const u = o.usage;
     if (u && typeof u === 'object') {
       const n = (k: string) => (typeof u[k] === 'number' ? (u[k] as number) : 0);
-      acc.usage = { inputTokens: n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens'), outputTokens: n('output_tokens'), ...(typeof o.num_turns === 'number' ? { turns: o.num_turns } : {}) };
+      acc.usage = { inputTokens: n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens'), outputTokens: n('output_tokens'), ...(typeof o.num_turns === 'number' ? { turns: o.num_turns } : {}), ...(acc.usage?.promptTokens !== undefined ? { promptTokens: acc.usage.promptTokens } : {}) };
     }
     if (o.is_error === true || (typeof o.subtype === 'string' && o.subtype.startsWith('error'))) acc.isError = true;
   }
@@ -102,7 +109,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cwd: req.cwd,
       stdin: req.prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
-      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta),
+      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool),
     });
     if (r.spawnError) return { output: '', exitCode: 127, error: `claude: ${r.spawnError}` };
     const exitCode = r.aborted ? 130 : acc.isError ? 1 : (r.code ?? 1);

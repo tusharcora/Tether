@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent work components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes aw-spin{to{transform:rotate(360deg)}}
+@keyframes aw-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@keyframes aw-pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.6)}70%{box-shadow:0 0 0 6px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+.aw-spin{animation:aw-spin .9s linear infinite}
+.aw-in{animation:aw-in .3s ease-out both}
+.aw-pulse{animation:aw-pulse 1.6s infinite}
+@media (prefers-reduced-motion: reduce){.aw-spin,.aw-in,.aw-pulse{animation:none}}
+</style>
+</helmet>
+<div style="width: 1000px; height: 760px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; padding: 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+  <div style="display: flex; gap: 24px; align-items: flex-start">
+    <section aria-label="Plan" style="flex: 1; background: #111113; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 0; font-size: 15px">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px"><span style="width: 18px; height: 18px; border-radius: 5px; background: #a3a635"></span><b style="font-weight: 600; flex: 1">Probe · Keep main green</b><span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #a1a1aa">$1.40 of $5</span></div>
+      <sc-for list="{{plan}}" as="p" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 12px; min-height: 34px">
+            <span style="width: 20px; display: flex; justify-content: center"><span class="{{p.markCls}}" style="{{p.mark}}">{{p.glyph}}</span></span>
+            <span style="flex: 1; color: {{p.color}}">{{p.title}}</span>
+            <span style="{{p.rightStyle}}">{{p.right}}</span>
+          </div>
+          <sc-if value="{{p.open}}" hint-placeholder-val="{{false}}">
+            <div style="margin-left: 9px; border-left: 1px solid #3f3f46; padding: 2px 0 6px 21px; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px">
+              <sc-for list="{{p.subs}}" as="s" hint-placeholder-count="3">
+                <span class="aw-in" style="display: flex; align-items: center; gap: 8px; color: {{s.color}}"><span style="width: 5px; height: 5px; border-radius: 999px; background: {{s.dot}}"></span>{{s.text}}</span>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </section>
+
+    <section aria-label="Agents running" style="width: 400px; background: #111113; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: baseline"><b style="font-size: 16px; font-weight: 600">{{runningCount}} agents</b><span style="margin-left: 6px; color: #a1a1aa">{{runningWord}}</span><span style="flex: 1"></span><button onClick="{{stopAll}}" style="font-family: inherit; font-size: 13px; background: transparent; color: #a1a1aa; border: 0; cursor: pointer">{{stopLabel}}</button></div>
+      <sc-for list="{{agents}}" as="a" hint-placeholder-count="3">
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span style="width: 20px; padding-top: 2px; display: flex; justify-content: center"><span class="{{a.markCls}}" style="{{a.mark}}">{{a.glyph}}</span></span>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="display: flex; gap: 8px; align-items: center"><span style="{{a.face}}"></span><b style="font-weight: 500">{{a.task}}</b></span><span style="font-size: 13px; color: {{a.subColor}}">{{a.sub}}</span></div>
+          <sc-if value="{{a.canReview}}" hint-placeholder-val="{{false}}"><button onClick="{{a.review}}" style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 999px; padding: 0 14px; height: 30px; cursor: pointer">Review</button></sc-if>
+          <sc-if value="{{a.hasEta}}" hint-placeholder-val="{{true}}"><span style="font-size: 13px; color: #71717a">{{a.eta}}</span></sc-if>
+        </div>
+      </sc-for>
+    </section>
+  </div>
+
+  <section aria-label="Building blocks" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+    <div style="background: #111113; border: 1px dashed rgba(255,255,255,.18); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12px; color: #a1a1aa">Step track · run cards, Slack/Telegram</span>
+      <span style="display: flex; align-items: center">
+        <span style="width: 20px; height: 20px; border-radius: 999px; background: #34d399; color: #0a0a0b; font-size: 11px; display: flex; align-items: center; justify-content: center">✓</span><span style="flex: 1; height: 2px; background: #34d399"></span>
+        <span style="width: 20px; height: 20px; border-radius: 999px; background: #34d399; color: #0a0a0b; font-size: 11px; display: flex; align-items: center; justify-content: center">✓</span><span style="flex: 1; height: 2px; background: #34d399"></span>
+        <span class="aw-pulse" style="width: 20px; height: 20px; border-radius: 999px; border: 2px solid #2563eb; box-sizing: border-box; display: flex; align-items: center; justify-content: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb"></span></span><span style="flex: 1; height: 2px; background: #3f3f46"></span>
+        <span style="width: 20px; height: 20px; border-radius: 999px; border: 2px solid #3f3f46; box-sizing: border-box"></span><span style="flex: 1; height: 2px; background: #3f3f46"></span>
+        <span style="width: 20px; height: 20px; border-radius: 999px; border: 2px solid #fbbf24; box-sizing: border-box; color: #fbbf24; font-size: 10px; display: flex; align-items: center; justify-content: center">◆</span>
+      </span>
+    </div>
+    <div style="background: #111113; border: 1px dashed rgba(255,255,255,.18); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12px; color: #a1a1aa">Tags · builder steps, team cards</span>
+      <span style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 12.5px"><span style="background: rgba(248,113,113,.15); color: #f87171; border-radius: 999px; padding: 3px 10px">Trigger</span><span style="background: rgba(59,130,246,.18); color: #93c5fd; border-radius: 999px; padding: 3px 10px">Agent</span><span style="background: rgba(251,191,36,.15); color: #fbbf24; border-radius: 999px; padding: 3px 10px">Asks first</span></span>
+    </div>
+    <div style="background: #111113; border: 1px dashed rgba(255,255,255,.18); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12px; color: #a1a1aa">Status · everywhere</span>
+      <span style="display: flex; gap: 12px; font-size: 13px; align-items: center"><span style="display: flex; gap: 6px; align-items: center; color: #93c5fd"><span class="aw-pulse" style="width: 9px; height: 9px; border-radius: 999px; background: #2563eb"></span>Running</span><span style="display: flex; gap: 6px; align-items: center"><span style="width: 12px; height: 12px; border-radius: 999px; background: #34d399; color: #0a0a0b; font-size: 8px; display: flex; align-items: center; justify-content: center">✓</span>Done</span><span style="display: flex; gap: 6px; align-items: center; color: #71717a"><span style="width: 10px; height: 10px; border-radius: 999px; border: 1.5px dashed #71717a"></span>Waiting</span></span>
+    </div>
+    <div style="background: #111113; border: 1px dashed rgba(255,255,255,.18); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12px; color: #a1a1aa">Tool chips · thinking, connectors</span>
+      <span style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 12.5px"><span style="background: #18181b; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; padding: 3px 8px">GitHub</span><span style="background: #18181b; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; padding: 3px 8px">Claude Code</span><span style="background: #18181b; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; padding: 3px 8px">NVIDIA</span><span style="background: #18181b; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; padding: 3px 8px">run_code</span></span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":760}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { tick: 0, stopped: false, reviewed: false }; }
+componentDidMount() { this.t = setInterval(() => !this.state.stopped && this.setState({ tick: (this.state.tick + 1) % 12 }), 1300); }
+componentWillUnmount() { clearInterval(this.t); }
+renderVals() {
+const s = this.state;
+const subsAll = ['Read 3 failing tests', 'Raised the probe timeout under load', 'Re-running evolve tests alone'];
+const nSubs = Math.min(1 + Math.floor(s.tick / 3), 3);
+const curStep = s.tick >= 10 ? 3 : 2;
+const plan = [
+  ['Run the full suite', '42s', 'done'],
+  ['Fix the triggers paths', '1m 08s', 'done'],
+  ['Fix the evolve timeouts', 'Coding', curStep === 2 ? 'live' : 'done'],
+  ['Run the full suite again', curStep === 3 ? 'Testing' : '', curStep === 3 ? 'live' : 'todo'],
+  ['Open a PR', 'Asks first', 'gate'],
+].map(([title, right, st], i) => ({
+  title,
+  right: st === 'done' && i === 2 ? '2m 10s' : right,
+  color: st === 'todo' ? '#71717a' : '#e4e4e7',
+  rightStyle: st === 'gate' ? 'font-size: 12px; background: rgba(251,191,36,.15); color: #fbbf24; border-radius: 999px; padding: 3px 10px' : st === 'live' ? 'font-size: 13px; color: #93c5fd' : 'font-size: 13px; color: #71717a',
+  markCls: st === 'live' ? 'aw-pulse' : '',
+  mark: st === 'done' ? 'width: 18px; height: 18px; border-radius: 999px; background: #34d399; color: #0a0a0b; font-size: 10px; display: flex; align-items: center; justify-content: center'
+    : st === 'live' ? 'width: 18px; height: 18px; border-radius: 999px; border: 2px solid #2563eb; box-sizing: border-box; background: radial-gradient(#2563eb 35%, transparent 40%)'
+    : st === 'gate' ? 'width: 18px; height: 18px; border-radius: 999px; border: 2px solid #fbbf24; box-sizing: border-box; color: #fbbf24; font-size: 8px; display: flex; align-items: center; justify-content: center'
+    : 'width: 18px; height: 18px; border-radius: 999px; border: 2px solid #3f3f46; box-sizing: border-box',
+  glyph: st === 'done' ? '✓' : st === 'gate' ? '◆' : '',
+  open: i === 2 && curStep === 2,
+  subs: subsAll.slice(0, nSubs).map((t, k) => ({ text: t, color: k === nSubs - 1 ? '#93c5fd' : '#a1a1aa', dot: k === nSubs - 1 ? '#2563eb' : '#52525b' })),
+}));
+const agents = [
+  { task: 'Fix Back after a new chat', sub: 'Editing 2 files', eta: '~1 min', face: '#3b82f6', st: 'run' },
+  { task: 'Keep main green', sub: curStep === 3 ? 'Running the full suite' : 'Fixing evolve timeouts', eta: '~4 min', face: '#a3a635', st: 'run' },
+  { task: 'Review R-5A21', sub: s.reviewed ? 'Opened in Tether' : 'Ready to review', eta: '', face: '#f87171', st: 'done' },
+];
+const running = s.stopped ? 0 : 2;
+return {
+  plan,
+  runningCount: s.stopped ? 3 : 3, runningWord: s.stopped ? 'stopped' : 'running',
+  stopLabel: s.stopped ? 'Resume' : 'Stop all', stopAll: () => this.setState({ stopped: !s.stopped }),
+  agents: agents.map((a) => ({
+    task: a.task, eta: s.stopped && a.st === 'run' ? 'stopped' : a.eta, hasEta: a.st === 'run',
+    sub: s.stopped && a.st === 'run' ? 'Stopped by you' : a.sub,
+    subColor: a.st === 'done' ? '#34d399' : s.stopped ? '#f87171' : '#a1a1aa',
+    face: 'width: 14px; height: 14px; border-radius: 4px; background: ' + a.face,
+    markCls: a.st === 'run' && !s.stopped ? 'aw-spin' : '',
+    mark: a.st === 'done' ? 'width: 18px; height: 18px; border-radius: 999px; background: #34d399; color: #0a0a0b; font-size: 10px; display: flex; align-items: center; justify-content: center'
+      : s.stopped ? 'width: 16px; height: 16px; border-radius: 4px; border: 2px solid #f87171; box-sizing: border-box' : 'width: 16px; height: 16px; border-radius: 999px; border: 2px solid #3f3f46; border-top-color: #2563eb; box-sizing: border-box; display: block',
+    glyph: a.st === 'done' ? '✓' : '',
+    canReview: a.st === 'done' && !s.reviewed, review: () => this.setState({ reviewed: true }),
+  })),
+};
+}
+}
+</script>
+</body>
+</html>
