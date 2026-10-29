@@ -42,7 +42,7 @@ export function loadConfig(o: { home?: string; vault?: string } = {}): Config {
 }
 
 export function makeRegistry(cfg: Config): AdapterRegistry {
-  return defaultRegistry(cfg.adapters, cfg.endpoints);
+  return defaultRegistry(cfg.adapters, cfg.endpoints, cfg.home);
 }
 
 // ---- pipeline store (<home>/pipelines/<name>.json) ----

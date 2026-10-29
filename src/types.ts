@@ -686,6 +686,8 @@ export interface AgentResult {
   error?: string;
   /** What the call took, where the adapter can tell: tokens, tool round-trips, turns. */
   usage?: AgentUsage;
+  /** The free daily requests ran out (OpenRouter `:free` models): a run step pauses until `resetsAt` instead of failing. */
+  limit?: { resetsAt: number };
 }
 
 export interface AgentUsage {

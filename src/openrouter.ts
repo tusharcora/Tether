@@ -8,6 +8,8 @@ export const OR_API = 'https://openrouter.ai/api/v1';
 /** The free model new crews get (tool calling, images, 1M context). */
 export const FREE_DEFAULT = 'nvidia/nemotron-3.5-super-vl:free';
 export const CREDITS_URL = 'https://openrouter.ai/settings/credits';
+/** OpenRouter's optional app attribution, sent on OpenRouter requests only. */
+export const OR_HEADERS = { 'HTTP-Referer': 'https://tether.tusharcs0112.workers.dev', 'X-Title': 'Tether' };
 
 export function isOpenRouter(baseUrl: string): boolean {
   try {

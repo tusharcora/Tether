@@ -1,6 +1,8 @@
 /** LLM providers: what is set up, and adding OpenAI-compatible endpoints to `<home>/aorch.config.json`. */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { accountOf } from './accounts/store.js';
+import type { ProviderId } from './accounts/registry.js';
 import type { AdapterRegistry } from './adapters/index.js';
 import { LOCAL_ENDPOINTS, type EndpointConfig } from './adapters/openai.js';
 import type { Config } from './config.js';
@@ -42,7 +44,8 @@ export function listProviders(cfg: Config, registry: AdapterRegistry): ProviderR
     const ep = cfg.endpoints[id];
     if (ep) {
       const keyEnv = ep.apiKey?.startsWith('env:') ? ep.apiKey.slice(4) : undefined;
-      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keyEnv ? !!process.env[keyEnv] : !!ep.apiKey, removable: true };
+      const account = ep.apiKey?.startsWith('account:') ? (ep.apiKey.slice(8) as ProviderId) : undefined;
+      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keyEnv ? !!process.env[keyEnv] : account ? !!accountOf(cfg.home, account) : !!ep.apiKey, removable: true };
     }
     if (LOCAL_ENDPOINTS[id]) return { id, kind: 'local server', where: LOCAL_ENDPOINTS[id]!.baseUrl, removable: false };
     if (cfg.adapters[id]) return { id, kind: 'custom cli', where: cfg.adapters[id]!.command, removable: false };
