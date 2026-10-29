@@ -62,9 +62,10 @@
   --filter-active-border: rgba(255, 255, 255, 0.11);
   --filter-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
   --text-primary: #f4f4f6;
-  --text-secondary: #8e8d95;
-  --text-muted: #6e6d76;
-  --placeholder-color: #8c8b93;
+  /* AA on the card (--s1) and the popovers (--s2); muted icons 3:1 */
+  --text-secondary: var(--mut);
+  --text-muted: #8e8d95;
+  --placeholder-color: var(--mut);
   --icon-primary: #e4e4e8;
   --submit-bg: var(--s2);
   --submit-border: rgba(255, 255, 255, 0.08);

@@ -195,6 +195,21 @@ describe.each([
   });
 });
 
+describe('the chat composer on the dark greys', () => {
+  it('keeps its text AA and its muted icons 3:1 on the card (--s1) and its popovers (--s2)', () => {
+    const text = read('components/composer/AIComposer.css');
+    const start = text.indexOf("[data-theme='dark'] .aic-root {");
+    const body = text.slice(start, text.indexOf('}', start));
+    const own = Object.fromEntries([...body.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]));
+    const T = tokenBlock(':root:root[data-theme="dark"]');
+    const c = (k: string) => parse(own[k]!.replace(/^var\((--[\w-]+)\)$/, (_, v: string) => T[v]!));
+    for (const s of ['--s1', '--s2']) {
+      for (const fg of ['--placeholder-color', '--text-secondary']) expect(ratio(c(fg), parse(T[s]!)), `${fg} on ${s}`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(c('--text-muted'), parse(T[s]!)), `--text-muted on ${s}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe('the CodeMirror theme', () => {
   it('takes every colour from a Studio token', () => {
     const theme = read('code/cmTheme.ts');
