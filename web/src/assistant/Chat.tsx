@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { OrModel } from '../../../src/openrouter';
 import { AIComposer } from '../components/composer/AIComposer';
 import { cn } from '../ui/cn';
@@ -6,6 +6,7 @@ import { usePoll } from '../hooks';
 import { MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
+import { ContextRing } from './ContextRing';
 import { Thread } from './Thread';
 import type { Assistant } from './useAssistant';
 
@@ -77,12 +78,13 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
       accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml"
       favKey="tether.assistant.favModels"
       tags={tags}
+      extra={<ContextRing chat={chat} />}
     />
   );
 }
 
-/** The conversation: the chat's thread and the composer. `wide`: the full screen's centred 760 px column. */
-export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void; wide?: boolean; placeholder?: string }) {
+/** The conversation: the chat's thread and the composer. `wide`: the full screen's centred 760 px column. `idle`: shown under an empty chat. */
+export function Chat(p: { chat: Assistant; project?: string; context: AssistantContext; onGo: (r: Route) => void; wide?: boolean; placeholder?: string; idle?: ReactNode }) {
   const { chat } = p;
   const log = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -109,6 +111,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
       >
         <div className={cn('flex flex-col gap-3', column)}>
           <Thread chat={chat} onGo={p.onGo} empty={`Ask about ${p.project ?? 'your work'}: what's running, a run's result, the code.`} />
+          {p.idle && !chat.loading && !chat.messages.length && !chat.streaming ? p.idle : null}
         </div>
       </div>
       <div className={p.wide ? 'px-12 pt-3 pb-5' : 'p-3'}>

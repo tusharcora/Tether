@@ -11,7 +11,7 @@ import { Store } from '../src/store.js';
 import type { AgentAdapter, AgentRequest } from '../src/types.js';
 import { makeRepo, tmp } from './helpers.js';
 
-type Reply = { content?: string; tools?: { name: string; args: unknown }[]; status?: number; body?: string };
+type Reply = { content?: string; tools?: { name: string; args: unknown }[]; status?: number; body?: string; usage?: { prompt_tokens: number; completion_tokens: number } };
 let server: Server;
 let base = '';
 let script: Reply[] = [];
@@ -46,6 +46,7 @@ beforeAll(async () => {
                 },
               },
             ],
+            ...(r.usage ? { usage: r.usage } : {}),
           }),
         );
       });
@@ -104,6 +105,14 @@ describe('OpenAICompatAdapter', () => {
     const toolMsg = seen[1]!.messages.filter((m) => m.role === 'tool').map((m) => m.content);
     expect(toolMsg[0]).toBe('secret plan');
     expect(chunks.join('')).toMatch(/\[tool\] write_file out\/HELLO\.md/);
+  });
+
+  it("reports the first request's prompt tokens beside the totals", async () => {
+    const d = tmp('wt-');
+    writeFileSync(join(d, 'a.txt'), 'a');
+    script = [{ tools: [{ name: 'read_file', args: { path: 'a.txt' } }], usage: { prompt_tokens: 1200, completion_tokens: 30 } }, { content: 'ok', usage: { prompt_tokens: 1900, completion_tokens: 10 } }];
+    const r = await new OpenAICompatAdapter('local', { baseUrl: base }).run(req(d, { model: 'tiny-coder', readOnly: true }));
+    expect(r.usage).toMatchObject({ promptTokens: 1200, inputTokens: 3100, outputTokens: 40, turns: 2 });
   });
 
   it('refuses escapes and writes on read-only steps, and tells the model why', async () => {

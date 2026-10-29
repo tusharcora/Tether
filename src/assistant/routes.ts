@@ -8,6 +8,8 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
+import { compactChat, undoCompact } from './compact.js';
+import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
 import { assistantAgent, mid, runTurn, type AssistantCtx, type TurnBody } from './turn.js';
@@ -117,6 +119,26 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     if (!title || title.length > TITLE_MAX) throw new HttpError(400, `"title" is 1 to ${TITLE_MAX} characters`);
     saveChat(c.home, ws, { ...chat, title });
     return send(res, 200, { chat: summarize({ ...chat, title }, runsOf(c), c.engine) }), true;
+  }
+
+  // Compact now (one model call, on the model that answered last) or Undo; the chat's messages come back
+  if (p === '/api/assistant/compact' && m === 'POST') {
+    const b = reqObject(await readJson(req));
+    const ws = wsOf(b.ws);
+    rootOf(c, ws);
+    const chat = chatIn(c, ws, b.chat);
+    if (b.undo === true) {
+      if (!undoCompact(chat)) throw new HttpError(409, 'nothing to undo');
+    } else {
+      const last = latestContext(chat.messages)?.use;
+      const who = last ? { agent: last.agent, model: last.model } : assistantAgent(c.home);
+      const s = await compactChat(c, chat, { ...who, signal: AbortSignal.timeout(130_000) }).catch((e: Error) => {
+        throw new HttpError(502, `Could not summarize: ${e.message.split('\n')[0]!.slice(0, 300)}`);
+      });
+      if (!s) throw new HttpError(409, 'nothing to compact yet');
+    }
+    saveChat(c.home, ws, chat);
+    return send(res, 200, { messages: chat.messages }), true;
   }
 
   if (p === '/api/assistant/proposals' && m === 'POST') {

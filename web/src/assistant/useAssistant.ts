@@ -7,6 +7,8 @@ export interface Streaming {
   id?: string;
   text: string;
   tools: ToolRun[];
+  /** When the question went out (the timeline's clock). */
+  startedAt: number;
 }
 
 export interface Assistant {
@@ -22,6 +24,10 @@ export interface Assistant {
   loading: boolean;
   error?: string;
   streaming?: Streaming;
+  /** A Compact now or Undo is under way. */
+  compacting: boolean;
+  /** Summarize the older messages (one model call), or with `undo` put the newest compaction's messages back. */
+  compact(undo?: boolean): Promise<void>;
   send(text: string, o?: { context?: AssistantContext; model?: string; agent?: string; attachments?: { name: string; text: string }[]; answer?: { message: string; result: string } }): Promise<void>;
   stop(): void;
   /** Read the chat again (a turn made elsewhere); not while a reply streams. */
@@ -51,6 +57,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [streaming, setStreaming] = useState<Streaming>();
+  const [compacting, setCompacting] = useState(false);
   const [nonce, setNonce] = useState(0);
   const loadedFor = useRef<string | null>(null);
   const abort = useRef<AbortController | undefined>(undefined);
@@ -95,7 +102,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
     abort.current = ctl;
     const { ws: forWs, chatId: forChat } = ref.current;
     let forKey = ref.current.key;
-    let draft: Streaming = { text: '', tools: [] };
+    let draft: Streaming = { text: '', tools: [], startedAt: Date.now() };
     setStreaming(draft);
     setError(undefined);
     const onEvent = (e: StreamEvent) => {
@@ -111,9 +118,12 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
         draft = { ...draft, id: e.id };
       } else if (e.type === 'delta') draft = { ...draft, text: draft.text + e.text };
       else if (e.type === 'tool') draft = { ...draft, tools: [...draft.tools.filter((t) => t.id !== e.tool.id), e.tool] };
+      // the context ran full: the server summarized older messages before this turn
+      else if (e.type === 'compacted') setMessages(e.messages);
       else if (e.type === 'done') {
         setMessages((l) => [...l, e.message]);
-        draft = { text: '', tools: [] };
+        // no id left: a Stop after the reply arrived adds nothing
+        draft = { text: '', tools: [], startedAt: draft.startedAt };
         setStreaming(undefined);
         return;
       } else if (e.type === 'error') {
@@ -149,6 +159,18 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
     loading,
     error,
     streaming,
+    compacting,
+    compact: async (undo) => {
+      const id = chat();
+      if (!id) return;
+      setCompacting(true);
+      try {
+        const r = await assistantApi.compact(ref.current.ws, id, undo);
+        if (chat() === id) setMessages(r.messages);
+      } finally {
+        setCompacting(false);
+      }
+    },
     send,
     stop,
     refresh: () => {

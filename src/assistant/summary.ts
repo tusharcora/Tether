@@ -33,7 +33,8 @@ function runNode(id: string, row: Row | undefined, engine: LiveProbe): OutcomeNo
 
 export function summarize(c: Chat, rows: Map<string, Row>, engine: LiveProbe): ChatSummary {
   const asked = c.messages.find((m) => m.role === 'you');
-  const replies = c.messages.filter((m) => m.role === 'tether');
+  // a compaction's summary is not a reply
+  const replies = c.messages.filter((m) => m.role === 'tether' && !m.compact);
   const outcome: OutcomeNode[] = asked ? [{ kind: 'Asked', label: titleOf(asked.text), state: replies.length ? 'answered' : 'asked', tone: replies.length ? 'done' : 'idle' }] : [];
   const faces = new Set<string>();
   for (const p of replies.flatMap((m) => m.proposals ?? [])) {

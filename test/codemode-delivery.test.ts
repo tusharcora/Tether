@@ -192,7 +192,7 @@ describe('openai.ts native run_code', () => {
     expect(bodies[0]!.tools!.map((t) => t.function.name)).toEqual(['run_code']);
     expect(bodies[0]!.messages[0]!.content).toContain(CODE_MODE_NOTE);
     expect(JSON.parse(bodies[1]!.messages.at(-1)!.content!)).toEqual({ f: ['README.md'], n: 1 });
-    expect(r.usage).toEqual({ inputTokens: 680, outputTokens: 52, toolCalls: 1, turns: 2 });
+    expect(r.usage).toEqual({ inputTokens: 680, outputTokens: 52, toolCalls: 1, turns: 2, promptTokens: 300 });
     expect(session.metrics).toEqual({ runCode: 1, connectorCalls: 2 });
   });
 });

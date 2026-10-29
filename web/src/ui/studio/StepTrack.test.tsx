@@ -13,29 +13,30 @@ describe('StepTrack', () => {
     { id: 'gate', status: 'queued' },
     { id: 'rev', status: 'error' },
   ];
-  it('maps statuses to segment states', () => {
+  it('maps statuses to segment states; an approval still ahead is a gate', () => {
     expect(segmentsFor(steps).map((s) => s.state)).toEqual(['done', 'working', 'waiting', 'skipped', 'queued', 'failed']);
+    expect(segmentsFor([{ id: 'ok', status: 'queued', kind: 'approval' }, { id: 'ok2', status: 'awaiting', kind: 'approval' }]).map((s) => s.state)).toEqual(['gate', 'waiting']);
   });
   it('shows one planning segment for a team run before its plan is approved', () => {
     expect(segmentsFor([], { planning: true })).toEqual([{ id: 'planning', state: 'planning', label: 'planning' }]);
     expect(segmentsFor([])).toEqual([]);
   });
-  it('renders segments with an accessible summary', () => {
-    const { container } = render(<StepTrack steps={steps} />);
-    expect(screen.getByRole('img', { name: trackLabel(segmentsFor(steps)) })).toBeTruthy();
-    expect(trackLabel(segmentsFor(steps))).toBe('1 of 6 steps done, 1 working, 1 waiting, 1 failed');
-    expect(container.querySelectorAll('.sl-seg')).toHaveLength(6);
-    expect(container.querySelector('.sl-seg.s-working')).toBeTruthy();
-    expect(container.querySelector('.sl-seg.s-skipped')).toBeTruthy();
+  it('renders a dot per step joined by lines, with an accessible summary', () => {
+    const all = [...steps, { id: 'ship', status: 'queued', kind: 'approval' }];
+    const { container } = render(<StepTrack steps={all} />);
+    expect(trackLabel(segmentsFor(all))).toBe('1 of 7 steps done, 1 working, 1 waiting, 1 failed, 1 asks first');
+    expect(screen.getByRole('img', { name: trackLabel(segmentsFor(all)) })).toBeTruthy();
+    expect(container.querySelectorAll('.sl-seg')).toHaveLength(7);
+    expect(container.querySelectorAll('.sl-link')).toHaveLength(6);
+    expect(container.querySelector('.sl-link.done')).toBeTruthy();
+    expect(container.querySelector('.sl-seg.s-done')!.textContent).toBe('✓');
+    expect(container.querySelector('.sl-seg.s-gate')!.textContent).toBe('◆');
   });
-  it('draws queued and skipped steps in the 3:1 edge colour so they stay visible', () => {
-    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-queued')).toContain('background: var(--edge)');
-    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-skipped')).toContain('background: var(--edge)');
-  });
-  it('moves the working stripes through a mask, never a gradient fill', () => {
-    const stripes = cssRule('ui/studio/parts.css', '.sl-seg.s-working::after,.sl-seg.s-planning::after');
-    expect(stripes).toContain('background: var(--acc)');
-    expect(stripes).toContain('mask-image: repeating-linear-gradient');
-    expect(stripes).not.toMatch(/background[\w-]*: [^;]*gradient/);
+  it('colours by meaning: green done, blue working, amber waiting and gates, the 3:1 edge for queued', () => {
+    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-done')).toContain('background: var(--ok)');
+    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-working,.sl-seg.s-planning')).toContain('border-color: var(--acc)');
+    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-waiting')).toContain('var(--warn)');
+    expect(cssRule('ui/studio/parts.css', '.sl-seg.s-gate')).toContain('color: var(--warn)');
+    expect(cssRule('ui/studio/parts.css', '.sl-seg')).toContain('border: 2px solid var(--edge)');
   });
 });

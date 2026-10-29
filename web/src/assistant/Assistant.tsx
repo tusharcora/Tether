@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { Route, Screen } from '../hooks';
 import type { ChatSummary } from './api';
+import { RunningNow } from '../home/AgentsRunning';
 import { Chat } from './Chat';
 import { ChatSwitcher } from './ChatSwitcher';
 import { contextLine, contextOf } from './context';
@@ -58,7 +59,7 @@ export function Assistant(p: AssistantProps) {
         onFullScreen={p.onFullScreen}
         onClose={close}
       >
-        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} />
+        <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} idle={<RunningNow onGo={p.onGo} />} />
       </Panel>
     );
   return (

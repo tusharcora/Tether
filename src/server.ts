@@ -13,7 +13,9 @@ import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSetting
 import { GithubAccount, ghExec } from './accounts/github.js';
 import { OpenRouterAccount, type OpenRouterDeps } from './accounts/openrouter.js';
 import { accountsRoute } from './accounts/routes.js';
+import { knownSize } from './assistant/context.js';
 import { assistantRoute } from './assistant/routes.js';
+import { isOpenRouter } from './openrouter.js';
 import { codemodeRoute } from './codemode/routes.js';
 import { Goals } from './goals/loop.js';
 import { goalsRoute } from './goals/routes.js';
@@ -273,6 +275,21 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
   // connecting or disconnecting adds or cuts off an agent: the cached health and model lists go
   const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: () => void ((doctorCache = undefined), (modelsCache = undefined)) });
+  /** The answering model's context size and free-tier limit, for the chat's context ring. */
+  const modelInfo = async (agent: string, model?: string): Promise<{ size?: number; limit?: 'openrouter' | 'nvidia' }> => {
+    const base = cfg.endpoints[agent]?.baseUrl ?? '';
+    if (agent === 'openrouter' || isOpenRouter(base)) {
+      const size = model ? (await openrouter.models()).models.find((m) => m.id === model)?.context : undefined;
+      return { ...(size ? { size } : {}), ...(model?.endsWith(':free') ? { limit: 'openrouter' } : {}) };
+    }
+    let host = '';
+    try {
+      host = new URL(base).hostname;
+    } catch {
+      /* not an endpoint */
+    }
+    return { size: knownSize(agent, model), ...(host === 'nvidia.com' || host.endsWith('.nvidia.com') ? { limit: 'nvidia' } : {}) };
+  };
 
   const runView = (id: string) => {
     const s = store.state(id);
@@ -332,7 +349,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
-      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
+      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
