@@ -11,6 +11,8 @@
 @source './components/aicss';
 @source './components/faces';
 @source './components/composer';
+@source './components/ui';
+@source './components/ai-elements';
 @source './assistant';
 @source not './**/*.test.{ts,tsx}';
 

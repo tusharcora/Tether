@@ -122,9 +122,10 @@ function createWindow(url: string, home: string): void {
 
 /**
  * The window's content policy: only Tether's own scripts, styles (inline too: React style attributes and CodeMirror's
- * injected sheets), images, fonts and API. Not set for the Vite dev server, whose hot reload needs more.
+ * injected sheets), images, fonts and API, plus models.dev's maker logos in the model selector. Not set for the Vite
+ * dev server, whose hot reload needs more.
  */
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://models.dev; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 function enforceCsp(): void {
   if (process.env.TETHER_DEV_URL) return;
   session.defaultSession.webRequest.onHeadersReceived((details, done) => {
