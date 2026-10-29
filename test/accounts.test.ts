@@ -78,9 +78,10 @@ afterEach(async () => {
 });
 
 describe('accounts registry', () => {
-  it('lists OpenRouter (browser approval for a key), GitHub (device flow, gh login) and Google as registry-only with a reason', () => {
+  it('lists OpenRouter (browser approval for a key), NVIDIA (a pasted key), GitHub (device flow, gh login) and Google as registry-only with a reason', () => {
     expect(PROVIDERS.map((p) => [p.id, p.kind, p.available])).toEqual([
       ['openrouter', 'pkce-key', true],
+      ['nvidia', 'key', true],
       ['github', 'device', true],
       ['google', 'pkce', false],
     ]);
@@ -314,9 +315,9 @@ describe('/api/accounts', () => {
     };
     const list = (await call('GET', '/api/accounts')).json;
     expect(list.user).toEqual(expect.any(String));
-    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['openrouter', 'github', 'google']);
-    expect(list.providers[1]).toMatchObject({ account: null, cli: { login: 'octo' }, device: { ready: false, setup: DEVICE_SETUP } });
-    expect(list.providers[2]).toMatchObject({ available: false, account: null });
+    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['openrouter', 'nvidia', 'github', 'google']);
+    expect(list.providers[2]).toMatchObject({ account: null, cli: { login: 'octo' }, device: { ready: false, setup: DEVICE_SETUP } });
+    expect(list.providers[3]).toMatchObject({ available: false, account: null });
 
     const dev = await call('POST', '/api/accounts/github/device');
     expect(dev.status).toBe(400);
@@ -325,11 +326,11 @@ describe('/api/accounts', () => {
     const adopted = await call('POST', '/api/accounts/github/cli');
     expect(adopted.json.account).toMatchObject({ login: 'octo', via: 'gh' });
     expect(Object.keys(adopted.json.account).sort()).toEqual(['avatarUrl', 'connectedAt', 'login', 'name', 'provider', 'scopes', 'via']);
-    expect((await call('GET', '/api/accounts')).json.providers[1].account.login).toBe('octo');
+    expect((await call('GET', '/api/accounts')).json.providers[2].account.login).toBe('octo');
 
     expect((await call('PUT', '/api/accounts/github/client', { clientId: 'bad id' })).status).toBe(400);
     expect((await call('PUT', '/api/accounts/github/client', { clientId: 'Iv1.abc' })).json).toEqual({ ready: true });
-    expect((await call('GET', '/api/accounts')).json.providers[1].device).toEqual({ ready: true });
+    expect((await call('GET', '/api/accounts')).json.providers[2].device).toEqual({ ready: true });
 
     // a device-flow token sits in the store: nothing the API says ever contains it
     await store.set('github', TOKEN);

@@ -19,11 +19,23 @@ const api = vi.hoisted(() => ({
   tool: vi.fn(async () => ({ ask: { id: 't1', what: 'comment on o/r#4', status: 'once' } })),
   turn: undefined as undefined | ((body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => Promise<void>),
   bodies: [] as unknown[],
+  /** What GET /api/assistant adds (the bound agent's models, NVIDIA beside them). */
+  view: {} as Record<string, unknown>,
 }));
 vi.mock('./api', async (orig) => ({
   ...(await orig<typeof import('./api')>()),
-  assistantApi: { chat: async () => ({ messages: [{ id: 'm1', role: 'you', text: 'q', at: 1 }, tether], agent: 'claude', models: [] }), decide: api.decide, tool: api.tool, feedback: async () => ({ ok: true }) },
+  assistantApi: { chat: async () => ({ messages: [{ id: 'm1', role: 'you', text: 'q', at: 1 }, tether], agent: 'claude', models: [], ...api.view }), decide: api.decide, tool: api.tool, feedback: async () => ({ ok: true }) },
   streamTurn: (body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => (api.bodies.push(body), api.turn!(body, on, signal)),
+}));
+// the model lists the composer polls
+vi.mock('../api', async (orig) => ({
+  ...(await orig<typeof import('../api')>()),
+  api: async (_m: string, path: string) => {
+    if (path === '/api/accounts/nvidia/models') return { models: ['nvidia/nemotron-3.5-super-vl-120b-a12b', 'z-ai/glm-5.3-flash'] };
+    if (path === '/api/accounts/openrouter/models')
+      return { models: ['nvidia/nemotron-3.5-super-vl:free', 'meta-llama/llama-4:free'].map((id) => ({ id, name: id, provider: id.split('/')[0], free: true, tools: true, images: false, context: 0 })) };
+    throw new Error(`no route for ${path}`);
+  },
 }));
 
 function Harness({ onGo }: { onGo: (r: unknown) => void }) {
@@ -80,5 +92,42 @@ describe('the chat', () => {
     fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
     expect(await screen.findByText('Stopped.')).toBeTruthy();
     expect(api.bodies[0]).toMatchObject({ ws: 'api', chat: 'c1', message: 'hello', context: { page: 'runs' } });
+  });
+
+  it('lists NVIDIA’s free models in their own group beside the bound agent’s, and a turn on one names nvidia', async () => {
+    localStorage.clear();
+    api.view = { models: ['opus', 'haiku'], nvidia: true, openrouter: true };
+    api.bodies.length = 0;
+    api.turn = async (_b, on) => on({ type: 'start', you: { id: 'y', role: 'you', text: 'hi', at: 3 }, id: 'a', chat: 'c1', title: 'q' });
+    try {
+      mount();
+      await screen.findByText('See limit.ts.');
+      fireEvent.click(await screen.findByRole('button', { name: 'Model: Auto' }));
+      const heads = await waitFor(() => {
+        const h = [...document.querySelectorAll('[cmdk-group-heading]')].map((x) => x.textContent);
+        expect(h).toContain('OpenRouter · free');
+        return h;
+      });
+      // NVIDIA right after the agent's own models; OpenRouter's free ones as one group, not one per maker
+      expect(heads).toEqual(['Anthropic', 'NVIDIA (build.nvidia.com)', 'OpenRouter · free']);
+      const row = screen.getByRole('option', { name: /z-ai\/glm-5.3-flash/ });
+      expect([...row.querySelectorAll('.aic-tag')].map((t) => t.textContent)).toEqual(['free', '40/min']);
+      fireEvent.click(row);
+      const box = screen.getByLabelText('Message Tether');
+      fireEvent.change(box, { target: { value: 'hi' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+      await waitFor(() => expect(api.bodies).toHaveLength(1));
+      expect(api.bodies[0]).toMatchObject({ model: 'z-ai/glm-5.3-flash', agent: 'nvidia' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Model: z-ai/glm-5.3-flash' }));
+      fireEvent.click(screen.getByRole('option', { name: /haiku/ }));
+      fireEvent.change(box, { target: { value: 'again' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+      await waitFor(() => expect(api.bodies).toHaveLength(2));
+      expect(api.bodies[1]).toMatchObject({ model: 'haiku' });
+      expect(api.bodies[1]).not.toHaveProperty('agent');
+    } finally {
+      api.view = {};
+    }
   });
 });

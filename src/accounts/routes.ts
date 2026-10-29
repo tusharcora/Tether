@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { userInfo } from 'node:os';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { AccountError, DEVICE_SETUP, type GithubAccount } from './github.js';
+import type { NvidiaAccount } from './nvidia.js';
 import type { OpenRouterAccount } from './openrouter.js';
 import { PROVIDERS } from './registry.js';
 import { githubClientId, setGithubClientId } from './store.js';
@@ -14,6 +15,7 @@ export interface AccountsRouteCtx {
   home: string;
   github: GithubAccount;
   openrouter: OpenRouterAccount;
+  nvidia: NvidiaAccount;
 }
 
 const localUser = () => {
@@ -44,7 +46,7 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
       available: d.available,
       scopes: d.scopes,
       ...(d.note ? { note: d.note } : {}),
-      account: d.id === 'github' ? (c.github.account() ?? null) : d.id === 'openrouter' ? (c.openrouter.account() ?? null) : null,
+      account: (d.id === 'google' ? undefined : c[d.id].account()) ?? null,
       ...(d.id === 'github' ? { cli: cli ? { login: cli.login } : null, device: githubClientId(c.home) ? { ready: true } : { ready: false, setup: DEVICE_SETUP } } : {}),
       ...(d.id === 'openrouter' ? orView : {}),
     }));
@@ -74,6 +76,17 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
     if (!c.openrouter.account()) throw new HttpError(409, 'connect OpenRouter first');
     return send(res, 200, { bound: await c.openrouter.useForCrew() }), true;
   }
+  if (p === '/api/accounts/nvidia' && m === 'POST') {
+    const key = reqObject(await readJson(req)).key;
+    if (typeof key !== 'string') throw new HttpError(400, '"key" must be a string');
+    const account = await c.nvidia.connect(key).catch(asHttp);
+    return send(res, 200, { account }), true;
+  }
+  if (p === '/api/accounts/nvidia/models' && m === 'GET') {
+    const r = await c.nvidia.models();
+    if (!r.models.length) throw new HttpError(502, r.error ?? "can't reach NVIDIA");
+    return send(res, 200, r), true;
+  }
   if (p === '/api/accounts/github/cli' && m === 'POST') {
     const account = await c.github.adoptCli().catch(asHttp);
     return send(res, 200, { account }), true;
@@ -95,8 +108,8 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
   }
   const g = /^\/api\/accounts\/([a-z]+)$/.exec(p);
   if (g && m === 'DELETE') {
-    if (g[1] !== 'github' && g[1] !== 'openrouter') throw new HttpError(404, `no connection for "${g[1]}"`);
-    await (g[1] === 'github' ? c.github : c.openrouter).disconnect();
+    if (g[1] !== 'github' && g[1] !== 'openrouter' && g[1] !== 'nvidia') throw new HttpError(404, `no connection for "${g[1]}"`);
+    await c[g[1]].disconnect();
     return send(res, 200, { ok: true }), true;
   }
   return false;

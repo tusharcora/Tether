@@ -66,7 +66,7 @@ Coding agents are fast, but leaving them alone on your repo is a gamble. Tether 
 | 🧰 **Code Mode** | Agents call tools by writing one small script, run in a local sandbox, instead of making many separate tool calls. |
 | 🔐 **Accounts** | Connect GitHub, either by reusing your `gh` login or through a device sign-in. Tokens stay in the macOS Keychain. |
 
-Works with **Claude Code**, **Codex** and **OpenCode**, local servers (**Ollama**, **LM Studio**, **llama.cpp**) and any OpenAI-compatible provider (DeepSeek, OpenAI, OpenRouter, Groq, Together, Fireworks).
+Works with **Claude Code**, **Codex** and **OpenCode**, local servers (**Ollama**, **LM Studio**, **llama.cpp**) and any OpenAI-compatible provider (DeepSeek, OpenAI, OpenRouter, NVIDIA, Groq, Together, Fireworks).
 
 ## A tour of the app
 

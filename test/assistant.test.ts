@@ -281,6 +281,23 @@ describe('POST /api/assistant', () => {
     expect(or.models[1]).toBeUndefined();
   }, 60_000);
 
+  it('offers NVIDIA beside the bound agent the same way, and a turn that names it runs there', async () => {
+    const t = await boot();
+    link(t.home, 'orchestrator', { agent: 'scripted', model: 'm1' });
+    const nv = new (class extends Scripted {
+      override readonly id = 'nvidia' as never;
+    })();
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.nvidia).toBeUndefined();
+    t.registry.register(nv);
+    expect((await t.call('GET', '/api/assistant?ws=api')).json).toMatchObject({ agent: 'scripted', nvidia: true });
+    const r = await t.turn({ message: 'hi', agent: 'nvidia', model: 'z-ai/glm-5.3-flash' });
+    expect(r.done?.message.error).toBeUndefined();
+    expect(nv.prompts).toHaveLength(1);
+    expect(t.agent.prompts).toHaveLength(0);
+    link(t.home, 'orchestrator', { agent: 'nvidia' });
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.nvidia).toBeUndefined();
+  }, 60_000);
+
   it('turns a refused outside-world call into an approval card, and remembers "always"', async () => {
     const t = await boot();
     t.agent.script = 'await github.comment("o/r", 4, "looks good"); return 1;';

@@ -40,6 +40,7 @@ describe('activity', () => {
     expect(redact('curl -H "Authorization: Bearer abcdefghijklmnop123" x')).not.toContain('abcdefghijklmnop123');
     expect(redact('export TOKEN=hunter2hunter2')).not.toContain('hunter2');
     expect(redact('key sk-abcdefghijklmnopqrstuv')).toContain('***');
+    expect(redact('NVIDIA_API_KEY nvapi-AbCdEfGhIjKlMnOpQrSt_uv-0123')).toBe('NVIDIA_API_KEY ***');
     expect(toolChunk('Bash', { command: 'echo ghp_abcdefghijklmnopqrstuvwxyz0123' })).not.toContain('ghp_abcdef');
     expect(clean('a\x1b[31mred\x1b[0m\x07 b')).toBe('ared b');
     expect(clean('\x1b]0;evil\x07ok')).not.toContain('\x1b');

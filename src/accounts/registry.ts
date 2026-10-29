@@ -1,16 +1,19 @@
 /**
  * The providers Settings → Accounts lists (spec §3). OpenRouter is built: one browser approval hands Tether a key for
- * free models (accounts/openrouter.ts). GitHub is built: the `gh` login or the device flow. Google is listed
+ * free models (accounts/openrouter.ts). NVIDIA is built: a key made on build.nvidia.com, pasted once (accounts/nvidia.ts). GitHub is built: the `gh` login or the device flow. Google is listed
  * with the generic PKCE loopback flow ready (pkce.ts), but stays "coming" until a Tether feature uses it. Adding GitLab,
  * Linear or Slack later is an entry here plus the feature that needs it.
  */
-export type ProviderId = 'openrouter' | 'github' | 'google';
+import { KEYS_URL, NV_API } from '../nvidia.js';
+
+export type ProviderId = 'openrouter' | 'nvidia' | 'github' | 'google';
 
 export interface ProviderDef {
   id: ProviderId;
   name: string;
-  /** How a connection is made: OAuth device flow, PKCE in the system browser (an OAuth token, or `pkce-key`: an API key), or an installed CLI's own login. */
-  kind: 'device' | 'pkce' | 'pkce-key' | 'cli';
+  /** How a connection is made: OAuth device flow, PKCE in the system browser (an OAuth token, or `pkce-key`: an API key), an installed CLI's own login, or `key`: an API key pasted once. */
+  kind: 'device' | 'pkce' | 'pkce-key' | 'cli' | 'key';
+  /** `token`: where the token comes from (for a pasted key, the page that makes one). */
   endpoints: { device?: string; verify?: string; authorize?: string; token: string; api?: string };
   scopes: string[];
   /** Can be connected now. False: listed only, with `note` saying why. */
@@ -29,6 +32,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     scopes: [],
     available: true,
   },
+  { id: 'nvidia', name: 'NVIDIA', kind: 'key', endpoints: { token: KEYS_URL, api: NV_API }, scopes: [], available: true },
   {
     id: 'github',
     name: 'GitHub',

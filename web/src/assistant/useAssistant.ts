@@ -21,6 +21,8 @@ export interface Assistant {
   models: string[];
   /** OpenRouter's free models can be picked too (Tether runs on another agent). */
   openrouter?: boolean;
+  /** NVIDIA's free models can be picked too (Tether runs on another agent). */
+  nvidia?: boolean;
   loading: boolean;
   error?: string;
   streaming?: Streaming;
@@ -53,7 +55,7 @@ const keyOf = (ws: string | undefined, chat: string | undefined) => `${ws ?? ''}
 export function useAssistant(ws: string | undefined, chatId: string | undefined, enabled: boolean, on: { created?: (id: string) => void; gone?: (id: string) => void } = {}): Assistant {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [title, setTitle] = useState<string>();
-  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean }>({ models: [] });
+  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean; nvidia?: boolean }>({ models: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [streaming, setStreaming] = useState<Streaming>();
@@ -78,7 +80,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
         if (!live) return;
         setMessages(v.messages);
         setTitle(v.title);
-        setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter });
+        setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter, nvidia: v.nvidia });
         setLoading(false);
       },
       (e: Error) => {

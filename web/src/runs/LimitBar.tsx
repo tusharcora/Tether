@@ -49,7 +49,7 @@ export function LimitBar({ run: r, onAct }: { run: RunView; onAct: RunAct }) {
       )}
       {switching ? (
         <div className="run-limit-pick">
-          <ModelPicker value={steps[0]!.model ?? ''} agents={bots.data?.agents ?? {}} writes={steps.some((n) => !n.readOnly)} defaultOpen onPick={(b) => void onAct('resume', b.model ? b : { agent: b.agent })} />
+          <ModelPicker agent="openrouter" value={steps[0]!.model ?? ''} agents={bots.data?.agents ?? {}} writes={steps.some((n) => !n.readOnly)} defaultOpen onPick={(b) => void onAct('resume', b.model ? b : { agent: b.agent })} />
         </div>
       ) : null}
     </div>

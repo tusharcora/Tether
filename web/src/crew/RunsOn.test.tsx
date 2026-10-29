@@ -5,7 +5,7 @@ vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()),
 import { api } from '../api';
 import { tagModels } from '../../../src/openrouter';
 import fixture from '../../../test/fixtures/openrouter-models.json';
-import { routeApi } from '../test/fixtures';
+import { calls, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import { RunsOn } from './RunsOn';
 import type { Binding } from './types';
@@ -16,6 +16,8 @@ const row = (o = {}) => ({ role: 'coder', name: 'Bolt', title: 'coder', kind: 'a
 const h = () => ({ onChange: vi.fn(), onSave: vi.fn(), onUnlink: vi.fn() });
 const MODELS = tagModels(fixture);
 const FREE = 'nvidia/nemotron-3.5-super-vl:free';
+const NV_MODELS = ['nvidia/nemotron-3.5-super-vl-120b-a12b', 'deepseek-ai/deepseek-v4.1-flash', 'z-ai/glm-5.3-flash', 'nvidia/nemotron-3.5-bolt-e4b'];
+const group = (panel: HTMLElement, name: string) => within(panel).getByRole('region', { name });
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
@@ -91,6 +93,27 @@ describe('RunsOn', () => {
     fireEvent.click(within(panel).getByText('Flint'));
     expect(fns.onChange).toHaveBeenCalledWith({ agent: 'openrouter', model: 'recursive/flint-v1.0:free' });
     expect(screen.queryByRole('dialog', { name: 'Choose a model' })).toBeNull();
+  });
+
+  it('on NVIDIA, picks from the NVIDIA group (suggested first, free · 40/min) or Agents & local; no OpenRouter list or counter', async () => {
+    routeApi({ 'GET /api/accounts/nvidia/models': { models: NV_MODELS } });
+    const fns = h();
+    renderApp(<RunsOn row={row()} agents={{ ...agents, nvidia: { ok: true, models: [], codeMode: 'native' } }} draft={b('nvidia', NV_MODELS[0]!)} dirty={false} {...fns} />);
+    const pill = await screen.findByRole('button', { name: /Model nemotron-3.5-super-vl-120b-a12b/ });
+    expect(within(pill).getByText('free')).toBeTruthy();
+    fireEvent.click(pill);
+    const panel = screen.getByRole('dialog', { name: 'Choose a model' });
+    const nv = within(panel).getByRole('region', { name: 'NVIDIA' });
+    expect(within(nv).getAllByRole('button').map((r) => r.querySelector('b')!.textContent)).toEqual(['nemotron-3.5-super-vl-120b-a12b', 'deepseek-v4.1-flash', 'glm-5.3-flash', 'nemotron-3.5-bolt-e4b']);
+    expect(within(nv).getByText('z-ai · 40/min')).toBeTruthy();
+    expect(within(nv).getAllByText('free')).toHaveLength(4);
+    expect(within(group(panel, 'Agents & local')).queryByText('nvidia')).toBeNull();
+    expect(within(panel).queryByRole('region', { name: /OpenRouter/ })).toBeNull();
+    expect(within(panel).getByText('Free · about 40 requests a minute')).toBeTruthy();
+    expect(calls('GET', '/api/accounts/openrouter/models')).toHaveLength(0);
+    fireEvent.change(within(panel).getByLabelText('Search models'), { target: { value: 'glm' } });
+    fireEvent.click(within(panel).getByText('glm-5.3-flash'));
+    expect(fns.onChange).toHaveBeenCalledWith({ agent: 'nvidia', model: 'z-ai/glm-5.3-flash' });
   });
 
   it('warns when a writing bot is on a chat-only free model, not a read-only one', async () => {
