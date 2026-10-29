@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mini chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex; position: relative">
+  <dc-import name="Sidebar" active="Runs" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600">Runs</h1>
+    <div style="border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: #111113; display: flex; flex-direction: column">
+      <div style="display: flex; gap: 12px; align-items: center; padding: 14px; border-bottom: 1px solid rgba(255,255,255,.07)"><span style="width: 10px; height: 10px; border-radius: 999px; border: 2px solid #fbbf24"></span><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px">Fix the README's CLI section from cli.ts</b><span style="font-size: 13px; font-family: 'Geist Mono', monospace; color: #a1a1aa">R-4F21 · Lens reviewing · 1m 12s</span></div></div>
+      <div style="display: flex; gap: 12px; align-items: center; padding: 14px; border-bottom: 1px solid rgba(255,255,255,.07)"><span style="width: 10px; height: 10px; border-radius: 999px; background: #f87171"></span><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px">Write a detailed, accurate README.md…</b><span style="font-size: 13px; font-family: 'Geist Mono', monospace; color: #a1a1aa">R-7D92 · failed · 3d 16h · $6.41</span></div></div>
+      <div style="display: flex; gap: 12px; align-items: center; padding: 14px"><span style="width: 10px; height: 10px; border-radius: 999px; background: #34d399"></span><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px">Add a HELLO file</b><span style="font-size: 13px; font-family: 'Geist Mono', monospace; color: #a1a1aa">R-3E84 · done · 2m 56s · $0.06</span></div></div>
+    </div>
+  </main>
+
+  <section aria-label="Tether chat" style="position: absolute; right: 22px; bottom: 88px; width: 380px; height: 520px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; overflow: visible">
+    <header style="height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; border-bottom: 1px solid rgba(255,255,255,.07); position: relative">
+      <span style="width: 22px; height: 22px; flex: none; border-radius: 6px; background: #18181b; border: 1px solid rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; gap: 3px"><i style="width: 2px; height: 5px; background: #f4f4f5; border-radius: 1px"></i><i style="width: 2px; height: 5px; background: #f4f4f5; border-radius: 1px"></i></span>
+      <button style="flex: 1; min-width: 0; text-align: left; font-family: inherit; font-size: 13px; font-weight: 500; background: transparent; color: #f4f4f5; border: 0; padding: 4px 6px; border-radius: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">Why did the README run fail? <span style="color: #a1a1aa">▾</span></button>
+      <button aria-label="New chat" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #d4d4d8; font-size: 16px">+</button>
+      <button aria-label="Open full screen" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #d4d4d8">⤢</button>
+      <button aria-label="Close" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #d4d4d8">✕</button>
+      <sc-if value="{{switcher}}" hint-placeholder-val="{{false}}">
+        <div style="position: absolute; top: 40px; left: 8px; width: 300px; background: #18181b; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.5); padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 2">
+          <label for="f" style="position: absolute; left: -9999px">Find a chat</label>
+          <input id="f" placeholder="Find a chat" style="font-family: inherit; font-size: 13px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 6px; padding: 0 8px; height: 30px; margin-bottom: 4px">
+          <a href="#" style="display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #f4f4f5; font-size: 13px">+ New chat</a>
+          <a href="#" style="display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #f4f4f5; font-size: 13px; background: #26262b"><span style="flex: 1">Why did the README run fail?</span><span style="color: #f4f4f5">✓</span></a>
+          <a href="#" style="display: flex; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #d4d4d8; font-size: 13px">Plan the Teams feature</a>
+          <a href="#" style="display: flex; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #d4d4d8; font-size: 13px">What does Code Mode change?</a>
+          <a href="#" style="display: flex; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #d4d4d8; font-size: 13px">Free models: rate limits</a>
+          <a href="#" style="display: flex; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: #a1a1aa; font-size: 12px; border-top: 1px solid rgba(255,255,255,.07); margin-top: 2px">All chats →</a>
+        </div>
+      </sc-if>
+    </header>
+    <div style="flex: none; font-size: 11px; color: #a1a1aa; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.07)">Sees: Runs · R-4F21</div>
+    <div style="flex: 1; overflow: hidden; padding: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.55">
+      <div style="align-self: flex-end; max-width: 280px; background: #18181b; border-radius: 12px; padding: 8px 11px">Is the fix run going OK?</div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #a1a1aa">▸ checked R-4F21 · 1 call</span>
+        <span>Yes. Bolt rewrote the CLI section (36 lines) and <b>Lens</b> is reviewing it now. Nothing needs you yet.</span>
+        <div style="display: flex; gap: 6px"><a href="#" style="font-size: 11px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 1px 8px">R-4F21</a><a href="#" style="font-size: 11px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 1px 8px">README.md</a></div>
+      </div>
+    </div>
+    <div style="padding: 8px; flex: none">
+      <div style="background: #0a0a0b; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 6px 6px 6px 10px; display: flex; align-items: center; gap: 6px">
+        <label for="m" style="position: absolute; left: -9999px">Message Tether</label>
+        <input id="m" placeholder="Ask Tether…" style="flex: 1; min-width: 0; font-family: inherit; font-size: 13.5px; background: transparent; color: #f4f4f5; border: 0; outline: none">
+        <button style="font-family: inherit; font-size: 11px; background: #18181b; color: #d4d4d8; border: 0; border-radius: 999px; padding: 0 8px; height: 26px">Auto ▾</button>
+        <button aria-label="Send" style="width: 26px; height: 26px; border-radius: 999px; border: 0; background: #3f3f46; color: #a1a1aa">↑</button>
+      </div>
+    </div>
+  </section>
+  <button aria-label="Hide Tether chat" style="position: absolute; right: 22px; bottom: 20px; width: 52px; height: 52px; border-radius: 999px; background: #f4f4f5; border: 0; display: flex; align-items: center; justify-content: center; gap: 4px"><i style="width: 3px; height: 6px; background: #0a0a0b; border-radius: 2px"></i><i style="width: 3px; height: 6px; background: #0a0a0b; border-radius: 2px"></i></button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"switcher":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return { switcher: this.props.switcher ?? false }; }
+}
+</script>
+</body>
+</html>

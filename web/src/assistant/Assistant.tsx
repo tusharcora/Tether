@@ -1,35 +1,47 @@
 import { useRef } from 'react';
 import type { Route, Screen } from '../hooks';
-import { useNotify } from '../ui/notify';
+import type { ChatSummary } from './api';
 import { Chat } from './Chat';
+import { ChatSwitcher } from './ChatSwitcher';
 import { contextLine, contextOf } from './context';
 import { Launcher } from './Launcher';
 import { Panel } from './Panel';
-import { useAssistant } from './useAssistant';
-import { useAssistantShell } from './useAssistantShell';
+import type { Assistant as Chatting } from './useAssistant';
+import type { useAssistantShell } from './useAssistantShell';
 import './assistant.css';
 
 export interface AssistantProps {
-  /** The current project (its chat), if any. */
+  /** Where the panel is (closed, floating, docked): App owns it, so the chat screens can pop a chat out into it. */
+  shell: ReturnType<typeof useAssistantShell>;
+  /** The active chat, shared with the full-screen chat. */
+  chat: Chatting;
+  /** The current project, if any. */
   project?: { id: string; name: string };
   /** The screen under the panel and what is selected on it. */
   route: Route & { tab: Screen };
-  /** Items that need the person (the launcher's badge). */
-  needs: number;
   phone: boolean;
+  /** On a full-screen chat the launcher and the panel step aside. */
+  hidden?: boolean;
+  /** The project's chats, newest first, for the switcher. */
+  chats: ChatSummary[];
+  /** Make a chat the active one (none: a new chat). */
+  onPick: (id: string | undefined) => void;
+  /** The active chat full screen. */
+  onFullScreen: () => void;
+  onAllChats: () => void;
   /** Where a citation or a started run goes. */
   onGo: (r: Route) => void;
 }
 
 /**
- * Tether, the assistant (spec §4): the launcher on every screen, opening a floating panel or a panel docked beside the
- * screen. Rendered inside the shell grid: docked, it is the grid's third column; floating, it is fixed over the screen.
+ * Tether, the assistant (spec §4): the launcher on every screen, opening the mini chat (floating) or a panel docked beside
+ * the screen, both on the active chat. Rendered inside the shell grid: docked, it is the grid's third column; floating,
+ * it is fixed over the screen.
  */
 export function Assistant(p: AssistantProps) {
-  const notify = useNotify();
-  const shell = useAssistantShell({ needs: p.needs, phone: p.phone });
-  const chat = useAssistant(p.project?.id, shell.mode !== 'closed');
+  const { shell, chat } = p;
   const launcherRef = useRef<HTMLButtonElement>(null);
+  if (p.hidden) return null;
   const close = () => {
     shell.close();
     launcherRef.current?.focus();
@@ -38,10 +50,12 @@ export function Assistant(p: AssistantProps) {
     shell.mode === 'closed' ? null : (
       <Panel
         mode={shell.mode}
-        context={contextLine(p.project?.name, p.route.tab)}
+        switcher={<ChatSwitcher title={chat.title ?? 'New chat'} chats={p.chats} current={chat.chatId} onPick={p.onPick} onAll={p.onAllChats} />}
+        context={contextLine(p.route)}
         canDock={!p.phone}
         onDock={shell.dock}
-        onNewChat={() => void chat.newChat().catch(notify.fail)}
+        onNewChat={() => p.onPick(undefined)}
+        onFullScreen={p.onFullScreen}
         onClose={close}
       >
         <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} />

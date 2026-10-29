@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError } from '../api';
 import { assistantApi, streamTurn, type AssistantContext, type ChatMessage, type Proposal, type StreamEvent, type ToolRun } from './api';
 
 /** The reply being written: its text so far and the Code Mode scripts it ran. */
@@ -9,6 +10,9 @@ export interface Streaming {
 }
 
 export interface Assistant {
+  /** The open chat; none is a new chat, saved by its first message. */
+  chatId?: string;
+  title?: string;
   messages: ChatMessage[];
   agent?: string;
   model?: string;
@@ -20,7 +24,9 @@ export interface Assistant {
   streaming?: Streaming;
   send(text: string, o?: { context?: AssistantContext; model?: string; agent?: string; attachments?: { name: string; text: string }[]; answer?: { message: string; result: string } }): Promise<void>;
   stop(): void;
-  newChat(): Promise<void>;
+  /** Read the chat again (a turn made elsewhere); not while a reply streams. */
+  refresh(): void;
+  rename(title: string): Promise<void>;
   decide(proposal: Proposal, decision: 'start' | 'dismiss'): Promise<Proposal>;
   tool(messageId: string, askId: string, decision: 'once' | 'always' | 'deny'): Promise<void>;
   feedback(messageId: string, value: 'up' | 'down' | null): void;
@@ -30,24 +36,29 @@ export interface Assistant {
 }
 
 const patch = (list: ChatMessage[], id: string, f: (m: ChatMessage) => ChatMessage) => list.map((m) => (m.id === id ? f(m) : m));
+const keyOf = (ws: string | undefined, chat: string | undefined) => `${ws ?? ''}\0${chat ?? ''}`;
 
 /**
- * The project's chat with Tether: loaded when the panel first opens on a project (and again when the project changes), then
- * kept here. A turn streams in (text, then Code Mode scripts as they run) and ends with the saved reply; Stop aborts it.
+ * One chat with Tether (`chatId` in the project `ws`; none is a new chat): loaded when enabled and whenever the project or
+ * the chat changes, then kept here. A turn streams in (text, then Code Mode scripts as they run) and ends with the saved
+ * reply; Stop aborts it, and so does moving to another chat or project. A new chat's first message makes it: `created`
+ * gets its id and must make `chatId` follow. A chat that is gone (deleted, another project's) calls `gone`.
  */
-export function useAssistant(ws: string | undefined, enabled: boolean): Assistant {
+export function useAssistant(ws: string | undefined, chatId: string | undefined, enabled: boolean, on: { created?: (id: string) => void; gone?: (id: string) => void } = {}): Assistant {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [title, setTitle] = useState<string>();
   const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean }>({ models: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [streaming, setStreaming] = useState<Streaming>();
+  const [nonce, setNonce] = useState(0);
   const loadedFor = useRef<string | null>(null);
   const abort = useRef<AbortController | undefined>(undefined);
-  const wsRef = useRef(ws);
-  wsRef.current = ws;
+  const ref = useRef({ ws, chatId, key: keyOf(ws, chatId), on });
+  ref.current = { ws, chatId, key: keyOf(ws, chatId), on };
 
   useEffect(() => {
-    const key = ws ?? '';
+    const key = keyOf(ws, chatId);
     if (!enabled || loadedFor.current === key) return;
     loadedFor.current = key;
     abort.current?.abort();
@@ -55,37 +66,47 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
     setLoading(true);
     setError(undefined);
     let live = true;
-    assistantApi.chat(ws).then(
+    assistantApi.chat(ws, chatId).then(
       (v) => {
         if (!live) return;
         setMessages(v.messages);
+        setTitle(v.title);
         setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter });
         setLoading(false);
       },
       (e: Error) => {
         if (!live) return;
         setMessages([]);
-        setError(e.message);
+        setTitle(undefined);
         setLoading(false);
         loadedFor.current = null;
+        if (chatId && e instanceof ApiError && e.status === 404) ref.current.on.gone?.(chatId);
+        else setError(e.message);
       },
     );
     return () => {
       live = false;
     };
-  }, [ws, enabled]);
+  }, [ws, chatId, enabled, nonce]);
 
   const send: Assistant['send'] = useCallback(async (text, o = {}) => {
     if (abort.current) return;
     const ctl = new AbortController();
     abort.current = ctl;
-    const forWs = wsRef.current;
+    const { ws: forWs, chatId: forChat } = ref.current;
+    let forKey = ref.current.key;
     let draft: Streaming = { text: '', tools: [] };
     setStreaming(draft);
     setError(undefined);
     const onEvent = (e: StreamEvent) => {
-      if (forWs !== wsRef.current) return;
+      if (forKey !== ref.current.key) return;
       if (e.type === 'start') {
+        if (!forChat) {
+          // this message made the chat: from here on it is the open one, with nothing to load
+          forKey = ref.current.key = loadedFor.current = keyOf(forWs, e.chat);
+          setTitle(e.title);
+          ref.current.on.created?.(e.chat);
+        }
         setMessages((l) => [...l, e.you]);
         draft = { ...draft, id: e.id };
       } else if (e.type === 'delta') draft = { ...draft, text: draft.text + e.text };
@@ -103,9 +124,9 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
       setStreaming(draft);
     };
     try {
-      await streamTurn({ ws: forWs, message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}) }, onEvent, ctl.signal);
+      await streamTurn({ ws: forWs, ...(forChat ? { chat: forChat } : {}), message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}) }, onEvent, ctl.signal);
     } catch (e) {
-      if (forWs === wsRef.current) {
+      if (forKey === ref.current.key) {
         const stopped = ctl.signal.aborted;
         // a stopped turn keeps what was written; the server saves the same
         if (stopped && draft.id) setMessages((l) => [...l, { id: draft.id!, role: 'tether', text: draft.text, at: Date.now(), ...(draft.tools.length ? { tools: draft.tools } : {}), error: 'Stopped.' }]);
@@ -118,8 +139,11 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
   }, []);
 
   const stop = useCallback(() => abort.current?.abort(), []);
+  const chat = () => ref.current.chatId;
 
   return {
+    chatId,
+    title,
     messages,
     ...meta,
     loading,
@@ -127,29 +151,62 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
     streaming,
     send,
     stop,
-    newChat: async () => {
-      abort.current?.abort();
-      const r = await assistantApi.newChat(wsRef.current);
-      setMessages(r.messages);
-      setStreaming(undefined);
+    refresh: () => {
+      if (abort.current) return;
+      loadedFor.current = null;
+      setNonce((n) => n + 1);
+    },
+    rename: async (t) => {
+      const id = chat();
+      if (!id) return;
+      const r = await assistantApi.rename(ref.current.ws, id, t);
+      if (chat() === id) setTitle(r.chat.title);
     },
     decide: async (proposal, decision) => {
-      const { proposal: next } = await assistantApi.decide(wsRef.current, proposal.id, decision);
+      const { proposal: next } = await assistantApi.decide(ref.current.ws, chat(), proposal.id, decision);
       setMessages((l) => l.map((m) => (m.proposals?.some((x) => x.id === next.id) ? { ...m, proposals: m.proposals.map((x) => (x.id === next.id ? next : x)) } : m)));
       return next;
     },
     tool: async (messageId, askId, decision) => {
-      const { ask } = await assistantApi.tool(wsRef.current, askId, decision);
+      const { ask } = await assistantApi.tool(ref.current.ws, chat(), askId, decision);
       setMessages((l) => patch(l, messageId, (m) => ({ ...m, toolAsks: m.toolAsks?.map((a) => (a.id === ask.id ? ask : a)) })));
     },
     feedback: (messageId, value) => {
       setMessages((l) => patch(l, messageId, (m) => ({ ...m, feedback: value ?? undefined })));
-      void assistantApi.feedback(wsRef.current, messageId, value).catch(() => {});
+      void assistantApi.feedback(ref.current.ws, chat(), messageId, value).catch(() => {});
     },
     turnIntoRun: async (messageId) => {
-      const { message } = await assistantApi.turnIntoRun(wsRef.current, messageId);
+      const { message } = await assistantApi.turnIntoRun(ref.current.ws, chat(), messageId);
       setMessages((l) => patch(l, messageId, () => message));
     },
     answered: (messageId, result) => setMessages((l) => patch(l, messageId, (m) => (m.ask ? { ...m, ask: { ...m.ask, status: 'answered', result } } : m))),
   };
+}
+
+const ACTIVE = (ws: string | undefined) => `tether.assistant.chat.${ws ?? '_'}`;
+function storedActive(ws: string | undefined): string | undefined {
+  try {
+    return localStorage.getItem(ACTIVE(ws)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The chat open in the mini chat and on the full screen, one per project, remembered on this device (none: a new chat). */
+export function useActiveChat(ws: string | undefined): [string | undefined, (id: string | undefined) => void] {
+  const [state, setState] = useState(() => ({ ws, id: storedActive(ws) }));
+  const id = state.ws === ws ? state.id : storedActive(ws);
+  const set = useCallback(
+    (next: string | undefined) => {
+      try {
+        if (next) localStorage.setItem(ACTIVE(ws), next);
+        else localStorage.removeItem(ACTIVE(ws));
+      } catch {
+        /* storage unavailable */
+      }
+      setState({ ws, id: next });
+    },
+    [ws],
+  );
+  return [id, set];
 }

@@ -27,7 +27,7 @@ vi.mock('./api', async (orig) => ({
 }));
 
 function Harness({ onGo }: { onGo: (r: unknown) => void }) {
-  const chat = useAssistant('api', true);
+  const chat = useAssistant('api', 'c1', true);
   return <Chat chat={chat} project="api" context={{ page: 'runs' }} onGo={onGo} />;
 }
 const mount = (onGo = vi.fn()) =>
@@ -52,20 +52,20 @@ describe('the chat', () => {
     await screen.findByText('add a test');
     expect(api.decide).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
-    await waitFor(() => expect(api.decide).toHaveBeenCalledWith('api', 'p1', 'start'));
+    await waitFor(() => expect(api.decide).toHaveBeenCalledWith('api', 'c1', 'p1', 'start'));
     expect(await screen.findByRole('button', { name: 'Open run' })).toBeTruthy();
   });
 
   it('sends a tool decision', async () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: /Allow once/ }));
-    await waitFor(() => expect(api.tool).toHaveBeenCalledWith('api', 't1', 'once'));
+    await waitFor(() => expect(api.tool).toHaveBeenCalledWith('api', 'c1', 't1', 'once'));
   });
 
   it('streams the reply as it arrives, hides the data block, and Stop keeps what was written', async () => {
     api.turn = (_b, on, signal) =>
       new Promise<void>((_resolve, reject) => {
-        on({ type: 'start', you: { id: 'y', role: 'you', text: 'hello', at: 3 }, id: 'a' });
+        on({ type: 'start', you: { id: 'y', role: 'you', text: 'hello', at: 3 }, id: 'a', chat: 'c1', title: 'q' });
         on({ type: 'delta', text: 'Working on' });
         on({ type: 'delta', text: ' it\n```tether\n{"sou' });
         signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
@@ -79,6 +79,6 @@ describe('the chat', () => {
     expect(screen.queryByText(/\{"sou/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
     expect(await screen.findByText('Stopped.')).toBeTruthy();
-    expect(api.bodies[0]).toMatchObject({ ws: 'api', message: 'hello', context: { page: 'runs' } });
+    expect(api.bodies[0]).toMatchObject({ ws: 'api', chat: 'c1', message: 'hello', context: { page: 'runs' } });
   });
 });

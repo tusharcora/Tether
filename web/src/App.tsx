@@ -1,6 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
+import { assistantApi, chatsPath, type ChatSummary } from './assistant/api';
 import { Assistant } from './assistant/Assistant';
+import { useActiveChat, useAssistant } from './assistant/useAssistant';
+import { useAssistantShell } from './assistant/useAssistantShell';
+import { contextOf } from './assistant/context';
+import { AllChats } from './chats/AllChats';
+import { Conversation } from './chats/Conversation';
+import { NewChat } from './chats/NewChat';
 import { Builder } from './Builder';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/beui/kit/toast';
@@ -49,6 +56,8 @@ const Code = lazy(() => import('./code/Code').then((m) => ({ default: m.Code }))
 
 /** How often the sidebar's counts (needs you, live) and project dots refresh. */
 const COUNTS_MS = 5000;
+/** How often the sidebar's chat titles refresh (a new chat also refreshes them at once). */
+const CHATS_MS = 10_000;
 /** What the leave dialog says about a screen's unsaved work. */
 const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.', code: 'Some open files have edits that are not saved.' };
 
@@ -82,6 +91,9 @@ function Shell() {
   const [lastRun, setLastRun] = useState(route.tab === 'runs' ? route.id : undefined);
   /** The file last shown in Code, so the sidebar's Code reopens it. */
   const [lastFile, setLastFile] = useState(route.tab === 'code' ? route.id : undefined);
+  /** The last screen that is not a chat: Pop out goes back to it. */
+  const lastOther = useRef<ScreenRoute>({ tab: 'home' });
+  if (screen.tab !== 'chats') lastOther.current = screen;
   const { choice, setChoice } = useTheme();
   const [palette, setPalette] = useState(false);
   const [openFolder, setOpenFolder] = useState(false);
@@ -96,6 +108,42 @@ function Shell() {
   const projects = useProjects();
   const runs = usePoll<RunRow[]>('/api/runs', COUNTS_MS);
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
+  /** The project's chats: the sidebar's Chats section and the mini chat's switcher. */
+  const chats = usePoll<{ chats: ChatSummary[] }>(chatsPath(projects.current?.id), CHATS_MS);
+  /**
+   * Tether: the panel (mini chat) and the full-screen chat show one active chat per project. A chat screen's route makes its
+   * chat the active one; a new chat's first message makes the chat (and, on New chat, moves to it); a chat that is gone
+   * falls back to a new one.
+   */
+  const shell = useAssistantShell({ needs: attention.data?.items.length ?? 0, phone });
+  const [activeChat, setActiveChat] = useActiveChat(projects.current?.id);
+  const onChatScreen = screen.tab === 'chats' && !!screen.id;
+  const chat = useAssistant(projects.current?.id, activeChat, shell.mode !== 'closed' || screen.tab === 'chats', {
+    created: (id) => {
+      setActiveChat(id);
+      void chats.refresh();
+      if (screenRef.current.tab === 'chats' && screenRef.current.id === 'new') goNow({ tab: 'chats', id });
+    },
+    gone: (id) => {
+      setActiveChat(undefined);
+      if (screenRef.current.tab === 'chats' && screenRef.current.id === id) goNow({ tab: 'chats', id: 'new' });
+    },
+  });
+  useEffect(() => {
+    if (route.tab === 'chats' && route.id) setActiveChat(route.id === 'new' ? undefined : route.id);
+  }, [route.tab, route.id, setActiveChat]);
+  const newChat = () => go({ tab: 'chats', id: 'new' });
+  /** Pop out: the chat moves to the mini chat over the screen the person came from. */
+  const popOut = () => {
+    shell.open('float');
+    go(lastOther.current);
+  };
+  const deleteChat = async (id: string) => {
+    await assistantApi.remove(projects.current?.id, id);
+    if (activeChat === id) setActiveChat(undefined);
+    void chats.refresh();
+    go({ tab: 'chats' });
+  };
   const goals = useGoals();
   const { pins, save: savePins } = usePins();
   const tools = usePoll<Tools>(route.tab === 'settings' ? TOOLS_PATH : null, 60_000);
@@ -186,14 +234,16 @@ function Shell() {
     const t = setTimeout(() => setCreate(undefined), 0);
     return () => clearTimeout(t);
   }, [create]);
-  const keys = useRef({ settings: () => {}, folder: () => {}, compose: () => {} });
-  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder, compose };
+  const keys = useRef({ settings: () => {}, folder: () => {}, compose: () => {}, newChat: () => {} });
+  keys.current = { settings: () => go({ tab: 'settings' }), folder: pickFolder, compose, newChat };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
       if (k === ',') return e.preventDefault(), keys.current.settings();
       if (k === 'o' && !e.shiftKey) return e.preventDefault(), keys.current.folder();
+      // ⌘⇧O: New chat (⌘N stays New run)
+      if (k === 'o') return e.preventDefault(), keys.current.newChat();
       if (k === 'n' && !e.shiftKey && !isTyping(e.target)) return e.preventDefault(), keys.current.compose();
       if (k !== 'k') return;
       // Ctrl-K edits text in fields (macOS: delete to end of line); only Meta-K is taken there
@@ -241,6 +291,7 @@ function Shell() {
               onCompose={compose}
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
+              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
@@ -305,11 +356,38 @@ function Shell() {
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
+            {screen.tab === 'chats' && !screen.id ? (
+              <AllChats
+                key={projects.current?.id ?? '_'}
+                ws={projects.current?.id}
+                project={projects.current}
+                active={activeChat}
+                onOpen={(id) => go({ tab: 'chats', id })}
+                onPopOut={(id) => (setActiveChat(id), shell.open('float'))}
+                onNew={newChat}
+                onGo={go}
+                onTurnDone={(id) => id === activeChat && chat.refresh()}
+              />
+            ) : null}
+            {screen.tab === 'chats' && screen.id === 'new' ? <NewChat chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} /> : null}
+            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} /> : null}
             {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} /> : null}
           </main>
           {settingsPage}
           {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
-          <Assistant project={projects.current} route={screen} needs={attention.data?.items.length ?? 0} phone={phone} onGo={go} />
+          <Assistant
+            shell={shell}
+            chat={chat}
+            chats={chats.data?.chats ?? []}
+            project={projects.current}
+            route={screen}
+            phone={phone}
+            hidden={onChatScreen}
+            onPick={setActiveChat}
+            onFullScreen={() => (shell.close(), go({ tab: 'chats', id: activeChat ?? 'new' }))}
+            onAllChats={() => go({ tab: 'chats' })}
+            onGo={go}
+          />
         </div>
       )}
       {welcome && settingsPage ? <div className="st-alone">{settingsPage}</div> : null}

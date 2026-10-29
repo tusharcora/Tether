@@ -93,6 +93,10 @@ describe('hash routes', () => {
     expect(parseHash('#/runs/r-1/code')).toEqual({ tab: 'runs', id: 'r-1', node: 'code' });
     expect(parseHash('#/crew')).toEqual({ tab: 'crew' });
     expect(parseHash('#/crew/quill')).toEqual({ tab: 'crew', id: 'quill' });
+    expect(parseHash('#/chats')).toEqual({ tab: 'chats' });
+    expect(parseHash('#/chats/new')).toEqual({ tab: 'chats', id: 'new' });
+    expect(parseHash('#/chats/c1x')).toEqual({ tab: 'chats', id: 'c1x' });
+    expect(hashFor({ tab: 'chats', id: 'c1x' })).toBe('#/chats/c1x');
     expect(parseHash('#/graph/runs%2Fr1.md')).toEqual({ tab: 'graph', id: 'runs/r1.md' });
     expect(parseHash('#/settings')).toEqual({ tab: 'settings' });
     expect(parseHash('')).toEqual({ tab: 'home' });

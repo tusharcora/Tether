@@ -1,11 +1,11 @@
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { Engine } from '../src/engine.js';
-import { loadChat } from '../src/assistant/history.js';
+import { deleteChat, listChats, loadAllow, readChat } from '../src/assistant/history.js';
 import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { startServer } from '../src/server.js';
@@ -78,7 +78,8 @@ async function boot() {
       .split('\n\n')
       .filter(Boolean)
       .map((f) => JSON.parse(f.replace(/^data: /, '')) as StreamEvent);
-    return { events, done: events.find((e) => e.type === 'done') as Extract<StreamEvent, { type: 'done' }> | undefined, status: r.status };
+    const start = events.find((e) => e.type === 'start') as Extract<StreamEvent, { type: 'start' }> | undefined;
+    return { events, start, chat: start?.chat, done: events.find((e) => e.type === 'done') as Extract<StreamEvent, { type: 'done' }> | undefined, status: r.status };
   };
   return { home, dir, agent, registry, store, engine, call, turn };
 }
@@ -117,41 +118,88 @@ describe('POST /api/assistant', () => {
   it('starts nothing until a proposal is approved, then exactly one run', async () => {
     const t = await boot();
     t.agent.reply = 'I can do that.\n```tether\n{"proposals":[{"kind":"team","task":"add a limit test","why":"you asked"}]}\n```';
-    const { done } = await t.turn({ message: 'please add a test' });
+    const { done, chat } = await t.turn({ message: 'please add a test' });
     const prop = done!.message.proposals![0]!;
     expect(prop.status).toBe('proposed');
     expect(t.store.list().length).toBe(0);
-    const go = await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', decision: 'start' });
+    const go = await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'start' });
     expect(go.json.proposal.status).toBe('started');
     expect(go.json.proposal.runId).toBeTruthy();
-    await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', decision: 'start' });
+    await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'start' });
     expect(t.store.list().length).toBe(1);
     // the decision is saved with the chat
-    expect((await t.call('GET', '/api/assistant?ws=api')).json.messages.at(-1).proposals[0].status).toBe('started');
+    expect((await t.call('GET', `/api/assistant?ws=api&chat=${chat}`)).json.messages.at(-1).proposals[0].status).toBe('started');
   });
 
   it('starts no run when a proposal is dismissed', async () => {
     const t = await boot();
     t.agent.reply = 'ok\n```tether\n{"proposals":[{"kind":"team","task":"do it"}]}\n```';
-    const { done } = await t.turn({ message: 'go' });
-    const r = await t.call('POST', `/api/assistant/proposals/${done!.message.proposals![0]!.id}`, { ws: 'api', decision: 'dismiss' });
+    const { done, chat } = await t.turn({ message: 'go' });
+    const r = await t.call('POST', `/api/assistant/proposals/${done!.message.proposals![0]!.id}`, { ws: 'api', chat, decision: 'dismiss' });
     expect(r.json.proposal.status).toBe('dismissed');
     expect(t.store.list().length).toBe(0);
   });
 
-  it('keeps a chat per project, archives it on New chat and keeps the last 20', async () => {
+  it('creates a chat with its first message, titled from it, and appends to it after', async () => {
     const t = await boot();
-    await t.turn({ message: 'one' });
-    expect((await t.call('GET', '/api/assistant?ws=api')).json.messages.length).toBe(2);
-    expect((await t.call('GET', '/api/assistant')).json.messages.length).toBe(0);
-    for (let i = 0; i < 22; i++) {
-      await t.call('POST', '/api/assistant/new', { ws: 'api' });
-      await t.turn({ message: `m${i}` });
-    }
-    expect((await t.call('POST', '/api/assistant/new', { ws: 'api' })).json.messages).toEqual([]);
-    expect(readdirSync(join(t.home, 'assistant', 'api.archive')).length).toBe(20);
-    expect((await t.call('GET', '/api/assistant?ws=api')).json.models).toEqual(['m1', 'm2']);
-  }, 60_000);
+    const first = await t.turn({ message: 'what is the limit?\nthanks' });
+    expect(first.chat).toMatch(/^c[a-z0-9]+$/);
+    expect(first.start!.title).toBe('what is the limit?');
+    const view = (await t.call('GET', `/api/assistant?ws=api&chat=${first.chat}`)).json;
+    expect(view).toMatchObject({ id: first.chat, title: 'what is the limit?', models: ['m1', 'm2'] });
+    expect(view.messages.length).toBe(2);
+    // no chat named: the view of a new chat, nothing saved for it
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.messages).toEqual([]);
+    const again = await t.turn({ message: 'and now?', chat: first.chat });
+    expect(again.chat).toBe(first.chat);
+    expect(readChat(t.home, 'api', first.chat!)!.messages.length).toBe(4);
+    await t.turn({ message: 'another topic' });
+    expect(listChats(t.home, 'api').map((c) => c.title)).toEqual(['another topic', 'what is the limit?']);
+    expect(listChats(t.home, undefined)).toEqual([]);
+  });
+
+  it('refuses a bad or unknown chat id before touching a file', async () => {
+    const t = await boot();
+    expect((await t.call('GET', '/api/assistant?ws=api&chat=..%2Fx')).status).toBe(400);
+    expect((await t.call('GET', '/api/assistant?ws=api&chat=allow')).status).toBe(400);
+    expect((await t.call('GET', '/api/assistant?ws=api&chat=nope')).status).toBe(404);
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', chat: 'nope', message: 'x' })).status).toBe(404);
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', chat: 'a'.repeat(41), message: 'x' })).status).toBe(400);
+    expect((await t.call('POST', '/api/assistant/proposals/p1', { ws: 'api', decision: 'start' })).status).toBe(400);
+    expect((await t.call('POST', '/api/assistant/feedback/m1', { ws: 'api', chat: '../../x', value: 'up' })).status).toBe(400);
+    expect(listChats(t.home, 'api')).toEqual([]);
+  });
+
+  it('does not bring back a chat deleted while its turn ran', async () => {
+    const t = await boot();
+    const { chat } = await t.turn({ message: 'one' });
+    const run = t.agent.run.bind(t.agent);
+    t.agent.run = async (req) => (deleteChat(t.home, 'api', chat!), run(req));
+    const r = await t.turn({ message: 'two', chat });
+    expect(r.done).toBeTruthy();
+    expect(readChat(t.home, 'api', chat!)).toBeUndefined();
+  });
+
+  it('lists the chats newest first, searches them, renames and deletes one', async () => {
+    const t = await boot();
+    const a = await t.turn({ message: 'why did the readme run fail?' });
+    t.agent.reply = 'Here is a plan.\n```tether\n{"proposals":[{"kind":"team","task":"fix it"}]}\n```';
+    const b = await t.turn({ message: 'plan the teams feature' });
+    const list = (await t.call('GET', '/api/assistant/chats?ws=api')).json.chats;
+    expect(list.map((c: { id: string }) => c.id)).toEqual([b.chat, a.chat]);
+    expect(list[0]).toMatchObject({ title: 'plan the teams feature', kind: 'needs', count: 2, last: 'Here is a plan.' });
+    expect((await t.call('GET', '/api/assistant/chats?ws=api&q=README')).json.chats.map((c: { id: string }) => c.id)).toEqual([a.chat]);
+    const renamed = await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: '  The README run  ' });
+    expect(renamed.json.chat).toMatchObject({ id: a.chat, title: 'The README run' });
+    expect((await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: ' ' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/assistant/chats/${a.chat}`, { ws: 'api', title: 'x'.repeat(121) })).status).toBe(400);
+    expect((await t.call('PATCH', '/api/assistant/chats/allow', { ws: 'api', title: 'x' })).status).toBe(400);
+    // a rename does not move the chat up the list
+    expect((await t.call('GET', '/api/assistant/chats?ws=api')).json.chats[1].title).toBe('The README run');
+    expect((await t.call('DELETE', `/api/assistant/chats/${a.chat}?ws=api`)).json).toEqual({ ok: true });
+    expect((await t.call('DELETE', `/api/assistant/chats/${a.chat}?ws=api`)).status).toBe(404);
+    expect((await t.call('GET', '/api/assistant/chats?ws=api')).json.chats.length).toBe(1);
+  });
 
   it('offers OpenRouter beside the bound agent, and a turn that names it runs there without the bound model', async () => {
     const t = await boot();
@@ -178,14 +226,23 @@ describe('POST /api/assistant', () => {
     const t = await boot();
     t.agent.script = 'await github.comment("o/r", 4, "looks good"); return 1;';
     t.agent.reply = 'I could not comment yet.';
-    const { done, events } = await t.turn({ message: 'comment on #4' });
+    const { done, events, chat } = await t.turn({ message: 'comment on #4' });
     expect(events.some((e) => e.type === 'tool')).toBe(true);
     const ask = done!.message.toolAsks![0]!;
     expect(ask.what).toContain('comment on o/r#4');
     expect(ask.status).toBe('pending');
-    const r = await t.call('POST', `/api/assistant/tools/${ask.id}`, { ws: 'api', decision: 'always' });
+    const r = await t.call('POST', `/api/assistant/tools/${ask.id}`, { ws: 'api', chat, decision: 'always' });
     expect(r.json.ask.status).toBe('always');
-    expect(loadChat(t.home, 'api').always).toEqual([ask.what]);
+    expect(loadAllow(t.home, 'api')).toEqual([ask.what]);
+    // "once" is for that chat's next turn only
+    t.agent.script = 'await github.comment("o/r", 5, "ok"); return 1;';
+    const second = await t.turn({ message: 'and #5', chat });
+    const ask2 = second.done!.message.toolAsks![0]!;
+    await t.call('POST', `/api/assistant/tools/${ask2.id}`, { ws: 'api', chat, decision: 'once' });
+    expect(readChat(t.home, 'api', chat!)!.once.length).toBe(1);
+    t.agent.script = undefined;
+    await t.turn({ message: 'go on', chat });
+    expect(readChat(t.home, 'api', chat!)!.once).toEqual([]);
   });
 
   it('redacts secrets from the reply and the scripts', async () => {

@@ -1,0 +1,107 @@
+/* Tether chats full screen (spec docs/superpowers/specs/2026-10-28-tether-chats-design.md, mockups docs/design/chats):
+   the New chat screen, a conversation, and All chats. Studio tokens only. */
+
+/* the composer draws its own border; the textarea inside keeps none (global textarea rules would add one) */
+.chat-new form textarea, .chat-screen form textarea { width: 100%; padding-top: 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; font-family: inherit; font-size: 15px; resize: none; }
+.chat-new form textarea:focus, .chat-new form textarea:focus-visible, .chat-screen form textarea:focus, .chat-screen form textarea:focus-visible { outline: none; box-shadow: none; }
+
+/* New chat (board 1): everything centred, a 720 px column */
+.chat-new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; min-height: 100%; box-sizing: border-box; padding: 32px 24px 80px; --tf-slab: var(--ink); --tf-eye: var(--bg); }
+.chat-new-hero { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+.chat-new-hero h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.chat-new-box { width: 100%; max-width: 720px; }
+.chat-starters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; max-width: 720px; margin: 0; padding: 0; list-style: none; }
+.chat-starter { display: flex; flex-direction: column; gap: 3px; width: 100%; height: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease); }
+.chat-starter:hover { border-color: var(--line2); background: var(--s1); }
+.chat-starter:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.chat-starter b { font-size: 14px; font-weight: 500; }
+.chat-starter span { font-size: 13px; color: var(--mut); }
+.chat-new-note { margin: 0; font-size: 12px; color: var(--mut); text-align: center; }
+@media (max-width: 899px) { .chat-starters { grid-template-columns: 1fr; } }
+
+/* a conversation (board 2): a 52 px header, the thread and its composer fill the rest */
+.chat-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chat-head { display: flex; flex: none; align-items: center; gap: 10px; height: 52px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.chat-head .chat-title { max-width: 420px; font-size: 14px; font-weight: 500; }
+.chat-head-gap { flex: 1; }
+.chat-chip { flex: none; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--mut); font-size: 12px; }
+.chat-rename input { width: 360px; max-width: 50vw; height: 30px; padding: 0 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--s1); color: var(--ink); font: inherit; font-size: 14px; }
+
+/* All chats (board 3, approved v2): the list on the left, the chosen chat's preview on the right */
+.ac { display: flex; height: 100%; min-height: 0; }
+.ac-list { display: flex; flex: none; flex-direction: column; width: 560px; min-height: 0; border-right: 1px solid var(--line); }
+.ac-top { display: flex; flex-direction: column; gap: 12px; padding: 22px 20px 12px; }
+.ac-title { display: flex; align-items: center; gap: 10px; }
+.ac-title h1 { flex: 1; margin: 0; font-size: 22px; font-weight: 600; }
+.ac-project, .ac-meta, .ac-row-top time { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+.ac-count { font-family: var(--mono); opacity: .7; }
+.ac-rows-wrap { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.ac-rows { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; padding: 0 8px 12px; }
+.ac-row { display: flex; flex: none; gap: 10px; padding: 12px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; animation: ac-in .32s var(--ease) both; animation-delay: calc(var(--k, 0) * 45ms); }
+.ac-row:hover { background: var(--s2); }
+.ac-row[aria-current] { border-color: var(--line2); background: var(--s2); }
+.ac-row:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.ac-row-main { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
+.ac-row-top { display: flex; align-items: baseline; gap: 8px; }
+.ac-row-top b { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.ac-row-last { overflow: hidden; color: var(--mut); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.ac-chips { display: flex; align-items: center; gap: 6px; min-height: 18px; }
+.ac-gap { flex: 1; }
+.ac-chip { padding: 1px 7px; border-radius: 999px; background: var(--s2); color: var(--mut); font-family: var(--mono); font-size: 11px; }
+.ac-chip.live { background: var(--accBg); color: var(--accInk); }
+.ac-chip.needs { background: var(--warnBg); color: var(--warn); }
+.ac-chip.done { background: var(--okBg); color: var(--ok); }
+.ac-chip.failed { background: var(--badBg); color: var(--bad); }
+.ac-empty { margin: 12px; color: var(--mut); font-size: 13px; }
+
+/* the status mark: live pulses blue, needs-you breathes an amber ring, done green, failed red, an answer a plain square */
+.ac-mark { flex: none; width: 9px; height: 9px; margin: 5px 4px 0; box-sizing: border-box; border-radius: 50%; }
+.ac-mark.live { background: var(--acc); animation: ac-pulse 1.6s infinite; }
+.ac-mark.needs { border: 2px solid var(--warn); animation: ac-breathe 1.4s ease-in-out infinite; }
+.ac-mark.done { background: var(--ok); }
+.ac-mark.failed { background: var(--bad); }
+.ac-mark.answer { width: 8px; height: 8px; border: 1.5px solid var(--mut); border-radius: 2px; }
+
+/* the bottom padding clears the launcher, which stays on this screen (Pop out opens the mini chat here) */
+.ac-preview { display: flex; flex: 1; flex-direction: column; gap: 18px; min-width: 0; padding: 22px 28px 84px; overflow: auto; }
+.ac-head { display: flex; align-items: center; gap: 10px; }
+.ac-head > div { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.ac-head h2 { margin: 0; overflow: hidden; font-size: 18px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ac-h3 { margin: 0; color: var(--mut); font-size: 12px; font-weight: 500; }
+.ac-led { display: flex; flex-direction: column; gap: 10px; }
+/* the chain: compact action nodes, smaller than the Goals flow's, joined by edges; the edge into a live run carries a baton */
+.ac-flow { display: flex; flex-wrap: wrap; align-items: center; row-gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ac-flow > li { display: flex; align-items: center; min-width: 0; }
+.ac-flow .nod-compact { width: auto; min-width: 140px; max-width: 200px; padding: 8px 10px; gap: 6px; }
+.ac-flow .nod-head { gap: 10px; }
+.ac-flow .nod-mark { width: 28px; height: 28px; border-radius: 8px; }
+.ac-flow .nod-mark svg { width: 15px; height: 15px; }
+.ac-flow .nod-title { font-size: 13px; }
+.ac-flow .nod-line { font-family: var(--mono); font-size: 11px; }
+.ac-link { position: relative; flex: none; width: 36px; height: 2px; background: var(--edge); }
+.ac-link.live { background: var(--acc); }
+.ac-link.live::after { content: ''; position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accInk); animation: ac-baton 1.3s linear infinite; }
+.ac-wait { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: 10px; background: var(--s1); }
+.ac-wait p { flex: 1; margin: 0; font-size: 13px; }
+.ac-cites { display: flex; flex-wrap: wrap; gap: 8px; }
+.ac-cite { padding: 2px 9px; border: 1px solid var(--line2); border-radius: 999px; background: none; color: var(--accInk); font: inherit; font-size: 12px; cursor: pointer; }
+.ac-cite:hover { border-color: var(--edge); }
+.ac-last { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 220px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--s1); font-size: 14px; line-height: 1.55; }
+.ac-you { align-self: flex-end; max-width: 80%; padding: 8px 12px; border-radius: 12px; background: var(--s2); white-space: pre-wrap; }
+.ac-tether { min-width: 0; }
+.ac-continue { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 6px 6px 6px 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--bg); }
+.ac-continue:focus-within { outline: 2px solid var(--acc); outline-offset: 1px; }
+.ac-continue input { flex: 1; min-width: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; outline: none; }
+
+@keyframes ac-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes ac-pulse { 0% { box-shadow: 0 0 0 0 var(--acc); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+@keyframes ac-breathe { 50% { opacity: .45; } }
+@keyframes ac-baton { to { left: calc(100% - 6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ac-row, .ac-mark.live, .ac-mark.needs, .ac-link.live::after { animation: none; }
+}
+@media (max-width: 899px) {
+  .ac { flex-direction: column; height: auto; }
+  .ac-list { width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .ac-rows { overflow: visible; }
+}

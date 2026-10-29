@@ -1,6 +1,7 @@
-import { Bot, PanelLeftClose, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
+import { Bot, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
+import type { ChatSummary } from '../../assistant/api';
 import type { Screen } from '../../hooks';
 import { CreateMenu } from '../../components/bencho/CreateMenu';
 import { cn } from '../cn';
@@ -17,6 +18,8 @@ const KEY = 'tether.sidebar';
 const TIP_DELAY_MS = 300;
 /** Finished runs the Runs section keeps under the live and waiting ones. */
 export const RECENT_FINISHED = 5;
+/** Chats the Chats section lists (the rest are in All chats). */
+export const RECENT_CHATS = 5;
 
 function storedCollapsed(): boolean {
   try {
@@ -76,6 +79,8 @@ export interface SidebarProps {
   counts: { needs: number; live: number; goals: number };
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
+  /** The project's chats, newest first; `current` is what the Chats screen shows: '' All chats, 'new', or a chat id. */
+  chats: { list: ChatSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void; onAll: () => void };
   projects: ProjectsProps;
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void; onReorder: (next: Pin[]) => void };
   account: { name: string; provider?: string; onOpen: () => void };
@@ -83,7 +88,8 @@ export interface SidebarProps {
 
 /**
  * The left sidebar (900 px and wider), Linear-style (spec §2): the project switcher (the Tether glyph and the project's
- * name), compose and the collapse button; Search, Home, Inbox and Runs; the Workspace screens with their `G` shortcuts;
+ * name), compose and the collapse button; Search, Home, Inbox and Runs; the project's Tether chats (New chat, the five
+ * latest, All chats; one chat icon on the rail); the Workspace screens with their `G` shortcuts;
  * the project's recent runs with status glyphs; Favorites (pins, drag to reorder); Settings and the account row at the
  * bottom. Collapsed (⌘\ or the panel button) it is a 56 px icon rail, and the collapse is seamless (spec §6): the markup
  * does not change, every row keeps an 8 px gutter and a 40 px icon cell, so each icon's centre is the same in both states;
@@ -174,6 +180,24 @@ export function Sidebar(p: SidebarProps) {
         <nav className="sl-side-nav" aria-label="Main">
           <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} rail={tipFor('search', 'Search')} />
           {top.map(navRow)}
+          <SideSection
+            id="chats"
+            title="Chats"
+            collapsed={collapsed}
+            actions={
+              <button type="button" className="sl-side-icon-btn" aria-label="New chat" title={`New chat  ${mod}⇧O`} onClick={p.chats.onNew}>
+                <Plus size={14} aria-hidden="true" />
+              </button>
+            }
+          >
+            {collapsed
+              ? [<SideRow key="all" label="Chats" Icon={MessagesSquare} page current={p.chats.current !== undefined} onClick={p.chats.onAll} rail={tipFor('chats', 'Chats')} />]
+              : [
+                  <SideRow key="new" label="New chat" Icon={Pencil} page current={p.chats.current === 'new'} hint={<Kbd mod>⇧O</Kbd>} onClick={p.chats.onNew} />,
+                  ...p.chats.list.slice(0, RECENT_CHATS).map((c) => <SideRow key={c.id} label={c.title} page current={p.chats.current === c.id} onClick={() => p.chats.onOpen(c.id)} />),
+                  <SideRow key="all" label="All chats →" name="All chats" page current={p.chats.current === ''} onClick={p.chats.onAll} />,
+                ]}
+          </SideSection>
           <SideSection id="workspace" title="Workspace" collapsed={collapsed}>
             {work.map(navRow)}
           </SideSection>

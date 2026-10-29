@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="New chat" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 48px 80px; gap: 28px">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 18px">
+      <span style="width: 64px; height: 64px; border-radius: 16px; background: #18181b; border: 1px solid rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; gap: 9px"><i style="width: 6px; height: 12px; background: #f4f4f5; border-radius: 3px"></i><i style="width: 6px; height: 12px; background: #f4f4f5; border-radius: 3px"></i></span>
+      <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.01em">What should we look at in agent-orchestrator?</h1>
+    </div>
+    <div style="width: 720px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 18px">
+      <label for="p" style="position: absolute; left: -9999px">Message Tether</label>
+      <textarea id="p" rows="2" placeholder="Ask Tether about your runs, code or notes…" style="font-family: inherit; font-size: 16px; background: transparent; color: #f4f4f5; border: 0; outline: none; resize: none"></textarea>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <button aria-label="Add files" style="width: 32px; height: 32px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: #d4d4d8; font-size: 18px">+</button>
+        <button style="font-family: inherit; font-size: 13px; background: #18181b; color: #f4f4f5; border: 0; border-radius: 999px; padding: 0 12px; height: 32px">Auto <span style="color: #a1a1aa">opus</span> ▾</button>
+        <span style="font-size: 13px; color: #a1a1aa; border: 1px solid rgba(255,255,255,.07); border-radius: 999px; padding: 6px 12px">agent-orchestrator</span>
+        <span style="flex: 1"></span>
+        <button aria-label="Dictate" style="width: 32px; height: 32px; border-radius: 999px; border: 0; background: #18181b; color: #d4d4d8">●</button>
+        <button aria-label="Send" style="width: 32px; height: 32px; border-radius: 999px; border: 0; background: #3f3f46; color: #a1a1aa">↑</button>
+      </div>
+    </div>
+    <div style="width: 720px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <button style="font-family: inherit; text-align: left; background: transparent; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 12px 14px; color: #f4f4f5; display: flex; flex-direction: column; gap: 3px"><b style="font-size: 14px; font-weight: 500">What's running right now?</b><span style="font-size: 13px; color: #a1a1aa">Runs, steps and anything waiting on you</span></button>
+      <button style="font-family: inherit; text-align: left; background: transparent; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 12px 14px; color: #f4f4f5; display: flex; flex-direction: column; gap: 3px"><b style="font-size: 14px; font-weight: 500">Why did R-7D92 fail?</b><span style="font-size: 13px; color: #a1a1aa">Your last failed run</span></button>
+      <button style="font-family: inherit; text-align: left; background: transparent; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 12px 14px; color: #f4f4f5; display: flex; flex-direction: column; gap: 3px"><b style="font-size: 14px; font-weight: 500">Plan a change with the crew</b><span style="font-size: 13px; color: #a1a1aa">Tether drafts it, you approve the run</span></button>
+      <button style="font-family: inherit; text-align: left; background: transparent; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 12px 14px; color: #f4f4f5; display: flex; flex-direction: column; gap: 3px"><b style="font-size: 14px; font-weight: 500">Explain a file</b><span style="font-size: 13px; color: #a1a1aa">Pick one from Code, or type @</span></button>
+    </div>
+    <span style="font-size: 12px; color: #a1a1aa">Tether reads your runs, code and notes. It changes things only through cards you approve.</span>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

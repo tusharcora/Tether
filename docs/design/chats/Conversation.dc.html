@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chat full screen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="Why did the README run fail?" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; display: flex; flex-direction: column; min-width: 0">
+    <header style="height: 52px; flex: none; border-bottom: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; gap: 10px; padding: 0 20px">
+      <button style="font-family: inherit; font-size: 14px; font-weight: 500; background: transparent; color: #f4f4f5; border: 0; padding: 4px 8px; border-radius: 6px">Why did the README run fail? <span style="color: #a1a1aa">▾</span></button>
+      <span style="font-size: 12px; color: #a1a1aa; border: 1px solid rgba(255,255,255,.07); border-radius: 999px; padding: 2px 9px">agent-orchestrator</span>
+      <span style="flex: 1"></span>
+      <button aria-label="Open as mini chat" style="font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 30px">Pop out ↘</button>
+      <button aria-label="Chat actions" style="width: 30px; height: 30px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px">⋯</button>
+    </header>
+    <div style="flex: 1; overflow: hidden; display: flex; justify-content: center; padding: 28px 48px 0">
+      <div style="width: 760px; display: flex; flex-direction: column; gap: 22px">
+        <div style="align-self: flex-end; max-width: 520px; background: #18181b; border-radius: 14px; padding: 10px 14px; font-size: 15px">Why did R-7D92 fail?</div>
+        <div style="display: flex; gap: 12px">
+          <span style="width: 28px; height: 28px; flex: none; border-radius: 8px; background: #18181b; border: 1px solid rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; gap: 4px"><i style="width: 3px; height: 7px; background: #f4f4f5; border-radius: 2px"></i><i style="width: 3px; height: 7px; background: #f4f4f5; border-radius: 2px"></i></span>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.6">
+            <button style="align-self: flex-start; font-family: 'Geist Mono', monospace; font-size: 12px; color: #a1a1aa; background: transparent; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; padding: 3px 8px">▸ Looked at run R-7D92 · read 2 files · 3 calls</button>
+            <p style="margin: 0">Bolt finished the README, but <b>Lens</b> failed the review: the file listed CLI flags that no longer exist (<code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">--crew-pack</code>, <code style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #18181b; padding: 1px 5px; border-radius: 4px">--watch</code>). The run then stopped on its $5 limit after the second retry.</p>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap">
+              <a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">R-7D92 · Lens verdict</a>
+              <a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">src/cli.ts:1886</a>
+              <a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">README.md</a>
+            </div>
+            <div style="border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: #111113; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #a1a1aa">Proposed run</div>
+              <b style="font-size: 15px; font-weight: 600">Fix the README's CLI section from cli.ts</b>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa">
+                <span style="width: 20px; height: 20px; border-radius: 5px; background: #3b82f6"></span>Bolt writes
+                <span style="width: 20px; height: 20px; border-radius: 5px; background: #f87171; margin-left: 8px"></span>Lens reviews
+                <span style="margin-left: 8px; font-family: 'Geist Mono', monospace">limit $2</span>
+              </div>
+              <div style="display: flex; gap: 8px; justify-content: flex-end">
+                <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: transparent; color: #f4f4f5; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 12px; height: 32px">Dismiss</button>
+                <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 12px; height: 32px">Start run</button>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 12px; color: #a1a1aa"><span>Copy</span><span>Retry</span><span>Helpful</span></div>
+          </div>
+        </div>
+        <div style="align-self: flex-end; max-width: 520px; background: #18181b; border-radius: 14px; padding: 10px 14px; font-size: 15px">Yes, and keep the CLI section under 40 lines.</div>
+        <div style="display: flex; gap: 12px; align-items: center">
+          <span style="width: 28px; height: 28px; flex: none; border-radius: 8px; background: #18181b; border: 1px solid #2563eb; display: flex; align-items: center; justify-content: center; gap: 4px"><i style="width: 3px; height: 7px; background: #f4f4f5; border-radius: 2px"></i><i style="width: 3px; height: 7px; background: #f4f4f5; border-radius: 2px"></i></span>
+          <span style="font-size: 15px; color: #a1a1aa">Updating the proposal<span style="color: #93c5fd"> ●●●</span></span>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: center; padding: 12px 48px 20px">
+      <div style="width: 760px; background: #111113; border: 1px solid rgba(255,255,255,.14); border-radius: 16px; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 12px">
+        <label for="p" style="position: absolute; left: -9999px">Message Tether</label>
+        <input id="p" placeholder="Reply to Tether…" style="font-family: inherit; font-size: 15px; background: transparent; color: #f4f4f5; border: 0; outline: none">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button aria-label="Add files" style="width: 30px; height: 30px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: #d4d4d8">+</button>
+          <button style="font-family: inherit; font-size: 13px; background: #18181b; color: #f4f4f5; border: 0; border-radius: 999px; padding: 0 12px; height: 30px">nemotron-3.5-super-vl:free <span style="color: #34d399">free</span> ▾</button>
+          <span style="flex: 1"></span>
+          <button aria-label="Stop" style="width: 30px; height: 30px; border-radius: 999px; border: 0; background: #f4f4f5; color: #09090b">■</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

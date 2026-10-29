@@ -1,13 +1,21 @@
-import type { AssistantContext, ChatMessage, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
+import type { AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
-export type { AskCard, AssistantContext, ChatMessage, ChatView, Cite, Compare, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
-export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX } from '../../../src/assistant/types.js';
+export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Cite, Compare, OutcomeNode, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
+export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
-const q = (ws: string | undefined) => (ws ? `?ws=${encodeURIComponent(ws)}` : '');
+/** `?ws=…&chat=…` with the parts that are set. */
+const q = (o: Record<string, string | undefined>) => {
+  const s = new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => !!e[1])).toString();
+  return s ? `?${s}` : '';
+};
+/** Where the chat list is read (polled by the sidebar and All chats). */
+export const chatsPath = (ws: string | undefined, search?: string) => `/api/assistant/chats${q({ ws, q: search })}`;
 
 export interface SendBody {
   ws?: string;
+  /** The chat this message goes to; none starts a new chat (the start event names it). */
+  chat?: string;
   message: string;
   context?: AssistantContext;
   model?: string;
@@ -19,12 +27,14 @@ export interface SendBody {
 
 /** The assistant's routes (server: src/assistant/routes.ts). */
 export const assistantApi = {
-  chat: (ws: string | undefined) => api<ChatView>('GET', `/api/assistant${q(ws)}`),
-  newChat: (ws: string | undefined) => api<{ messages: ChatMessage[] }>('POST', '/api/assistant/new', { ws }),
-  decide: (ws: string | undefined, id: string, decision: 'start' | 'dismiss') => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, decision }),
-  turnIntoRun: (ws: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, from }),
-  tool: (ws: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, decision }),
-  feedback: (ws: string | undefined, id: string, value: 'up' | 'down' | null) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, value }),
+  /** One chat; no `chat`: a new chat's view (no messages). */
+  chat: (ws: string | undefined, chat?: string) => api<ChatView>('GET', `/api/assistant${q({ ws, chat })}`),
+  rename: (ws: string | undefined, chat: string, title: string) => api<{ chat: ChatSummary }>('PATCH', `/api/assistant/chats/${encodeURIComponent(chat)}`, { ws, title }),
+  remove: (ws: string | undefined, chat: string) => api<{ ok: true }>('DELETE', `/api/assistant/chats/${encodeURIComponent(chat)}${q({ ws })}`),
+  decide: (ws: string | undefined, chat: string | undefined, id: string, decision: 'start' | 'dismiss') => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, chat, decision }),
+  turnIntoRun: (ws: string | undefined, chat: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, chat, from }),
+  tool: (ws: string | undefined, chat: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, chat, decision }),
+  feedback: (ws: string | undefined, chat: string | undefined, id: string, value: 'up' | 'down' | null) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, chat, value }),
 };
 
 /**

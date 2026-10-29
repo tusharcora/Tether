@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>All chats</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes ac-pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.7)}70%{box-shadow:0 0 0 7px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+@keyframes ac-baton{0%{left:0}100%{left:calc(100% - 6px)}}
+@keyframes ac-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes ac-ring{0%,100%{opacity:1}50%{opacity:.45}}
+.ac-row{animation:ac-in .32s cubic-bezier(.2,.8,.2,1) both}
+.ac-row:hover{background:#18181b}
+.ac-live{animation:ac-pulse 1.6s infinite}
+.ac-wait{animation:ac-ring 1.4s ease-in-out infinite}
+.ac-baton{position:absolute;top:-2px;width:6px;height:6px;border-radius:999px;background:#93c5fd;animation:ac-baton 1.3s linear infinite}
+.ac-chip:hover{border-color:rgba(255,255,255,.3)}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="All chats" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; min-width: 0; display: flex">
+    <section style="width: 560px; flex: none; border-right: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column">
+      <div style="padding: 22px 20px 12px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <h1 style="margin: 0; flex: 1; font-size: 22px; font-weight: 600">Chats</h1>
+          <span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #a1a1aa">agent-orchestrator</span>
+          <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 12px; height: 32px">New chat</button>
+        </div>
+        <label for="s" style="position: absolute; left: -9999px">Search chats</label>
+        <input id="s" placeholder="Search chats, runs they started, files they cite…" style="font-family: inherit; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 12px; height: 36px">
+        <div role="tablist" aria-label="Filter chats" style="display: flex; gap: 6px; flex-wrap: wrap">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+            <button role="tab" class="ac-chip" onClick="{{f.pick}}" style="{{f.style}}">{{f.label}} <span style="font-family: 'Geist Mono', monospace; opacity: .7">{{f.n}}</span></button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="flex: 1; overflow: auto; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{rows}}" as="c" hint-placeholder-count="5">
+          <button class="ac-row" onClick="{{c.pick}}" style="{{c.style}}">
+            <span style="width: 18px; display: flex; justify-content: center; padding-top: 4px"><span class="{{c.dotClass}}" style="{{c.dotStyle}}"></span></span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; text-align: left">
+              <span style="display: flex; gap: 8px; align-items: baseline"><b style="flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{c.title}}</b><span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #a1a1aa">{{c.when}}</span></span>
+              <span style="font-size: 13px; color: #a1a1aa; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{c.last}}</span>
+              <span style="display: flex; align-items: center; gap: 6px">
+                <sc-for list="{{c.trail}}" as="t" hint-placeholder-count="3">
+                  <span style="{{t.style}}">{{t.label}}</span>
+                </sc-for>
+                <span style="flex: 1"></span>
+                <sc-for list="{{c.faces}}" as="fc" hint-placeholder-count="2">
+                  <span title="{{fc.name}}" style="{{fc.style}}"></span>
+                </sc-for>
+              </span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-label="Chat preview" style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 22px 28px; gap: 18px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+          <b style="font-size: 18px; font-weight: 600">{{sel.title}}</b>
+          <span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #a1a1aa">{{sel.meta}}</span>
+        </div>
+        <button style="font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 32px">Pop out ↘</button>
+        <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 12px; height: 32px">Open chat</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 12px; font-weight: 500; color: #a1a1aa">What it led to</span>
+        <div style="display: flex; align-items: center">
+          <sc-for list="{{sel.nodes}}" as="n" hint-placeholder-count="4">
+            <span style="display: flex; align-items: center">
+              <sc-if value="{{n.edge}}" hint-placeholder-val="{{false}}">
+                <span style="position: relative; width: 44px; height: 2px; background: {{n.edgeColor}}">
+                  <sc-if value="{{n.live}}" hint-placeholder-val="{{false}}"><span class="ac-baton"></span></sc-if>
+                </span>
+              </sc-if>
+              <span style="{{n.style}}">
+                <span style="font-size: 11px; color: #a1a1aa">{{n.kind}}</span>
+                <b style="font-size: 13px; font-weight: 500">{{n.label}}</b>
+                <span style="font-size: 11px; font-family: 'Geist Mono', monospace; color: {{n.stateColor}}">{{n.state}}</span>
+              </span>
+            </span>
+          </sc-for>
+        </div>
+        <sc-if value="{{sel.waiting}}" hint-placeholder-val="{{false}}">
+          <div style="border: 1px solid #fbbf24; border-radius: 10px; background: #111113; padding: 10px 12px; display: flex; align-items: center; gap: 10px">
+            <span style="flex: 1; font-size: 13px">{{sel.waiting}}</span>
+            <button style="font-family: inherit; font-size: 13px; background: transparent; color: #f4f4f5; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 10px; height: 30px">Dismiss</button>
+            <button style="font-family: inherit; font-size: 13px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 10px; height: 30px">Approve</button>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <sc-for list="{{sel.cites}}" as="x" hint-placeholder-count="3">
+          <a href="#" style="font-size: 12px; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.3); border-radius: 999px; padding: 2px 9px">{{x}}</a>
+        </sc-for>
+      </div>
+
+      <div style="flex: 1; min-height: 0; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: #111113; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; font-size: 14px; line-height: 1.55">
+        <span style="font-size: 11px; color: #a1a1aa">Last exchange</span>
+        <div style="align-self: flex-end; max-width: 420px; background: #18181b; border-radius: 12px; padding: 8px 12px">{{sel.you}}</div>
+        <div style="display: flex; gap: 10px"><span style="width: 22px; height: 22px; flex: none; border-radius: 6px; background: #18181b; border: 1px solid rgba(255,255,255,.14)"></span><span style="color: #d4d4d8">{{sel.tether}}</span></div>
+        <span style="flex: 1"></span>
+        <div style="background: #0a0a0b; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 8px">
+          <label for="r" style="position: absolute; left: -9999px">Continue this chat</label>
+          <input id="r" placeholder="Continue this chat without opening it…" style="flex: 1; font-family: inherit; font-size: 14px; background: transparent; color: #f4f4f5; border: 0; outline: none">
+          <button aria-label="Send" style="width: 28px; height: 28px; border-radius: 999px; border: 0; background: #3f3f46; color: #a1a1aa">↑</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { sel: 0, filter: 'all' }; }
+renderVals() {
+const F = (c, a, k) => ({ Bolt: '#3b82f6', Lens: '#f87171', Scout: '#a8a29e', Brick: '#84841a', Probe: '#a3a635' })[c];
+const chats = [
+  { title: 'Why did the README run fail?', when: '14:22', kind: 'live', last: 'Bolt rewrote the CLI section; Lens is reviewing it now.', faces: ['Bolt', 'Lens'], trail: [['run R-4F21', 'live']], meta: '6 messages · opus · today 14:22',
+    nodes: [['Asked', 'Why did R-7D92 fail?', 'answered', 'done'], ['Proposal', 'Fix README CLI section', 'approved', 'done'], ['Run', 'R-4F21', 'Lens reviewing', 'live'], ['File', 'README.md', '+36 −51', 'idle']],
+    cites: ['R-7D92 · Lens verdict', 'src/cli.ts:1886', 'README.md'], you: 'Is the fix run going OK?', tether: 'Yes. Bolt rewrote the CLI section (36 lines) and Lens is reviewing it now. Nothing needs you yet.' },
+  { title: 'Plan the Teams feature', when: '11:05', kind: 'needs', last: 'Drafted a spec outline: always-on agents, a team channel, handoffs.', faces: ['Scout', 'Brick'], trail: [['proposal waiting', 'needs']], meta: '14 messages · nemotron-3.5-super-vl:free · today 11:05',
+    nodes: [['Asked', 'How should Teams work?', 'answered', 'done'], ['Proposal', 'Write the Teams spec', 'waiting on you', 'needs']],
+    waiting: 'Start a run: Scout + Brick write docs/specs/teams-design.md (limit $1)?', cites: ['docs/superpowers/specs', 'src/crew.ts'], you: 'Agents should message each other like Slack.', tether: 'Then each team gets one channel; a message can hand work to a teammate, which starts a step on their binding.' },
+  { title: 'What does Code Mode change?', when: '09:40', kind: 'answer', last: 'One run_code tool instead of many; Claude keeps its built-ins.', faces: [], trail: [['answer only', 'idle']], meta: '4 messages · haiku · today 09:40',
+    nodes: [['Asked', 'What does Code Mode change?', 'answered', 'done']], cites: ['src/codemode/runtime.ts', 'docs/reference.md'], you: 'Does it slow Claude down?', tether: 'Usually not: one script replaces several tool round trips, so long reads get faster.' },
+  { title: 'Free models: rate limits', when: 'Oct 27', kind: 'done', last: '50 a day without credits, 1,000 after $10.', faces: ['Bolt'], trail: [['run R-3A10', 'done']], meta: '9 messages · nemotron-3.5-super-vl:free · Oct 27',
+    nodes: [['Asked', 'What are the free limits?', 'answered', 'done'], ['Run', 'R-3A10', 'done · $0.00', 'done']], cites: ['openrouter.ai/docs/limits'], you: 'Show the counter in Settings.', tether: 'Done in R-3A10: Accounts shows "32 of 50 free requests left today".' },
+  { title: 'Flaky login test, again', when: 'Oct 25', kind: 'failed', last: 'The test waits on a timer the CI box is too slow for.', faces: ['Bolt', 'Probe'], trail: [['run R-E1CC', 'failed']], meta: '7 messages · sonnet · Oct 25',
+    nodes: [['Asked', 'Why is login flaky?', 'answered', 'done'], ['Run', 'R-E1CC', 'failed · gate', 'failed']], cites: ['test/login.test.ts:42'], you: 'Try a fake timer.', tether: 'R-E1CC failed its gate: the fake timer broke another test. Want me to propose a narrower fix?' },
+];
+const tone = { live: ['#93c5fd', 'rgba(147,197,253,.35)'], needs: ['#fbbf24', 'rgba(251,191,36,.45)'], done: ['#34d399', 'rgba(52,211,153,.35)'], failed: ['#f87171', 'rgba(248,113,113,.4)'], idle: ['#a1a1aa', 'rgba(255,255,255,.14)'], answer: ['#a1a1aa', 'rgba(255,255,255,.14)'] };
+const match = { all: () => true, needs: (c) => c.kind === 'needs', live: (c) => c.kind === 'live', runs: (c) => c.nodes.some((n) => n[0] === 'Run'), answers: (c) => c.kind === 'answer' };
+const labels = [['all', 'All'], ['needs', 'Needs you'], ['live', 'Live'], ['runs', 'Led to a run'], ['answers', 'Answers only']];
+const shown = chats.map((c, i) => [c, i]).filter(([c]) => match[this.state.filter](c));
+const selIdx = shown.some(([, i]) => i === this.state.sel) ? this.state.sel : (shown[0] ? shown[0][1] : 0);
+const s = chats[selIdx];
+return {
+  filters: labels.map(([id, label]) => ({ label, n: chats.filter(match[id]).length, pick: () => this.setState({ filter: id }),
+    style: 'font-family: inherit; font-size: 12px; border-radius: 999px; padding: 4px 10px; cursor: pointer; ' + (this.state.filter === id ? 'background: #f4f4f5; color: #09090b; border: 1px solid #f4f4f5' : 'background: transparent; color: #d4d4d8; border: 1px solid rgba(255,255,255,.14)') })),
+  rows: shown.map(([c, i], k) => ({ ...c, pick: () => this.setState({ sel: i }),
+    style: 'font-family: inherit; color: inherit; display: flex; gap: 10px; padding: 12px 12px; border-radius: 10px; cursor: pointer; text-align: left; animation-delay: ' + (k * 45) + 'ms; ' + (i === selIdx ? 'background: #18181b; border: 1px solid rgba(255,255,255,.14)' : 'background: transparent; border: 1px solid transparent'),
+    dotClass: c.kind === 'live' ? 'ac-live' : c.kind === 'needs' ? 'ac-wait' : '',
+    dotStyle: c.kind === 'answer' ? 'width: 8px; height: 8px; border-radius: 2px; border: 1.5px solid #a1a1aa' : c.kind === 'needs' ? 'width: 9px; height: 9px; border-radius: 999px; border: 2px solid #fbbf24' : 'width: 9px; height: 9px; border-radius: 999px; background: ' + tone[c.kind][0],
+    trail: c.trail.map(([label, k2]) => ({ label, style: 'font-size: 11px; font-family: \'Geist Mono\', monospace; color: ' + tone[k2][0] + '; border: 1px solid ' + tone[k2][1] + '; border-radius: 999px; padding: 1px 7px' })),
+    faces: c.faces.map((name) => ({ name, style: 'width: 16px; height: 16px; border-radius: 4px; background: ' + F(name) })) })),
+  sel: { ...s, waiting: s.waiting || '', nodes: s.nodes.map(([kind, label, state, k2], j) => ({ kind, label, state, edge: j > 0, live: k2 === 'live', edgeColor: k2 === 'idle' ? 'rgba(255,255,255,.14)' : tone[k2][0], stateColor: tone[k2][0],
+    style: 'display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: #111113; min-width: 120px; max-width: 170px; border: 1px solid ' + tone[k2][1] })) }
+};
+}
+}
+</script>
+</body>
+</html>
