@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { FREE_DEFAULT, type OrModel } from '../../../src/openrouter';
 import { SearchField } from '../components/beui/kit/fields';
 import { usePoll } from '../hooks';
-import { MODELS_PATH } from '../settings/accountsApi';
+import { MODELS_PATH, NV_MODELS_PATH, shortModel } from '../settings/accountsApi';
 import { FreeCounter } from '../settings/FreeModels';
 import type { AgentInfo } from './types';
 
@@ -18,17 +18,23 @@ export const modelMeta = (m: OrModel) => (m.free && !m.tools ? "chat only · can
 /**
  * The model for a bot on OpenRouter (free models spec §7.4): Free · OpenRouter, Paid · OpenRouter and Agents & local, a
  * search box and a Free only filter, free / tools / images tags, and the free requests left at the foot. A free model
- * that cannot call tools is dimmed, and picking it for a bot that writes says so (it is still allowed).
+ * that cannot call tools is dimmed, and picking it for a bot that writes says so (it is still allowed). On NVIDIA: its
+ * chat models (suggested ones first), all free at about 40 requests a minute, and Agents & local.
  */
-export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo>; writes: boolean; onPick: (b: { agent: string; model: string }) => void; defaultOpen?: boolean }) {
+export function ModelPicker(p: { agent: 'openrouter' | 'nvidia'; value: string; agents: Record<string, AgentInfo>; writes: boolean; onPick: (b: { agent: string; model: string }) => void; defaultOpen?: boolean }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(!!p.defaultOpen);
   const [query, setQuery] = useState('');
   const [freeOnly, setFreeOnly] = useState(false);
-  const list = usePoll<{ models: OrModel[]; error?: string }>(MODELS_PATH, MODELS_MS);
+  const nv = p.agent === 'nvidia';
+  const list = usePoll<{ models: OrModel[]; error?: string }>(nv ? null : MODELS_PATH, MODELS_MS);
+  // NVIDIA's list is ids only: no names, prices or tool support
+  const nvList = usePoll<{ models: string[] }>(nv ? NV_MODELS_PATH : null, MODELS_MS);
   const models = list.data?.models ?? [];
+  const nvModels = nvList.data?.models ?? [];
+  const total = models.length + nvModels.length;
   const chosen = models.find((m) => m.id === p.value);
 
   // a press outside the panel puts it away
@@ -46,7 +52,8 @@ export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo
   // the crew's free default leads its group
   const free = models.filter((m) => m.free && hit(m)).sort((a, b) => Number(b.id === FREE_DEFAULT) - Number(a.id === FREE_DEFAULT));
   const paid = freeOnly ? [] : models.filter((m) => !m.free && hit(m));
-  const local = freeOnly ? [] : Object.keys(p.agents).filter((a) => a !== 'openrouter' && a !== 'mock' && (!q || a.includes(q)));
+  const nvRows = nvModels.filter((id) => !q || id.toLowerCase().includes(q));
+  const local = freeOnly ? [] : Object.keys(p.agents).filter((a) => a !== p.agent && a !== 'mock' && (!q || a.includes(q)));
   const pick = (b: { agent: string; model: string }) => {
     p.onPick(b);
     setOpen(false);
@@ -72,22 +79,40 @@ export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo
       </span>
       <button ref={button} type="button" className="mp-pill" aria-labelledby={`${id}-l ${id}-v`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span id={`${id}-v`} className="mp-value">
-          {chosen?.name ?? (p.value || 'Choose a model')}
+          {chosen?.name ?? (p.value ? (nv ? shortModel(p.value) : p.value) : 'Choose a model')}
         </span>
-        {chosen?.free ? <span className="mp-free">free</span> : null}
+        {chosen?.free || (nv && nvModels.includes(p.value)) ? <span className="mp-free">free</span> : null}
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {p.writes && chosen?.free && !chosen.tools ? <p className="sl-meta cw-warn">{chosen.name} is chat only and can't edit files: this bot writes, so pick a model tagged tools for it.</p> : null}
       {open ? (
         <div className="mp-panel" role="dialog" aria-label="Choose a model">
           <div className="mp-tools">
-            <SearchField label="Search models" placeholder={models.length >= 100 ? `Search ${Math.floor(models.length / 100) * 100}+ models` : 'Search models'} value={query} onValueChange={setQuery} autoFocus />
+            <SearchField label="Search models" placeholder={total >= 100 ? `Search ${Math.floor(total / 100) * 100}+ models` : 'Search models'} value={query} onValueChange={setQuery} autoFocus />
             <button type="button" className="mp-filter" aria-pressed={freeOnly} onClick={() => setFreeOnly((f) => !f)}>
               Free only
             </button>
           </div>
-          {list.error && !models.length ? <p className="acc-note">{list.error}</p> : null}
+          {(nv ? nvList : list).error && !total ? <p className="acc-note">{(nv ? nvList : list).error}</p> : null}
           <div className="mp-groups">
+            {nvRows.length ? (
+              <section aria-label="NVIDIA">
+                <h3>NVIDIA</h3>
+                <ul>
+                  {nvRows.map((m) => (
+                    <li key={m}>
+                      <button type="button" className="mp-row" aria-current={m === p.value || undefined} onClick={() => pick({ agent: 'nvidia', model: m })}>
+                        <span className="mp-name">
+                          <b>{shortModel(m)}</b>
+                          <span className="sl-meta">{m.split('/')[0]} · 40/min</span>
+                        </span>
+                        <span className="mp-free">free</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
             {free.length ? (
               <section aria-label="Free · OpenRouter">
                 <h3>Free · OpenRouter</h3>
@@ -117,11 +142,9 @@ export function ModelPicker(p: { value: string; agents: Record<string, AgentInfo
                 </ul>
               </section>
             ) : null}
-            {!free.length && !paid.length && !local.length && models.length ? <p className="acc-note">No matching models.</p> : null}
+            {!free.length && !paid.length && !nvRows.length && !local.length && total ? <p className="acc-note">No matching models.</p> : null}
           </div>
-          <div className="mp-foot">
-            <FreeCounter compact />
-          </div>
+          <div className="mp-foot">{nv ? <span className="fm-count">Free · about 40 requests a minute</span> : <FreeCounter compact />}</div>
         </div>
       ) : null}
     </div>

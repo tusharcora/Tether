@@ -34,21 +34,33 @@ export interface AIComposerProps {
   favKey?: string;
   /** Short tags per model shown on its row (OpenRouter: free, tools, images). */
   tags?: Record<string, string[]>;
+  /** A group heading for a model instead of its maker's (NVIDIA's hosted models listed together). */
+  groupOf?: (m: string) => string | undefined;
 }
 
-/** Who made a model, for its group and its models.dev logo. OpenRouter ids name it before the slash. */
-const MAKERS: Record<string, [logo: string, name: string]> = {
+/** Who made a model, for its group and its models.dev logo. OpenRouter and NVIDIA ids name it before the slash. No logo: models.dev has none. */
+const MAKERS: Record<string, [logo: string | undefined, name: string]> = {
   anthropic: ['anthropic', 'Anthropic'],
   openai: ['openai', 'OpenAI'],
   google: ['google', 'Google'],
   nvidia: ['nvidia', 'NVIDIA'],
   deepseek: ['deepseek', 'DeepSeek'],
+  'deepseek-ai': ['deepseek', 'DeepSeek'],
   'meta-llama': ['llama', 'Meta'],
+  meta: ['llama', 'Meta'],
   qwen: ['alibaba', 'Qwen'],
   mistralai: ['mistral', 'Mistral'],
+  'nv-mistralai': ['mistral', 'Mistral'],
   moonshotai: ['moonshotai', 'Moonshot'],
+  minimax: ['minimax', 'MiniMax'],
+  minimaxai: ['minimax', 'MiniMax'],
+  'stepfun-ai': ['stepfun', 'StepFun'],
+  ai21labs: ['ai21', 'AI21'],
+  databricks: ['databricks', 'Databricks'],
+  poolside: ['poolside', 'Poolside'],
   'x-ai': ['xai', 'xAI'],
   'z-ai': ['zai', 'Z.ai'],
+  ibm: [undefined, 'IBM'],
 };
 const GUESS: [RegExp, string][] = [
   [/claude|haiku|sonnet|opus/i, 'anthropic'],
@@ -63,8 +75,9 @@ const GUESS: [RegExp, string][] = [
 export function makerOf(m: string): { logo?: string; name: string } {
   const key = m.includes('/') ? m.split('/')[0]!.toLowerCase() : GUESS.find(([re]) => re.test(m))?.[1];
   if (!key) return { name: 'Other' };
-  const [logo, name] = MAKERS[key] ?? [key, key];
-  return { logo, name };
+  // a maker not listed: its slug, capitalised, and no logo (models.dev answers a generic one)
+  const [logo, name] = MAKERS[key] ?? [undefined, key.charAt(0).toUpperCase() + key.slice(1)];
+  return logo ? { logo, name } : { name };
 }
 
 const MakerLogo = ({ model }: { model: string }) => {
@@ -120,7 +133,7 @@ export function AIComposer(p: AIComposerProps) {
   // Starred first, then one group per maker in the order the models come
   const groups: [string, string[]][] = favModels.length ? [['Starred', favModels]] : [];
   for (const m of p.models) {
-    const name = makerOf(m).name;
+    const name = p.groupOf?.(m) ?? makerOf(m).name;
     const g = groups.find(([h]) => h === name);
     if (g) g[1].push(m);
     else groups.push([name, [m]]);
