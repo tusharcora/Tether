@@ -73,8 +73,7 @@ export function mayApprove(team: Team, personId: string): boolean {
 export function approverNames(team: Team): string {
   if (team.approvers === 'any') return 'Any teammate';
   const names = team.approvers.flatMap((id) => team.people.find((p) => p.id === id)?.name ?? []);
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  return cap(names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? 'nobody'));
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? 'nobody');
 }
 
 /** Runs the team's agents started today and what today cost (runs plus answers). */

@@ -59,7 +59,7 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
   return (
     <form className="tm-form" aria-label={t ? `${t.name} settings` : 'New team'} onSubmit={(e) => void submit(e)}>
       <div className="tm-form-top">
-        <h1>{t ? 'Team settings' : 'New team'}</h1>
+        {t ? <span className="tm-gap" /> : <h1>New team</h1>}
         <Button type="button" variant="secondary" size="sm" onClick={p.onCancel}>
           Cancel
         </Button>

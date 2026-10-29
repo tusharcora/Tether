@@ -265,6 +265,22 @@ describe('loop work', () => {
   });
 });
 
+describe('merging', () => {
+  it('merges the team’s PR when an allowed approver says so and its checks pass; nobody else can', async () => {
+    const r = rig({ level: 'loose', people: [OWNER, { id: 'maya', name: 'Maya' }], approvers: ['owner'] });
+    await r.runTask('@Bolt fix the thing');
+    r.post('@Bolt merge it', { id: 'maya', name: 'Maya' });
+    await r.idle();
+    expect(r.msgs().at(-1)!.text).toBe('Only you can tell me to merge here.');
+    expect(r.calls.some((c) => c[1] === 'merge')).toBe(false);
+    r.post('@Bolt merge it once the checks pass');
+    await r.idle();
+    expect(r.calls.find((c) => c[1] === 'merge')).toEqual(['pr', 'merge', 'https://github.com/o/r/pull/7', '--merge']);
+    expect(r.msgs().at(-1)!.text).toBe('Merged PR #7.');
+    expect(r.card('pr')!.card).toMatchObject({ merged: true });
+  });
+});
+
 describe('limits and memory', () => {
   it('once the day’s runs are used, nothing new starts and the agent says so', async () => {
     const r = rig({ level: 'loose', limits: { usdPerDay: 10, runsPerDay: 1 } });

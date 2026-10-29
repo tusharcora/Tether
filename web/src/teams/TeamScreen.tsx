@@ -60,7 +60,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
     });
   const showDiff = (msg: TeamMessage, title: string) => {
     setDiff({ title });
-    teamsApi.diff(t.id, msg.id).then((d) => setDiff({ title, text: d.diff || '(no changes)' }), (e: unknown) => (setDiff(undefined), notify.fail(e)));
+    teamsApi.diff(t.id, msg.id).then((d) => setDiff({ title, text: d.diff }), (e: unknown) => (setDiff(undefined), notify.fail(e)));
   };
 
   return (
@@ -172,7 +172,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
       </Dialog>
       <Dialog open={!!diff} onOpenChange={(o) => !o && setDiff(undefined)}>
         <DialogContent title={diff?.title ?? 'Diff'} className="tm-dialog">
-          {diff?.text === undefined ? <Loading loading lines={6} label="Loading the diff" /> : <RunDiff text={diff.text} />}
+          {diff?.text === undefined ? <Loading loading lines={6} label="Loading the diff" /> : diff.text ? <RunDiff text={diff.text} /> : <p className="tm-muted">No changes.</p>}
         </DialogContent>
       </Dialog>
     </div>
