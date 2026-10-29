@@ -17,15 +17,16 @@
   --card-shadow: 0 1px 2px rgba(9, 9, 11, .06), 0 1px 1px rgba(9, 9, 11, .04);
 }
 :root:root[data-theme="dark"] {
-  --bg: #0a0a0b; --s1: #111113; --s2: #18181b; --s3: #26262b;
+  /* soft greys, like Claude's dark theme: the page, cards, raised cards, tiles */
+  --bg: #191919; --s1: #262626; --s2: #2f2f2f; --s3: #383838;
   --line: rgba(255, 255, 255, .07); --line2: rgba(255, 255, 255, .14);
-  --edge: #666670; /* 3.49:1 on --bg, 3.32:1 on --s1 */
-  --ink: #f4f4f5; --mut: #a1a1aa;
-  --acc: #2563eb; --accInk: #93c5fd; --accBg: rgba(59, 130, 246, .15);
+  --edge: #747478; /* 3.78:1 on --bg, 3.25:1 on --s1 */
+  --ink: #f4f4f5; --mut: #a1a1aa; /* muted text 6.86:1 on --bg, 5.90:1 on --s1, 4.58:1 on --s3 */
+  --acc: #2b6cf0; --accInk: #93c5fd; --accBg: rgba(59, 130, 246, .15); /* the accent 3.77:1 on --bg, 3.25:1 on --s1, white on it 4.66:1 */
   --ok: #34d399; --okBg: rgba(52, 211, 153, .12);
   --warn: #fbbf24; --warnBg: rgba(251, 191, 36, .12);
   --bad: #f87171; --badBg: rgba(248, 113, 113, .12);
-  --side: #0f0f11; --side-hover: #1d1d21; --side-card: #18181b;
+  --side: #1f1f1f; --side-hover: #292929; --side-card: #2f2f2f;
   --card-shadow: 0 0 0 1px rgba(255, 255, 255, .06);
 }
 :root:root:root {

@@ -16,8 +16,10 @@ export interface CreateItem {
   id: string;
   label: string;
   icon: ReactNode;
-  /** A quiet trailing hint (a shortcut). */
+  /** A quiet trailing hint (a shortcut, or "soon"). */
   hint?: ReactNode;
+  /** Shown but not taken: the arrows pass over it and a press does nothing. */
+  disabled?: boolean;
 }
 
 export interface CreateMenuProps {
@@ -46,12 +48,20 @@ export function CreateMenu({ label, items, onSelect, children, className, title 
   const [box, setBox] = useState<{ top: number; left: number; w: number; h: number }>();
   const [active, setActive] = useState(0);
   const height = items.length * ROW + (items.length - 1) * 2 + PAD * 2;
+  /** The next row the arrows land on from `from`, passing over disabled ones. */
+  const step = (from: number, by: 1 | -1) => {
+    for (let k = 1; k <= items.length; k++) {
+      const i = (from + by * k + items.length * k) % items.length;
+      if (!items[i]?.disabled) return i;
+    }
+    return from;
+  };
 
   const show = () => {
     const r = trigger.current?.getBoundingClientRect();
     if (!r) return;
     setBox({ top: r.top, left: Math.max(8, r.right - W), w: r.width, h: r.height });
-    setActive(0);
+    setActive(step(-1, 1));
     setOpen(true);
   };
   const close = useCallback((refocus: boolean) => {
@@ -82,15 +92,16 @@ export function CreateMenu({ label, items, onSelect, children, className, title 
   }, [open, active, box]);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'ArrowDown') (e.preventDefault(), setActive((a) => (a + 1) % items.length));
-    else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((a) => (a - 1 + items.length) % items.length));
-    else if (e.key === 'Home') (e.preventDefault(), setActive(0));
-    else if (e.key === 'End') (e.preventDefault(), setActive(items.length - 1));
+    if (e.key === 'ArrowDown') (e.preventDefault(), setActive((a) => step(a, 1)));
+    else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((a) => step(a, -1)));
+    else if (e.key === 'Home') (e.preventDefault(), setActive(step(-1, 1)));
+    else if (e.key === 'End') (e.preventDefault(), setActive(step(items.length, -1)));
     else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), close(true));
     else if (e.key === 'Tab') close(false);
   };
 
   const pick = (item: CreateItem) => {
+    if (item.disabled) return;
     close(false);
     onSelect(item.id);
   };
@@ -143,11 +154,12 @@ export function CreateMenu({ label, items, onSelect, children, className, title 
                       type="button"
                       role="menuitem"
                       aria-label={item.label}
+                      aria-disabled={item.disabled || undefined}
                       data-index={i}
                       tabIndex={i === active ? 0 : -1}
                       onClick={() => pick(item)}
-                      onPointerEnter={() => setActive(i)}
-                      className={cn('flex w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-sm text-foreground outline-none transition-colors', i === active && 'bg-muted')}
+                      onPointerEnter={() => !item.disabled && setActive(i)}
+                      className={cn('flex w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-sm text-foreground outline-none transition-colors', i === active && 'bg-muted', item.disabled && 'cursor-not-allowed opacity-50')}
                       style={{ height: ROW }}
                     >
                       <span aria-hidden="true" className="grid size-4 flex-none place-items-center text-muted-foreground">

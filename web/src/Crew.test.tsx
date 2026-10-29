@@ -70,6 +70,7 @@ describe('Crew', () => {
   it('creates a bot from the editor with a live face preview and no server preview', async () => {
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: '+ New bot' }));
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Coder' }));
     const name = await screen.findByLabelText('Name');
     expect(screen.getByRole('img', { name: 'New bot preview' })).toBeTruthy();
     vi.mocked(api).mockClear();
@@ -78,6 +79,33 @@ describe('Crew', () => {
     expect(calls('POST', '/api/crew/preview')).toHaveLength(0);
     await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
     expect(calls('PUT', '/api/crew/quill')[0]![2]).toMatchObject({ id: 'quill', name: 'Quill' });
+  });
+
+  it('New bot presets prefill title/persona/look, never a built-in id or name; Planner sets read-only', async () => {
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ New bot' }));
+    const menu = await screen.findByRole('menu', { name: '+ New bot' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['Coder', 'Reviewer', 'Planner', 'Tester']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Coder' }));
+    expect((await screen.findByLabelText('Name') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('coder');
+    expect((screen.getByLabelText(/^Persona/) as HTMLTextAreaElement).value).toBe('Writes the change');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Coder' } });
+    vi.mocked(api).mockClear();
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
+    // "coder" is the built-in's id: the new bot gets its own
+    const put = vi.mocked(api).mock.calls.find((c) => c[0] === 'PUT' && String(c[1]).startsWith('/api/crew/'))!;
+    expect(put[1]).toBe('/api/crew/coder2');
+    expect(put[2]).toMatchObject({ id: 'coder2', name: 'Coder', kind: 'agent', title: 'coder', persona: 'Writes the change', look: { color: '#3fb97c' } });
+    expect(put[2]).not.toHaveProperty('builtin');
+  });
+
+  it('the Planner preset makes the new bot read-only', async () => {
+    renderApp(<Crew />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ New bot' }));
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Planner' }));
+    expect((await screen.findByRole('switch', { name: /read-only/ })).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('planner');
   });
 
   it('shows a load failure inline and retries', async () => {

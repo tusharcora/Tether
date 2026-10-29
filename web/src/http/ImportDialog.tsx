@@ -1,5 +1,5 @@
 import './api.css';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../components/beui/kit/Button';
 import { UploadDropzone } from '../components/bencho/UploadDropzone';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
@@ -18,9 +18,10 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e)
 /** Per file: a large Postman collection or OpenAPI document still fits. */
 const IMPORT_MAX_BYTES = 5_000_000;
 
-export function ImportDialog(p: { ws?: string; open: boolean; onOpenChange: (o: boolean) => void; onImported: (ids: string[]) => void }) {
+export function ImportDialog(p: { ws?: string; open: boolean; /** Open on this format (New request's Import cURL). */ mode?: ImportBody['kind']; onOpenChange: (o: boolean) => void; onImported: (ids: string[]) => void }) {
   const notify = useNotify();
   const [kind, setKind] = useState<ImportBody['kind']>('curl');
+  useEffect(() => void (p.open && p.mode && setKind(p.mode)), [p.open, p.mode]);
   const [text, setText] = useState('');
   const [into, setInto] = useState('');
   const [pv, setPv] = useState<ImportPreview>();

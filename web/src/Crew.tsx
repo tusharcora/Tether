@@ -1,8 +1,9 @@
-import { Ellipsis } from 'lucide-react';
+import { ClipboardList, Code2, Ellipsis, Eye, FlaskConical } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCreateIntent } from './ui/useCreateIntent';
 import { api, type RunRow } from './api';
-import { Button } from './components/beui/kit/Button';
+import { CreateMenu } from './components/bencho/CreateMenu';
+import { Button, buttonClass } from './components/beui/kit/Button';
 import { Dialog, DialogContent, Drawer, DrawerContent, useDrawerItem } from './components/beui/kit/overlays';
 import { Loading } from './components/Loading';
 import { Bench } from './crew/Bench';
@@ -27,6 +28,13 @@ import './crew/crew.css';
 /** Face colours for a new bot. Faces are identity art, exempt from the no-purple rule (see rules.test.ts). */
 const SWATCH = ['#5b9dff', '#38c5d6', '#6ee7a8', '#f2c14e', '#ff8a5b', '#ff6b8a', '#b58bff', '#c9a46a'];
 const blank = (): BotDef => ({ id: '', name: '', title: '', kind: 'agent', persona: '', look: { body: 'pebble', eyes: 'dots', mouth: 'none', top: 'none', side: 'none', pattern: 'none', color: SWATCH[Math.floor(Math.random() * SWATCH.length)]!, accent: 'auto' } });
+/** New bot presets: each prefills the form from that built-in's title, persona and look, never its id or name. */
+const PRESETS = [
+  { id: 'coder', label: 'Coder', icon: <Code2 size={15} strokeWidth={1.8} /> },
+  { id: 'reviewer', label: 'Reviewer', icon: <Eye size={15} strokeWidth={1.8} /> },
+  { id: 'planner', label: 'Planner', icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+  { id: 'tester', label: 'Tester', icon: <FlaskConical size={15} strokeWidth={1.8} /> },
+];
 const slug = (n: string) => (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '').slice(0, 20) || 'bot');
 const NO_BINDING: Binding = { agent: '', model: '', toolStyle: 'code', codeReads: false };
 /** Bots that can be team agents (spec Teams §6.1): those that call a model or run a command, not a person or Tether. */
@@ -153,10 +161,13 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
       props.onBot?.(role);
     });
   };
-  const newBot = () =>
+  const newBot = (preset?: string) =>
     guard(() => {
+      const base = preset ? defs.find((d) => d.id === preset) : undefined;
+      const b = blank();
       setSel(undefined);
-      open(blank(), true);
+      // always a new library bot of kind agent: a preset gives it a start, the planner's is read-only
+      open({ ...b, title: base?.title ?? preset ?? '', persona: base?.persona ?? '', look: base ? { ...base.look } : b.look, ...(preset === 'planner' ? { readOnly: true } : {}) }, true);
       props.onBot?.(undefined);
     });
   useCreateIntent(props.create, !loading, newBot);
@@ -426,9 +437,9 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
           Library <span className="cw-count">{bench.length}</span>
         </Button>
         <MenuButton title="More crew actions" align="end" label={<Ellipsis size={16} aria-hidden="true" />} items={actions} />
-        <Button variant="primary" size="sm" onClick={newBot}>
+        <CreateMenu label="+ New bot" title="New bot" className={buttonClass()} items={PRESETS} onSelect={newBot}>
           + New bot
-        </Button>
+        </CreateMenu>
       </FloatBar>
       {library && !loading && !(loadErr && !loaded) ? <Bench bots={bench} filter={filter} onFilter={setFilter} q={q} onQ={setQ} selected={sel} onPick={pick} onDrag={setDragging} /> : null}
       {note ? (

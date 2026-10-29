@@ -1,26 +1,91 @@
-/* Goals in the tool frame (mockup docs/design/CodeGoals.html #goals): the rows dock on the left, the open goal's title and
-   actions float at the top, a loop runs down the canvas, its limits float at the bottom; settings and new goal dock right.
-   Tokens only; only live parts move. */
-.gl-list { position: absolute; z-index: 5; top: 64px; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; width: 236px; padding: 10px; overflow: auto; border-radius: 14px; background: var(--s1); box-shadow: var(--tf-float); }
-.gl-head { display: flex; flex-direction: column; gap: 8px; padding: 2px 4px 6px; }
-.gl-head h1, .gl-title, .gl-dock-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
-/* rows without a lead: title and badge, the line, then the bar (and Approve) across */
-.gl-list .sl-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main side" "extra extra"; gap: 4px 8px; padding: 9px 8px; border-top: 0; }
-.gl-list .sl-row-lead { display: none; }
-.gl-row.current { background: var(--s2); }
+/* Goals (board F): the page is a header, Now as a grid of equal goal nodes each with its next strip, and Up next and Done as
+   two quiet lists. A goal opens in the tool frame: its title and actions float at the top, a loop runs down the canvas, its
+   limits float at the bottom; settings and new goal dock right. Tokens only (the type glyphs' cyan aside); only live parts move. */
+.gl-page { position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; overflow: auto; padding: 28px 56px 56px; background: var(--bg); }
+.gl-screen.docked .gl-page { right: 352px; }
+.gl-pagehead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.gl-pagehead h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--ink); }
+.gl-proj { min-width: 0; overflow: hidden; font-size: 14px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
+.gl-head-act { margin-left: auto; align-self: center; }
+.gl-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.gl-lists > .sl-section > .sl-sec { margin-top: 0; }
+.gl-title, .gl-dock-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
 /* a list row's or a team card's score: the total and verdict, tighter than the card */
 .goal-score.brief { gap: 0; margin-top: 6px; padding: 6px 10px; }
 .goal-score.brief > :first-child > :first-child { font-size: 16px; }
-.gl-new { flex: none; padding: 9px 8px; border: 0; border-radius: 8px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.gl-new:hover { background: var(--s2); color: var(--ink); }
 
-.gl-screen > .gl-titlebar { left: 268px; max-width: max(240px, calc(100% - 760px)); }
+/* Now: three equal columns; every module is a 168 px node and a 48 px strip, so nothing in a row moves */
+.gn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+/* a docked panel takes 352 px: the grid gives up a column rather than squeeze the nodes */
+.gl-screen.docked .gn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gn-mod { display: flex; flex-direction: column; gap: 8px; min-width: 0; transition: opacity var(--t-med) var(--ease); }
+.nod-card.gn-node { box-sizing: border-box; height: 168px; display: flex; flex-direction: column; padding: 16px 18px; border-color: var(--line); background: var(--s1); transition: transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease); }
+.nod-card.gn-node.t-needs { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.nod-card.gn-node.t-live { border-color: color-mix(in srgb, var(--accInk) 30%, transparent); }
+/* lift and dim: the node under the pointer (or holding keyboard focus) rises; the others fade so its arc reads on top of
+   them. :focus-visible, not :focus-within, so a mouse click on the arc leaves nothing lifted or dimmed */
+.gn-mod:hover > .gn-node, .gn-mod:has(:focus-visible) > .gn-node { transform: translateY(-4px); box-shadow: 0 14px 30px -14px rgb(0 0 0 / .5); }
+.gn-grid:has(.gn-mod:hover, .gn-mod :focus-visible) .gn-mod:not(:hover):not(:has(:focus-visible)) { opacity: 0.35; }
+.gn-top { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding-right: 8px; }
+.gn-tile { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--s3); font-size: 18px; font-weight: 600; line-height: 1; }
+.gn-tile.t-feature, .gn-glyph.t-feature { color: var(--accInk); }
+.gn-tile.t-bugfix, .gn-glyph.t-bugfix { color: var(--bad); }
+.gn-tile.t-refactor, .gn-glyph.t-refactor { color: #06b6d4; }
+.gn-tile.t-chore, .gn-glyph.t-chore { color: var(--mut); }
+.gn-glyph { font-size: 14px; font-weight: 600; line-height: 1; }
+/* the whole node opens the goal: the title's button stretches over it (the arc sits above) */
+.gn-open { min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.gn-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.gn-open:focus-visible { outline: none; }
+.gn-open:focus-visible::after { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: 20px; }
+.gn-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 15.5px; font-weight: 500; line-height: 19px; }
+.gn-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 10px 0 0; font-size: 13px; line-height: 18px; color: var(--mut); }
+.gn-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; margin-top: auto; }
+.gn-status { min-width: 0; margin-left: auto; overflow: hidden; font-size: 12.5px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
+.gn-strip { box-sizing: border-box; flex: none; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 8px 0 14px; border-radius: 14px; background: color-mix(in srgb, var(--s1) 70%, var(--bg)); font-size: 13px; }
+.gn-strip-label { flex: none; font-weight: 500; }
+.gn-strip.t-needs .gn-strip-label { color: var(--warn); }
+.gn-strip.t-live .gn-strip-label { color: var(--accInk); }
+.gn-strip-text { flex: 1; min-width: 0; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.gn-strip .goal-approve { align-self: center; }
+
+/* avatars: 26 px (22 in rows), overlapping by 8 px; an agent is a round face in its colour, a team a rounded square */
+.gav { display: inline-flex; align-items: center; min-width: 0; }
+.gav-face { box-sizing: border-box; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--s1); border-radius: 50%; background: var(--hue, var(--s3)); box-shadow: inset 3px 3px 5px -1px rgb(255 255 255 / .4); color: var(--ink); font-size: 11px; font-weight: 600; }
+.gav-face + .gav-face { margin-left: -8px; }
+.gav.s22 .gav-face { width: 22px; height: 22px; font-size: 10px; }
+.gav-face.team { border-radius: 7px; background: var(--s3); box-shadow: none; }
+.gav-face.removed { background: var(--s2); box-shadow: none; color: var(--mut); }
+.gav-more { margin-left: 4px; font-size: 12px; color: var(--mut); }
+/* a step's compact picker: its faces and a "+" circle */
+.ap-plus { box-sizing: border-box; display: grid; place-items: center; width: 22px; height: 22px; border: 1px dashed var(--edge); border-radius: 50%; color: var(--mut); }
+.ap-compact button[role="combobox"]:hover .ap-plus { border-style: solid; color: var(--ink); }
+/* the detail page's Owner: read-only, set by team chat */
+.gl-owner { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--s2); font-size: 12px; color: var(--ink); white-space: nowrap; }
+.gl-owner-k { color: var(--mut); }
+.gl-owner .gav-face { border-color: var(--s2); }
+.gl-titlebar .gn-tile { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
+
+/* Up next and Done: 44 px rows; under the pointer a row opens into the full node */
+.gr-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.gr-row { position: relative; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px 0 8px; border-radius: 12px; }
+.gr-row:hover { background: color-mix(in srgb, var(--s1) 70%, var(--bg)); }
+.gr-row .gn-tile { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
+.gr-open { flex: 1; min-width: 0; padding: 0; overflow: hidden; border: 0; background: none; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.gr-open::after { content: ""; position: absolute; inset: 0; border-radius: 12px; }
+.gr-open:focus-visible { outline: none; }
+.gr-open:focus-visible::after { outline: 2px solid var(--acc); outline-offset: -2px; }
+.gr-note { flex: none; font-size: 12px; color: var(--mut); }
+.gr > .gn-mod { padding: 4px 0; animation: gn-open 0.2s var(--ease); }
+@keyframes gn-open { from { opacity: 0; transform: scale(0.97); } }
+
+.gl-screen > .gl-titlebar { left: 16px; max-width: max(240px, calc(100% - 520px)); }
 .gl-title { min-width: 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gl-kind { min-width: 0; overflow: hidden; font-size: 12px; color: var(--mut); text-overflow: ellipsis; white-space: nowrap; }
 .gl-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 /* the canvas: the flow (or the checklist card) centred on the dots, scrolling inside */
-.gl-canvas { position: absolute; top: 64px; left: 268px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: auto; padding: 16px 16px 40px; }
+.gl-canvas { position: absolute; top: 64px; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: auto; padding: 16px 16px 40px; }
 .gl-canvas.loop { bottom: 84px; }
 .gl-screen.docked .gl-canvas { right: 352px; }
 .gl-canvas > * { flex: none; max-width: 100%; }
@@ -33,10 +98,16 @@
 .gl-limit-top { display: flex; justify-content: space-between; gap: 10px; }
 .gl-limit-top b { font-weight: 500; color: var(--ink); }
 
+@media (max-width: 1199px) {
+  .gn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gl-screen.docked .gn-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 899px) {
   .gl-screen { overflow: auto; }
-  .gl-screen > .tf-bar, .gl-screen > .gl-titlebar, .gl-list, .gl-canvas, .gl-canvas.loop { position: relative; inset: auto; transform: none; width: auto; max-width: none; margin: 8px; }
-  .gl-list { max-height: 40vh; }
+  .gl-page { padding: 20px 56px 40px 20px; }
+  .gl-screen.docked .gl-page { right: 0; }
+  .gn-grid, .gl-lists { grid-template-columns: minmax(0, 1fr); }
+  .gl-screen > .tf-bar, .gl-screen > .gl-titlebar, .gl-canvas, .gl-canvas.loop { position: relative; inset: auto; transform: none; width: auto; max-width: none; margin: 8px; }
   .gl-canvas { overflow: visible; }
 }
 
@@ -84,4 +155,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .goal-bar > span, .gt-bar > span { transition: none; }
+  .gn-mod, .nod-card.gn-node { transition: none; }
+  .gn-mod:hover > .gn-node, .gn-mod:has(:focus-visible) > .gn-node { transform: none; }
+  .gr > .gn-mod { animation: none; }
 }

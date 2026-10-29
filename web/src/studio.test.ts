@@ -18,10 +18,10 @@ const LIGHT: Record<string, string> = {
   '--ok': '#047857', '--okBg': '#ecfdf5', '--warn': '#a16207', '--warnBg': '#fefce8', '--bad': '#b91c1c', '--badBg': '#fef2f2',
 };
 const DARK: Record<string, string> = {
-  '--bg': '#0a0a0b', '--s1': '#111113', '--s2': '#18181b', '--s3': '#26262b',
-  '--line': 'rgba(255, 255, 255, .07)', '--line2': 'rgba(255, 255, 255, .14)', '--edge': '#666670',
+  '--bg': '#191919', '--s1': '#262626', '--s2': '#2f2f2f', '--s3': '#383838',
+  '--line': 'rgba(255, 255, 255, .07)', '--line2': 'rgba(255, 255, 255, .14)', '--edge': '#747478',
   '--ink': '#f4f4f5', '--mut': '#a1a1aa',
-  '--acc': '#2563eb', '--accInk': '#93c5fd', '--accBg': 'rgba(59, 130, 246, .15)',
+  '--acc': '#2b6cf0', '--accInk': '#93c5fd', '--accBg': 'rgba(59, 130, 246, .15)',
   '--ok': '#34d399', '--okBg': 'rgba(52, 211, 153, .12)', '--warn': '#fbbf24', '--warnBg': 'rgba(251, 191, 36, .12)', '--bad': '#f87171', '--badBg': 'rgba(248, 113, 113, .12)',
 };
 

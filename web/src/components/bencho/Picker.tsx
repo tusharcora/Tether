@@ -7,7 +7,8 @@
  */
 import { Check, ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../beui/lib/utils';
 
 export interface PickerOption {
@@ -19,6 +20,8 @@ export interface PickerOption {
   /** A face or a mark drawn before the name (and stacked in the pill when several are chosen). */
   lead?: ReactNode;
   disabled?: boolean;
+  /** Options that share a group sit under a small heading with its name; ungrouped options come first, with none. */
+  group?: string;
 }
 
 export interface PickerProps {
@@ -37,13 +40,16 @@ export interface PickerProps {
   hideLabel?: boolean;
   /** Adds a text row at the end of the list: type another value and press Enter to choose it (for a free-text field). */
   custom?: { label: string; placeholder?: string };
+  /** Draw this small control in place of the pill (a step's faces and a "+"); the list opens under it at its own width, fixed
+   * over the page (a portal, as the create menu does), so a row that clips its content cannot hide it. */
+  trigger?: ReactNode;
   className?: string;
   id?: string;
 }
 
 const OPEN = { duration: 0.2, ease: [0.16, 1, 0.3, 1] } as const;
 
-export function Picker({ label, options: given, value, onChange, multiple = false, placeholder = 'Choose', disabled, hideLabel, custom, className, id }: PickerProps) {
+export function Picker({ label, options: given, value, onChange, multiple = false, placeholder = 'Choose', disabled, hideLabel, custom, trigger, className, id }: PickerProps) {
   const reduce = useReducedMotion();
   const auto = useId();
   const base = id ?? auto;
@@ -51,13 +57,19 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
   const listId = `${base}-list`;
   const root = useRef<HTMLDivElement>(null);
   const pill = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  /** Where a trigger's list opens, on screen. */
+  const [at, setAt] = useState<{ top: number; left: number }>();
   const [active, setActive] = useState(0);
   const typed = useRef({ text: '', at: 0 });
 
   // a chosen value the list does not hold (a custom one) still shows in the pill and stays in the list
   const extra = value.filter((v) => v && !given.some((o) => o.id === v)).map((v): PickerOption => ({ id: v, name: v }));
-  const options = [...given, ...extra];
+  const all = [...given, ...extra];
+  // ungrouped first, then each group where it was first seen, so the arrows walk the list in the order it is drawn
+  const heads = [...new Set(all.flatMap((o) => (o.group ? [o.group] : [])))];
+  const options = [...all.filter((o) => !o.group), ...heads.flatMap((h) => all.filter((o) => o.group === h))];
   const chosen = value.map((v) => options.find((o) => o.id === v)).filter((o): o is PickerOption => !!o);
   const count = options.length + (custom ? 1 : 0);
   const enabled = (i: number) => i === options.length || !options[i]?.disabled;
@@ -70,23 +82,31 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
   const show = () => {
     const at = options.findIndex((o) => o.id === value[0]);
     setActive(at >= 0 ? at : Math.max(0, options.findIndex((_, i) => enabled(i))));
+    const r = trigger ? pill.current?.getBoundingClientRect() : undefined;
+    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) });
     setOpen(true);
   };
 
   // focus follows the active option while the list is open
   useEffect(() => {
     if (!open) return;
-    root.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.focus({ preventScroll: false });
+    list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.focus({ preventScroll: false });
   }, [open, active]);
 
   // a press outside the control puts the list away
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+      if (root.current && !root.current.contains(e.target as Node) && !list.current?.contains(e.target as Node)) setOpen(false);
     };
+    // a list fixed over the page would drift from its trigger: a resize puts it away
+    const resize = () => setOpen(false);
     document.addEventListener('pointerdown', away);
-    return () => document.removeEventListener('pointerdown', away);
+    window.addEventListener('resize', resize);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      window.removeEventListener('resize', resize);
+    };
   }, [open]);
 
   const pick = (o: PickerOption) => {
@@ -116,7 +136,8 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
       const o = options[active];
       if (o) pick(o);
     } else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), close(true));
-    else if (e.key === 'Tab') close(false);
+    // a list in a portal sits at the end of the page: Tab goes back to its trigger instead of off the page
+    else if (e.key === 'Tab') trigger ? (e.preventDefault(), close(true)) : close(false);
     else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
       // type-ahead: the typed letters pick the first option that starts with them
       const now = Date.now();
@@ -130,9 +151,44 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), open ? close(false) : show());
   };
 
+  const row = (o: PickerOption, i: number) => {
+    const on = value.includes(o.id);
+    return (
+      <button
+        key={o.id}
+        type="button"
+        role="option"
+        aria-label={o.name}
+        aria-selected={on}
+        aria-disabled={o.disabled || undefined}
+        data-index={i}
+        tabIndex={i === active ? 0 : -1}
+        onClick={() => pick(o)}
+        onPointerEnter={() => !o.disabled && setActive(i)}
+        className={cn(
+          'flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-sm text-foreground outline-none transition-colors',
+          i === active && 'bg-muted',
+          o.disabled && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        <span className="grid size-7 flex-none place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium" aria-hidden="true">
+          {o.lead ?? o.name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="grid min-w-0 flex-1" aria-hidden="true">
+          <span className="truncate font-medium">{o.name}</span>
+          {o.hint ? <span className="truncate text-xs text-muted-foreground">{o.hint}</span> : null}
+        </span>
+        <span className="grid size-4 flex-none place-items-center" aria-hidden="true">
+          {on ? <Check size={14} strokeWidth={2} /> : null}
+        </span>
+      </button>
+    );
+  };
+
   const lap = 10;
+  const portal = (n: ReactNode) => (trigger ? createPortal(n, document.body) : n);
   return (
-    <div ref={root} className={cn('relative min-w-0', className)}>
+    <div ref={root} className={cn('relative min-w-0', trigger && 'inline-block', className)}>
       <span id={labelId} className={cn('mb-2 block text-sm font-medium text-foreground', hideLabel && 'sr-only')}>
         {label}
       </span>
@@ -147,9 +203,13 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
         disabled={disabled}
         onClick={() => (open ? close(false) : show())}
         onKeyDown={onPillKey}
-        className="flex h-11 w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 text-left text-sm text-foreground outline-none transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className={
+          trigger
+            ? 'flex items-center gap-1 rounded-full border-0 bg-transparent p-0.5 text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+            : 'flex h-11 w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 text-left text-sm text-foreground outline-none transition-colors hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+        }
       >
-        {chosen.length ? (
+        {trigger ?? (chosen.length ? (
           <>
             <span className="relative flex flex-none items-center" style={{ width: multiple ? 28 + (chosen.length - 1) * (28 - lap) : 28, height: 28 }} aria-hidden="true">
               <AnimatePresence initial={false}>
@@ -172,85 +232,68 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
           </>
         ) : (
           <span className="min-w-0 flex-1 truncate text-muted-foreground">{placeholder}</span>
-        )}
-        <ChevronDown className={cn('size-4 flex-none text-muted-foreground transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />
+        ))}
+        {trigger ? null : <ChevronDown className={cn('size-4 flex-none text-muted-foreground transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />}
       </button>
 
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            id={listId}
-            role="listbox"
-            aria-labelledby={labelId}
-            aria-multiselectable={multiple || undefined}
-            onKeyDown={onListKey}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scaleY: 0.96 }}
-            animate={{ opacity: 1, y: 0, scaleY: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
-            transition={reduce ? { duration: 0.1 } : OPEN}
-            style={{ originY: 0 }}
-            className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1.5"
-          >
-            {options.length === 0 ? <div className="px-2.5 py-3 text-sm text-muted-foreground">Nothing to choose from.</div> : null}
-            {options.map((o, i) => {
-              const on = value.includes(o.id);
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  role="option"
-                  aria-label={o.name}
-                  aria-selected={on}
-                  aria-disabled={o.disabled || undefined}
-                  data-index={i}
-                  tabIndex={i === active ? 0 : -1}
-                  onClick={() => pick(o)}
-                  onPointerEnter={() => !o.disabled && setActive(i)}
-                  className={cn(
-                    'flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-sm text-foreground outline-none transition-colors',
-                    i === active && 'bg-muted',
-                    o.disabled && 'cursor-not-allowed opacity-50',
-                  )}
-                >
-                  <span className="grid size-7 flex-none place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium" aria-hidden="true">
-                    {o.lead ?? o.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="grid min-w-0 flex-1" aria-hidden="true">
-                    <span className="truncate font-medium">{o.name}</span>
-                    {o.hint ? <span className="truncate text-xs text-muted-foreground">{o.hint}</span> : null}
-                  </span>
-                  <span className="grid size-4 flex-none place-items-center" aria-hidden="true">
-                    {on ? <Check size={14} strokeWidth={2} /> : null}
-                  </span>
-                </button>
-              );
-            })}
-            {custom ? (
-              <input
-                type="text"
-                data-index={options.length}
-                tabIndex={active === options.length ? 0 : -1}
-                aria-label={custom.label}
-                placeholder={custom.placeholder ?? custom.label}
-                spellCheck={false}
-                onFocus={() => setActive(options.length)}
-                onKeyDown={(e) => {
-                  // typing belongs to the field; arrows and Escape still move through the list
-                  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Escape' && e.key !== 'Tab') e.stopPropagation();
-                  if (e.key === 'Enter') {
-                    const text = e.currentTarget.value.trim();
-                    if (!text) return;
-                    onChange(multiple ? [...value, text] : [text]);
-                    if (!multiple) close(true);
-                    else e.currentTarget.value = '';
-                  }
-                }}
-                className="mt-1 h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground"
-              />
-            ) : null}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {portal(
+        <AnimatePresence>
+          {open ? (
+            <motion.div
+              ref={list}
+              id={listId}
+              role="listbox"
+              aria-labelledby={labelId}
+              aria-multiselectable={multiple || undefined}
+              onKeyDown={onListKey}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scaleY: 0.96 }}
+              animate={{ opacity: 1, y: 0, scaleY: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              transition={reduce ? { duration: 0.1 } : OPEN}
+              style={trigger && at ? { originY: 0, position: 'fixed', top: at.top, left: at.left, zIndex: 60 } : { originY: 0 }}
+              className={cn('max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1.5', trigger ? 'w-60' : 'absolute left-0 right-0 top-[calc(100%+4px)] z-30')}
+            >
+              {options.length === 0 ? <div className="px-2.5 py-3 text-sm text-muted-foreground">Nothing to choose from.</div> : null}
+              {[undefined, ...heads].map((h) => {
+                const rows = options.flatMap((o, i) => ((o.group || undefined) === h ? [row(o, i)] : []));
+                return h ? (
+                  <div key={h} role="group" aria-label={h}>
+                    <div className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" aria-hidden="true">
+                      {h}
+                    </div>
+                    {rows}
+                  </div>
+                ) : (
+                  <Fragment key="">{rows}</Fragment>
+                );
+              })}
+              {custom ? (
+                <input
+                  type="text"
+                  data-index={options.length}
+                  tabIndex={active === options.length ? 0 : -1}
+                  aria-label={custom.label}
+                  placeholder={custom.placeholder ?? custom.label}
+                  spellCheck={false}
+                  onFocus={() => setActive(options.length)}
+                  onKeyDown={(e) => {
+                    // typing belongs to the field; arrows and Escape still move through the list
+                    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Escape' && e.key !== 'Tab') e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      const text = e.currentTarget.value.trim();
+                      if (!text) return;
+                      onChange(multiple ? [...value, text] : [text]);
+                      if (!multiple) close(true);
+                      else e.currentTarget.value = '';
+                    }
+                  }}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground"
+                />
+              ) : null}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>,
+      )}
     </div>
   );
 }

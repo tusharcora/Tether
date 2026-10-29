@@ -26,9 +26,10 @@ describe('New team (board 2)', () => {
     renderApp(<NewTeam agents={agents} projects={projects} project={projects[0]} onCreated={onCreated} onCancel={vi.fn()} onNewAgent={onNewAgent} />);
     const create = screen.getByRole('button', { name: 'Create team' }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
-    expect(screen.getByRole('radio', { name: 'Slack' }).getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Telegram' }).getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Tether' }).getAttribute('aria-checked')).toBe('true');
+    // the place was picked in the New team menu: no place radio, the form says where it lives
+    expect(screen.queryByRole('radiogroup', { name: 'Where it lives' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Slack' })).toBeNull();
+    expect(screen.getByText('Lives in Tether.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Tether core' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /Bolt/ }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Lens/ }));

@@ -5,7 +5,8 @@ import { ToolResult, ToolResultOutput } from '../components/beui/agents/tool-res
 import { Button } from '../components/beui/kit/Button';
 import { ActionNode, type NodeTone } from '../components/bencho/ActionNode';
 import { LivePlan } from '../runs/PlanCard';
-import type { GoalView } from './goalsApi';
+import { AssigneePicker } from './AssigneePicker';
+import type { Assignee, GoalView } from './goalsApi';
 import './goals.css';
 
 /** What the person can do from the flow; Goals.tsx wires each to the server. */
@@ -19,6 +20,7 @@ export interface LoopActions {
   start: (plan: string) => void;
   skip: () => void;
   duplicate: () => void;
+  assign: (item: number, who: Assignee[]) => void;
 }
 
 const attemptTone = (finished: boolean, ok: boolean | undefined): NodeTone => (!finished ? 'live' : ok ? 'done' : 'failed');
@@ -103,6 +105,7 @@ export function LoopFlow({ goal: g, checking, act }: { goal: GoalView; checking:
                 { id: 'diff', label: 'View diff', icon: <FileDiff />, onSelect: () => act.diff(i.runId!) },
               ]}
             >
+              <AssigneePicker compact label={`Who works on Run ${n + 1}`} value={i.assignees ?? []} onChange={(v) => act.assign(i.id, v)} />
               {/* the goal's current run, live */}
               {!finished && i.runId ? <LivePlan runId={i.runId} /> : null}
             </ActionNode>

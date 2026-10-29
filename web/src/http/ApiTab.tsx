@@ -1,8 +1,10 @@
+import { Send, Terminal } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCreateIntent } from '../ui/useCreateIntent';
 import type { Bundle, Skipped } from '../../../src/wsexport';
 import { api } from '../api';
-import { Button } from '../components/beui/kit/Button';
+import { CreateMenu } from '../components/bencho/CreateMenu';
+import { Button, buttonClass } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { EmptyState } from '../components/kept/empty-state/empty-state';
@@ -33,7 +35,7 @@ const countRequests = (t?: HttpTree) => {
   return n;
 };
 
-type DialogName = null | 'import' | 'secrets' | 'env' | 'workspace';
+type DialogName = null | 'import' | 'curl' | 'secrets' | 'env' | 'workspace';
 
 export interface ApiTabProps {
   onStarted: (runId: string) => void;
@@ -317,9 +319,18 @@ export function ApiTab(props: ApiTabProps) {
             { label: 'Export workspace', disabled: !tree, onSelect: () => void exportWs() },
           ]}
         />
-        <Button size="sm" variant="primary" onClick={fresh}>
+        <CreateMenu
+          label="+ New request"
+          title="New request"
+          className={buttonClass()}
+          items={[
+            { id: 'request', label: 'Request', icon: <Send size={15} strokeWidth={1.8} /> },
+            { id: 'curl', label: 'Import cURL', icon: <Terminal size={15} strokeWidth={1.8} /> },
+          ]}
+          onSelect={(id) => (id === 'curl' ? setDialog('curl') : fresh())}
+        >
           + New request
-        </Button>
+        </CreateMenu>
       </FloatBar>
 
       <aside className="api-dock" aria-label="Requests">
@@ -393,7 +404,7 @@ export function ApiTab(props: ApiTabProps) {
         </Dock>
       ) : null}
 
-      <ImportDialog ws={ws} open={dialog === 'import'} onOpenChange={(o) => setDialog(o ? 'import' : null)} onImported={() => (setDialog(null), void refresh())} />
+      <ImportDialog ws={ws} open={dialog === 'import' || dialog === 'curl'} mode={dialog === 'curl' ? 'curl' : undefined} onOpenChange={(o) => setDialog(o ? 'import' : null)} onImported={() => (setDialog(null), void refresh())} />
       <SecretsDialog ws={ws} open={dialog === 'secrets'} onOpenChange={(o) => setDialog(o ? 'secrets' : null)} />
       <WorkspaceDialog open={dialog === 'workspace'} onOpenChange={(o) => setDialog(o ? 'workspace' : null)} onImported={(id) => (setDialog(null), workspaces.refresh(), setWs(id))} />
       <EnvDialog ws={ws} open={dialog === 'env'} name={envName} onOpenChange={(o) => setDialog(o ? 'env' : null)} onSaved={() => (setDialog(null), void refresh())} />

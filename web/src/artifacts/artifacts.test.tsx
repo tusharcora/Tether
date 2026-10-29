@@ -115,7 +115,7 @@ describe('where an artifact opens', () => {
   it('the mini chat opens it over the screen in a dialog', async () => {
     serve();
     const shell = { mode: 'float', docked: false, unseen: 0, open: vi.fn(), close: vi.fn(), dock: vi.fn() } as never;
-    renderApp(<Assistant shell={shell} chat={chatWith()} chats={[]} project={{ id: 'api', name: 'API' }} route={{ tab: 'home' }} phone={false} onPick={vi.fn()} onFullScreen={vi.fn()} onAllChats={vi.fn()} onGo={vi.fn()} />);
+    renderApp(<Assistant shell={shell} chat={chatWith()} chats={[]} project={{ id: 'api', name: 'API' }} route={{ tab: 'home' }} phone={false} onPick={vi.fn()} onFullScreen={vi.fn()} onAllChats={vi.fn()} onGo={vi.fn()} onStarter={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /^Open Landing page/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Landing page' });
     expect(await within(dialog).findByTitle('Preview of Landing page')).toBeTruthy();

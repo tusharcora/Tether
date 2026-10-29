@@ -5,7 +5,7 @@ import { api, ApiError } from '../api';
 import { App } from '../App';
 import type { ChatSummary, StreamEvent } from '../assistant/api';
 import { calls, routeApi } from '../test/fixtures';
-import { starters } from './NewChat';
+import { starterFor, starters } from './NewChat';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 vi.mock('../home/Home', () => ({ Home: () => <div>home screen</div> }));
@@ -119,6 +119,24 @@ describe('the full-screen chat', () => {
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(location.hash).toBe('#/chats'));
     expect(calls('DELETE', '/api/assistant/chats/c2?ws=shop')).toHaveLength(1);
+  });
+});
+
+describe('New chat about a run or a file', () => {
+  it('New chat "About a run" prefills the run starter', async () => {
+    render(<App />);
+    fireEvent.click(within(await chatsSection()).getAllByRole('button', { name: 'New chat' })[0]!);
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New chat' })).getByRole('menuitem', { name: 'About a run' }));
+    expect(location.hash).toBe('#/chats/new/run');
+    // no run failed in this project: the run starter it has
+    await waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('.chat-new textarea')?.value).toBe("What's running right now?"));
+  });
+
+  it('picks the failed-run starter, or the file one', () => {
+    const run = (o: Partial<RunRow>) => ({ id: 'rmh0aaa7d92', status: 'done', startedAt: 1, ...o }) as RunRow;
+    expect(starterFor('run', [run({ status: 'error', finishedAt: 3 })])).toBe('Why did run rmh0aaa7d92 fail?');
+    expect(starterFor('file', [], 'src/a.ts')).toBe('Explain src/a.ts');
+    expect(starterFor('file', [])).toBe('Explain the file ');
   });
 });
 

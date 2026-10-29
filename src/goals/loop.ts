@@ -19,7 +19,7 @@ import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
 import { TEAM_MAX_BUDGET_USD } from '../team.js';
 import { GoalStore } from './store.js';
-import type { Attempt, CheckResult, Goal, GoalCheck, GoalItem, Plan } from './types.js';
+import type { Assignee, Attempt, CheckResult, Goal, GoalCheck, GoalItem, Plan } from './types.js';
 
 const CHECK_MS = 300_000;
 const TAIL = 4000;
@@ -97,7 +97,12 @@ export class Goals {
     const j: Promise<unknown> = p.catch(() => {}).finally(() => this.jobs.delete(j));
     this.jobs.add(j);
   }
-  private save(g: Goal): Goal {
+  private save(goal: Goal): Goal {
+    // the one place status lands: a goal that becomes met or stopped keeps the moment it did; a resumed one loses it. One
+    // that ended before endedAt existed stays without it (the page falls back to its last item), not stamped with today.
+    const ended = goal.status === 'met' || goal.status === 'stopped';
+    const now = ended && !goal.endedAt && this.db.get(goal.id)?.status !== goal.status;
+    const g = { ...goal, endedAt: ended ? (now ? Date.now() : goal.endedAt) : undefined };
     this.db.save(g);
     for (const l of this.listeners) l(g);
     return g;
@@ -136,7 +141,7 @@ export class Goals {
   }
 
   /** Edit a goal. Adding a finish check to a tracker turns it into a loop, which starts at once. */
-  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'dueDate' | 'workflow' | 'check'>>): Goal {
+  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'dueDate' | 'workflow' | 'check' | 'type' | 'description' | 'assignees'>>): Goal {
     const g = this.db.must(id);
     const loops = !!patch.check && g.kind === 'tracker';
     const r = this.save({ ...g, ...patch, ...(loops ? { kind: 'loop' as const, status: 'active' as const } : {}) });
@@ -295,10 +300,12 @@ export class Goals {
     this.save(g);
     return item;
   }
-  toggleItem(id: string, itemId: number, done: boolean): GoalItem {
+  /** Tick an item or set who works on it. */
+  editItem(id: string, itemId: number, patch: { done?: boolean; assignees?: Assignee[] }): GoalItem {
     const it = this.db.items(id).find((x) => x.id === itemId);
     if (!it) throw new HttpError(404, 'unknown item');
-    const next = { ...it, done };
+    const next = { ...it, ...patch };
+    if (!next.assignees?.length) delete next.assignees;
     this.db.saveItem(next);
     this.save(this.db.must(id));
     return next;

@@ -17,7 +17,7 @@ const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
   onCompose: vi.fn(),
   onCreate: vi.fn(),
   counts: { needs: 2, live: 1, goals: 0 },
-  chats: { list: Array.from({ length: 7 }, (_, i) => chat(`c${i + 1}`, `Chat ${i + 1}`)), current: undefined, onNew: vi.fn(), onOpen: vi.fn(), onAll: vi.fn() },
+  chats: { list: Array.from({ length: 7 }, (_, i) => chat(`c${i + 1}`, `Chat ${i + 1}`)), current: undefined, onNew: vi.fn(), onStarter: vi.fn(), onOpen: vi.fn(), onAll: vi.fn() },
   teams: {
     list: [
       { id: 'core', name: 'Tether core', place: 'tether', project: 'shop', agents: ['coder'], status: 'live' },
@@ -65,8 +65,34 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: 'On the go' }).querySelector('.sl-side-status')).toBeNull();
     fireEvent.click(row);
     expect(p.teams.onOpen).toHaveBeenCalledWith('dev');
-    fireEvent.click(screen.getByRole('button', { name: 'New team' }));
-    expect(p.teams.onNew).toHaveBeenCalled();
+  });
+
+  it('New team menu: In Tether opens the form; Slack channel and Telegram group are disabled "soon"', async () => {
+    const p = setup();
+    const trigger = screen.getByRole('button', { name: 'New team' });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole('menu', { name: 'New team' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['In Tether', 'Slack channel', 'Telegram group']);
+    for (const name of ['Slack channel', 'Telegram group']) {
+      const item = within(menu).getByRole('menuitem', { name });
+      expect(item.getAttribute('aria-disabled')).toBe('true');
+      expect(item.textContent).toContain('soon');
+      fireEvent.click(item);
+    }
+    expect(p.teams.onNew).not.toHaveBeenCalled();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'In Tether' }));
+    expect(p.teams.onNew).toHaveBeenCalledWith();
+  });
+
+  it('New chat menu: an empty chat, or one about a run or a file', async () => {
+    const p = setup();
+    fireEvent.click(within(screen.getByRole('region', { name: 'Chats' })).getAllByRole('button', { name: 'New chat' })[0]!);
+    const menu = await screen.findByRole('menu', { name: 'New chat' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['Empty chat', 'About a run', 'About a file']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'About a run' }));
+    expect(p.chats.onStarter).toHaveBeenCalledWith('run');
+    expect(p.chats.onNew).not.toHaveBeenCalled();
   });
 
   it('marks the current page, goes where clicked, opens ⌘K, Settings and compose', () => {
@@ -123,8 +149,9 @@ describe('Sidebar', () => {
     expect(within(section).getByRole('button', { name: 'Chat 2' }).getAttribute('aria-current')).toBe('page');
     fireEvent.click(within(section).getByRole('button', { name: 'Chat 3' }));
     expect(p.chats.onOpen).toHaveBeenCalledWith('c3');
-    for (const b of within(section).getAllByRole('button', { name: 'New chat' })) fireEvent.click(b);
-    expect(p.chats.onNew).toHaveBeenCalledTimes(2);
+    // the + opens the New chat menu; the New chat row starts an empty chat
+    fireEvent.click(within(section).getAllByRole('button', { name: 'New chat' }).at(-1)!);
+    expect(p.chats.onNew).toHaveBeenCalledTimes(1);
     fireEvent.click(within(section).getByRole('button', { name: 'All chats' }));
     expect(p.chats.onAll).toHaveBeenCalled();
   });

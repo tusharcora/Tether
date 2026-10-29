@@ -4,7 +4,7 @@
  */
 import type { Db } from '../http/history.js';
 import { HttpError } from '../serverkit.js';
-import type { Attempt, CheckResult, Goal, GoalCheck, GoalItem, GoalKind, GoalStatus, Plan } from './types.js';
+import type { Assignee, Attempt, CheckResult, Goal, GoalCheck, GoalItem, GoalKind, GoalStatus, GoalType, Plan } from './types.js';
 
 export function ensureGoals(db: Db): void {
   db.exec(`
@@ -38,9 +38,13 @@ export function ensureGoals(db: Db): void {
     );
     CREATE INDEX IF NOT EXISTS goal_items_goal ON goal_items(goal_id, id);
   `);
-  // teams (2026-10-29): a loop owned by a team agent
-  const cols = new Set((db.prepare('PRAGMA table_info(goals)').all() as { name: string }[]).map((c) => c.name));
-  for (const c of ['team', 'agent']) if (!cols.has(c)) db.exec(`ALTER TABLE goals ADD COLUMN ${c} TEXT`);
+  // teams (2026-10-29): a loop owned by a team agent; goals redesign (2026-10-29): type, description, assignees, ended_at
+  const add = (table: string, cols: [string, string][]) => {
+    const have = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name));
+    for (const [c, t] of cols) if (!have.has(c)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${c} ${t}`);
+  };
+  add('goals', [['team', 'TEXT'], ['agent', 'TEXT'], ['type', 'TEXT'], ['description', 'TEXT'], ['assignees', 'TEXT'], ['ended_at', 'INTEGER']]);
+  add('goal_items', [['assignees', 'TEXT']]);
 }
 
 const json = <T>(s: unknown): T | undefined => (typeof s === 'string' ? (JSON.parse(s) as T) : undefined);
@@ -64,7 +68,13 @@ const toGoal = (r: Row): Goal => ({
   ...(r.pending ? { pending: json<Plan>(r.pending) } : {}),
   ...(r.team ? { team: r.team as string } : {}),
   ...(r.agent ? { agent: r.agent as string } : {}),
+  ...(r.type ? { type: r.type as GoalType } : {}),
+  ...(r.description ? { description: r.description as string } : {}),
+  ...(r.assignees ? { assignees: json<Assignee[]>(r.assignees) } : {}),
+  ...(r.ended_at ? { endedAt: r.ended_at as number } : {}),
 });
+/** Assignees as stored: JSON, or null for none. */
+const who = (a?: Assignee[]) => (a?.length ? JSON.stringify(a) : null);
 const toItem = (r: Row): GoalItem => ({
   id: r.id as number,
   goalId: r.goal_id as string,
@@ -74,6 +84,7 @@ const toItem = (r: Row): GoalItem => ({
   done: r.done === 1,
   ...(r.attempt ? { attempt: json<Attempt>(r.attempt) } : {}),
   at: r.at as number,
+  ...(r.assignees ? { assignees: json<Assignee[]>(r.assignees) } : {}),
 });
 
 export class GoalStore {
@@ -94,14 +105,14 @@ export class GoalStore {
   }
   insert(g: Goal): void {
     this.db
-      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)')
-      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.createdAt, g.team ?? null, g.agent ?? null);
+      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent, type, description, assignees) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)')
+      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.createdAt, g.team ?? null, g.agent ?? null, g.type ?? null, g.description ?? null, who(g.assignees));
   }
   /** Replace the fields that change after creation. */
   save(g: Goal): void {
     this.db
-      .prepare('UPDATE goals SET title=?, kind=?, status=?, check_json=?, budget_usd=?, max_runs=?, approval=?, workflow=?, due_date=?, spent_usd=?, reason=?, last_check=?, pending=? WHERE id=?')
-      .run(g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.spentUsd, g.reason ?? null, g.lastCheck ? JSON.stringify(g.lastCheck) : null, g.pending ? JSON.stringify(g.pending) : null, g.id);
+      .prepare('UPDATE goals SET title=?, kind=?, status=?, check_json=?, budget_usd=?, max_runs=?, approval=?, workflow=?, due_date=?, spent_usd=?, reason=?, last_check=?, pending=?, type=?, description=?, assignees=?, ended_at=? WHERE id=?')
+      .run(g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.spentUsd, g.reason ?? null, g.lastCheck ? JSON.stringify(g.lastCheck) : null, g.pending ? JSON.stringify(g.pending) : null, g.type ?? null, g.description ?? null, who(g.assignees), g.endedAt ?? null, g.id);
   }
   remove(id: string): void {
     this.db.prepare('DELETE FROM goal_items WHERE goal_id = ?').run(id);
@@ -117,6 +128,6 @@ export class GoalStore {
     return toItem(r);
   }
   saveItem(i: GoalItem): void {
-    this.db.prepare('UPDATE goal_items SET text=?, done=?, attempt=? WHERE id=?').run(i.text, i.done ? 1 : 0, i.attempt ? JSON.stringify(i.attempt) : null, i.id);
+    this.db.prepare('UPDATE goal_items SET text=?, done=?, attempt=?, assignees=? WHERE id=?').run(i.text, i.done ? 1 : 0, i.attempt ? JSON.stringify(i.attempt) : null, who(i.assignees), i.id);
   }
 }

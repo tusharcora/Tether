@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CheckResult, GoalCheck, GoalStatus, GoalView } from '../../../src/goals/types.js';
+import type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView } from '../../../src/goals/types.js';
 import { api, fmtUsd } from '../api';
 import { shortRunId, type RunState } from '../ui/studio/RunGlyph';
 
-export type { CheckResult, GoalCheck, GoalStatus, GoalView };
+export type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView };
 
 const upsert = (list: GoalView[], g: GoalView): GoalView[] => (list.some((x) => x.id === g.id) ? list.map((x) => (x.id === g.id ? g : x)) : [g, ...list]);
 
@@ -39,6 +39,7 @@ export const goalsApi = {
   next: (id: string, action: 'start' | 'skip', plan?: string) => api<GoalView>('POST', `/api/goals/${id}/next`, { action, ...(plan ? { plan } : {}) }),
   addItem: (id: string, text: string) => api('POST', `/api/goals/${id}/items`, { text }),
   toggleItem: (id: string, item: number, done: boolean) => api('PATCH', `/api/goals/${id}/items/${item}`, { done }),
+  assignItem: (id: string, item: number, assignees: Assignee[]) => api('PATCH', `/api/goals/${id}/items/${item}`, { assignees }),
 };
 
 export const STATUS_LABEL: Record<GoalStatus, string> = { active: 'Working', needs_you: 'Needs you', paused: 'Paused', met: 'Met', stopped: 'Stopped' };
@@ -72,6 +73,25 @@ export function goalLine(g: GoalView): string {
 /** The goals of one project (every goal when none is open). */
 export const inProject = <T extends { workspace: string }>(goals: T[] | undefined, ws: string | undefined): T[] => (goals ?? []).filter((g) => !ws || g.workspace === ws);
 
+export const TYPE_LABEL: Record<GoalType, string> = { feature: 'Feature', bugfix: 'Bug fix', refactor: 'Refactor', chore: 'Chore' };
+export const TYPE_GLYPH: Record<GoalType, string> = { feature: '+', bugfix: '!', refactor: '↻', chore: '·' };
+/** A goal without a type reads as a feature. */
+export const typeOf = (g: Pick<GoalView, 'type'>): GoalType => g.type ?? 'feature';
+
+/** The status word on a goal node: a working loop is Live, an open tracker Open. */
+export const statusWord = (g: Pick<GoalView, 'status' | 'kind'>): string => (g.status === 'active' ? (g.kind === 'loop' ? 'Live' : 'Open') : STATUS_LABEL[g.status]);
+
+/** What a duplicate is made from: every field, " (copy)" on the title, and a loop's check and limits. */
+export const copyOf = (g: GoalView): Record<string, unknown> => ({
+  title: `${g.title.slice(0, 193)} (copy)`,
+  workspace: g.workspace,
+  workflow: g.workflow,
+  ...(g.type ? { type: g.type } : {}),
+  ...(g.description ? { description: g.description } : {}),
+  ...(g.assignees?.length ? { assignees: g.assignees } : {}),
+  ...(g.dueDate ? { dueDate: g.dueDate } : {}),
+  ...(g.kind === 'loop' ? { check: g.check, budgetUsd: g.budgetUsd, maxRuns: g.maxRuns, approval: g.approval } : {}),
+});
 const OUT_OF = 10;
 const share = (n: number, of: number) => (of > 0 ? Math.min(1, Math.max(0, n / of)) : 0);
 

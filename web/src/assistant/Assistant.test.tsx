@@ -22,13 +22,13 @@ vi.mock('./api', async (orig) => ({
 const route = { tab: 'runs' as const, id: 'rmh0aaa4f21' };
 const summary = (id: string, title: string): ChatSummary => ({ id, title, updated: 1, count: 2, last: '', kind: 'answer', outcome: [], faces: [], cites: [] });
 const list = [summary('ca', 'Why did the README run fail?'), summary('c2', 'Plan the Teams feature'), summary('c3', 'Free models: rate limits')];
-const hooks = { onFullScreen: vi.fn(), onAllChats: vi.fn() };
+const hooks = { onFullScreen: vi.fn(), onAllChats: vi.fn(), onStarter: vi.fn() };
 /** Wired as App wires it: the shell, the active chat and the chat hook live outside the panel. */
 function Harness(p: { project: { id: string; name: string }; needs: number; phone: boolean; hidden?: boolean }) {
   const shell = useAssistantShell({ needs: p.needs, phone: p.phone });
   const [active, setActive] = useActiveChat(p.project.id);
   const chat = useAssistant(p.project.id, active, shell.mode !== 'closed', { created: setActive, gone: () => setActive(undefined) });
-  return <Assistant shell={shell} chat={chat} chats={list} project={p.project} route={route} phone={p.phone} hidden={p.hidden} onPick={setActive} onFullScreen={hooks.onFullScreen} onAllChats={hooks.onAllChats} onGo={() => {}} />;
+  return <Assistant shell={shell} chat={chat} chats={list} project={p.project} route={route} phone={p.phone} hidden={p.hidden} onPick={setActive} onFullScreen={hooks.onFullScreen} onAllChats={hooks.onAllChats} onStarter={hooks.onStarter} onGo={() => {}} />;
 }
 const tree = (o: Partial<{ project: { id: string; name: string }; needs: number; phone: boolean; hidden: boolean }> = {}) => (
   <ToastStackProvider>
@@ -103,7 +103,8 @@ describe('Assistant shell', () => {
     rerender(tree({ project: { id: 'b', name: 'billing' } }));
     await waitFor(() => expect(screen.getByText('hello from b')).toBeTruthy());
     expect(screen.queryByText('hello from a')).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'New chat' })));
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await act(async () => fireEvent.click(within(await screen.findByRole('menu', { name: 'New chat' })).getByRole('menuitem', { name: 'Empty chat' })));
     await waitFor(() => expect(screen.queryByText('hello from b')).toBeNull());
   });
   it('switches chats from the title: find one, pick it, start a new one, or list them all', async () => {
@@ -127,9 +128,14 @@ describe('Assistant shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Switch chat/ }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Switch chat' })).getByRole('button', { name: 'All chats' }));
     expect(hooks.onAllChats).toHaveBeenCalled();
+    // the switcher starts a chat about a run or a file too
+    fireEvent.click(screen.getByRole('button', { name: /^Switch chat/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Switch chat' })).getByRole('button', { name: 'About a file' }));
+    expect(hooks.onStarter).toHaveBeenCalledWith('file');
     fireEvent.click(screen.getByRole('button', { name: 'Open full screen' }));
     expect(hooks.onFullScreen).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New chat' })).getByRole('menuitem', { name: 'Empty chat' }));
     expect(localStorage.getItem('tether.assistant.chat.a')).toBeNull();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Switch chat (New chat)' })).toBeTruthy());
   });

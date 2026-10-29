@@ -40,32 +40,34 @@
 }
 
 [data-theme='dark'] .aic-root {
-  --card-bg: #18181c;
+  /* the card and its controls on the app's dark greys, so the composer sits on the page like any card */
+  --card-bg: var(--s1);
   --card-border: rgba(255, 255, 255, 0.065);
   --card-focus-border: rgba(255, 255, 255, 0.12);
   --card-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.45), 0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
-  --pill-bg: #26262c;
-  --pill-hover-bg: #2d2d34;
+  --pill-bg: var(--s2);
+  --pill-hover-bg: var(--s3);
   --pill-border: rgba(255, 255, 255, 0.095);
   --pill-hover-border: rgba(255, 255, 255, 0.15);
   --pill-inset: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
   --ghost-hover-bg: rgba(255, 255, 255, 0.045);
   --ghost-hover-border: rgba(255, 255, 255, 0.075);
-  --popover-bg: #2b2b33;
+  --popover-bg: var(--s2);
   --popover-border: rgba(255, 255, 255, 0.12);
   --popover-shadow: 0 22px 48px -10px rgba(0, 0, 0, 0.65), 0 1px 0 0 rgba(255, 255, 255, 0.08) inset;
   --model-row-hover: rgba(14, 14, 18, 0.68);
   --filter-track-bg: rgba(12, 12, 16, 0.48);
   --filter-track-border: rgba(255, 255, 255, 0.06);
-  --filter-active-bg: #2c2c35;
+  --filter-active-bg: var(--s3);
   --filter-active-border: rgba(255, 255, 255, 0.11);
   --filter-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
   --text-primary: #f4f4f6;
-  --text-secondary: #8e8d95;
-  --text-muted: #6e6d76;
-  --placeholder-color: #8c8b93;
+  /* AA on the card (--s1) and the popovers (--s2); muted icons 3:1 */
+  --text-secondary: var(--mut);
+  --text-muted: #8e8d95;
+  --placeholder-color: var(--mut);
   --icon-primary: #e4e4e8;
-  --submit-bg: #222227;
+  --submit-bg: var(--s2);
   --submit-border: rgba(255, 255, 255, 0.08);
   --submit-color: #7c7b84;
   --submit-ready-bg: #2d2d35;

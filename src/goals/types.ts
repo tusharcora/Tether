@@ -1,6 +1,13 @@
 /** Goal types shared by the server (src/goals) and the dashboard (web), with no imports so web can use them. */
 export type GoalKind = 'loop' | 'tracker';
 export type GoalStatus = 'active' | 'needs_you' | 'paused' | 'met' | 'stopped';
+/** What kind of work a goal is; a goal without one reads as a feature. */
+export type GoalType = 'feature' | 'bugfix' | 'refactor' | 'chore';
+/** Who works on a goal or a step: a Teams team id or a crew agent's name. */
+export interface Assignee {
+  kind: 'team' | 'agent';
+  id: string;
+}
 export interface GoalCheck {
   kind: 'command' | 'tests' | 'number';
   command: string;
@@ -52,6 +59,13 @@ export interface Goal {
   /** Loop work in a team: the team's id and the agent (crew bot) that owns it. Its runs start through the team. */
   team?: string;
   agent?: string;
+  type?: GoalType;
+  /** One or two sentences, at most 500 characters. */
+  description?: string;
+  /** Who is responsible; they do not change how runs start (the Owner, `team`/`agent`, does). */
+  assignees?: Assignee[];
+  /** When the goal became met or stopped. */
+  endedAt?: number;
 }
 export interface GoalItem {
   id: number;
@@ -62,6 +76,7 @@ export interface GoalItem {
   done: boolean;
   attempt?: Attempt;
   at: number;
+  assignees?: Assignee[];
 }
 /** A goal as the dashboard gets it (GET /api/goals): items carry their run's status; progress runs 0 to 1. */
 export interface GoalView extends Goal {
