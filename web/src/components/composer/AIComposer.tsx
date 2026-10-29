@@ -24,6 +24,8 @@ export interface AIComposerProps {
   autoModel?: string;
   loading?: boolean;
   onStop?: () => void;
+  /** Enter still sends while loading (the caller queues the message); the button stays Stop. */
+  queues?: boolean;
   files: string[];
   onFiles: (files: File[]) => void;
   onRemoveFile: (name: string) => void;
@@ -140,7 +142,7 @@ export function AIComposer(p: AIComposerProps) {
     if (g) g[1].push(m);
     else groups.push([name, [m]]);
   }
-  const ready = p.value.trim().length > 0 && !p.loading;
+  const ready = p.value.trim().length > 0 && (!p.loading || !!p.queues);
 
   useEffect(() => {
     if (!recording) return;

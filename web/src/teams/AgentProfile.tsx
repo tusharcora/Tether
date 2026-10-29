@@ -1,6 +1,6 @@
-import { X } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { fmtUsd } from '../api';
+import { MemoryChips } from '../components/assistant-ui/elements/memory-chips';
 import { Button } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
@@ -12,8 +12,6 @@ import { shortRunId } from '../ui/studio/RunGlyph';
 import { SectionHeading } from '../ui/studio/SectionHeading';
 import { MARK, STATE_LABEL, teamsApi, type AgentView } from './teamsApi';
 import './teams.css';
-
-const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
 
 /**
  * A Crew bot as a teammate (board 3), on its card under Runs on: specialty and personality, its memory (lessons it carries
@@ -56,17 +54,8 @@ export function AgentProfile({ bot, name, title }: { bot: string; name: string; 
 
       <SectionHeading id={ids.memory} title={`Memory · lessons ${name} carries into every team`} count={v.lessons.length} action={v.lessons.length ? <ConfirmButton label="Forget all" prompt={`Forget all ${v.lessons.length} lessons?`} confirmLabel="Forget all" variant="danger" onConfirm={() => forget()} /> : undefined} />
       {v.lessons.length ? (
-        <ul className="ap-lessons" aria-labelledby={ids.memory}>
-          {v.lessons.map((l) => (
-            <li key={l.id}>
-              <span>{l.text}</span>
-              <span className="ap-when">{`${l.teamName ?? (l.team ? 'a deleted team' : 'from runs')} · ${day(l.at)}`}</span>
-              <button type="button" className="ap-forget" aria-label={`Forget: ${l.text}`} title="Forget this" onClick={() => void forget(l.id)}>
-                <X size={14} aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        // every lesson is one it already carries: nothing here was just learned
+        <MemoryChips role="group" aria-labelledby={ids.memory} className="max-w-none" chips={v.lessons.map((l) => ({ id: l.id, text: l.text, change: 'existing' }))} onForget={(id) => void forget(id)} />
       ) : (
         <p className="sl-meta">No lessons yet. After a task or loop, it keeps a few: facts about the code and what worked, never quotes.</p>
       )}

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { Engine } from '../src/engine.js';
-import { deleteChat, listChats, loadAllow, readChat } from '../src/assistant/history.js';
+import { deleteChat, listChats, loadAllow, readChat, saveChat as saveChatFile } from '../src/assistant/history.js';
+import { checkCards } from '../src/assistant/reply.js';
 import { builtinStep, runTurn } from '../src/assistant/turn.js';
 import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
@@ -27,8 +28,8 @@ class Scripted implements AgentAdapter {
   reply = 'Hello.';
   script?: string;
   usage?: AgentUsage;
-  /** The agent's own tool calls to report (Claude's Read, Grep…). */
-  ownTools: [string, unknown][] = [];
+  /** The agent's own tool calls to report (Claude's Read, Grep…), with the call's id and what it returned. */
+  ownTools: [string, unknown, string?, string?][] = [];
   async detect() {
     return { ok: true };
   }
@@ -38,7 +39,10 @@ class Scripted implements AgentAdapter {
   async run(req: AgentRequest): Promise<AgentResult> {
     this.prompts.push(req.prompt);
     if (this.script && req.codeMode) await req.codeMode.runner.runCode(this.script);
-    for (const [name, input] of this.ownTools) req.onTool?.(name, input);
+    for (const [name, input, id, result] of this.ownTools) {
+      req.onTool?.(name, input, id);
+      if (id && result !== undefined) req.onToolResult?.(id, result, false);
+    }
     for (const part of this.reply.match(/[\s\S]{1,7}/g) ?? []) req.onDelta?.(part);
     return { output: this.reply, exitCode: 0, costUsd: 0.001, ...(this.usage ? { usage: this.usage } : {}) };
   }
@@ -88,7 +92,7 @@ async function boot() {
     const start = events.find((e) => e.type === 'start') as Extract<StreamEvent, { type: 'start' }> | undefined;
     return { events, start, chat: start?.chat, done: events.find((e) => e.type === 'done') as Extract<StreamEvent, { type: 'done' }> | undefined, status: r.status };
   };
-  return { home, dir, agent, registry, store, engine, call, turn };
+  return { home, dir, agent, registry, store, engine, vault, call, turn };
 }
 
 describe('the agent’s own tools in the timeline', () => {
@@ -97,6 +101,7 @@ describe('the agent’s own tools in the timeline', () => {
     expect(builtinStep('Grep', { pattern: 'runTurn' }, '/repo')).toBe('repo.search("runTurn")');
     expect(builtinStep('Glob', { pattern: 'test/**/*.ts' }, '/repo')).toBe('repo.list("test/**/*.ts")');
     expect(builtinStep('WebFetch', { url: 'https://x.dev' }, '/repo')).toBe('http.get("https://x.dev")');
+    expect(builtinStep('WebSearch', { query: 'react 19' }, '/repo')).toBe('http.search("react 19")');
     expect(builtinStep('mcp__linear__list_issues', {}, '/repo')).toBe('mcp.linear.list_issues()');
     expect(builtinStep('mcp__tether__run_code', { code: 'x' }, '/repo')).toBeUndefined();
     expect(builtinStep('TodoWrite', {}, '/repo')).toBeUndefined();
@@ -335,6 +340,96 @@ describe('POST /api/assistant', () => {
     const t = await boot();
     expect((await t.call('POST', '/api/assistant', { ws: 'api' })).status).toBe(400);
     expect((await t.call('POST', '/api/assistant', { ws: 'nope', message: 'x' })).status).toBe(404);
+  });
+});
+
+describe('what the chat elements read', () => {
+  it('keeps a web search’s result on its step, and no other tool’s', async () => {
+    const t = await boot();
+    const links = 'Web search results for query: "vitest"\n\nLinks: [{"title":"Vitest","url":"https://vitest.dev"}]';
+    t.agent.ownTools = [['WebSearch', { query: 'vitest' }, 'u1', links], ['Grep', { pattern: 'x' }, 'u2', 'a.ts:1:x']];
+    const { done } = await t.turn({ message: 'q' });
+    expect(done!.message.tools).toEqual([{ id: 't1', code: 'http.search("vitest")', output: links }, { id: 't2', code: 'repo.search("x")' }]);
+  });
+
+  it('saves the vault notes the prompt carried, with their score and a snippet', async () => {
+    const t = await boot();
+    await t.vault.writeNote('limits.md', '---\ntype: decision\n---\n# Rate limits\n\nThe API rate limit is five requests a minute.\n');
+    const { done } = await t.turn({ message: 'what is the rate limit?' });
+    expect(done!.message.retrieved).toEqual([{ path: 'limits.md', title: expect.any(String), score: expect.any(Number), snippet: 'The API rate limit is five requests a minute.' }]);
+    expect(done!.message.retrieved![0]!.score).toBeGreaterThan(0);
+    expect((await t.turn({ message: 'zzz qqq' })).done!.message.retrieved).toBeUndefined();
+  });
+
+  it('keeps a thumbs down’s reasons and note, checked at the door, and drops them on thumbs up', async () => {
+    const t = await boot();
+    const { chat, done } = await t.turn({ message: 'q' });
+    const fb = (body: Record<string, unknown>) => t.call('POST', `/api/assistant/feedback/${done!.message.id}`, { ws: 'api', chat, ...body });
+    expect((await fb({ value: 'down', reasons: ['Wrong', 'Too long'], note: ' missed the config ' })).status).toBe(200);
+    const saved = () => readChat(t.home, 'api', chat!)!.messages.at(-1)!;
+    expect(saved()).toMatchObject({ feedback: 'down', feedbackNote: { reasons: ['Wrong', 'Too long'], note: 'missed the config' } });
+    // a plain thumbs down keeps it
+    await fb({ value: 'down' });
+    expect(saved().feedbackNote?.reasons).toEqual(['Wrong', 'Too long']);
+    for (const bad of [{ value: 'down', reasons: 'Wrong' }, { value: 'down', reasons: Array(7).fill('x') }, { value: 'down', reasons: ['x'.repeat(61)] }, { value: 'down', reasons: [''] }, { value: 'down', note: 5 }, { value: 'down', note: 'x'.repeat(1001) }, { value: 'up', reasons: ['Wrong'] }])
+      expect((await fb(bad)).status, JSON.stringify(bad)).toBe(400);
+    await fb({ value: 'up' });
+    expect(saved().feedback).toBe('up');
+    expect(saved().feedbackNote).toBeUndefined();
+  });
+
+  it('regenerates only the latest reply: the reply and its question go, the question is asked again', async () => {
+    const t = await boot();
+    const first = await t.turn({ message: 'one' });
+    t.agent.reply = 'First answer.';
+    const second = await t.turn({ message: 'two', chat: first.chat });
+    t.agent.reply = 'Better answer.';
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', chat: first.chat, message: 'one', regenerate: first.done!.message.id })).status).toBe(409);
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', message: 'one', regenerate: 'x' })).status).toBe(409);
+    const again = await t.turn({ message: 'two', chat: first.chat, regenerate: second.done!.message.id });
+    expect(again.done!.message.text).toBe('Better answer.');
+    expect(readChat(t.home, 'api', first.chat!)!.messages.map((m) => m.text)).toEqual(['one', 'Hello.', 'two', 'Better answer.']);
+  });
+
+  it('discards a stopped or failed reply and nothing else', async () => {
+    const t = await boot();
+    const { chat, done } = await t.turn({ message: 'q' });
+    const del = (id: string, c = chat) => t.call('DELETE', `/api/assistant/messages/${id}?ws=api&chat=${c}`);
+    expect((await del(done!.message.id)).status).toBe(404);
+    expect((await del(done!.message.id, '..%2Fx')).status).toBe(400);
+    const c = readChat(t.home, 'api', chat!)!;
+    c.messages.push({ id: 'm-stop', role: 'tether', text: 'half', at: 1, error: 'Stopped.' });
+    saveChatFile(t.home, 'api', c);
+    expect((await del('m-stop')).status).toBe(200);
+    expect(readChat(t.home, 'api', chat!)!.messages.map((m) => m.id)).toEqual(c.messages.slice(0, -1).map((m) => m.id));
+  });
+
+  it('checks the cards: real fields only, edges between listed nodes, sections counting real sources', () => {
+    const cards = checkCards(
+      {
+        report: { title: 'Limits', sections: [{ heading: 'Now', summary: 'Five a minute', cites: [1, 1, 2, 9, 'x'] }, { summary: 'no heading' }] },
+        spec: { title: 'Runtime', rows: [{ label: 'Node', value: '22', emphasis: true }, { label: 'Node', value: '20' }, { label: 'empty' }] },
+        choice: { traits: ['Tests', 'Cost'], options: [{ name: 'A', headline: 'fast', traits: ['pass', false] }, { name: 'B', traits: [false, '$2', 'extra'] }, { name: 'A' }], pick: 'C', reason: 'A is cheaper' },
+        diagram: { title: 'Flow', nodes: [{ id: 'a', label: 'Plan' }, { id: 'b' }, { id: 'a', label: 'dup' }], edges: [{ from: 'a', to: 'b', label: 'then' }, { from: 'a', to: 'z' }, { from: 'b', to: 'b' }] },
+        timeline: [{ time: '10:42', title: 'Started', when: 'past' }, { title: 'No when' }, { title: 'Next', when: 'future', detail: 'tests' }],
+      },
+      2,
+    );
+    expect(cards).toEqual({
+      report: { title: 'Limits', sections: [{ heading: 'Now', summary: 'Five a minute', sources: 2 }] },
+      spec: { title: 'Runtime', rows: [{ label: 'Node', value: '22', emphasis: true }] },
+      choice: { traits: ['Tests', 'Cost'], options: [{ name: 'A', headline: 'fast', traits: ['pass', false] }, { name: 'B', headline: '', traits: [false, '$2'] }], pick: '', reason: 'A is cheaper' },
+      diagram: { title: 'Flow', nodes: [{ id: 'a', label: 'Plan' }, { id: 'b', label: 'b' }], edges: [{ from: 'a', to: 'b', label: 'then' }] },
+      timeline: [{ time: '10:42', title: 'Started', when: 'past' }, { time: '', title: 'Next', detail: 'tests', when: 'future' }],
+    });
+    // a card missing what it needs is left out
+    expect(checkCards({ report: { sections: [{ heading: 'x' }] }, spec: { title: 't', rows: [] }, choice: { traits: ['', 'b'], options: [{ name: 'A' }, { name: 'B' }] }, diagram: { nodes: [{ id: 'a' }] }, timeline: 'x' }, 0)).toEqual({});
+  });
+
+  it('a reply’s cards reach the saved message', async () => {
+    const t = await boot();
+    t.agent.reply = 'See the spec.\n```tether\n{"spec":{"title":"Runtime","rows":[{"label":"Node","value":"22"}]}}\n```';
+    expect((await t.turn({ message: 'q' })).done!.message.spec).toEqual({ title: 'Runtime', rows: [{ label: 'Node', value: '22' }] });
   });
 });
 

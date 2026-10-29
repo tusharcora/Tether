@@ -19,6 +19,7 @@ const view = (): TeamView => ({
     { id: 'm2', at: 2, from: probe, text: 'On it. I made it a loop.', card: { kind: 'loop', goalId: 'g1' } },
     { id: 'm3', at: 3, from: bolt, text: 'On it. Started R-5A21 in its own worktree.', run: 'rmh15a21', card: { kind: 'run', runId: 'rmh15a21', title: 'probe timeout', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'awaiting' }], status: 'paused', costUsd: 0.4 } },
     { id: 'm4', at: 4, from: bolt, text: 'Ready to ship. It needs a person to approve.', run: 'rmh15a21', card: { kind: 'approval', what: 'ship', title: 'Ship “probe timeout”?', detail: 'npm test passed · +12 −4 in 1 file', runId: 'rmh15a21', node: 'ship', status: 'pending' } },
+    { id: 'm5', at: 5, from: { kind: 'tether', id: 'tether', name: 'Tether' }, text: 'Opened the PR.', card: { kind: 'pr', url: 'https://github.com/o/r/pull/12', number: 12, title: 'probe timeout' } },
   ],
   members: [
     { id: 'coder', name: 'Bolt', specialty: 'code', state: 'waiting' },
@@ -48,7 +49,11 @@ describe('the team screen (board 1)', () => {
     await screen.findByRole('heading', { name: 'Tether core' });
     expect(screen.getByText('Tether team · you + 2 agents')).toBeTruthy();
     expect(document.querySelector('.tm-mention')!.textContent).toBe('@Probe');
-    expect(screen.getAllByText('agent · code')).toHaveLength(2);
+    // who spoke: name, and an agent's specialty with the time
+    expect(screen.getAllByText(/^agent · code · /)).toHaveLength(2);
+    expect(screen.getAllByText('Bolt', { selector: '[data-slot="speaker-identity"] span' })).toHaveLength(2);
+    // the loop card scores its goal: check 2 failing (0), budget left 72%, runs left 67%
+    expect(screen.getByText('4.6')).toBeTruthy();
     expect(screen.getByText('Loop · Keep main green')).toBeTruthy();
     expect(screen.getByText('run 2 of ≤6 · $1.40 / $5.00')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'R-5A10 · 2 failing' })).toBeTruthy();
@@ -62,6 +67,9 @@ describe('the team screen (board 1)', () => {
     expect(within(panel).getByText('Lives in: Tether')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open run' }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'rmh15a21' });
+    // a PR card is a link preview of what it knows (no unfurl)
+    expect(screen.getByRole('link', { name: /PR #12 · probe timeout/ }).getAttribute('href')).toBe('https://github.com/o/r/pull/12');
+    expect(screen.getByText('github.com')).toBeTruthy();
   });
 
   it('Approve decides the card; Reject asks for a reason first; Review diff shows the diff', async () => {

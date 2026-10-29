@@ -73,7 +73,10 @@ When you finish, you MAY end your answer with ONE fenced block, language "tether
 {"sources":[{"file":"src/a.ts","line":12,"label":"short name"},{"run":"<run id>"},{"note":"<vault path.md>"}],
  "proposals":[{"kind":"workflow","workflow":"<saved workflow name>","task":"what to do","why":"one line"},{"kind":"team","task":"what to do","mode":"live","why":"one line"}],
  "questions":[{"title":"question","options":[{"label":"A","desc":"detail"}],"multi":false}],
- "compare":{"title":"…","columns":["A","B"],"rows":[{"label":"Cost","cells":["$1","$2"]}]}}
+ "compare":{"title":"…","columns":["A","B"],"rows":[{"label":"Cost","cells":["$1","$2"]}]},
+ "choice":{"traits":["Tests"],"options":[{"name":"A","headline":"…","traits":["pass",false]}],"pick":"A","reason":"…"},"spec":{"title":"…","rows":[{"label":"Node","value":"22"}]},
+ "report":{"title":"…","sections":[{"heading":"…","summary":"…","cites":[1]}]},"timeline":[{"time":"10:42","title":"…","when":"past|now|future"}],
+ "diagram":{"title":"…","nodes":[{"id":"a","label":"…"}],"edges":[{"from":"a","to":"b","label":"…"}]}}
 \`\`\`
-"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. "proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. "questions": only when you cannot go on without an answer. Do not mention this block in your prose.`;
+"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. "proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. "questions": only when you cannot go on without an answer. "choice", "spec", "report", "timeline" and "diagram" are cards: add one only when it shows the answer better than prose. Do not mention this block in your prose.`;
 }

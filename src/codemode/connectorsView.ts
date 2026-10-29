@@ -46,15 +46,16 @@ export async function connectorsView(home: string, github: GithubAccount, secret
   return out;
 }
 
-/** Test: connect to an MCP server and count its tools; the built-ins are in this process, GitHub answers from the account. */
-export async function testConnector(home: string, github: GithubAccount, name: string): Promise<{ ok: boolean; detail: string } | undefined> {
+/** Test: connect to an MCP server and list its tools; the built-ins are in this process, GitHub answers from the account. */
+export async function testConnector(home: string, github: GithubAccount, name: string): Promise<{ ok: boolean; detail: string; tools?: string[] } | undefined> {
   if (name === 'github') return github.account() || (await github.cliLogin()) ? { ok: true, detail: 'Signed in to GitHub' } : { ok: false, detail: 'Not signed in to GitHub' };
   if (BUILTIN.some((b) => b.name === name)) return { ok: true, detail: 'Built in' };
   const server: McpServer | undefined = loadMcpServers(home).find((s) => `mcp.${s.name}` === name);
   if (!server) return undefined;
   const c = mcpConnector(server);
   try {
-    return { ok: true, detail: `${(await c.methods()).length} tools` };
+    const tools = (await c.methods()).map((x) => x.name);
+    return { ok: true, detail: `${tools.length} tools`, tools };
   } catch (e) {
     return { ok: false, detail: redactText((e as Error).message.split('\n')[0]!, new Map()).slice(0, 160) };
   } finally {

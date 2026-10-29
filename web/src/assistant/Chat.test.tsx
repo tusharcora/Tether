@@ -54,7 +54,7 @@ describe('the chat', () => {
     const onGo = vi.fn();
     mount(onGo);
     await screen.findByText('See limit.ts.');
-    fireEvent.click(screen.getByRole('button', { name: /1 source/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Sources/ }));
     fireEvent.click(await screen.findByRole('button', { name: /limit\.ts/ }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'code', id: 'src/limit.ts', line: 3 });
   });
@@ -70,7 +70,7 @@ describe('the chat', () => {
 
   it('sends a tool decision', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: /Allow once/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This session' }));
     await waitFor(() => expect(api.tool).toHaveBeenCalledWith('api', 'c1', 't1', 'once'));
   });
 
@@ -90,8 +90,37 @@ describe('the chat', () => {
     expect(await screen.findByText(/Working on it/)).toBeTruthy();
     expect(screen.queryByText(/\{"sou/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
-    expect(await screen.findByText('Stopped.')).toBeTruthy();
+    // the stopped reply keeps its words, says why, and offers Continue and Discard
+    expect(await screen.findByText('stopped')).toBeTruthy();
+    expect(screen.getByText('Working on it')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Continue/ })).toBeTruthy();
     expect(api.bodies[0]).toMatchObject({ ws: 'api', chat: 'c1', message: 'hello', context: { page: 'runs' } });
+  });
+
+  it('queues a message sent while a reply streams, shows it, and sends it when the reply is done', async () => {
+    let finish!: () => void;
+    api.bodies.length = 0;
+    api.turn = (b, on) =>
+      new Promise<void>((resolve) => {
+        const text = (b as { message: string }).message;
+        on({ type: 'start', you: { id: `y-${text}`, role: 'you', text, at: 3 }, id: `a-${text}`, chat: 'c1', title: 'q' });
+        finish = () => (on({ type: 'done', message: { id: `a-${text}`, role: 'tether', text: `re ${text}`, at: 4 } }), resolve());
+      });
+    mount();
+    await screen.findByText('See limit.ts.');
+    const box = screen.getByLabelText('Message Tether');
+    for (const v of ['first', 'second']) {
+      fireEvent.change(box, { target: { value: v } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+    }
+    expect(await screen.findByText('1 queued')).toBeTruthy();
+    expect(api.bodies).toHaveLength(1);
+    finish();
+    await waitFor(() => expect(api.bodies).toHaveLength(2));
+    expect(api.bodies[1]).toMatchObject({ message: 'second' });
+    expect(screen.queryByText('1 queued')).toBeNull();
+    finish();
+    expect(await screen.findByText('re second')).toBeTruthy();
   });
 
   it('lists NVIDIA’s free models in their own group beside the bound agent’s, and a turn on one names nvidia', async () => {

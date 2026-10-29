@@ -6,7 +6,7 @@ import { api, type RunRow } from '../api';
 import { calls, FakeEventSource, makeRow, routeApi } from '../test/fixtures';
 import { cssRule } from '../test/css';
 import { renderApp } from '../test/render';
-import { Home } from './Home';
+import { Home, runActivity } from './Home';
 
 const WS = [{ id: 'api', name: 'API', path: '/p/api', isDefault: true, exists: true, repos: [] }];
 let rows: RunRow[] = [];
@@ -29,6 +29,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('the runs graph', () => {
+  it('buckets runs by local day over the last 26 weeks', () => {
+    const now = new Date(2026, 9, 29, 15);
+    const at = (d: number, h = 9) => new Date(2026, 9, d, h).getTime();
+    const a = runActivity([{ startedAt: at(29) }, { startedAt: at(29, 23) }, { startedAt: at(28, 0) }, { startedAt: new Date(2025, 0, 1).getTime() }], now);
+    expect(a.data).toEqual([{ date: '2026-10-29', count: 2 }, { date: '2026-10-28', count: 1 }]);
+    expect(a.total).toBe(3);
+    expect(a.start).toEqual(new Date(2026, 4, 1));
+  });
+
+  it('shows on Home with the runs it counted', async () => {
+    renderApp(<Home onGo={() => {}} />);
+    expect(await screen.findByText('1 in 26 weeks')).toBeTruthy();
+  });
 });
 
 describe('Home', () => {
