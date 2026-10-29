@@ -68,9 +68,31 @@ export function builtinStep(name: string, input: unknown, cwd: string): string |
   if (name === 'Grep') return `repo.search(${s(i.pattern)})`;
   if (name === 'Glob' || name === 'LS') return `repo.list(${s(i.pattern ?? i.path)})`;
   if (name === 'WebFetch' || name === 'WebSearch') return `http.get(${s(i.url ?? i.query)})`;
+  if (name === 'Bash') return bashStep(typeof i.command === 'string' ? i.command : '', s);
   const m = /^mcp__([^_].*?)__(.+)$/.exec(name);
   if (m && m[1] !== 'tether') return `mcp.${m[1]}.${m[2]}()`;
   return undefined;
+}
+
+const READS = new Set(['cat', 'head', 'tail', 'sed', 'less', 'wc', 'nl', 'bat']);
+const SEARCHES = new Set(['grep', 'rg', 'ag', 'ack']);
+const LISTS = new Set(['ls', 'find', 'tree', 'fd']);
+
+/** A shell command as the Code Mode calls it amounts to (Claude in plan mode reads with `cat`, `sed -n`, `grep`, `ls`…). */
+function bashStep(command: string, s: (v: unknown) => string): string {
+  const calls: string[] = [];
+  for (const part of command.split(/&&|\|\||;|\|/)) {
+    const words = (part.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((w) => w.replace(/^(['"])(.*)\1$/, '$2'));
+    const [cmd, ...rest] = words;
+    const args = rest.filter((w) => !w.startsWith('-') && !/^\d+(,\d+)?p$/.test(w));
+    if (!cmd) continue;
+    if (READS.has(cmd)) for (const f of args.filter((a) => /[./]/.test(a))) calls.push(`repo.read(${s(f)})`);
+    else if (SEARCHES.has(cmd)) calls.push(`repo.search(${s(args[0])})`);
+    else if (LISTS.has(cmd)) calls.push(`repo.list(${s(args[0] ?? '.')})`);
+    else if (cmd === 'git' && ['diff', 'status', 'log', 'show'].includes(args[0] ?? '')) calls.push('repo.diff()');
+  }
+  // a command it cannot place still shows, as "Ran a script"
+  return calls.length ? calls.join('; ') : `// $ ${command.slice(0, 200)}`;
 }
 
 /** The agent behind Tether (the orchestrator bot's crew binding, claude by default) and its model. */
