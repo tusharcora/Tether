@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Telegram team illustration</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes tg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tg-fill{from{width:0}to{width:100%}}
+@keyframes tg-wave{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+.tg-in{animation:tg-in .25s ease-out both}
+.tg-cur{animation:tg-fill 1.6s linear infinite}
+.tg-btn{cursor:pointer}.tg-btn:hover{filter:brightness(1.12)}
+@media (prefers-reduced-motion: reduce){.tg-in,.tg-cur{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0e1621; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex; flex-direction: column">
+  <header style="height: 58px; flex: none; background: #17212b; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+    <span style="width: 36px; height: 36px; border-radius: 999px; background: #3b82f6; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px">OG</span>
+    <div style="flex: 1; display: flex; flex-direction: column"><b style="font-size: 15px">On the go</b><span style="font-size: 12px; color: #8b9aa8">you, Tether, Bolt · illustration</span></div>
+  </header>
+  <div style="flex: none; background: #17212b; border-top: 1px solid #0e1621; padding: 6px 14px; display: flex; flex-direction: column; gap: 4px">
+    <span style="display: flex; gap: 6px; font-size: 12px"><b style="color: #60a5fa">Pinned</b><span style="flex: 1; color: #c9d1d9">Probe · Keep main green · run 2 of ≤6</span><span style="font-family: 'Geist Mono', monospace; color: #8b9aa8">$1.40</span></span>
+    <span style="height: 3px; background: #0e1621; border-radius: 999px"><span style="display: block; width: 33%; height: 3px; background: #60a5fa; border-radius: 999px"></span></span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 10px 10px 6px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; font-size: 14.5px; line-height: 1.4">
+
+    <div style="align-self: flex-start; width: 300px; display: flex; flex-direction: column; gap: 4px">
+      <div style="background: #182533; border-radius: 12px 12px 12px 4px; padding: 7px 10px; display: flex; flex-direction: column; gap: 3px">
+        <b style="font-size: 12.5px; color: {{shipColor}}">{{shipHead}}</b>
+        <span>Lens reviewed R-5A21 “probe timeout under load”. Tests pass. Ship it?</span>
+        <span style="font-size: 11px; color: #8b9aa8; align-self: flex-end">09:48{{shipEdited}}</span>
+      </div>
+      <sc-if value="{{shipPending}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px">
+          <button class="tg-btn" onClick="{{ship}}" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Approve</button>
+          <button class="tg-btn" onClick="{{hold}}" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Reject</button>
+          <button class="tg-btn" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Diff</button>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="align-self: flex-end; width: 250px; background: #2b5278; border-radius: 12px 12px 4px 12px; padding: 7px 10px; display: flex; flex-direction: column; gap: 5px">
+      <span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 999px; background: #60a5fa; display: flex; align-items: center; justify-content: center; color: #0e1621; font-size: 11px">▶</span>
+        <span aria-label="Voice note waveform" role="img" style="display: flex; align-items: center; gap: 2px; height: 22px">
+          <sc-for list="{{wave}}" as="w" hint-placeholder-count="18"><i style="{{w}}"></i></sc-for>
+        </span><span style="font-size: 11px; color: #c9d1d9">0:06</span></span>
+      <span style="font-size: 12.5px; color: #c9d1d9; font-style: italic">“start a run to fix the Back button after creating a chat”</span>
+      <span style="font-size: 10.5px; color: #8b9aa8; align-self: flex-end">transcribed by Tether · 09:52</span>
+    </div>
+
+    <div style="align-self: flex-start; width: 300px; display: flex; flex-direction: column; gap: 4px">
+      <div style="background: #182533; border-radius: 12px 12px 12px 4px; padding: 7px 10px; display: flex; flex-direction: column; gap: 4px">
+        <b style="font-size: 12.5px; color: #93c5fd">Tether</b>
+        <sc-if value="{{notStarted}}" hint-placeholder-val="{{true}}">
+          <span>Proposed run: <b>Fix Back after a new chat</b>. Bolt writes, Lens reviews, limit $1.</span>
+        </sc-if>
+        <sc-if value="{{started}}" hint-placeholder-val="{{false}}">
+          <span class="tg-in"><b>R-5B07</b> · Fix Back after a new chat</span>
+          <span class="tg-in" style="display: flex; gap: 3px">
+            <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+              <span style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="height: 4px; background: #0e1621; border-radius: 999px; overflow: hidden"><span class="{{s.cls}}" style="{{s.bar}}"></span></span><span style="font-size: 10.5px; color: {{s.color}}">{{s.label}}</span></span>
+            </sc-for>
+          </span>
+        </sc-if>
+        <span style="font-size: 11px; color: #8b9aa8; align-self: flex-end">09:52{{runEdited}}</span>
+      </div>
+      <sc-if value="{{notStarted}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px">
+          <button class="tg-btn" onClick="{{start}}" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Start run</button>
+          <button class="tg-btn" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Edit</button>
+          <button class="tg-btn" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Dismiss</button>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="align-self: flex-end; width: 220px; background: #2b5278; border-radius: 12px 12px 4px 12px; padding: 4px; display: flex; flex-direction: column; gap: 4px">
+      <div role="img" aria-label="Screenshot of a failed run" style="height: 92px; border-radius: 9px; background: #0a0a0b; display: flex; flex-direction: column; gap: 5px; padding: 8px; box-sizing: border-box">
+        <span style="height: 6px; width: 70%; background: #26262b; border-radius: 3px"></span>
+        <span style="display: flex; gap: 5px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #f87171"></span><span style="height: 6px; width: 55%; background: #3f3f46; border-radius: 3px"></span><span style="font-size: 9px; color: #f87171; border: 1px solid rgba(248,113,113,.5); border-radius: 999px; padding: 0 5px">failed</span></span>
+        <span style="height: 6px; width: 85%; background: #26262b; border-radius: 3px"></span>
+        <span style="height: 6px; width: 40%; background: #26262b; border-radius: 3px"></span>
+      </div>
+      <span style="padding: 0 6px 4px">why is this red?</span>
+    </div>
+
+    <div style="align-self: flex-start; width: 300px; display: flex; flex-direction: column; gap: 4px">
+      <div style="background: #182533; border-radius: 12px 12px 12px 4px; padding: 7px 10px; display: flex; flex-direction: column; gap: 3px">
+        <b style="font-size: 12.5px; color: #60a5fa">Bolt</b>
+        <span>That's R-E1CC: its test gate failed because the fake timer broke <span style="font-family: 'Geist Mono', monospace; font-size: 12.5px">login.test.ts:42</span>.</span>
+        <sc-if value="{{fixAsked}}" hint-placeholder-val="{{false}}"><span class="tg-in" style="color: #34d399">On it: R-5B09 started with a narrower fix.</span></sc-if>
+        <span style="font-size: 11px; color: #8b9aa8; align-self: flex-end">09:55 · read your screenshot</span>
+      </div>
+      <sc-if value="{{fixOpen}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px">
+          <button class="tg-btn" onClick="{{fix}}" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Fix it narrower</button>
+          <button class="tg-btn" style="font-family: inherit; font-size: 13.5px; background: #2b5278; color: #fff; border: 0; border-radius: 8px; height: 36px">Not now</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="flex: none; background: #17212b; padding: 6px 10px 20px; display: flex; flex-direction: column; gap: 6px">
+    <span style="display: flex; gap: 5px; font-size: 12px; font-family: 'Geist Mono', monospace">
+      <span style="background: #0e1621; color: #60a5fa; border-radius: 999px; padding: 3px 8px">/status</span>
+      <span style="background: #0e1621; color: #60a5fa; border-radius: 999px; padding: 3px 8px">/runs</span>
+      <span style="background: #0e1621; color: #60a5fa; border-radius: 999px; padding: 3px 8px">/new</span>
+      <span style="background: #0e1621; color: #60a5fa; border-radius: 999px; padding: 3px 8px">/mute 1h</span>
+    </span>
+    <span style="display: flex; gap: 8px; align-items: center">
+      <label for="tg" style="position: absolute; left: -9999px">Message</label>
+      <input id="tg" placeholder="Message, or hold the mic" style="flex: 1; font-family: inherit; font-size: 14.5px; background: #0e1621; color: #f4f4f5; border: 0; border-radius: 18px; padding: 0 14px; height: 36px">
+      <button aria-label="Record a voice note" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #2b5278; color: #fff">●</button>
+    </span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { ship: null, started: false, step: 0, fix: false }; }
+componentDidMount() { this.t = setInterval(() => this.state.started && this.setState({ step: Math.min(this.state.step + 1, 4) }), 1700); }
+componentWillUnmount() { clearInterval(this.t); }
+renderVals() {
+const s = this.state;
+const names = ['Plan', 'Code', 'Test', 'Review'];
+const heights = [8, 14, 20, 12, 18, 22, 10, 16, 21, 13, 8, 17, 22, 15, 9, 19, 12, 7];
+return {
+  shipPending: !s.ship,
+  shipHead: s.ship === 'yes' ? '✓ Approved by you · shipping' : s.ship === 'no' ? '✕ Rejected by you · Bolt will rework' : 'Tether · needs you',
+  shipColor: s.ship === 'yes' ? '#34d399' : s.ship === 'no' ? '#f87171' : '#fbbf24',
+  shipEdited: s.ship ? ' · edited' : '',
+  ship: () => this.setState({ ship: 'yes' }), hold: () => this.setState({ ship: 'no' }),
+  wave: heights.map((h) => 'display: block; width: 3px; height: ' + h + 'px; background: #c9d1d9; border-radius: 2px'),
+  notStarted: !s.started, started: s.started,
+  start: () => this.setState({ started: true, step: 0 }),
+  runEdited: s.started ? (s.step >= 4 ? ' · done, waiting on Lens' : ' · live') : '',
+  steps: names.map((label, i) => ({ label: i < s.step ? label + ' ✓' : label, cls: i === s.step ? 'tg-cur' : '',
+    bar: 'display: block; height: 4px; border-radius: 999px; background: ' + (i < s.step ? '#34d399' : '#60a5fa') + '; width: ' + (i < s.step ? '100%' : '0'),
+    color: i === s.step ? '#93c5fd' : i < s.step ? '#34d399' : '#8b9aa8' })),
+  fixAsked: s.fix, fixOpen: !s.fix, fix: () => this.setState({ fix: true })
+};
+}
+}
+</script>
+</body>
+</html>

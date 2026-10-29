@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New team</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #0a0a0b; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #f4f4f5; display: flex">
+  <dc-import name="Sidebar" active="none" hint-size="244px,900px"></dc-import>
+  <main style="flex: 1; display: flex; justify-content: center; padding: 26px 40px; overflow: hidden">
+    <div style="width: 820px; display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <h1 style="margin: 0; flex: 1; font-size: 22px; font-weight: 600">New team</h1>
+        <button style="font-family: inherit; font-size: 14px; background: transparent; color: #f4f4f5; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 0 14px; height: 36px">Cancel</button>
+        <button style="font-family: inherit; font-size: 14px; font-weight: 500; background: #f4f4f5; color: #09090b; border: 0; border-radius: 8px; padding: 0 14px; height: 36px">Create team</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="n" style="font-size: 13px; color: #a1a1aa">Name</label>
+        <input id="n" value="tether-dev" style="font-family: inherit; font-size: 15px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 12px; height: 40px">
+      </div>
+
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+        <legend style="font-size: 13px; color: #a1a1aa; margin-bottom: 8px">Where it lives</legend>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+          <label style="border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #111113; padding: 12px; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><input type="radio" name="w"> <b style="font-weight: 500">Tether</b></span><span style="font-size: 12px; color: #a1a1aa">A channel inside Tether. You and your agents.</span></label>
+          <label style="border: 1px solid #f4f4f5; border-radius: 10px; background: #18181b; padding: 12px; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><input type="radio" name="w" checked> <b style="font-weight: 500">Slack</b></span><span style="font-size: 12px; color: #a1a1aa">A Slack channel. Teammates join in; agents post as themselves.</span><span style="font-size: 12px; font-family: 'Geist Mono', monospace; color: #34d399">workspace connected · #tether-dev ▾</span></label>
+          <label style="border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #111113; padding: 12px; display: flex; flex-direction: column; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><input type="radio" name="w"> <b style="font-weight: 500">Telegram</b></span><span style="font-size: 12px; color: #a1a1aa">A Telegram group. Add the Tether bot, send the pairing code.</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+        <legend style="font-size: 13px; color: #a1a1aa; margin-bottom: 8px">Agents · they keep one memory across all their teams</legend>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+          <label style="border: 1px solid #f4f4f5; border-radius: 10px; background: #18181b; padding: 10px; display: flex; gap: 10px; align-items: center"><input type="checkbox" checked><span style="width: 28px; height: 28px; border-radius: 7px; background: #a8a29e"></span><span style="display: flex; flex-direction: column"><b style="font-size: 13px; font-weight: 500">Scout</b><span style="font-size: 11px; color: #a1a1aa">plans</span></span></label>
+          <label style="border: 1px solid #f4f4f5; border-radius: 10px; background: #18181b; padding: 10px; display: flex; gap: 10px; align-items: center"><input type="checkbox" checked><span style="width: 28px; height: 28px; border-radius: 7px; background: #3b82f6"></span><span style="display: flex; flex-direction: column"><b style="font-size: 13px; font-weight: 500">Bolt</b><span style="font-size: 11px; color: #a1a1aa">code</span></span></label>
+          <label style="border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #111113; padding: 10px; display: flex; gap: 10px; align-items: center"><input type="checkbox"><span style="width: 28px; height: 28px; border-radius: 7px; background: #a3a635"></span><span style="display: flex; flex-direction: column"><b style="font-size: 13px; font-weight: 500">Probe</b><span style="font-size: 11px; color: #a1a1aa">tests</span></span></label>
+          <label style="border: 1px solid #f4f4f5; border-radius: 10px; background: #18181b; padding: 10px; display: flex; gap: 10px; align-items: center"><input type="checkbox" checked><span style="width: 28px; height: 28px; border-radius: 7px; background: #f87171"></span><span style="display: flex; flex-direction: column"><b style="font-size: 13px; font-weight: 500">Lens</b><span style="font-size: 11px; color: #a1a1aa">review</span></span></label>
+        </div>
+        <a href="#" style="font-size: 13px; color: #93c5fd; text-decoration: none">+ New agent…</a>
+      </fieldset>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+          <legend style="font-size: 13px; color: #a1a1aa; margin-bottom: 8px">Who can approve</legend>
+          <label style="display: flex; gap: 8px; align-items: center; font-size: 14px"><input type="radio" name="a" checked> Any teammate in the channel</label>
+          <label style="display: flex; gap: 8px; align-items: center; font-size: 14px"><input type="radio" name="a"> Chosen people…</label>
+          <span style="font-size: 12px; color: #a1a1aa">Tether checks who pressed the button.</span>
+        </fieldset>
+        <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+          <legend style="font-size: 13px; color: #a1a1aa; margin-bottom: 8px">How much needs sign-off</legend>
+          <div role="radiogroup" aria-label="Approval level" style="display: flex; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; overflow: hidden; width: 300px">
+            <button role="radio" aria-checked="false" style="flex: 1; font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 0; height: 32px">Tight</button>
+            <button role="radio" aria-checked="true" style="flex: 1; font-family: inherit; font-size: 13px; background: #f4f4f5; color: #09090b; border: 0; height: 32px">Balanced</button>
+            <button role="radio" aria-checked="false" style="flex: 1; font-family: inherit; font-size: 13px; background: transparent; color: #d4d4d8; border: 0; height: 32px">Loose</button>
+          </div>
+          <span style="font-size: 12px; color: #a1a1aa">Balanced: shipping and spending over the limit need a person.</span>
+        </fieldset>
+      </div>
+
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; gap: 16px; align-items: flex-end">
+        <legend style="font-size: 13px; color: #a1a1aa; margin-bottom: 8px">Limits for this team</legend>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #a1a1aa">Per day <input value="$10" style="font-family: inherit; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 10px; height: 36px; width: 120px"></label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #a1a1aa">Runs per day <input value="20" style="font-family: inherit; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 10px; height: 36px; width: 120px"></label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #a1a1aa">Project <input value="agent-orchestrator" style="font-family: inherit; font-size: 14px; background: #111113; color: #f4f4f5; border: 1px solid #666670; border-radius: 8px; padding: 0 10px; height: 36px; width: 220px"></label>
+      </fieldset>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

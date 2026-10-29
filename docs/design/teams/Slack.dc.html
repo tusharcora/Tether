@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slack team illustration</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes sl-dot{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@keyframes sl-fill{from{width:0}to{width:100%}}
+@keyframes sl-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.sl-d1{animation:sl-dot 1.2s infinite}.sl-d2{animation:sl-dot 1.2s .2s infinite}.sl-d3{animation:sl-dot 1.2s .4s infinite}
+.sl-cur{animation:sl-fill 1.6s linear infinite}
+.sl-in{animation:sl-in .25s ease-out both}
+.sl-btn:hover{filter:brightness(.95)}
+@media (prefers-reduced-motion: reduce){.sl-d1,.sl-d2,.sl-d3,.sl-cur,.sl-in{animation:none}}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; background: #ffffff; font-family: Geist, ui-sans-serif, system-ui, sans-serif; color: #1d1c1d; display: flex">
+  <nav aria-label="Workspace" style="width: 200px; flex: none; background: #2f2a33; color: #e8e4ea; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+    <b style="padding: 0 8px 12px; font-size: 15px">Your workspace</b>
+    <span style="padding: 4px 8px; color: #bdb5c2">Channels</span>
+    <a href="#" style="padding: 4px 8px; border-radius: 6px; color: #e8e4ea; text-decoration: none"># general</a>
+    <a href="#" style="padding: 4px 8px; border-radius: 6px; background: #4a6fd1; color: #ffffff; text-decoration: none; font-weight: 600"># tether-dev</a>
+    <span style="padding: 12px 8px 4px; color: #bdb5c2">Apps</span>
+    <a href="#" style="padding: 4px 8px; color: #e8e4ea; text-decoration: none">Tether · Home tab</a>
+  </nav>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+    <header style="height: 50px; flex: none; border-bottom: 1px solid #e3e1e4; display: flex; align-items: center; gap: 10px; padding: 0 18px"><b style="font-size: 16px"># tether-dev</b><span style="font-size: 13px; color: #616061">Maya, tushar · agents Scout, Bolt, Lens</span><span style="flex: 1"></span><span style="font-size: 12px; color: #616061; border: 1px solid #e3e1e4; border-radius: 6px; padding: 3px 8px">Illustration · click the buttons</span></header>
+    <div style="flex: 1; min-height: 0; overflow: hidden; padding: 14px 18px; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; font-size: 14.5px; line-height: 1.45">
+
+      <div style="display: flex; gap: 10px"><span style="width: 34px; height: 34px; flex: none; border-radius: 6px; background: #c7a27c; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600">M</span><div style="flex: 1"><b>Maya</b> <span style="font-size: 12px; color: #616061">10:00</span>
+        <div><span style="font-family: 'Geist Mono', monospace; font-size: 13px; background: #f4ede4; border-radius: 4px; padding: 1px 5px">/tether status</span></div>
+        <div style="margin-top: 6px; border: 1px solid #e3e1e4; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; width: 560px; font-size: 13.5px">
+          <b>agent-orchestrator · now</b>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #1d9bd1"></span><span style="flex: 1">Probe · loop “Keep main green”</span><span style="width: 110px; height: 5px; background: #e3e1e4; border-radius: 999px"><span style="display: block; width: 33%; height: 5px; background: #1d9bd1; border-radius: 999px"></span></span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #616061">2/6 · $1.40</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: #1d9bd1"></span><span style="flex: 1">Bolt · R-5B02 ⌘J quirk</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #616061">{{stepName}}</span></div>
+          <div style="display: flex; gap: 8px; align-items: center"><span style="width: 8px; height: 8px; border-radius: 999px; background: {{needsDot}}"></span><span style="flex: 1">Lens · ship R-5B02?</span><span style="font-size: 12px; color: {{needsColor}}">{{needsLabel}}</span></div>
+          <div style="display: flex; gap: 6px"><button class="sl-btn" style="font-family: inherit; font-size: 13px; background: #fff; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 10px; height: 28px">Open Tether</button><button class="sl-btn" style="font-family: inherit; font-size: 13px; background: #fff; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 10px; height: 28px">Mute 1 h</button></div>
+        </div>
+      </div></div>
+
+      <div style="display: flex; gap: 10px"><span style="width: 34px; height: 34px; flex: none; border-radius: 6px; background: #3b82f6"></span><div style="flex: 1"><b>Bolt</b> <span style="font-size: 11px; background: #e3e1e4; border-radius: 3px; padding: 0 4px">APP</span> <span style="font-size: 12px; color: #616061">10:02 · edited live</span>
+        <div style="margin-top: 4px; border: 1px solid #e3e1e4; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; width: 560px">
+          <span style="font-size: 13.5px"><b>R-5B02</b> · ⌘J does nothing on the full-screen chat</span>
+          <div style="display: flex; gap: 4px">
+            <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
+                <span style="height: 5px; background: #e3e1e4; border-radius: 999px; overflow: hidden"><span class="{{s.cls}}" style="{{s.bar}}"></span></span>
+                <span style="font-size: 12px; color: {{s.color}}">{{s.label}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center"><button class="sl-btn" style="font-family: inherit; font-size: 13px; background: #fff; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 10px; height: 28px">View run</button><button class="sl-btn" style="font-family: inherit; font-size: 13px; background: #fff; color: #e01e5a; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 10px; height: 28px">Stop</button><span style="flex: 1"></span><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #616061">$0.08 · nemotron-3.5 · free</span></div>
+        </div>
+      </div></div>
+
+      <div style="display: flex; gap: 10px"><span style="width: 34px; height: 34px; flex: none; border-radius: 6px; background: #f87171"></span><div style="flex: 1"><b>Lens</b> <span style="font-size: 11px; background: #e3e1e4; border-radius: 3px; padding: 0 4px">APP</span> <span style="font-size: 12px; color: #616061">10:03</span>
+        <sc-if value="{{pending}}" hint-placeholder-val="{{true}}">
+          <div class="sl-in" style="margin-top: 4px; border: 1px solid #e3e1e4; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; width: 560px">
+            <b style="font-size: 14px">Ship “⌘J does nothing on the full-screen chat”?</b>
+            <pre style="margin: 0; font-family: 'Geist Mono', monospace; font-size: 12px; line-height: 1.5; background: #f8f8f8; border: 1px solid #e3e1e4; border-radius: 6px; padding: 6px 8px; white-space: pre"><span style="color: #616061">web/src/App.tsx</span>
+<span style="color: #b42318">-  toggle: () =&gt; (mode === 'closed' ? open() : close()),</span>
+<span style="color: #027a48">+  toggle: () =&gt; onChatScreen ? focusComposer() : (mode === 'closed' ? open() : close()),</span></pre>
+            <span style="font-size: 12px; color: #616061; font-family: 'Geist Mono', monospace">npm test passed · tsc passed · +9 −3 · any teammate can approve</span>
+            <div style="display: flex; gap: 6px"><button class="sl-btn" onClick="{{approve}}" style="font-family: inherit; font-size: 13.5px; font-weight: 600; background: #007a5a; color: #fff; border: 0; border-radius: 6px; padding: 0 14px; height: 30px; cursor: pointer">Approve</button><button class="sl-btn" onClick="{{reject}}" style="font-family: inherit; font-size: 13.5px; background: #fff; color: #1d1c1d; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 14px; height: 30px; cursor: pointer">Reject</button><button class="sl-btn" style="font-family: inherit; font-size: 13.5px; background: #fff; color: #1d1c1d; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 14px; height: 30px">Full diff ↗</button></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{decided}}" hint-placeholder-val="{{false}}">
+          <div class="sl-in" style="margin-top: 4px; border: 1px solid #e3e1e4; border-radius: 8px; padding: 8px 12px; width: 560px; font-size: 13.5px; color: {{decidedColor}}">{{decidedText}} <button onClick="{{undo}}" style="font-family: inherit; font-size: 12px; background: transparent; border: 0; color: #1264a3; cursor: pointer">Undo</button></div>
+        </sc-if>
+      </div></div>
+
+      <sc-if value="{{approved}}" hint-placeholder-val="{{false}}">
+        <div class="sl-in" style="display: flex; gap: 10px"><span style="width: 34px; height: 34px; flex: none; border-radius: 6px; background: #3b82f6"></span><div style="flex: 1"><b>Bolt</b> <span style="font-size: 11px; background: #e3e1e4; border-radius: 3px; padding: 0 4px">APP</span> <span style="font-size: 12px; color: #616061">10:05</span>
+          <div>Shipped. Opened PR #19 and asked <span style="color: #1264a3; background: #e8f5fa; padding: 0 2px">@Maya</span> to review.</div>
+          <div style="margin-top: 6px; border-left: 3px solid #c4c3c5; padding: 2px 10px; width: 520px; font-size: 13px"><b style="color: #1264a3">PR #19 · ⌘J does nothing on the full-screen chat</b><div style="color: #616061">tusharcora/Tether · +9 −3 · checks passing</div></div>
+        </div></div>
+      </sc-if>
+
+      <div style="display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: #616061"><span style="width: 16px; height: 16px; border-radius: 4px; background: #a8a29e"></span>Scout is reading 4 files<span class="sl-d1">.</span><span class="sl-d2">.</span><span class="sl-d3">.</span></div>
+    </div>
+    <div style="padding: 0 18px 16px; flex: none">
+      <div style="border: 1px solid #c4c3c5; border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 14.5px; color: #616061">Message #tether-dev</span>
+        <span style="display: flex; gap: 6px; font-size: 12px; color: #616061"><span style="border: 1px solid #e3e1e4; border-radius: 4px; padding: 1px 6px">/tether run</span><span style="border: 1px solid #e3e1e4; border-radius: 4px; padding: 1px 6px">/tether status</span><span style="border: 1px solid #e3e1e4; border-radius: 4px; padding: 1px 6px">@Bolt</span><span style="border: 1px solid #e3e1e4; border-radius: 4px; padding: 1px 6px">⋯ Ask Tether about this message</span></span>
+      </div>
+    </div>
+  </main>
+
+  <aside aria-label="Thread" style="width: 330px; flex: none; border-left: 1px solid #e3e1e4; display: flex; flex-direction: column">
+    <header style="height: 50px; flex: none; border-bottom: 1px solid #e3e1e4; display: flex; align-items: center; padding: 0 14px"><b style="font-size: 15px; flex: 1">Thread</b><span style="font-size: 12px; color: #616061"># tether-dev</span></header>
+    <div style="flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; line-height: 1.45">
+      <div style="display: flex; gap: 8px"><span style="width: 28px; height: 28px; flex: none; border-radius: 6px; background: #c7a27c; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">M</span><div><b>Maya</b> <span style="font-size: 11px; color: #616061">09:58</span><div><span style="color: #1264a3; background: #e8f5fa; padding: 0 2px">@Scout</span> what's left before PR #18 can merge?</div></div></div>
+      <div style="display: flex; gap: 8px"><span style="width: 28px; height: 28px; flex: none; border-radius: 6px; background: #a8a29e"></span><div style="flex: 1"><b>Scout</b> <span style="font-size: 11px; background: #e3e1e4; border-radius: 3px; padding: 0 4px">APP</span>
+        <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px">
+          <label style="display: flex; gap: 6px; align-items: center"><input type="checkbox" checked disabled> Tests green (load timeouts pass alone)</label>
+          <label style="display: flex; gap: 6px; align-items: center"><input type="checkbox" checked disabled> Lens reviewed the chat menu fix</label>
+          <label style="display: flex; gap: 6px; align-items: center"><input type="checkbox" disabled> One real NVIDIA turn</label>
+        </div>
+        <div style="margin-top: 4px"><span style="color: #1264a3; background: #e8f5fa; padding: 0 2px">@tushar</span> can you connect a fresh NVIDIA key?</div>
+        <div style="margin-top: 6px; display: flex; gap: 6px"><button class="sl-btn" style="font-family: inherit; font-size: 12.5px; background: #fff; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 8px; height: 26px">Remind me at 6 pm</button><button class="sl-btn" style="font-family: inherit; font-size: 12.5px; background: #fff; border: 1px solid #c4c3c5; border-radius: 6px; padding: 0 8px; height: 26px">Open Accounts</button></div>
+      </div></div>
+      <div style="display: flex; gap: 8px"><span style="width: 28px; height: 28px; flex: none; border-radius: 999px; background: #26262b; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">T</span><div><b>tushar</b> <span style="font-size: 11px; color: #616061">10:01</span><div>Will do tonight. <span style="color: #1264a3; background: #e8f5fa; padding: 0 2px">@Scout</span> merge it once that turn works.</div></div></div>
+      <div style="display: flex; gap: 8px"><span style="width: 28px; height: 28px; flex: none; border-radius: 6px; background: #a8a29e"></span><div><b>Scout</b> <span style="font-size: 11px; background: #e3e1e4; border-radius: 3px; padding: 0 4px">APP</span><div>Got it: I'll watch for the first NVIDIA turn and ask here before merging.</div><div style="font-size: 12px; color: #616061; margin-top: 2px">remembered for this team</div></div></div>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+constructor(p) { super(p); this.state = { step: 1, decision: null }; }
+componentDidMount() { this.t = setInterval(() => this.setState({ step: (this.state.step + 1) % 4 }), 1800); }
+componentWillUnmount() { clearInterval(this.t); }
+renderVals() {
+const names = ['Plan', 'Code', 'Test', 'Review'];
+const cur = this.state.step;
+const d = this.state.decision;
+return {
+  stepName: names[cur].toLowerCase() + 'ing',
+  steps: names.map((label, i) => ({ label: i < cur ? label + ' ✓' : label,
+    cls: i === cur ? 'sl-cur' : '',
+    bar: 'display: block; height: 5px; border-radius: 999px; background: ' + (i < cur ? '#2eb67d' : '#1d9bd1') + '; width: ' + (i < cur ? '100%' : i === cur ? '50%' : '0'),
+    color: i === cur ? '#1264a3' : i < cur ? '#2eb67d' : '#616061' })),
+  pending: !d, decided: !!d, approved: d === 'approve',
+  decidedText: d === 'approve' ? '✓ Approved by you · 10:05 · Bolt is shipping it' : '✕ Rejected by you · 10:05 · Bolt will rework it',
+  decidedColor: d === 'approve' ? '#007a5a' : '#b42318',
+  needsLabel: d === 'approve' ? 'approved' : d ? 'rejected' : 'needs a teammate', needsDot: d ? '#2eb67d' : '#ecb22e', needsColor: d ? '#007a5a' : '#9a6700',
+  approve: () => this.setState({ decision: 'approve' }), reject: () => this.setState({ decision: 'reject' }), undo: () => this.setState({ decision: null })
+};
+}
+}
+</script>
+</body>
+</html>
