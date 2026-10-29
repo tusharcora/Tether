@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { OrModel } from '../../../src/openrouter';
+import { MessageQueue } from '../components/assistant-ui/elements/message-queue';
 import { AIComposer } from '../components/composer/AIComposer';
 import { cn } from '../ui/cn';
 import { usePoll } from '../hooks';
@@ -44,7 +45,7 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
   const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
   const send = (text: string, m?: string) => {
     const t = text.trim().slice(0, MESSAGE_MAX);
-    if (!t || chat.streaming) return;
+    if (!t) return;
     setDraft('');
     const attachments = files;
     setFiles([]);
@@ -82,6 +83,7 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
       onModelChange={setModel}
       loading={!!chat.streaming}
       onStop={chat.stop}
+      queues
       onSubmit={send}
       files={files.map((f) => f.name)}
       onFiles={(f) => void read(f)}
@@ -128,6 +130,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
       </div>
       <div className={p.wide ? 'px-12 pt-3 pb-5' : 'p-3'}>
         <div className={column}>
+          {chat.queue.length ? <MessageQueue className="mb-2 max-w-none" running={chat.messages.findLast((m) => m.role === 'you')?.text ?? ''} queued={chat.queue} onCancel={chat.unqueue} /> : null}
           <ChatComposer chat={chat} project={p.project} context={p.context} placeholder={p.placeholder} onSent={() => (pinned.current = true)} />
         </div>
       </div>

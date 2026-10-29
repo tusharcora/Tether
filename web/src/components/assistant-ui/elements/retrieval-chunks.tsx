@@ -1,4 +1,4 @@
-// assistant-ui element (github.com/assistant-ui/assistant-ui, MIT), verbatim but for import paths.
+// assistant-ui element (github.com/assistant-ui/assistant-ui, MIT), verbatim but for import paths and `onOpen`, which makes each chunk a button.
 "use client";
 
 import type { ComponentProps } from "react";
@@ -20,16 +20,18 @@ export function RetrievalChunks({
   chunks,
   visibleCount,
   searching,
+  onOpen,
   className,
   ...props
 }: Omit<
   ComponentProps<"div">,
-  "children" | "query" | "chunks" | "visibleCount" | "searching"
+  "children" | "query" | "chunks" | "visibleCount" | "searching" | "onOpen"
 > & {
   query: string;
   chunks: readonly RetrievalChunk[];
   visibleCount: number;
   searching: boolean;
+  onOpen?: (id: string) => void;
 }) {
   return (
     <div
@@ -64,9 +66,22 @@ export function RetrievalChunks({
         {take(chunks, visibleCount).map((chunk) => (
           <div
             key={chunk.id}
+            {...(onOpen && {
+              role: "button",
+              tabIndex: 0,
+              "aria-label": `Open ${chunk.source}`,
+              onClick: () => onOpen(chunk.id),
+              onKeyDown: (event: React.KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onOpen(chunk.id);
+              },
+            })}
             className={cn(
               paper,
               "fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex flex-col gap-1.5 rounded-2xl px-3.5 py-2.5 duration-300",
+              onOpen &&
+                "hover:bg-foreground/[0.03] focus-visible:ring-foreground/20 cursor-pointer outline-none focus-visible:ring-1",
             )}
           >
             <div className="flex items-baseline gap-2">

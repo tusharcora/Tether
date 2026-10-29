@@ -36,7 +36,7 @@ describe('the prompt', () => {
   });
   it('keeps the picked model per project across a remount', () => {
     localStorage.clear();
-    const chat = { messages: [], models: ['opus', 'sonnet', 'haiku'], model: 'sonnet', loading: false, send: vi.fn(), stop: vi.fn() } as never;
+    const chat = { messages: [], models: ['opus', 'sonnet', 'haiku'], model: 'sonnet', loading: false, queue: [], send: vi.fn(), stop: vi.fn() } as never;
     const ui = <Chat chat={chat} project="api" context={{ page: 'home' }} onGo={() => {}} />;
     const a = render(ui);
     expect(screen.getAllByText('sonnet').length).toBeGreaterThan(0);

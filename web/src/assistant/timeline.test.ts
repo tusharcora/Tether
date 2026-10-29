@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolRun } from './api';
-import { stepOf, thinkingSummary, timeline } from './timeline';
+import { searchLinks, stepOf, thinkingSummary, timeline, webCall } from './timeline';
 
 let n = 0;
 const run = (code: string, o: Partial<ToolRun> = {}): ToolRun => ({ id: `t${++n}`, code, output: 'ok', ms: 12, ...o });
@@ -21,6 +21,7 @@ describe('stepOf: a script becomes a step with a label from what it called', () 
     ['return [await github.prs("o/r"), await github.checks("o/r", 4)];', 'Checked GitHub: prs, checks'],
     ['return mcp.linear.issues({});', 'Used linear'],
     ['return http.get("https://x.dev");', 'Called a web API'],
+    ['http.search("vitest 5")', 'Searched the web for "vitest 5"'],
     ['return codemode.describe("repo");', 'Looked up the tools'],
     ['return 1 + 1;', 'Ran a script'],
   ])('%s → %s', (code, label) => {
@@ -62,6 +63,26 @@ describe('timeline', () => {
     expect(timeline(tools, false).some((s) => s.live)).toBe(false);
     // a live step never merges with the finished one before it
     expect(timeline([run('repo.read("a")'), run('repo.read("b")', { output: undefined })], true)).toHaveLength(2);
+  });
+});
+
+describe('web steps', () => {
+  it('tells the agent’s search from a page read, and leaves a script’s saved request alone', () => {
+    expect(webCall('http.search("react 19")')).toEqual({ search: 'react 19' });
+    expect(webCall('http.get("https://react.dev/blog")')).toEqual({ url: 'https://react.dev/blog' });
+    expect(webCall('return http.get("my-saved-request")')).toBeUndefined();
+    expect(webCall('return repo.read("a.ts")')).toBeUndefined();
+  });
+
+  it('reads the links a search returned, skipping a list cut short', () => {
+    const out = 'Web search results for query: "q"\n\nLinks: [{"title":"A","url":"https://a.dev"},{"title":"B","url":"https://b.dev/x"},{"url":"no title"}]\n\nSummary…\nLinks: [{"title":"C","url":"https://c.dev"';
+    expect(searchLinks(out)).toEqual([{ title: 'A', url: 'https://a.dev' }, { title: 'B', url: 'https://b.dev/x' }]);
+    expect(searchLinks(undefined)).toEqual([]);
+  });
+
+  it('keeps each step’s scripts', () => {
+    const tools = [run('http.search("a")'), run('http.get("https://a.dev")')];
+    expect(timeline(tools, false)[0]!.runs).toEqual(tools);
   });
 });
 
