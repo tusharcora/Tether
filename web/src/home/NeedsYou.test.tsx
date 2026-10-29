@@ -6,6 +6,7 @@ import { api, type AttentionItem } from '../api';
 import type { Poll } from '../hooks';
 import { calls, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import type { AccountsView } from '../settings/accountsApi';
 import { NeedsYou } from './NeedsYou';
 
 const now = Date.now();
@@ -108,6 +109,28 @@ describe('Needs you', () => {
     setup(failing);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(failing.refresh).toHaveBeenCalled();
+  });
+
+  it('first launch: offers free models first when nothing can run, until something can', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    routeApi({ 'POST /api/accounts/openrouter': { url: 'https://openrouter.ai/auth?state=s' }, 'GET /api/accounts/openrouter/flow': { state: 'pending', url: 'https://openrouter.ai/auth?state=s' } });
+    const accounts = (setupNeeded: boolean): Poll<AccountsView> => ({ data: { user: 'tushar', providers: [{ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', available: true, scopes: [], account: null, setup: setupNeeded, defaults: null }] }, error: undefined, fails: 0, refresh: vi.fn(async () => {}) });
+    const onGo = vi.fn();
+    const { unmount } = renderApp(<NeedsYou poll={poll({ items: [] })} onGo={onGo} onChanged={() => {}} accounts={accounts(true)} />);
+    expect(screen.getByRole('region', { name: 'Needs you' }).querySelector('.sl-sec-count')!.textContent).toBe('1');
+    expect(screen.queryByText('Nothing needs you.')).toBeNull();
+    const row = screen.getByText('Run Tether on free models').closest('li') as HTMLElement;
+    expect(within(row).getByText('Connect OpenRouter once. Approve in your browser, no key to copy. 50 free requests a day.')).toBeTruthy();
+    fireEvent.click(within(row).getByRole('button', { name: 'I have keys' }));
+    expect(onGo).toHaveBeenCalledWith({ tab: 'settings', id: 'agents' });
+    expect(within(row).getByRole('button', { name: 'Connect OpenRouter' }).className).toMatch(/primary|bg-primary|ink/);
+    fireEvent.click(within(row).getByRole('button', { name: 'Connect OpenRouter' }));
+    expect(await within(row).findByText('waiting for you to approve')).toBeTruthy();
+    expect(open).toHaveBeenCalledWith('https://openrouter.ai/auth?state=s', '_blank', 'noopener');
+    unmount();
+    renderApp(<NeedsYou poll={poll({ items: [] })} onGo={onGo} onChanged={() => {}} accounts={accounts(false)} />);
+    expect(screen.queryByText('Run Tether on free models')).toBeNull();
+    expect(screen.getByText('Nothing needs you.')).toBeTruthy();
   });
 
   it('shows the ascii skeleton on first load', () => {
