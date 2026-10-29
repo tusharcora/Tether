@@ -13,7 +13,7 @@ import { Store } from '../src/store.js';
 import type { AgentAdapter, AgentRequest, AgentResult, AgentUsage } from '../src/types.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace } from '../src/workspace.js';
-import type { StreamEvent } from '../src/assistant/types.js';
+import type { ChatMessage, StreamEvent } from '../src/assistant/types.js';
 import { makeRepo, tmp } from './helpers.js';
 
 /** An agent that answers from a script: deltas, an optional Code Mode script, then the final output. */
@@ -287,5 +287,90 @@ describe('POST /api/assistant', () => {
     const t = await boot();
     expect((await t.call('POST', '/api/assistant', { ws: 'api' })).status).toBe(400);
     expect((await t.call('POST', '/api/assistant', { ws: 'nope', message: 'x' })).status).toBe(404);
+  });
+});
+
+describe('compaction', () => {
+  /** A chat of `n` turns ("alpha-1", "alpha-2", ...), on the agent that is bound now. */
+  async function chatOf(t: Awaited<ReturnType<typeof boot>>, n: number): Promise<string> {
+    let chat: string | undefined;
+    for (let i = 1; i <= n; i++) chat = (await t.turn({ message: `alpha-${i}`, ...(chat ? { chat } : {}) })).chat;
+    return chat!;
+  }
+
+  it('folds older messages into one summary, keeps the originals and the last four, and the next prompt uses the summary', async () => {
+    const t = await boot();
+    const chat = await chatOf(t, 5);
+    t.agent.reply = 'They tuned the limit.';
+    const r = await t.call('POST', '/api/assistant/compact', { ws: 'api', chat });
+    expect(r.status).toBe(200);
+    const ms = r.json.messages as ChatMessage[];
+    expect(ms).toHaveLength(11);
+    const s = ms[6]!;
+    expect(s).toMatchObject({ role: 'tether', text: 'They tuned the limit.', compact: { count: 6 } });
+    expect(ms.slice(0, 6).every((m) => m.compactedBy === s.id)).toBe(true);
+    expect(ms.slice(7).some((m) => m.compactedBy)).toBe(false);
+    expect(s.context).toMatchObject({ about: true });
+    expect(s.context!.parts.messages).toContainEqual(['Summary', 'They tuned the limit.'.length]);
+    // one model call, with the folded messages in it
+    expect(t.agent.prompts.at(-1)).toContain('alpha-1');
+    expect(readChat(t.home, 'api', chat)!.messages).toHaveLength(11);
+    t.agent.reply = 'ok';
+    await t.turn({ message: 'alpha-6', chat });
+    const prompt = t.agent.prompts.at(-1)!;
+    expect(prompt).toContain('Summary of the earlier conversation:\nThey tuned the limit.');
+    expect(prompt).not.toContain('alpha-1');
+    expect(prompt).toContain('alpha-4');
+  });
+
+  it('undoes the newest compaction, keeping turns made since', async () => {
+    const t = await boot();
+    const chat = await chatOf(t, 5);
+    await t.call('POST', '/api/assistant/compact', { ws: 'api', chat });
+    await t.turn({ message: 'alpha-6', chat });
+    const r = await t.call('POST', '/api/assistant/compact', { ws: 'api', chat, undo: true });
+    expect(r.status).toBe(200);
+    const ms = r.json.messages as ChatMessage[];
+    expect(ms).toHaveLength(12);
+    expect(ms.some((m) => m.compact || m.compactedBy)).toBe(false);
+    expect(readChat(t.home, 'api', chat)!.messages.map((m) => m.text).filter((x) => x.startsWith('alpha'))).toEqual(['alpha-1', 'alpha-2', 'alpha-3', 'alpha-4', 'alpha-5', 'alpha-6']);
+    expect((await t.call('POST', '/api/assistant/compact', { ws: 'api', chat, undo: true })).status).toBe(409);
+  });
+
+  it('changes nothing when the summary call fails, and refuses a chat too short to compact', async () => {
+    const t = await boot();
+    const chat = await chatOf(t, 5);
+    const before = readChat(t.home, 'api', chat)!.messages;
+    t.agent.run = async () => ({ output: '', exitCode: 1, error: 'model is down' });
+    const r = await t.call('POST', '/api/assistant/compact', { ws: 'api', chat });
+    expect(r.status).toBe(502);
+    expect(r.json.error).toContain('model is down');
+    expect(readChat(t.home, 'api', chat)!.messages).toEqual(before);
+    const t2 = await boot();
+    const c2 = await chatOf(t2, 2);
+    expect((await t2.call('POST', '/api/assistant/compact', { ws: 'api', chat: c2 })).status).toBe(409);
+  });
+
+  it('compacts by itself before a turn that would fill the context, and says so in the stream', async () => {
+    const t = await boot();
+    const claude = new (class extends Scripted {
+      override readonly id = 'claude' as never;
+    })();
+    t.registry.register(claude);
+    link(t.home, 'orchestrator', { agent: 'claude', model: 'opus' });
+    claude.usage = { promptTokens: 50_000 };
+    const chat = await chatOf(t, 3);
+    const calm = await t.turn({ message: 'alpha-4', chat });
+    expect(calm.events.some((e) => e.type === 'compacted')).toBe(false);
+    claude.usage = { promptTokens: 185_000 };
+    await t.turn({ message: 'alpha-5', chat });
+    claude.reply = 'Summary of alphas.';
+    const full = await t.turn({ message: 'alpha-6', chat });
+    const ev = full.events.find((e) => e.type === 'compacted') as Extract<StreamEvent, { type: 'compacted' }> | undefined;
+    expect(ev).toBeTruthy();
+    const s = ev!.messages.find((m) => m.compact)!;
+    expect(s).toMatchObject({ text: 'Summary of alphas.', compact: { auto: true } });
+    expect(full.done!.message.error).toBeUndefined();
+    expect(readChat(t.home, 'api', chat)!.messages.filter((m) => m.compactedBy).length).toBe(s.compact!.count);
   });
 });

@@ -18,7 +18,7 @@ export interface PromptInput {
 const SEL = { run: 'the run', file: 'the file', note: 'the note', request: 'the saved API request', workflow: 'the workflow', bot: 'the crew bot' } as const;
 
 /** The pieces the prompt is made of, so its parts can be measured (the context ring) from the same text. */
-function pieces(i: PromptInput) {
+function pieces(i: Pick<PromptInput, 'history' | 'needs' | 'attachments'>) {
   // folded messages are left out: their summary stands in for them
   const live = i.history.filter((m) => !m.compactedBy && !m.compact);
   const window = live.slice(-8);
@@ -31,13 +31,20 @@ function pieces(i: PromptInput) {
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
+const keep = (rows: [string, number][]) => rows.filter(([, c]) => c > 0);
+
+/** The conversation part of a prompt, in characters: the window of earlier messages, a summary, the message, its files. */
+export function messagesPart(i: Pick<PromptInput, 'history' | 'message' | 'attachments'>): [string, number][] {
+  const p = pieces({ ...i, needs: [] });
+  return keep([[plural(p.turns, 'earlier message'), p.hist.length], ['Summary', p.summary.length], ['This message', i.message.length], [plural(i.attachments?.length ?? 0, 'attached file'), p.files.length]]);
+}
+
 /** What `text` (built from `i`) is made of, in characters; Tether's own instructions are the rest. Tools are measured by the turn. */
 export function promptParts(i: PromptInput, text: string): Omit<ContextUse['parts'], 'tools'> {
   const p = pieces(i);
-  const keep = (rows: [string, number][]) => rows.filter(([, c]) => c > 0);
   const project = (i.project ? i.project.name.length + (i.project.blurb?.length ?? 0) : 0) + p.needs.length + i.runs.join('\n').length + i.workflows.join(', ').length;
   const memory = i.notes?.length ?? 0;
-  const messages = keep([[plural(p.turns, 'earlier message'), p.hist.length], ['Summary', p.summary.length], ['This message', i.message.length], [plural(i.attachments?.length ?? 0, 'attached file'), p.files.length]]);
+  const messages = messagesPart(i);
   const rest = text.length - project - memory - messages.reduce((a, [, c]) => a + c, 0);
   return { prompt: keep([['Who Tether is', Math.max(0, rest)], ['Project, page and runs', project]]), memory: keep([['Notes from the graph', memory]]), messages };
 }

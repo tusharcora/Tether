@@ -18,7 +18,8 @@ import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
 import { loadAllow, newChatId, readChat, saveChat, titleOf, type Chat } from './history.js';
-import { knownSize } from './context.js';
+import { compactChat } from './compact.js';
+import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type StreamEvent, type ToolRun } from './types.js';
@@ -115,6 +116,18 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   };
   const fail = (error: string) => done({ id, role: 'tether', text: redact(text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
   if (!c.registry.has(agent)) return fail(`"${agent}" is not set up. Link a model to Tether in the Crew tab.`);
+  const latest = latestContext(chat.messages)?.use;
+  if (latest && overflows(latest, you.text.length + attachments.reduce((a, x) => a + x.text.length, 0))) {
+    // the context would run full: summarize older messages first, and say so in the thread
+    try {
+      if (await compactChat(c, chat, { agent, model: body.model || bound, auto: true, signal })) {
+        saveChat(c.home, o.ws, chat);
+        emit({ type: 'compacted', messages: chat.messages });
+      }
+    } catch {
+      /* the turn goes on uncompacted */
+    }
+  }
 
   const scratch = o.root ? undefined : mkdtempSync(join(tmpdir(), 'tether-assistant-'));
   const cwd = o.root ?? scratch!;
