@@ -30,7 +30,6 @@
 .start-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; }
 .start-picks li { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .start-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); }
-.elapsed { font-family: var(--font-code); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mut); }
 /* Activity: the demo's .feed, a 44 px mono time column, then the step's name and what it did in the kind's colour */
 .act-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
 .act-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
@@ -62,3 +61,21 @@
 .inbox-eyebrow { margin: 0; font-family: var(--font-code); font-size: 11.5px; color: var(--mut); }
 .inbox-title { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .inbox-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Agents running (agent-work board): a spinner or an amber dot, the bot's face and task, what happens now; Review on a run that waits */
+.ar-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--s1); font-size: 13.5px; }
+.ar-head { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.ar-head b { font-size: 15px; font-weight: 600; }
+.ar-word { color: var(--mut); }
+.ar-gap { flex: 1; }
+.ar-rows { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ar-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.ar-mark { display: flex; flex: none; justify-content: center; width: 18px; padding-top: 2px; }
+.ar-spin { display: block; width: 14px; height: 14px; box-sizing: border-box; border: 2px solid var(--edge); border-top-color: var(--acc); border-radius: 50%; animation: ar-spin .9s linear infinite; }
+@keyframes ar-spin { to { transform: rotate(360deg); } }
+.ar-body { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.ar-task { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ar-title { min-width: 0; overflow: hidden; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; font-weight: 500; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.ar-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ar-sub { font-size: 12.5px; color: var(--mut); }
+.ar-sub.needs { color: var(--warn); }
