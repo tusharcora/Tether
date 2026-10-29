@@ -8,7 +8,7 @@ export interface InboxEntry {
 }
 
 /** What the person does with each kind, on the row's badge. */
-export const ACTION_WORD: Record<AttentionItem['kind'], string> = { question: 'answer', approval: 'approve', plan_ready: 'review', interrupted: 'resume', failed: 'retry', planning_error: 'retry', paused: 'open' };
+export const ACTION_WORD: Record<AttentionItem['kind'], string> = { question: 'answer', approval: 'approve', plan_ready: 'review', interrupted: 'resume', failed: 'retry', planning_error: 'retry', paused: 'open', free_limit: 'open' };
 
 /** One entry per item, except a run's questions, which share one entry where its newest question was. Server order kept. */
 export function groupInbox(items: AttentionItem[]): InboxEntry[] {

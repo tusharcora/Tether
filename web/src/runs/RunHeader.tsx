@@ -1,4 +1,7 @@
+import type { Allowance } from '../../../src/openrouter';
 import { fmtDur, fmtUsd, type RunView } from '../api';
+import { usePoll } from '../hooks';
+import { ALLOWANCE_MS, ALLOWANCE_PATH } from '../settings/accountsApi';
 import { Button } from '../components/beui/kit/Button';
 import { useNow } from '../home/Elapsed';
 import { fmtClock, taskTitle } from '../home/runText';
@@ -14,8 +17,10 @@ export function RunHeader({ run: r, onAct, onBack, onDetails }: { run: RunView; 
   const now = useNow(ticking);
   const ms = (r.finishedAt ?? now) - r.startedAt;
   const cap = r.pipeline.settings.maxCostUsd;
+  // a run on OpenRouter shows the free requests used today (spec §7.6)
+  const free = usePoll<Allowance>(r.pipeline.nodes.some((n) => n.agent === 'openrouter') ? ALLOWANCE_PATH : null, ALLOWANCE_MS).data;
   // a live clock while the run works; a finished or stalled run reads as a duration (3d 16h)
-  const line = `${shortRunId(r.id)} · ${r.kind === 'team' ? 'team run' : r.pipeline.name} · ${ticking ? fmtClock(ms) : fmtDur(ms)} · ${fmtUsd(r.costUsd)}${cap ? ` of ${fmtUsd(cap)}` : ''}`;
+  const line = `${shortRunId(r.id)} · ${r.kind === 'team' ? 'team run' : r.pipeline.name} · ${ticking ? fmtClock(ms) : fmtDur(ms)} · ${fmtUsd(r.costUsd)}${cap ? ` of ${fmtUsd(cap)}` : ''}${free ? ` · ${free.used}/${free.limit} free requests` : ''}`;
   return (
     <header className="run-head">
       <div>

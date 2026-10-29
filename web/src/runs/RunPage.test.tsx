@@ -7,7 +7,11 @@ import { Runs } from '../Runs';
 import { cssRule } from '../test/css';
 import { FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { tagModels } from '../../../src/openrouter';
+import fixture from '../../../test/fixtures/openrouter-models.json';
 import { ApprovalBar, gateSummary } from './ApprovalBar';
+import { LimitBar } from './LimitBar';
+import { RunFiles } from './RunFiles';
 import { RunHeader } from './RunHeader';
 import { RunNotices } from './RunNotices';
 
@@ -72,6 +76,45 @@ describe('run header, notices and approval bar', () => {
     const run = { ...r, pipeline: { ...r.pipeline, nodes: r.pipeline.nodes.map((n) => (n.id === 'ship' ? { ...n, title: 'approve' } : n)) } };
     renderApp(<ApprovalBar run={run} onAct={act0} onReviewDiff={() => {}} />);
     expect(screen.getByText('Approve this step?')).toBeTruthy();
+  });
+  it('a step out of free requests: the amber bar with Add credits, Switch model… and Wait, the files kept, the counter in the meta line', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const resetsAt = new Date(2026, 9, 29, 2, 0).getTime();
+    routeApi({
+      'GET /api/accounts/openrouter/models': { models: tagModels(fixture) },
+      'GET /api/accounts/openrouter/allowance': { used: 50, limit: 50, remaining: 0, resetsAt },
+      'GET /api/bots': { crew: [], agents: { claude: { ok: true, models: [] } } },
+      'GET /api/runs/r1/diff': '',
+    });
+    const base = makeRun();
+    const run = makeRun({
+      status: 'paused',
+      live: false,
+      pipeline: { ...base.pipeline, nodes: base.pipeline.nodes.map((n) => (n.id === 'code' ? { ...n, agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' } : n)) },
+      nodes: { ...base.nodes, code: { status: 'awaiting', attempts: 1, costUsd: 0, loops: 0, limit: { resetsAt } } },
+    });
+    const onAct = vi.fn(async () => true);
+    renderApp(<LimitBar run={run} onAct={onAct} />);
+    expect(screen.getByText('Out of free requests for today').closest('.run-approve')).toBeTruthy();
+    expect(screen.getByText('Bolt picks up where it stopped at 02:00, or keep going now on another model.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Wait until 02:00' }));
+    expect(screen.getByText('Bolt picks up where it stopped at 02:00.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch model…' }));
+    fireEvent.click(await screen.findByText('Flint'));
+    expect(onAct).toHaveBeenCalledWith('resume', { agent: 'openrouter', model: 'recursive/flint-v1.0:free' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits ↗' }));
+    expect(open).toHaveBeenCalledWith('https://openrouter.ai/settings/credits', '_blank', 'noopener');
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    expect(onAct).toHaveBeenLastCalledWith('resume');
+
+    renderApp(<RunFiles run={run} onOpen={() => {}} />);
+    expect(screen.getByText('Kept in the worktree. Nothing is lost.')).toBeTruthy();
+    renderApp(<RunHeader run={run} onAct={act0} onBack={() => {}} onDetails={() => {}} />);
+    expect(await screen.findByText(/ · 50\/50 free requests$/)).toBeTruthy();
+  });
+  it('shows no limit bar on a run that is not waiting for free requests', () => {
+    const { container } = renderApp(<LimitBar run={makeAwaitingRun()} onAct={act0} />);
+    expect(container.querySelector('.run-approve')).toBeNull();
   });
   it('shows no approval bar when nothing waits', () => {
     const { container } = renderApp(<ApprovalBar run={makeRun()} onAct={act0} onReviewDiff={() => {}} />);

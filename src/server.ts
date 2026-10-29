@@ -11,6 +11,7 @@ import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, re
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { GithubAccount, ghExec } from './accounts/github.js';
+import { OpenRouterAccount, type OpenRouterDeps } from './accounts/openrouter.js';
 import { accountsRoute } from './accounts/routes.js';
 import { assistantRoute } from './assistant/routes.js';
 import { codemodeRoute } from './codemode/routes.js';
@@ -22,6 +23,7 @@ import { checkPins, loadPins, savePins } from './pins.js';
 import { rgVersion } from './tools.js';
 import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
 import { link, loadBindings, unlink } from './bindings.js';
+import { anyUsable } from './providers.js';
 import { commitDiff, diffCommitted } from './git.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import type { Store } from './store.js';
@@ -62,6 +64,8 @@ export interface ServerOptions {
   eccFetch?: Fetch;
   /** The GitHub account behind Settings → Accounts; tests give one with a fake `gh`, GitHub and Keychain. */
   github?: GithubAccount;
+  /** The OpenRouter account's exchange and secret store; tests fake both. */
+  openrouter?: OpenRouterDeps;
 }
 
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
@@ -262,6 +266,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     return doctorCache.data;
   }
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
+  // connecting or disconnecting adds or cuts off an agent: the cached health and model lists go
+  const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: () => void ((doctorCache = undefined), (modelsCache = undefined)) });
 
   const runView = (id: string) => {
     const s = store.state(id);
@@ -319,7 +325,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
-    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github }, req, res, url);
+    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
@@ -903,8 +909,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (action === 'stop') {
           if (!engine.stop(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
         } else if (action === 'resume') {
+          // Switch model… after the free limit: the waiting steps carry on on this agent/model (this run only)
+          const model = reqString(b, 'model');
+          const switchTo = typeof b.agent === 'string' ? { agent: b.agent, ...(model ? { model } : {}) } : undefined;
           // a team run still planning resumes with its next round in the background
-          await engine.resume(id, { retryFailed: b.retryFailed, background: true });
+          await engine.resume(id, { retryFailed: b.retryFailed, background: true, ...(switchTo ? { switchTo } : {}) });
         } else {
           if (typeof b.node !== 'string') throw new HttpError(400, '"node" is required');
           engine.approve(id, b.node, b.approved !== false, 'dashboard');

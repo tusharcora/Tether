@@ -1,6 +1,8 @@
 /** LLM providers: what is set up, and adding OpenAI-compatible endpoints to `<home>/aorch.config.json`. */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { accountOf } from './accounts/store.js';
+import type { ProviderId } from './accounts/registry.js';
 import type { AdapterRegistry } from './adapters/index.js';
 import { LOCAL_ENDPOINTS, type EndpointConfig } from './adapters/openai.js';
 import type { Config } from './config.js';
@@ -37,17 +39,38 @@ export interface ProviderRow {
   removable: boolean;
 }
 
+/** Is the endpoint's key there now: its env var set, its account connected, or a literal key. */
+function keySet(home: string, ep: EndpointConfig): boolean {
+  const k = ep.apiKey;
+  if (k?.startsWith('env:')) return !!process.env[k.slice(4)];
+  if (k?.startsWith('account:')) return !!accountOf(home, k.slice(8) as ProviderId);
+  return !!k;
+}
+
 export function listProviders(cfg: Config, registry: AdapterRegistry): ProviderRow[] {
   return registry.ids().map((id) => {
     const ep = cfg.endpoints[id];
     if (ep) {
       const keyEnv = ep.apiKey?.startsWith('env:') ? ep.apiKey.slice(4) : undefined;
-      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keyEnv ? !!process.env[keyEnv] : !!ep.apiKey, removable: true };
+      return { id, kind: 'endpoint', where: ep.baseUrl, keyEnv, keySet: keySet(cfg.home, ep), removable: true };
     }
     if (LOCAL_ENDPOINTS[id]) return { id, kind: 'local server', where: LOCAL_ENDPOINTS[id]!.baseUrl, removable: false };
     if (cfg.adapters[id]) return { id, kind: 'custom cli', where: cfg.adapters[id]!.command, removable: false };
     if (id === 'mock') return { id, kind: 'test', where: 'built in, no model', removable: false };
     return { id, kind: 'agent cli', where: id === 'claude' ? 'claude' : id, removable: false };
+  });
+}
+
+/**
+ * Can anything run a step now (free models spec §7.5): a healthy agent or custom CLI, a running local server, or a
+ * reachable endpoint whose key is there (or that needs none). `detected` is each adapter's detect(); mock never counts.
+ */
+export function anyUsable(cfg: Config, detected: Record<string, { ok: boolean }>): boolean {
+  return Object.entries(detected).some(([id, d]) => {
+    const ep = cfg.endpoints[id];
+    // OpenRouter's /models answers without a key, so a reachable endpoint is not enough
+    if (ep?.apiKey) return keySet(cfg.home, ep);
+    return d.ok && id !== 'mock';
   });
 }
 
@@ -120,6 +143,16 @@ export function removeEndpoint(cfg: Config, id: string): void {
   const next = { ...cfg.endpoints };
   delete next[id];
   cfg.endpoints = next;
+}
+
+/** Point the `openrouter` endpoint at the connected account's key (`account:openrouter`), adding it from the preset when missing. */
+export function useAccountEndpoint(cfg: Config): void {
+  const cur = cfg.endpoints.openrouter;
+  const ep: EndpointConfig = { ...cur, baseUrl: cur?.baseUrl ?? PRESETS.find((p) => p.id === 'openrouter')!.baseUrl, apiKey: 'account:openrouter' };
+  const file = readFile(cfg.home);
+  const endpoints = { ...((file.endpoints as Record<string, EndpointConfig>) ?? {}), openrouter: ep };
+  writeFileSync(join(cfg.home, 'aorch.config.json'), JSON.stringify({ ...file, endpoints }, null, 2) + '\n');
+  cfg.endpoints = { ...cfg.endpoints, openrouter: ep };
 }
 
 /** Change one setting of an endpoint you added (usage key, org id). */

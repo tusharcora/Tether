@@ -258,7 +258,7 @@ function Shell() {
             />
           )}
           <main className="shell-main" tabIndex={-1}>
-            {screen.tab === 'home' ? <Home onGo={go} goals={goals.goals} onGoal={goals.set} /> : null}
+            {screen.tab === 'home' ? <Home onGo={go} goals={goals.goals} onGoal={goals.set} accounts={accounts} /> : null}
             {screen.tab === 'inbox' ? <Inbox onGo={go} goals={goals.goals} onGoal={goals.set} /> : null}
             {screen.tab === 'code' ? (
               projects.current ? (

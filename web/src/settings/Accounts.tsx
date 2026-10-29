@@ -9,7 +9,9 @@ import { ConfirmButton } from '../ui/ConfirmButton';
 import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { StatusBadge } from '../ui/studio/StatusBadge';
-import type { AccountsView, DeviceState, ProviderView } from './accountsApi';
+import { FREE_DEFAULT } from '../../../src/openrouter';
+import { shortModel, type AccountsView, type DeviceState, type ProviderView } from './accountsApi';
+import { FreeCounter, useOpenRouterConnect } from './FreeModels';
 import './settings.css';
 
 /** How often the panel asks the server how the device flow is going (the server itself polls GitHub). */
@@ -26,7 +28,7 @@ export function Accounts(p: { poll: Poll<AccountsView> }) {
         <ul className="acc-list">
           {(data?.providers ?? []).map((pv) => (
             <li key={pv.id} className="acc-row">
-              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
+              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : pv.id === 'openrouter' ? <OpenRouterAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
             </li>
           ))}
         </ul>
@@ -43,6 +45,78 @@ function ComingProvider({ p }: { p: ProviderView }) {
         <StatusBadge tone="neutral" label="coming" />
       </div>
       <p className="acc-note">{p.note ?? 'Not available yet.'}</p>
+    </>
+  );
+}
+
+/** OpenRouter: Connect (one browser approval), then the free requests left, the free defaults, and Disconnect (spec §7.1, §7.3, §7.6). */
+function OpenRouterAccount({ p, onChanged }: { p: ProviderView; onChanged: () => Promise<void> }) {
+  const notify = useNotify();
+  const [busy, setBusy] = useState(false);
+  const { flow, connect } = useOpenRouterConnect(onChanged);
+  const a = p.account;
+  const d = p.defaults;
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+      await onChanged();
+    } catch (e) {
+      notify.fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const freeCrew = () => act(async () => notify.ok('Free models for the crew', `${(await api<{ bound: string[] }>('POST', '/api/accounts/openrouter/crew')).bound.length} bots now run on free models`));
+  const disconnect = () => act(() => api('DELETE', '/api/accounts/openrouter'));
+
+  return (
+    <>
+      <div className="acc-head">
+        <b>OpenRouter</b>
+        {a ? <StatusBadge tone="done" label="connected" /> : <StatusBadge tone="neutral" label="not connected" />}
+      </div>
+      {a ? (
+        <div className="acc-body">
+          <p className="acc-note">Free models for the crew and ⌘J. The key stays in your Keychain · connected {ago(a.connectedAt)}</p>
+          <FreeCounter />
+          {d?.crew || d?.assistant ? (
+            <div className="fm-defaults" aria-label="Free defaults">
+              <span className="sl-meta">Free defaults</span>
+              {d.crew ? <code>crew · {shortModel(d.crew)}</code> : null}
+              {d.assistant ? <code>⌘J · {shortModel(d.assistant)}</code> : null}
+            </div>
+          ) : (
+            <div className="acc-option">
+              <p className="acc-note">Your crew runs on the agents you set up. Bots you linked on purpose keep theirs.</p>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => void freeCrew()}>
+                Use free models for the crew
+              </Button>
+            </div>
+          )}
+          {d?.fallback ? <p className="acc-note">{shortModel(FREE_DEFAULT)} is no longer on OpenRouter, so new free defaults use the first free model that can edit files.</p> : null}
+          <div className="acc-actions">
+            <ConfirmButton label="Disconnect" prompt="Remove the OpenRouter key from the Keychain? Bots on OpenRouter stay linked and show not connected." confirmLabel="Disconnect" onConfirm={disconnect} disabled={busy} />
+          </div>
+        </div>
+      ) : (
+        <div className="acc-body">
+          <p className="acc-note">Run Tether on free models: approve once in your browser, no key to copy. 50 free requests a day.</p>
+          {flow.state === 'pending' ? (
+            <div className="acc-device" role="status" aria-live="polite">
+              <a href={flow.url} target="_blank" rel="noreferrer">
+                Open the OpenRouter approval page
+              </a>
+              <StatusBadge tone="needs" label="waiting for you to approve" />
+            </div>
+          ) : (
+            <Button variant="primary" size="sm" onClick={() => void connect()}>
+              Connect OpenRouter
+            </Button>
+          )}
+          {flow.state === 'error' ? <InlineError compact message={flow.error} onRetry={() => void connect()} /> : null}
+        </div>
+      )}
     </>
   );
 }

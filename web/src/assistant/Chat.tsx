@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import type { OrModel } from '../../../src/openrouter';
 import { AIComposer } from '../components/composer/AIComposer';
+import { usePoll } from '../hooks';
+import { MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
 import { Thread } from './Thread';
@@ -45,13 +48,20 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
     const attachments = files;
     setFiles([]);
     pinned.current = true;
-    void chat.send(t, { context: p.context, ...(m || picked ? { model: m ?? picked } : {}), ...(attachments.length ? { attachments } : {}) });
+    void chat.send(t, { context: p.context, ...(m || picked ? { model: m ?? picked } : {}), ...agentFor(m ?? picked), ...(attachments.length ? { attachments } : {}) });
   };
   const read = async (list: File[]) => {
     const next = await Promise.all(list.map(async (f) => ({ name: f.name, text: await f.slice(0, ATTACH_MAX_BYTES).text() })));
     setFiles((cur) => [...cur, ...next].slice(0, ATTACH_MAX_FILES));
   };
-  const picked = model && chat.models.includes(model) ? model : undefined;
+  // on OpenRouter the menu says which models are free and what they can do (spec §7.4)
+  const or = usePoll<{ models: OrModel[] }>(chat.agent === 'openrouter' || chat.openrouter ? MODELS_PATH : null, 3_600_000);
+  const tags = or.data && Object.fromEntries(or.data.models.map((m) => [m.id, [m.free && 'free', m.tools && 'tools', m.images && 'images'].filter((t): t is string => !!t)]));
+  // Tether on another agent: OpenRouter's free models follow its own, and picking one runs that turn on OpenRouter
+  const orFree = chat.openrouter ? (or.data?.models ?? []).filter((m) => m.free).map((m) => m.id) : [];
+  const models = [...chat.models, ...orFree.filter((id) => !chat.models.includes(id))];
+  const picked = model && models.includes(model) ? model : undefined;
+  const agentFor = (m?: string) => (m && orFree.includes(m) && !chat.models.includes(m) ? { agent: 'openrouter' } : {});
 
   return (
     <>
@@ -74,7 +84,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
           placeholder="Ask Tether…"
           value={draft}
           onValueChange={setDraft}
-          models={chat.models}
+          models={models}
           model={picked}
           autoModel={chat.model}
           onModelChange={setModel}
@@ -86,6 +96,7 @@ export function Chat(p: { chat: Assistant; project?: string; context: AssistantC
           onRemoveFile={(name) => setFiles((c) => c.filter((x) => x.name !== name))}
           accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml"
           favKey="tether.assistant.favModels"
+          tags={tags}
         />
       </div>
     </>

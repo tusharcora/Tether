@@ -9,14 +9,17 @@
  */
 import { toolChunk } from '../activity.js';
 import { existsSync, realpathSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { accountKey } from '../accounts/keys.js';
 import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
+import { OR_HEADERS, isOpenRouter, limitKind, limitMessage, nextUtcMidnight } from '../openrouter.js';
 import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest } from '../types.js';
 
 export interface EndpointConfig {
   baseUrl: string;
-  /** Literal key, or `env:NAME` to read it from the environment. */
+  /** Literal key, `env:NAME` to read it from the environment, or `account:<provider>` for a connected account's key (SecretStore). */
   apiKey?: string;
   /** Model used when a step names none. */
   model?: string;
@@ -35,6 +38,8 @@ export const LOCAL_ENDPOINTS: Record<string, EndpointConfig> = {
 };
 
 const MAX_TURNS = 30;
+/** Per-minute limit retries on a free OpenRouter model before it counts as the daily limit. */
+const LIMIT_RETRIES = 3;
 const MAX_READ = 64_000;
 const MAX_WRITE = 512_000;
 const MAX_LIST = 400;
@@ -157,11 +162,19 @@ export class OpenAICompatAdapter implements AgentAdapter {
   constructor(
     readonly id: string,
     private readonly cfg: EndpointConfig,
+    /** Tether's home, where an `account:` key's SecretStore lives. */
+    private readonly home?: string,
   ) {}
 
-  private headers(): Record<string, string> {
-    const key = this.cfg.apiKey?.startsWith('env:') ? process.env[this.cfg.apiKey.slice(4)] : this.cfg.apiKey;
-    return { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) };
+  private async key(): Promise<string | undefined> {
+    const k = this.cfg.apiKey;
+    if (k?.startsWith('account:')) return this.home ? accountKey(this.home, k.slice(8)) : undefined;
+    return k?.startsWith('env:') ? process.env[k.slice(4)] : k;
+  }
+
+  private async headers(): Promise<Record<string, string>> {
+    const key = await this.key();
+    return { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}), ...(isOpenRouter(this.cfg.baseUrl) ? OR_HEADERS : {}) };
   }
 
   private url(path: string) {
@@ -170,7 +183,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
 
   async listModels(): Promise<string[]> {
     try {
-      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(this.local() ? 2500 : 8000) });
+      const res = await fetch(this.url('/models'), { headers: await this.headers(), signal: AbortSignal.timeout(this.local() ? 2500 : 8000) });
       if (!res.ok) return [];
       const j = (await res.json()) as { data?: { id?: string }[] };
       return (j.data ?? []).map((m) => m.id).filter((x): x is string => typeof x === 'string').sort();
@@ -189,8 +202,10 @@ export class OpenAICompatAdapter implements AgentAdapter {
 
   async detect() {
     const local = this.local();
+    // OpenRouter's /models answers without a key: a disconnected account must not look healthy
+    if (this.cfg.apiKey?.startsWith('account:') && !(await this.key())) return { ok: false, detail: `${this.id} is not connected: connect it in Settings → Accounts` };
     try {
-      const res = await fetch(this.url('/models'), { headers: this.headers(), signal: AbortSignal.timeout(local ? 1500 : 8000) });
+      const res = await fetch(this.url('/models'), { headers: await this.headers(), signal: AbortSignal.timeout(local ? 1500 : 8000) });
       if (res.status === 401 || res.status === 403) return { ok: false, detail: `${this.cfg.baseUrl} rejected the API key (HTTP ${res.status}): check the key and the variable name` };
       if (res.status === 404) return { ok: true, version: `reachable · ${this.cfg.baseUrl} (no /models list: name a model per bot)` };
       if (!res.ok) return { ok: false, detail: `HTTP ${res.status} from ${this.cfg.baseUrl}` };
@@ -204,14 +219,15 @@ export class OpenAICompatAdapter implements AgentAdapter {
     }
   }
 
-  private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
+  private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string; reset?: number; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
     const res = await fetch(this.url('/chat/completions'), {
       method: 'POST',
-      headers: this.headers(),
+      headers: await this.headers(),
       body: JSON.stringify({ model, messages, stream: false, ...(tools ? { tools, tool_choice: 'auto' } : {}) }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(this.cfg.requestTimeoutMs ?? 600_000)]),
     });
-    if (!res.ok) return { message: { role: 'assistant', content: null }, status: res.status, errorText: (await res.text()).slice(0, 400) };
+    const reset = Number(res.headers.get('x-ratelimit-reset'));
+    if (!res.ok) return { message: { role: 'assistant', content: null }, status: res.status, errorText: (await res.text()).slice(0, 400), ...(reset > 0 ? { reset } : {}) };
     const j = (await res.json()) as { choices?: { message?: Msg }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
     const message = j.choices?.[0]?.message;
     if (!message) return { message: { role: 'assistant', content: null }, status: 502, errorText: 'empty response from model' };
@@ -243,6 +259,17 @@ export class OpenAICompatAdapter implements AgentAdapter {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (req.signal.aborted) return fail('aborted', last);
         let r = await this.chat(messages, model, tools, req.signal);
+        // a free OpenRouter model: wait out the per-minute limit; the daily one is a limit signal (a run step pauses on it)
+        for (let retry = 0; r.status === 429 && isOpenRouter(this.cfg.baseUrl) && model.endsWith(':free'); retry++) {
+          if (retry >= LIMIT_RETRIES || (await limitKind(await this.key())) === 'daily') {
+            const resetsAt = nextUtcMidnight();
+            return { ...fail(limitMessage(resetsAt), last), limit: { resetsAt } };
+          }
+          const waitMs = Math.min(60_000, r.reset ? Math.max(0, r.reset - Date.now()) : 15_000 * 2 ** retry);
+          await sleep(waitMs, undefined, { signal: req.signal });
+          req.onChunk(`[openrouter] per-minute limit · retried after ${Math.round(waitMs / 1000)}s\n`);
+          r = await this.chat(messages, model, tools, req.signal);
+        }
         if (r.status === 400 && tools && /tool|function/i.test(r.errorText ?? '')) {
           if (writable) return fail(`${this.id}/${model} does not support tool calling, so it cannot edit files. Link this bot to a tool-capable model (or to claude, codex or opencode)`);
           tools = undefined; // read-only step: fall back to a plain answer

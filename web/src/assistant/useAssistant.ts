@@ -13,10 +13,12 @@ export interface Assistant {
   agent?: string;
   model?: string;
   models: string[];
+  /** OpenRouter's free models can be picked too (Tether runs on another agent). */
+  openrouter?: boolean;
   loading: boolean;
   error?: string;
   streaming?: Streaming;
-  send(text: string, o?: { context?: AssistantContext; model?: string; attachments?: { name: string; text: string }[]; answer?: { message: string; result: string } }): Promise<void>;
+  send(text: string, o?: { context?: AssistantContext; model?: string; agent?: string; attachments?: { name: string; text: string }[]; answer?: { message: string; result: string } }): Promise<void>;
   stop(): void;
   newChat(): Promise<void>;
   decide(proposal: Proposal, decision: 'start' | 'dismiss'): Promise<Proposal>;
@@ -35,7 +37,7 @@ const patch = (list: ChatMessage[], id: string, f: (m: ChatMessage) => ChatMessa
  */
 export function useAssistant(ws: string | undefined, enabled: boolean): Assistant {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[] }>({ models: [] });
+  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean }>({ models: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [streaming, setStreaming] = useState<Streaming>();
@@ -57,7 +59,7 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
       (v) => {
         if (!live) return;
         setMessages(v.messages);
-        setMeta({ agent: v.agent, model: v.model, models: v.models });
+        setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter });
         setLoading(false);
       },
       (e: Error) => {
@@ -101,7 +103,7 @@ export function useAssistant(ws: string | undefined, enabled: boolean): Assistan
       setStreaming(draft);
     };
     try {
-      await streamTurn({ ws: forWs, message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}) }, onEvent, ctl.signal);
+      await streamTurn({ ws: forWs, message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}) }, onEvent, ctl.signal);
     } catch (e) {
       if (forWs === wsRef.current) {
         const stopped = ctl.signal.aborted;

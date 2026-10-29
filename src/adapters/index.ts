@@ -23,13 +23,14 @@ export class AdapterRegistry {
   }
 }
 
-export function defaultRegistry(custom: Record<string, CustomAdapterConfig> = {}, endpoints: Record<string, EndpointConfig> = {}): AdapterRegistry {
+/** `home` is where `account:` endpoint keys are looked up. */
+export function defaultRegistry(custom: Record<string, CustomAdapterConfig> = {}, endpoints: Record<string, EndpointConfig> = {}, home?: string): AdapterRegistry {
   const reg = new AdapterRegistry()
     .register(new ClaudeAdapter())
     .register(new CliAdapter(codexSpec))
     .register(new CliAdapter(opencodeSpec))
     .register(new MockAdapter());
-  for (const [id, cfg] of Object.entries({ ...LOCAL_ENDPOINTS, ...endpoints })) reg.register(new OpenAICompatAdapter(id, cfg));
+  for (const [id, cfg] of Object.entries({ ...LOCAL_ENDPOINTS, ...endpoints })) reg.register(new OpenAICompatAdapter(id, cfg, home));
   for (const [id, cfg] of Object.entries(custom)) reg.register(new CliAdapter(customSpec(id, cfg)));
   return reg;
 }

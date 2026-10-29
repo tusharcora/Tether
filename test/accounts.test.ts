@@ -4,6 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AccountError, DEVICE_SETUP, GithubAccount, ghExec, ghLogin, type DeviceState } from '../src/accounts/github.js';
+import { accountKey } from '../src/accounts/keys.js';
+import { OpenRouterAccount } from '../src/accounts/openrouter.js';
+import { AdapterRegistry } from '../src/adapters/index.js';
+import { link, loadBindings } from '../src/bindings.js';
+import { nextUtcMidnight } from '../src/openrouter.js';
+import { loadConfig, type Config } from '../src/config.js';
 import { authorizeUrl, challengeOf, checkCallback, loopbackRedirect, pkcePair, runPkceFlow } from '../src/accounts/pkce.js';
 import { PROVIDERS, providerOf } from '../src/accounts/registry.js';
 import { KEYCHAIN_SERVICE, defaultStore, fileStore, keychainStore, type SecretStore } from '../src/accounts/secretStore.js';
@@ -72,8 +78,9 @@ afterEach(async () => {
 });
 
 describe('accounts registry', () => {
-  it('lists GitHub (device flow, gh login) and Google as registry-only with a reason', () => {
+  it('lists OpenRouter (browser approval for a key), GitHub (device flow, gh login) and Google as registry-only with a reason', () => {
     expect(PROVIDERS.map((p) => [p.id, p.kind, p.available])).toEqual([
+      ['openrouter', 'pkce-key', true],
       ['github', 'device', true],
       ['google', 'pkce', false],
     ]);
@@ -307,9 +314,9 @@ describe('/api/accounts', () => {
     };
     const list = (await call('GET', '/api/accounts')).json;
     expect(list.user).toEqual(expect.any(String));
-    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['github', 'google']);
-    expect(list.providers[0]).toMatchObject({ account: null, cli: { login: 'octo' }, device: { ready: false, setup: DEVICE_SETUP } });
-    expect(list.providers[1]).toMatchObject({ available: false, account: null });
+    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['openrouter', 'github', 'google']);
+    expect(list.providers[1]).toMatchObject({ account: null, cli: { login: 'octo' }, device: { ready: false, setup: DEVICE_SETUP } });
+    expect(list.providers[2]).toMatchObject({ available: false, account: null });
 
     const dev = await call('POST', '/api/accounts/github/device');
     expect(dev.status).toBe(400);
@@ -318,11 +325,11 @@ describe('/api/accounts', () => {
     const adopted = await call('POST', '/api/accounts/github/cli');
     expect(adopted.json.account).toMatchObject({ login: 'octo', via: 'gh' });
     expect(Object.keys(adopted.json.account).sort()).toEqual(['avatarUrl', 'connectedAt', 'login', 'name', 'provider', 'scopes', 'via']);
-    expect((await call('GET', '/api/accounts')).json.providers[0].account.login).toBe('octo');
+    expect((await call('GET', '/api/accounts')).json.providers[1].account.login).toBe('octo');
 
     expect((await call('PUT', '/api/accounts/github/client', { clientId: 'bad id' })).status).toBe(400);
     expect((await call('PUT', '/api/accounts/github/client', { clientId: 'Iv1.abc' })).json).toEqual({ ready: true });
-    expect((await call('GET', '/api/accounts')).json.providers[0].device).toEqual({ ready: true });
+    expect((await call('GET', '/api/accounts')).json.providers[1].device).toEqual({ ready: true });
 
     // a device-flow token sits in the store: nothing the API says ever contains it
     await store.set('github', TOKEN);
@@ -333,6 +340,164 @@ describe('/api/accounts', () => {
     expect(store.items.size).toBe(0);
     expect((await call('DELETE', '/api/accounts/google')).status).toBe(404);
     for (const b of bodies) expect(b).not.toMatch(/gho_/);
+  });
+});
+
+/** OpenRouter's exchange, faked: answers `key` for the expected code and verifier shape, recording the body. */
+function fakeExchange(key = OR_KEY) {
+  const seen: string[] = [];
+  const f = (async (_u: string, init: RequestInit) => {
+    seen.push(String(init.body));
+    return new Response(JSON.stringify({ key }), { headers: { 'content-type': 'application/json' } });
+  }) as unknown as typeof fetch;
+  return { f, seen };
+}
+const OR_KEY = 'sk-or-v1-fakeKey0123456789abcdef';
+/** The person approving in the browser: OpenRouter sends them back to the callback with a code and the state it was given. */
+const approve = (state?: string) => async (url: string) => {
+  const u = new URL(url);
+  const back = new URL(u.searchParams.get('callback_url')!.replace('//localhost:', '//127.0.0.1:'));
+  back.searchParams.set('code', 'the-code');
+  back.searchParams.set('state', state ?? u.searchParams.get('state')!);
+  await fetch(back).catch(() => undefined);
+};
+const cfgOf = (home: string): Config => ({ home, vault: join(home, 'vault'), adapters: {}, endpoints: {} });
+
+describe('OpenRouter account', () => {
+  it('asks OpenRouter with a localhost callback, then stores the key in the SecretStore only and points the endpoint at it', async () => {
+    const home = tmp('home-');
+    vi.stubEnv('OPENROUTER_API_KEY', 'sk-or-v1-fromenv');
+    writeFileSync(join(home, 'aorch.config.json'), JSON.stringify({ endpoints: { openrouter: { baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'env:OPENROUTER_API_KEY', model: 'x/y:free' } } }));
+    const cfg = loadConfig({ home });
+    const store = memStore();
+    const registry = new AdapterRegistry();
+    const { f, seen } = fakeExchange();
+    let changed = 0;
+    const acct = new OpenRouterAccount(cfg, registry, { fetch: f, store, onChange: () => changed++ });
+    const { url } = await acct.start(approve());
+    const u = new URL(url);
+    expect(u.origin + u.pathname).toBe('https://openrouter.ai/auth');
+    expect(u.searchParams.get('callback_url')).toMatch(/^http:\/\/localhost:\d+\/oauth\/callback$/);
+    expect(u.searchParams.get('key_label')).toBe('Tether');
+    expect(u.searchParams.get('code_challenge_method')).toBe('S256');
+    await until(() => acct.flow().state === 'connected');
+    expect(JSON.parse(seen[0]!)).toMatchObject({ code: 'the-code', code_verifier: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), code_challenge_method: 'S256' });
+    expect(store.items.get('openrouter')).toBe(OR_KEY);
+    expect(await accountKey(home, 'openrouter')).toBe(OR_KEY);
+    expect(acct.account()).toMatchObject({ provider: 'openrouter', via: 'browser' });
+    // the env-based endpoint now reads the account's key, and keeps its other settings
+    expect(cfg.endpoints.openrouter).toEqual({ baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'account:openrouter', model: 'x/y:free' });
+    expect(registry.has('openrouter')).toBe(true);
+    expect(changed).toBe(1);
+    for (const f of ['accounts.json', 'aorch.config.json']) expect(readFileSync(join(home, f), 'utf8')).not.toContain(OR_KEY);
+    expect(JSON.stringify(acct.flow())).not.toContain(OR_KEY);
+
+    await acct.disconnect();
+    expect(store.items.has('openrouter')).toBe(false);
+    expect(acct.account()).toBeUndefined();
+    expect(await accountKey(home, 'openrouter')).toBeUndefined();
+    expect(loadConfig({ home }).endpoints.openrouter?.apiKey).toBe('account:openrouter');
+  });
+
+  it('refuses a callback with the wrong state: nothing is exchanged or stored', async () => {
+    const home = tmp('home-');
+    const store = memStore();
+    const { f, seen } = fakeExchange();
+    const acct = new OpenRouterAccount(cfgOf(home), new AdapterRegistry(), { fetch: f, store });
+    await acct.start(approve('forged-state'));
+    await until(() => acct.flow().state === 'error');
+    expect(acct.flow()).toEqual({ state: 'error', error: expect.stringMatching(/state does not match/) });
+    expect(seen).toHaveLength(0);
+    expect(store.items.size).toBe(0);
+    expect(acct.account()).toBeUndefined();
+  });
+
+  it('puts the crew on the free default only when nothing else can run; otherwise on request, never over a binding', async () => {
+    const models = JSON.parse(readFileSync(new URL('./fixtures/openrouter-models.json', import.meta.url), 'utf8'));
+    const f = (async (u: string) => new Response(JSON.stringify(String(u).endsWith('/models') ? models : { key: OR_KEY }), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
+    const nothing = tmp('home-');
+    link(nothing, 'reviewer', { agent: 'claude' });
+    const a = new OpenRouterAccount(cfgOf(nothing), new AdapterRegistry(), { fetch: f, store: memStore(), usable: async () => false });
+    await a.start(approve());
+    await until(() => a.flow().state === 'connected');
+    expect(a.flow()).toEqual({ state: 'connected', bound: ['orchestrator', 'planner', 'architect', 'coder', 'manager'] });
+    expect(loadBindings(nothing).coder).toEqual({ agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' });
+    expect(loadBindings(nothing).reviewer).toEqual({ agent: 'claude' });
+    expect(a.defaults()).toEqual({ crew: 'nvidia/nemotron-3.5-super-vl:free', assistant: 'nvidia/nemotron-3.5-super-vl:free', fallback: false });
+
+    const has = tmp('home-');
+    const b = new OpenRouterAccount(cfgOf(has), new AdapterRegistry(), { fetch: f, store: memStore(), usable: async () => true });
+    await b.start(approve());
+    await until(() => b.flow().state === 'connected');
+    expect(b.flow()).toEqual({ state: 'connected', bound: [] });
+    expect(loadBindings(has)).toEqual({});
+    expect(b.defaults()).toEqual({ fallback: false });
+    expect(await b.useForCrew()).toEqual(['orchestrator', 'planner', 'architect', 'coder', 'reviewer', 'manager']);
+  });
+
+  it('serves tagged models (the last list when OpenRouter is down) and the free requests left, never the key', async () => {
+    const models = JSON.parse(readFileSync(new URL('./fixtures/openrouter-models.json', import.meta.url), 'utf8'));
+    let down = false;
+    const asked: string[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      asked.push(`${u} ${new Headers(init?.headers).get('authorization') ?? ''}`);
+      if (down) throw new TypeError('fetch failed');
+      if (String(u).endsWith('/key')) return new Response(JSON.stringify({ data: { free_model_daily_requests: { used: 18, limit: 50, remaining: 32 } } }));
+      return new Response(JSON.stringify(String(u).endsWith('/models') ? models : { key: OR_KEY }));
+    }) as unknown as typeof fetch;
+    const store = memStore();
+    const s = await startHttpTestServer({ openrouter: { fetch: f, store } });
+    cleanups.push(s.close);
+    expect((await s.api('GET', '/api/accounts/openrouter/allowance')).status).toBe(409);
+    const list = await s.api('GET', '/api/accounts/openrouter/models');
+    expect(list.json.models.find((m: { id: string }) => m.id === 'nvidia/nemotron-3.5-super-vl:free')).toMatchObject({ free: true, tools: true, images: true });
+    expect(asked.at(-1)).toBe('https://openrouter.ai/api/v1/models ');
+
+    await approve()((await s.api('POST', '/api/accounts/openrouter')).json.url);
+    await until(() => store.items.has('openrouter'));
+    const left = await s.api('GET', '/api/accounts/openrouter/allowance');
+    expect(left.json).toEqual({ used: 18, limit: 50, remaining: 32, resetsAt: nextUtcMidnight() });
+    expect(left.text).not.toContain(OR_KEY);
+    expect(asked.at(-1)).toBe(`https://openrouter.ai/api/v1/key Bearer ${OR_KEY}`);
+
+    down = true;
+    expect((await s.api('GET', '/api/accounts/openrouter/models')).json.models).toHaveLength(5);
+    expect((await s.api('GET', '/api/accounts/openrouter/allowance')).status).toBe(502);
+    const fresh = await startHttpTestServer({ openrouter: { fetch: f, store: memStore() } });
+    cleanups.push(fresh.close);
+    expect(await fresh.api('GET', '/api/accounts/openrouter/models')).toMatchObject({ status: 502, json: { error: "can't reach OpenRouter" } });
+  });
+
+  it('over /api/accounts: starts the approval, reports the flow, disconnects; never the key', async () => {
+    const store = memStore();
+    const { f } = fakeExchange();
+    const s = await startHttpTestServer({ openrouter: { fetch: f, store } });
+    cleanups.push(s.close);
+    const bodies: string[] = [];
+    const call = async (m: string, p: string) => {
+      const r = await s.api(m, p);
+      bodies.push(r.text);
+      return r;
+    };
+    // the test server's only agent is mock: nothing can run, so Home offers free models
+    expect((await call('GET', '/api/accounts')).json.providers[0]).toMatchObject({ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', account: null, setup: true, defaults: null });
+    expect((await call('POST', '/api/accounts/openrouter/crew')).status).toBe(409);
+    const started = await call('POST', '/api/accounts/openrouter');
+    expect(started.json.url).toMatch(/^https:\/\/openrouter\.ai\/auth\?/);
+    expect((await call('GET', '/api/accounts/openrouter/flow')).json).toEqual({ state: 'pending', url: started.json.url });
+    await approve()(started.json.url);
+    await until(() => store.items.has('openrouter'));
+    expect((await call('GET', '/api/accounts/openrouter/flow')).json.state).toBe('connected');
+    const connected = (await call('GET', '/api/accounts')).json.providers[0];
+    expect(connected.account).toMatchObject({ provider: 'openrouter', via: 'browser', login: 'Tether' });
+    expect(connected.setup).toBe(false);
+    // nothing could run, so the unbound bots went free at connect; those the test server bound to mock stayed
+    expect((await call('GET', '/api/accounts/openrouter/flow')).json).toEqual({ state: 'connected', bound: ['architect', 'manager'] });
+    expect(connected.defaults).toEqual({ crew: 'nvidia/nemotron-3.5-super-vl:free', fallback: false });
+    expect((await call('POST', '/api/accounts/openrouter/crew')).json).toEqual({ bound: [] });
+    expect((await call('DELETE', '/api/accounts/openrouter')).json).toEqual({ ok: true });
+    expect(store.items.size).toBe(0);
+    for (const b of bodies) expect(b).not.toContain(OR_KEY);
   });
 });
 

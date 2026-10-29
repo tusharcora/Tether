@@ -355,6 +355,7 @@ export function Crew(props: { bot?: string; onBot?: (id?: string) => void; /** T
       {!isNew && selRow ? (
         <RunsOn
           row={selRow}
+          readOnly={b.readOnly}
           agents={agents}
           draft={draft[selRow.role] ?? NO_BINDING}
           dirty={bindingDirty(selRow)}

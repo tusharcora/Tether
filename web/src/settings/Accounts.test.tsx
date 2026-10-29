@@ -7,6 +7,7 @@ import type { Poll } from '../hooks';
 import { calls, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import { Accounts, DEVICE_POLL_MS } from './Accounts';
+import { FLOW_POLL_MS } from './FreeModels';
 import { accountChip, type AccountsView, type ProviderView } from './accountsApi';
 
 const SETUP = 'Signing in with GitHub needs a GitHub OAuth App with Device Flow turned on (a one-time step).';
@@ -15,6 +16,10 @@ const google: ProviderView = { id: 'google', name: 'Google', kind: 'pkce', avail
 const view = (gh: Partial<ProviderView> = {}): AccountsView => ({ user: 'tushar', providers: [github(gh), google] });
 const poll = (data: AccountsView): Poll<AccountsView> => ({ data, error: undefined, fails: 0, refresh: vi.fn(async () => {}) });
 const ghRow = () => screen.getByText('GitHub').closest('li') as HTMLElement;
+const FREE = 'nvidia/nemotron-3.5-super-vl:free';
+const OR_ACCOUNT = { provider: 'openrouter', login: 'Tether', scopes: [], via: 'browser' as const, connectedAt: Date.now() - 60_000 };
+const openrouter = (o: Partial<ProviderView> = {}): ProviderView => ({ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', available: true, scopes: [], account: null, setup: false, defaults: null, ...o });
+const orRow = () => screen.getByText('OpenRouter').closest('li') as HTMLElement;
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
@@ -103,6 +108,49 @@ describe('Settings → Accounts', () => {
     expect(screen.getByText(/gh itself stays signed in/)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Disconnect' }).at(-1)!);
     await waitFor(() => expect(calls('DELETE', '/api/accounts/github')).toHaveLength(1));
+  });
+
+  it('OpenRouter: Connect opens the approval page and follows it until connected', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const url = 'https://openrouter.ai/auth?callback_url=http%3A%2F%2Flocalhost%3A5050%2Foauth%2Fcallback&state=s';
+    let state: unknown = { state: 'pending', url };
+    routeApi({ 'POST /api/accounts/openrouter': { url }, 'GET /api/accounts/openrouter/flow': () => state });
+    const p = poll({ user: 'tushar', providers: [openrouter(), github()] });
+    renderApp(<Accounts poll={p} />);
+    expect(within(orRow()).getByText(/approve once in your browser, no key to copy/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect OpenRouter' }));
+    expect(await screen.findByRole('link', { name: 'Open the OpenRouter approval page' })).toBeTruthy();
+    expect(open).toHaveBeenCalledWith(url, '_blank', 'noopener');
+    state = { state: 'connected', bound: ['coder'] };
+    await act(() => vi.advanceTimersByTimeAsync(FLOW_POLL_MS));
+    await waitFor(() => expect(p.refresh).toHaveBeenCalled());
+    expect(await screen.findByText(/OpenRouter connected/)).toBeTruthy();
+  });
+
+  it('OpenRouter connected: the free requests left, the credits link and the free defaults', async () => {
+    routeApi({ 'GET /api/accounts/openrouter/allowance': { used: 18, limit: 50, remaining: 32, resetsAt: new Date(2026, 9, 29, 2, 0).getTime() } });
+    renderApp(<Accounts poll={poll({ user: 'tushar', providers: [openrouter({ account: OR_ACCOUNT, defaults: { crew: FREE, assistant: FREE, fallback: false } })] })} />);
+    expect(await within(orRow()).findByText('32 of 50 free requests left today')).toBeTruthy();
+    expect(within(orRow()).getByText('resets 02:00')).toBeTruthy();
+    expect(within(orRow()).getByRole('meter', { name: 'Free requests left today' }).getAttribute('aria-valuenow')).toBe('32');
+    expect(within(orRow()).getByRole('link', { name: 'Add $10 of credits ↗' }).getAttribute('href')).toBe('https://openrouter.ai/settings/credits');
+    expect(within(screen.getByLabelText('Free defaults')).getAllByRole('code').map((c) => c.textContent)).toEqual(['crew · nemotron-3.5-super-vl:free', '⌘J · nemotron-3.5-super-vl:free']);
+    expect(screen.queryByRole('button', { name: 'Use free models for the crew' })).toBeNull();
+  });
+
+  it('OpenRouter connected while other agents run the crew: Use free models for the crew, and Disconnect', async () => {
+    routeApi({ 'GET /api/accounts/openrouter/allowance': { used: 0, limit: 1000, remaining: 1000, resetsAt: Date.now() + 3_600_000 }, 'POST /api/accounts/openrouter/crew': { bound: ['coder', 'planner'] }, 'DELETE /api/accounts/openrouter': { ok: true } });
+    const p = poll({ user: 'tushar', providers: [openrouter({ account: OR_ACCOUNT, defaults: { fallback: false } })] });
+    renderApp(<Accounts poll={p} />);
+    expect(await within(orRow()).findByText('1000 of 1000 free requests left today')).toBeTruthy();
+    expect(within(orRow()).queryByRole('link', { name: /Add \$10/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Use free models for the crew' }));
+    expect(await screen.findByText(/2 bots now run on free models/)).toBeTruthy();
+    expect(calls('POST', '/api/accounts/openrouter/crew')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Disconnect' }).at(-1)!);
+    await waitFor(() => expect(calls('DELETE', '/api/accounts/openrouter')).toHaveLength(1));
   });
 
   it('gives the sidebar the account’s name and GitHub chip, or the local user and Connect', () => {

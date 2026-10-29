@@ -11,6 +11,7 @@ export interface SendBody {
   message: string;
   context?: AssistantContext;
   model?: string;
+  agent?: string;
   attachments?: { name: string; text: string }[];
   /** This message answers the question card on that Tether message; the card collapses to `result`. */
   answer?: { message: string; result: string };

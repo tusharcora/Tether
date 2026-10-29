@@ -6,6 +6,7 @@ import { dialogueCount, PlanningDialogue, TeamPanel } from '../Team';
 import { Disclosure, QuietLine } from '../ui/studio/Section';
 import { StepTodos } from '../ui/studio/StepTodos';
 import { ApprovalBar } from './ApprovalBar';
+import { LimitBar } from './LimitBar';
 import { OutputLog } from './OutputLog';
 import { RunFiles } from './RunFiles';
 import { RunGraph } from './RunGraph';
@@ -73,6 +74,7 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
           </div>
         ) : null}
         <ApprovalBar run={r} onAct={p.onAct} onReviewDiff={() => openRun('changes')} />
+        <LimitBar run={r} onAct={p.onAct} />
       </div>
       <AnimatePresence>
         {target ? (

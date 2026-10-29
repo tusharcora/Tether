@@ -59,6 +59,9 @@ button.out-line:hover .out-text { text-decoration: underline; text-underline-off
 .run-approve-q { display: flex; flex: 1; flex-direction: column; min-width: 200px; }
 .run-approve-q b { font-size: 14px; font-weight: 500; color: var(--ink); }
 .run-approve-q span { font-size: 12px; color: var(--mut); }
+.run-limit-pick { position: relative; flex-basis: 100%; max-width: 420px; margin-left: auto; }
+/* the bar sits at the bottom of the page: its picker opens upwards */
+.run-limit-pick .mp-panel { top: auto; bottom: calc(100% + 4px); }
 .step-why { margin: 6px 0; display: flex; flex-direction: column; gap: 2px; }
 .caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--acc); animation: caret-blink 1s steps(1) infinite; }
 @keyframes caret-blink { 50% { opacity: 0; } }

@@ -83,6 +83,12 @@ export const ago = (t: number) => {
   return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
 };
 
+/** A time of day in local time: "20:00". */
+export const clock = (t: number) => {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
 const kTokens = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 /** A step's tool-call metrics in one line: Code Mode or direct, run_code runs, connector calls, round-trips and tokens. */
 export function metricsLine(e: Extract<StoredEvent['event'], { type: 'node.metrics' }>): string {
@@ -136,6 +142,8 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
         : { text: `${nameOf(e.from)} → ${nameOf(e.to)}: ${e.goal} · ${nameOf(e.to)} answered`, tone: 'info' };
     case 'node.requeued':
       return { text: `${nameOf(e.node)} queued again — ${e.reason}`, tone: 'wait' };
+    case 'node.limited':
+      return { text: `${nameOf(e.node)} paused · out of free requests until ${clock(e.resetsAt)}`, tone: 'wait' };
     case 'manager.cost':
       return undefined;
     case 'node.metrics':

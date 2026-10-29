@@ -8,8 +8,11 @@ import { InlineError } from '../ui/studio/InlineError';
 import { ListRow } from '../ui/studio/ListRow';
 import { RunGlyph } from '../ui/studio/RunGlyph';
 import { QuietLine, RowList, Section } from '../ui/studio/Section';
+import { StatusBadge } from '../ui/studio/StatusBadge';
+import type { AccountsView } from '../settings/accountsApi';
+import { useOpenRouterConnect } from '../settings/FreeModels';
 
-export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed' };
+export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed', free_limit: 'Free limit' };
 const ACTION_LABEL: Record<AttentionAction, string> = { answer: 'Answer', review: 'Review plan', approve: 'Approve', resume: 'Resume', retry: 'Retry', open: 'Open' };
 const PRIMARY = new Set<AttentionAction>(['answer', 'review', 'approve']);
 
@@ -23,8 +26,37 @@ export function linkFor(item: AttentionItem, a: AttentionAction): Route {
   return { tab: 'runs', id: item.runId };
 }
 
+/**
+ * First launch (free models spec §7.5): nothing can run a step yet, so the one way to start is offered first. It goes away
+ * once anything usable exists (the server's `setup` flag on the OpenRouter account).
+ */
+function FreeModelsRow(p: { accounts: Poll<AccountsView>; onGo: (r: Route) => void }) {
+  const { flow, connect } = useOpenRouterConnect(p.accounts.refresh);
+  return (
+    <ListRow
+      lead={<RunGlyph state="needs" />}
+      title="Run Tether on free models"
+      meta="Connect OpenRouter once. Approve in your browser, no key to copy. 50 free requests a day."
+      actions={
+        flow.state === 'pending' ? (
+          <StatusBadge tone="needs" label="waiting for you to approve" />
+        ) : (
+          <>
+            <Button size="sm" variant="primary" onClick={() => void connect()}>
+              Connect OpenRouter
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => p.onGo({ tab: 'settings', id: 'agents' })}>
+              I have keys
+            </Button>
+          </>
+        )
+      }
+    />
+  );
+}
+
 /** What waits on the person, one row each with its actions in place (Approve posts; Reject lives in Inbox and the run). */
-export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: (r: Route) => void; onChanged: () => Promise<unknown> | void }) {
+export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: (r: Route) => void; onChanged: () => Promise<unknown> | void; accounts?: Poll<AccountsView> }) {
   const notify = useNotify();
   // ids with an action in flight; an id stays busy until the re-fetch lands, so its row can't be approved twice
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
@@ -37,6 +69,7 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: 
     });
   const { data, error, refresh } = props.poll;
   const items = data?.items ?? [];
+  const setup = !!props.accounts?.data?.providers.find((p) => p.id === 'openrouter')?.setup;
 
   async function post(item: AttentionItem, path: 'approve' | 'resume', body: unknown) {
     if (busy.has(item.id)) return;
@@ -57,17 +90,18 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: 
   };
 
   return (
-    <Section title="Needs you" count={data ? items.length : undefined}>
+    <Section title="Needs you" count={data ? items.length + (setup ? 1 : 0) : undefined}>
       <Loading loading={data === undefined && !error} lines={3} label="Loading what needs you">
         {error && !data ? (
           <InlineError message={error} onRetry={() => void refresh()} />
         ) : (
           <>
             {error ? <InlineError compact message="Couldn't refresh" onRetry={() => void refresh()} /> : null}
-            {!items.length ? (
+            {!items.length && !setup ? (
               <QuietLine>Nothing needs you.</QuietLine>
             ) : (
               <RowList label="Needs you">
+                {setup && props.accounts ? <FreeModelsRow accounts={props.accounts} onGo={props.onGo} /> : null}
                 {items.map((it) => (
                   <ListRow
                     key={it.id}

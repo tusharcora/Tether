@@ -33,9 +33,11 @@ import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Pr
 import { createInterface } from 'node:readline/promises';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
 import { ghExec } from './accounts/github.js';
+import { OpenRouterAccount } from './accounts/openrouter.js';
+import { defaultExec } from './exec.js';
 import { DEFAULT_EVENTS, alreadyRan, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
-import { PRESETS, updateEndpoint, addEndpoint, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
+import { PRESETS, updateEndpoint, addEndpoint, anyUsable, baseUrlOf, keyRef, providerName, listProviders, removeEndpoint } from './providers.js';
 import { applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, writeBundle, type Bundle } from './wsexport.js';
 import { SURVEY_PROMPT, addToList, contextOf, getWorkspace, initWorkspace, listWorkspaces, removeWorkspace, resolveWorkspace, setDefaultWorkspace, updateMeta, writeNotes } from './workspace.js';
 import { normalizePipeline } from './pipeline.js';
@@ -83,6 +85,7 @@ Usage
   tether models [agent]                list what each agent can run (local servers included)
   tether usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   tether providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
+  tether accounts [status | connect openrouter | disconnect openrouter]   free models: approve OpenRouter once in your browser (the key goes to the Keychain)
   tether theme [name]                  aurora · sunset · matrix · amber · mono
   tether runs [--all]                  list runs (--all includes Evolve probe replays)
   tether delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
@@ -1058,6 +1061,34 @@ async function main() {
         return;
       }
       return fail('usage: aorch providers [list | presets | add <preset> | remove <name>]');
+    }
+    case 'accounts': {
+      const cfg = loadConfig(v);
+      const reg = makeRegistry(cfg);
+      const usable = async () => anyUsable(cfg, Object.fromEntries(await Promise.all(reg.ids().map(async (id) => [id, await reg.get(id).detect()] as const))));
+      const or = new OpenRouterAccount(cfg, reg, { usable });
+      const sub = pos[0] ?? 'status';
+      if (sub === 'status') {
+        const a = or.account();
+        if (!a) return console.log(`  ${bold('OpenRouter')}  ${dim('not connected')}   ${cyan('tether accounts connect openrouter')}`);
+        const left = await or.allowance().catch(() => undefined);
+        console.log(`  ${bold('OpenRouter')}  ${green('connected')} ${dim(agoRel(a.connectedAt))}${left ? `   ${left.remaining} of ${left.limit} free requests left today · resets ${clock(left.resetsAt).slice(0, 5)}` : ''}`);
+        return;
+      }
+      if (pos[1] !== 'openrouter' || (sub !== 'connect' && sub !== 'disconnect')) return fail('usage: tether accounts [status | connect openrouter | disconnect openrouter]');
+      if (sub === 'disconnect') {
+        await or.disconnect();
+        return console.log(`${green('✔')} OpenRouter disconnected (its key is gone from the Keychain)`);
+      }
+      const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+      const { url } = await or.start((u) => defaultExec(opener, [u]).catch(() => undefined));
+      console.log(`Approve Tether in your browser. If no page opened, go to:\n  ${cyan(url)}`);
+      for (let f = or.flow(); f.state === 'pending'; f = or.flow()) await new Promise((r) => setTimeout(r, 250));
+      const f = or.flow();
+      if (f.state === 'error') return fail(`could not connect OpenRouter: ${f.error}`);
+      console.log(`${green('✔')} OpenRouter connected · the key is in ${process.platform === 'darwin' ? 'your Keychain' : join(cfg.home, 'secrets')}`);
+      if (f.state === 'connected' && f.bound.length) console.log(dim(`  free models for: ${f.bound.join(', ')}`));
+      return;
     }
     case 'http': {
       const cfg = loadConfig(v);

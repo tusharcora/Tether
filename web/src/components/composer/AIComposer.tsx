@@ -7,6 +7,8 @@
  * banner and modal, the video tour and the theme switcher (the palette follows Tether's data-theme).
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { CheckIcon } from 'lucide-react';
+import { ModelSelector, ModelSelectorContent, ModelSelectorEmpty, ModelSelectorGroup, ModelSelectorInput, ModelSelectorItem, ModelSelectorList, ModelSelectorLogo, ModelSelectorName, ModelSelectorTrigger } from '../ai-elements/model-selector';
 import './AIComposer.css';
 
 export interface AIComposerProps {
@@ -30,53 +32,47 @@ export interface AIComposerProps {
   'aria-label'?: string;
   /** localStorage key for the starred models. */
   favKey?: string;
+  /** Short tags per model shown on its row (OpenRouter: free, tools, images). */
+  tags?: Record<string, string[]>;
 }
 
-type Provider = 'kimi' | 'openai' | 'spark';
-const providerOf = (m: string): Provider => (/kimi|moonshot/i.test(m) ? 'kimi' : /gpt|codex|^o\d/i.test(m) ? 'openai' : 'spark');
-
-function ProviderIcon({ model }: { model: string }) {
-  const p = providerOf(model);
-  if (p === 'kimi')
-    return (
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M4.2 3.2V12.8M4.2 8.2L10.4 3.2M6.8 6.2L11.2 12.8" stroke="#F4F4F6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12.2" cy="4.2" r="1.15" fill="#F4F4F6" />
-      </svg>
-    );
-  if (p === 'openai')
-    return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M21.2 10.1c.2-1.5-.2-3.1-1.2-4.3-1.3-1.6-3.4-2.3-5.4-1.8-.9-1.1-2.3-1.8-3.8-1.8-2.1 0-3.9 1.3-4.6 3.2-1.5.3-2.8 1.2-3.6 2.5-1 1.8-.9 4 .2 5.7-.2 1.5.2 3.1 1.2 4.3 1.3 1.6 3.4 2.3 5.4 1.8.9 1.1 2.3 1.8 3.8 1.8 2.1 0 3.9-1.3 4.6-3.2 1.5-.3 2.8-1.2 3.6-2.5 1.1-1.8 1-4-.2-5.7z"
-          stroke="#F4F4F6"
-          strokeWidth="1.65"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="12" cy="12" r="2.7" stroke="#F4F4F6" strokeWidth="1.5" />
-      </svg>
-    );
-  return (
-    <svg width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <g stroke="#E87B58" strokeWidth="1.35" strokeLinecap="round">
-        <line x1="9" y1="2.2" x2="9" y2="15.8" />
-        <line x1="2.2" y1="9" x2="15.8" y2="9" />
-        <line x1="4.1" y1="4.1" x2="13.9" y2="13.9" />
-        <line x1="13.9" y1="4.1" x2="4.1" y2="13.9" />
-        <line x1="6.4" y1="2.7" x2="11.6" y2="15.3" />
-        <line x1="2.7" y1="6.4" x2="15.3" y2="11.6" />
-      </g>
-      <circle cx="9" cy="9" r="1.4" fill="#18181c" />
-    </svg>
-  );
+/** Who made a model, for its group and its models.dev logo. OpenRouter ids name it before the slash. */
+const MAKERS: Record<string, [logo: string, name: string]> = {
+  anthropic: ['anthropic', 'Anthropic'],
+  openai: ['openai', 'OpenAI'],
+  google: ['google', 'Google'],
+  nvidia: ['nvidia', 'NVIDIA'],
+  deepseek: ['deepseek', 'DeepSeek'],
+  'meta-llama': ['llama', 'Meta'],
+  qwen: ['alibaba', 'Qwen'],
+  mistralai: ['mistral', 'Mistral'],
+  moonshotai: ['moonshotai', 'Moonshot'],
+  'x-ai': ['xai', 'xAI'],
+  'z-ai': ['zai', 'Z.ai'],
+};
+const GUESS: [RegExp, string][] = [
+  [/claude|haiku|sonnet|opus/i, 'anthropic'],
+  [/gpt|codex|^o\d/i, 'openai'],
+  [/gemini|gemma/i, 'google'],
+  [/llama/i, 'meta-llama'],
+  [/qwen/i, 'qwen'],
+  [/deepseek/i, 'deepseek'],
+  [/mistral|codestral/i, 'mistralai'],
+  [/kimi|moonshot/i, 'moonshotai'],
+];
+export function makerOf(m: string): { logo?: string; name: string } {
+  const key = m.includes('/') ? m.split('/')[0]!.toLowerCase() : GUESS.find(([re]) => re.test(m))?.[1];
+  if (!key) return { name: 'Other' };
+  const [logo, name] = MAKERS[key] ?? [key, key];
+  return { logo, name };
 }
 
-const Check = () => (
-  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="flex-shrink-0" aria-hidden="true">
-    <path d="M3.2 8.5L6.5 11.8L13 4.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
+const MakerLogo = ({ model }: { model: string }) => {
+  const { logo } = makerOf(model);
+  // a maker models.dev has no logo for hides instead of showing broken alt text
+  return logo ? <ModelSelectorLogo provider={logo} className="size-3.5" onError={(e) => (e.currentTarget.style.display = 'none')} /> : null;
+};
+
 const Chevron = () => (
   <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="flex-shrink-0" style={{ color: 'var(--text-secondary)' }} aria-hidden="true">
     <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
@@ -111,31 +107,25 @@ const readFavs = (key: string): string[] => {
 export function AIComposer(p: AIComposerProps) {
   const favKey = p.favKey ?? 'tether.composer.favModels';
   const [menuOpen, setMenuOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<'fav' | 'all'>('fav');
   const [favs, setFavs] = useState<string[]>(() => readFavs(favKey));
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
-  const searchInput = useRef<HTMLInputElement>(null);
   const rec = useRef<Recognition | null>(null);
   const Speech = useMemo(speech, []);
 
   const auto = p.model === undefined;
   const shown = p.model ?? p.autoModel;
   const favModels = p.models.filter((m) => favs.includes(m));
-  const visible = (tab === 'fav' ? favModels : p.models).filter((m) => m.toLowerCase().includes(query.trim().toLowerCase()));
+  // Starred first, then one group per maker in the order the models come
+  const groups: [string, string[]][] = favModels.length ? [['Starred', favModels]] : [];
+  for (const m of p.models) {
+    const name = makerOf(m).name;
+    const g = groups.find(([h]) => h === name);
+    if (g) g[1].push(m);
+    else groups.push([name, [m]]);
+  }
   const ready = p.value.trim().length > 0 && !p.loading;
-
-  // close the menu on any click outside it, or on Escape
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    const esc = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('click', close);
-    window.addEventListener('keydown', esc);
-    return () => (window.removeEventListener('click', close), window.removeEventListener('keydown', esc));
-  }, [menuOpen]);
 
   useEffect(() => {
     if (!recording) return;
@@ -144,14 +134,6 @@ export function AIComposer(p: AIComposerProps) {
   }, [recording]);
   useEffect(() => () => rec.current?.stop(), []);
 
-  const openMenu = (e: MouseEvent) => {
-    e.stopPropagation();
-    if (menuOpen) return setMenuOpen(false);
-    setQuery('');
-    setTab(favModels.length ? 'fav' : 'all');
-    setMenuOpen(true);
-    window.setTimeout(() => searchInput.current?.focus(), 160);
-  };
   const pick = (m: string | undefined) => {
     p.onModelChange(m);
     setMenuOpen(false);
@@ -252,102 +234,54 @@ export function AIComposer(p: AIComposerProps) {
             </button>
 
             {p.models.length > 1 ? (
-              <div className="relative inline-flex min-w-0 items-center">
-                <button type="button" onClick={openMenu} className="aic-model-trigger" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`Model: ${auto ? 'Auto' : shown}`}>
-                  {auto ? null : (
-                    <span className="aic-badge">
-                      <ProviderIcon model={shown ?? ''} />
-                    </span>
-                  )}
-                  <span className={`truncate ${auto ? 'pl-1.5' : ''}`}>{auto ? 'Auto' : shown}</span>
-                  {auto && p.autoModel ? <span className="truncate font-normal" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
-                  <Chevron />
-                </button>
-
-                <div onClick={(e) => e.stopPropagation()} className={`aic-popover ${menuOpen ? 'open' : ''} absolute bottom-0 left-0 z-30 w-[256px] rounded-[20px] p-2`} role="menu" aria-label="Models">
-                  <div className="flex h-8 items-center gap-2 px-2.5">
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="flex-shrink-0" style={{ color: 'var(--text-secondary)' }} aria-hidden="true">
-                      <circle cx="7.2" cy="7.2" r="4.8" stroke="currentColor" strokeWidth="1.5" />
-                      <path d="M10.8 10.8L13.8 13.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-                    <input
-                      ref={searchInput}
-                      type="text"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Search models"
-                      aria-label="Search models"
-                      autoComplete="off"
-                      className="w-full border-none bg-transparent p-0 text-[14px] outline-none"
-                      style={{ color: 'var(--text-primary)' }}
-                    />
-                  </div>
-
-                  <div className="flex h-9 items-center justify-between px-2.5">
-                    <span className="text-[14px] font-medium">
-                      Auto{p.autoModel ? <span className="ml-1.5 font-normal" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
-                    </span>
-                    <button type="button" role="switch" aria-checked={auto} aria-label="Auto" onClick={() => pick(auto ? (p.autoModel ?? p.models[0]) : undefined)} className={`aic-switch ${auto ? 'on' : ''}`}>
-                      <span className="aic-switch-thumb" />
-                    </button>
-                  </div>
-
-                  <div role="tablist" aria-label="Filter models" className="aic-filter-bar">
-                    <button type="button" role="tab" aria-selected={tab === 'fav'} onClick={() => setTab('fav')} className={`aic-filter-pill ${tab === 'fav' ? 'active' : ''}`}>
-                      <svg width="12" height="12" viewBox="0 0 16 16" fill={tab === 'fav' ? '#FACC15' : 'none'} stroke={tab === 'fav' ? '#FACC15' : 'currentColor'} strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
-                        <path d={STAR} />
-                      </svg>
-                      <span>fav</span>
-                      {favModels.length ? <span className="text-[11.5px] font-normal opacity-75">{favModels.length}</span> : null}
-                    </button>
-                    <button type="button" role="tab" aria-selected={tab === 'all'} onClick={() => setTab('all')} className={`aic-filter-pill ${tab === 'all' ? 'active' : ''}`}>
-                      <span>all</span>
-                      <span className="text-[11.5px] font-normal opacity-70">{p.models.length}</span>
-                    </button>
-                  </div>
-
-                  <div className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
-                    {visible.length === 0 ? (
-                      <div className="px-3 py-3 text-center text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-                        {tab === 'fav' && !query.trim() ? 'No favourite models yet. Star one under all.' : 'No matching models'}
-                      </div>
-                    ) : (
-                      visible.map((m) => {
-                        const fav = favs.includes(m);
-                        return (
-                          <div
-                            key={m}
-                            role="menuitemradio"
-                            aria-checked={!auto && m === p.model}
-                            tabIndex={0}
-                            onClick={() => pick(m)}
-                            onKeyDown={(e) => {
-                              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
-                                e.preventDefault();
-                                pick(m);
-                              }
-                            }}
-                            className="aic-model-row"
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="aic-badge">
-                                <ProviderIcon model={m} />
-                              </span>
-                              <span className="truncate text-[14px] font-medium">{m}</span>
+              <ModelSelector open={menuOpen} onOpenChange={setMenuOpen}>
+                <ModelSelectorTrigger asChild>
+                  <button type="button" className="aic-model-trigger" aria-label={`Model: ${auto ? 'Auto' : shown}`}>
+                    {auto ? null : <MakerLogo model={shown ?? ''} />}
+                    <span className={`truncate ${auto ? 'pl-1.5' : ''}`}>{auto ? 'Auto' : shown}</span>
+                    {auto && p.autoModel ? <span className="truncate font-normal" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
+                    <Chevron />
+                  </button>
+                </ModelSelectorTrigger>
+                <ModelSelectorContent title="Choose a model" className="sm:max-w-md">
+                  <ModelSelectorInput placeholder="Search models..." />
+                  <ModelSelectorList>
+                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                    <ModelSelectorGroup>
+                      <ModelSelectorItem value="auto" keywords={['auto', p.autoModel ?? '']} onSelect={() => pick(undefined)}>
+                        <ModelSelectorName>
+                          Auto{p.autoModel ? <span className="ml-1.5" style={{ color: 'var(--text-secondary)' }}>{p.autoModel}</span> : null}
+                        </ModelSelectorName>
+                        {auto ? <CheckIcon className="ml-auto size-4" /> : <div className="ml-auto size-4" />}
+                      </ModelSelectorItem>
+                    </ModelSelectorGroup>
+                    {groups.map(([heading, list]) => (
+                      <ModelSelectorGroup heading={heading} key={heading}>
+                        {list.map((m) => {
+                          const fav = favs.includes(m);
+                          return (
+                            <ModelSelectorItem key={m} value={`${heading}:${m}`} keywords={[m]} onSelect={() => pick(m)}>
+                              <MakerLogo model={m} />
+                              <ModelSelectorName>{m}</ModelSelectorName>
+                              {p.tags?.[m]?.map((t) => (
+                                <span key={t} className={`aic-tag${t === 'free' ? ' free' : ''}`}>
+                                  {t}
+                                </span>
+                              ))}
                               <button type="button" onClick={(e) => toggleFav(e, m)} className={`aic-star ${fav ? 'starred' : ''}`} aria-label={fav ? `Unstar ${m}` : `Star ${m}`} aria-pressed={fav}>
                                 <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill={fav ? '#FACC15' : 'none'} stroke={fav ? '#FACC15' : 'currentColor'} strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
                                   <path d={STAR} />
                                 </svg>
                               </button>
-                            </div>
-                            {!auto && m === p.model ? <Check /> : null}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
+                              {!auto && m === p.model ? <CheckIcon className="size-4" /> : <div className="size-4" />}
+                            </ModelSelectorItem>
+                          );
+                        })}
+                      </ModelSelectorGroup>
+                    ))}
+                  </ModelSelectorList>
+                </ModelSelectorContent>
+              </ModelSelector>
             ) : null}
           </div>
 

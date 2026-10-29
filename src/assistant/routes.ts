@@ -36,6 +36,7 @@ function parseBody(b: Record<string, unknown>): TurnBody {
     message: b.message,
     ...(context ? { context } : {}),
     ...(typeof b.model === 'string' && b.model ? { model: b.model.slice(0, 120) } : {}),
+    ...(typeof b.agent === 'string' && b.agent ? { agent: b.agent.slice(0, 40) } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(ans && typeof ans.message === 'string' && typeof ans.result === 'string' ? { answer: { message: ans.message, result: ans.result } } : {}),
   };
@@ -54,7 +55,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     rootOf(c, ws);
     const { agent, model } = assistantAgent(c.home);
     const models = c.registry.has(agent) ? ((await c.registry.get(agent).listModels?.().catch(() => [])) ?? []) : [];
-    return send(res, 200, { messages: loadChat(c.home, ws).messages, agent, ...(model ? { model } : {}), models } satisfies ChatView), true;
+    return send(res, 200, { messages: loadChat(c.home, ws).messages, agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}) } satisfies ChatView), true;
   }
 
   if (p === '/api/assistant' && m === 'POST') {

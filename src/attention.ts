@@ -13,7 +13,7 @@ export const STALE_MS = 7 * 24 * 60 * 60_000;
 const ASK_MAX = 120;
 
 /** The only event types attention reads: the triggers whose timestamps (or ids) the items need. */
-export const ATTENTION_TYPES: readonly RunEvent['type'][] = ['plan.ready', 'plan.question', 'user.ask', 'approval.requested', 'team.error', 'run.resumed'];
+export const ATTENTION_TYPES: readonly RunEvent['type'][] = ['plan.ready', 'plan.question', 'user.ask', 'approval.requested', 'node.limited', 'team.error', 'run.resumed'];
 
 export interface AttentionRun {
   state: RunState;
@@ -61,6 +61,11 @@ export function attentionFor(r: AttentionRun, now = Date.now()): AttentionItem[]
       const ev = last((e) => e.type === 'approval.requested' && e.node === n.id);
       add('approval', ev?.ts ?? r.lastTs, `${nodeTitle(n)} waits for approval`, ['approve', 'open'], n.id, n.id);
     }
+    for (const [id, ns] of Object.entries(s.nodes)) {
+      if (ns.status !== 'awaiting' || !ns.limit) continue;
+      const ev = last((e) => e.type === 'node.limited' && e.node === id);
+      add('free_limit', ev?.ts ?? r.lastTs, 'Out of free requests for today', ['open'], id, id);
+    }
   }
 
   let planningError = false;
@@ -72,7 +77,7 @@ export function attentionFor(r: AttentionRun, now = Date.now()): AttentionItem[]
       add('planning_error', err.ts, 'Planning failed', ['retry', 'open']);
     }
   }
-  if (s.status === 'paused' && !out.some((i) => i.kind === 'approval' || i.kind === 'question')) add('paused', r.lastTs, 'Paused', ['open']);
+  if (s.status === 'paused' && !out.some((i) => i.kind === 'approval' || i.kind === 'question' || i.kind === 'free_limit')) add('paused', r.lastTs, 'Paused', ['open']);
   if (s.status === 'running' && !r.live && !planningError) add('interrupted', r.lastTs, 'Interrupted: no process is driving it', ['resume', 'open']);
   if (s.status === 'error' && s.finishedAt) add('failed', s.finishedAt, 'Failed', ['retry', 'open']);
   return out;

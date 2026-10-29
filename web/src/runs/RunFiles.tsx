@@ -3,6 +3,7 @@ import { Loading } from '../components/Loading';
 import { InlineError } from '../ui/studio/InlineError';
 import { QuietLine, Section } from '../ui/studio/Section';
 import { FileBars } from './FileBars';
+import { limitedSteps } from './LimitBar';
 import { useDiff } from './useDiff';
 
 /** The steps' commits, so a branch diff refetches only when a step commits. */
@@ -20,6 +21,7 @@ export function RunFiles({ run: r, onOpen }: { run: RunView; onOpen: () => void 
           {d.text ? <FileBars diff={d.text} onOpen={() => onOpen()} openTitle="Open the run's changes" /> : <QuietLine>No committed changes yet.</QuietLine>}
         </Loading>
       )}
+      {limitedSteps(r).length ? <QuietLine>Kept in the worktree. Nothing is lost.</QuietLine> : null}
     </Section>
   );
 }

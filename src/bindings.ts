@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CREW, crewFor } from './bots.js';
+import { BUILTIN_BOTS } from './crew.js';
 import type { Pipeline, ToolStyle } from './types.js';
 
 export interface Binding {
@@ -93,3 +94,15 @@ export function applyBindings(p: Pipeline, b: Bindings): Pipeline {
 }
 
 export const hasBindingsFile = (home: string) => existsSync(file(home));
+
+/**
+ * Free models for the crew (free models spec §7.3): every built-in bot that calls a model (not Probe's test command, not
+ * Gate's person) and has no binding goes on OpenRouter's `model`. A bot bound on purpose is never changed. Returns who moved.
+ */
+export function bindFree(home: string, model: string): string[] {
+  const b = loadBindings(home);
+  const moved = BUILTIN_BOTS.filter((d) => (d.kind === 'agent' || d.kind === 'verdict' || d.kind === 'orchestrator') && !b[d.id]).map((d) => d.id);
+  for (const id of moved) b[id] = { agent: 'openrouter', model };
+  if (moved.length) saveBindings(home, b);
+  return moved;
+}

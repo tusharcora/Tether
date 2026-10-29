@@ -32,6 +32,10 @@ import { resolveWorkspace, snapshot } from './workspace.js';
 /** How long a finished run waits for its reflection before moving on. */
 const REFLECT_TIMEOUT_MS = 3000;
 const NO_REFLECT_MAX = 1000;
+/** A run paused on the free limit resumes this long after the reset. */
+const LIMIT_GRACE_MS = 30_000;
+/** setTimeout's longest delay. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 export interface EngineOptions {
   /** Where worktrees live (state dir). */
@@ -189,6 +193,8 @@ export class Engine {
   readonly codeMode = new CodeModeHost();
   /** When each live run's current execution pass began, for the wall-clock limit (managers check it too). */
   private wallStart = new Map<string, number>();
+  /** Runs paused on the free limit, each with the timer that resumes it after the reset. */
+  private limitTimers = new Map<string, NodeJS.Timeout>();
   private teams = new Map<string, TeamMeta>();
   /** The planning round in flight for a run, and the way to cancel it. */
   private planning = new Map<string, Promise<void>>();
@@ -411,7 +417,14 @@ export class Engine {
   }
 
   /** Continue a run from its event log. Finished nodes are never re-run. */
-  async resume(runId: string, o: { retryFailed?: boolean; /** A team run still planning: run the next round in the background. */ background?: boolean } = {}): Promise<void> {
+  async resume(
+    runId: string,
+    o: {
+      retryFailed?: boolean;
+      /** A team run still planning: run the next round in the background. */ background?: boolean;
+      /** Steps paused on the free limit carry on on this agent/model (this run only; bindings are untouched). */ switchTo?: { agent: string; model?: string };
+    } = {},
+  ): Promise<void> {
     if (this.active.has(runId)) throw new Error('run is already live');
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
@@ -426,6 +439,11 @@ export class Engine {
       if (o.background) this.continuePlanningInBackground(runId);
       else await this.continuePlanning(runId);
       return;
+    }
+    for (const [id, n] of Object.entries(s.nodes)) {
+      if (!n.limit || (n.status !== 'awaiting' && n.status !== 'queued')) continue;
+      if (o.switchTo) this.amend(runId, id, o.switchTo, 'switched model after the free limit');
+      if (n.status === 'awaiting') this.store.append(runId, { type: 'node.requeued', node: id, reason: 'resumed after the free limit' });
     }
     this.store.append(runId, { type: 'run.resumed', retryFailed: o.retryFailed ?? s.status === 'error' });
     this.launch(runId);
@@ -832,6 +850,27 @@ export class Engine {
     return true;
   }
 
+  /** Every paused run waiting on the free limit resumes by itself after the reset (server start: runs paused before it). */
+  armLimitTimers(): void {
+    for (const r of this.store.list()) if (r.status === 'paused') this.armLimit(r.id);
+  }
+
+  /** Resume the run 30 s after its latest free-limit reset (OpenRouter's clock may lag ours), if it is still waiting then. */
+  private armLimit(runId: string): void {
+    const at = Math.max(0, ...Object.values(this.store.state(runId)?.nodes ?? {}).filter((n) => n.status === 'awaiting' && n.limit).map((n) => n.limit!.resetsAt));
+    if (!at) return;
+    clearTimeout(this.limitTimers.get(runId));
+    const t = setTimeout(() => {
+      this.limitTimers.delete(runId);
+      const s = this.store.state(runId);
+      if (s?.status !== 'paused' || this.active.has(runId) || !Object.values(s.nodes).some((n) => n.status === 'awaiting' && n.limit)) return;
+      this.resume(runId).catch((e: unknown) => console.error(`[run ${runId}] could not resume after the free limit: ${(e as Error).message}`));
+    }, Math.min(at + LIMIT_GRACE_MS - Date.now(), MAX_TIMER_MS));
+    // a CLI process must still exit while a run waits for tomorrow
+    t.unref?.();
+    this.limitTimers.set(runId, t);
+  }
+
   approve(runId: string, node: string, approved: boolean, by = 'user'): void {
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
@@ -925,7 +964,10 @@ export class Engine {
     if (stale.length) state = this.state(runId);
     const ignored = new Set(state.pipeline.nodes.filter((n) => handOfDone(state, n) && ['error', 'skipped'].includes(state.nodes[n.id]?.status ?? '')).map((n) => n.id));
     const nodes = Object.entries(state.nodes).filter(([id]) => !ignored.has(id)).map(([, n]) => n);
-    if (nodes.some((n) => n.status === 'awaiting')) return this.finish(runId, 'paused');
+    if (nodes.some((n) => n.status === 'awaiting')) {
+      this.armLimit(runId);
+      return this.finish(runId, 'paused');
+    }
     if (nodes.some((n) => n.status === 'error' || n.status === 'skipped')) {
       const failed = state.pipeline.nodes.find((n) => !ignored.has(n.id) && state.nodes[n.id]?.status === 'error');
       return this.finish(runId, 'error', failed ? `node "${failed.id}" failed: ${state.nodes[failed.id]?.error ?? 'unknown error'}` : undefined);
@@ -1717,6 +1759,8 @@ export class Engine {
     const attempt = ns.attempts + 1;
     const adapter = this.opts.registry.get(node.agent ?? 'claude');
     const abandoned = ns.output === undefined && !!ns.sessionId;
+    // back after the free limit: its edits so far are still in the worktree
+    const afterLimit = !!ns.limit;
     const probe = this.probes.get(runId);
     if (probe) {
       // A probe never starts a step it may not afford: spend so far plus the dearest step seen (or the estimate) must fit the cap.
@@ -1775,7 +1819,7 @@ export class Engine {
     const diff = node.includeDiff ? await diffAgainst(state.workdir, state.baseSha, state.setupArtifacts) : undefined;
     // What was already dirty when this node began (setup output, a gate's artifacts): not this node's doing.
     const dirtyBefore = new Set(await statusEntries(state.workdir));
-    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned, harnessGuidance, harnessPersona });
+    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona });
 
     let buf = '';
     let timer: NodeJS.Timeout | undefined;
@@ -1951,6 +1995,12 @@ export class Engine {
     if (teamStep) res = { ...res, output: stripUserAsks(res.output) };
 
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
+    // out of free requests: the step waits (the run pauses); a writing step's edits so far are committed, so they show and stay
+    if (res.limit) {
+      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit`, state.setupArtifacts).catch(() => undefined);
+      this.store.append(runId, { type: 'node.limited', node: node.id, resetsAt: res.limit.resetsAt });
+      return { ok: false, paused: true, output: res.output };
+    }
     const timedOut = sig.aborted;
 
     let commit: string | undefined;
