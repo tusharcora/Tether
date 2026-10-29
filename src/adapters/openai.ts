@@ -14,6 +14,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { accountKey } from '../accounts/keys.js';
 import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
+import { NV_LIMIT, chatModels, isNvidia } from '../nvidia.js';
 import { OR_HEADERS, isOpenRouter, limitKind, limitMessage, nextUtcMidnight } from '../openrouter.js';
 import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest } from '../types.js';
 
@@ -38,7 +39,7 @@ export const LOCAL_ENDPOINTS: Record<string, EndpointConfig> = {
 };
 
 const MAX_TURNS = 30;
-/** Per-minute limit retries on a free OpenRouter model before it counts as the daily limit. */
+/** Per-minute limit retries on a free OpenRouter model (before it counts as the daily limit) or on NVIDIA (before the step fails). */
 const LIMIT_RETRIES = 3;
 const MAX_READ = 64_000;
 const MAX_WRITE = 512_000;
@@ -186,6 +187,8 @@ export class OpenAICompatAdapter implements AgentAdapter {
       const res = await fetch(this.url('/models'), { headers: await this.headers(), signal: AbortSignal.timeout(this.local() ? 2500 : 8000) });
       if (!res.ok) return [];
       const j = (await res.json()) as { data?: { id?: string }[] };
+      // NVIDIA's list mixes in embedding, safety and reward models
+      if (isNvidia(this.cfg.baseUrl)) return chatModels(j);
       return (j.data ?? []).map((m) => m.id).filter((x): x is string => typeof x === 'string').sort();
     } catch {
       return [];
@@ -259,15 +262,18 @@ export class OpenAICompatAdapter implements AgentAdapter {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (req.signal.aborted) return fail('aborted', last);
         let r = await this.chat(messages, model, tools, req.signal);
-        // a free OpenRouter model: wait out the per-minute limit; the daily one is a limit signal (a run step pauses on it)
-        for (let retry = 0; r.status === 429 && isOpenRouter(this.cfg.baseUrl) && model.endsWith(':free'); retry++) {
-          if (retry >= LIMIT_RETRIES || (await limitKind(await this.key())) === 'daily') {
+        // a free OpenRouter model: wait out the per-minute limit; the daily one is a limit signal (a run step pauses on it).
+        // NVIDIA has only a per-minute limit (about 40 a minute): wait it out, then fail plainly
+        const nv = isNvidia(this.cfg.baseUrl);
+        for (let retry = 0; r.status === 429 && (nv || (isOpenRouter(this.cfg.baseUrl) && model.endsWith(':free'))); retry++) {
+          if (nv && retry >= LIMIT_RETRIES) return fail(NV_LIMIT, last);
+          if (!nv && (retry >= LIMIT_RETRIES || (await limitKind(await this.key())) === 'daily')) {
             const resetsAt = nextUtcMidnight();
             return { ...fail(limitMessage(resetsAt), last), limit: { resetsAt } };
           }
           const waitMs = Math.min(60_000, r.reset ? Math.max(0, r.reset - Date.now()) : 15_000 * 2 ** retry);
           await sleep(waitMs, undefined, { signal: req.signal });
-          req.onChunk(`[openrouter] per-minute limit · retried after ${Math.round(waitMs / 1000)}s\n`);
+          req.onChunk(`[${nv ? 'nvidia' : 'openrouter'}] per-minute limit · retried after ${Math.round(waitMs / 1000)}s\n`);
           r = await this.chat(messages, model, tools, req.signal);
         }
         if (r.status === 400 && tools && /tool|function/i.test(r.errorText ?? '')) {

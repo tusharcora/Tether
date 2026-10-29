@@ -5,14 +5,14 @@ export interface PublicAccount {
   name?: string;
   avatarUrl?: string;
   scopes: string[];
-  via: 'gh' | 'device' | 'browser';
+  via: 'gh' | 'device' | 'browser' | 'key';
   connectedAt: number;
 }
 
 export interface ProviderView {
   id: string;
   name: string;
-  kind: 'device' | 'pkce' | 'pkce-key' | 'cli';
+  kind: 'device' | 'pkce' | 'pkce-key' | 'cli' | 'key';
   available: boolean;
   scopes: string[];
   note?: string;
@@ -34,6 +34,8 @@ export const ALLOWANCE_PATH = '/api/accounts/openrouter/allowance';
 /** The free counter refreshes at most this often while a screen shows it (spec §7.6). */
 export const ALLOWANCE_MS = 60_000;
 export const MODELS_PATH = '/api/accounts/openrouter/models';
+/** NVIDIA's chat model ids, the suggested ones first. */
+export const NV_MODELS_PATH = '/api/accounts/nvidia/models';
 /** `vendor/model:free` → `model:free`, as chips and meta lines show it. */
 export const shortModel = (id: string) => id.split('/').pop() ?? id;
 

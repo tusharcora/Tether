@@ -63,6 +63,24 @@ describe('the AI composer', () => {
     expect(makerOf('mystery-7b')).toEqual({ name: 'Other' });
   });
 
+  it('names NVIDIA’s makers by their own slugs, and an unlisted maker by its slug capitalised with no logo', () => {
+    expect(makerOf('deepseek-ai/deepseek-v4.1-flash')).toEqual({ logo: 'deepseek', name: 'DeepSeek' });
+    expect(makerOf('meta/llama-3.2-90b-vision-instruct')).toEqual({ logo: 'llama', name: 'Meta' });
+    expect(makerOf('minimaxai/minimax-m3.1-flash')).toEqual({ logo: 'minimax', name: 'MiniMax' });
+    expect(makerOf('nv-mistralai/mistral-nemo-12b-instruct')).toEqual({ logo: 'mistral', name: 'Mistral' });
+    expect(makerOf('z-ai/glm-5.3-flash')).toEqual({ logo: 'zai', name: 'Z.ai' });
+    expect(makerOf('ibm/granite-3.0-8b-instruct')).toEqual({ name: 'IBM' });
+    expect(makerOf('microsoft/phi-3.5-moe-instruct')).toEqual({ name: 'Microsoft' });
+    expect(makerOf('writer/palmyra-med-70b')).toEqual({ name: 'Writer' });
+  });
+
+  it('puts a model under the heading groupOf gives instead of its maker', () => {
+    localStorage.removeItem('test.favs');
+    render(<AIComposer aria-label="Message" value="" onValueChange={() => {}} models={['opus', 'z-ai/glm-5.3-flash', 'meta/llama-4']} onModelChange={() => {}} onSubmit={() => {}} files={[]} onFiles={() => {}} onRemoveFile={() => {}} favKey="test.favs" groupOf={(m) => (m.includes('/') ? 'NVIDIA (build.nvidia.com)' : undefined)} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Model: Auto' }));
+    expect([...document.querySelectorAll('[cmdk-group-heading]')].map((h) => h.textContent)).toEqual(['Anthropic', 'NVIDIA (build.nvidia.com)']);
+  });
+
   it('tags models when it is given tags (OpenRouter: free, tools, images)', () => {
     localStorage.removeItem('test.favs');
     render(<Harness onSubmit={vi.fn()} tags={{ 'gpt-5': ['free', 'tools'] }} />);

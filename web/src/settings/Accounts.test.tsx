@@ -20,6 +20,9 @@ const FREE = 'nvidia/nemotron-3.5-super-vl:free';
 const OR_ACCOUNT = { provider: 'openrouter', login: 'Tether', scopes: [], via: 'browser' as const, connectedAt: Date.now() - 60_000 };
 const openrouter = (o: Partial<ProviderView> = {}): ProviderView => ({ id: 'openrouter', name: 'OpenRouter', kind: 'pkce-key', available: true, scopes: [], account: null, setup: false, defaults: null, ...o });
 const orRow = () => screen.getByText('OpenRouter').closest('li') as HTMLElement;
+const NV_ACCOUNT = { provider: 'nvidia', login: 'Tether', scopes: [], via: 'key' as const, connectedAt: Date.now() - 60_000 };
+const nvidia = (o: Partial<ProviderView> = {}): ProviderView => ({ id: 'nvidia', name: 'NVIDIA', kind: 'key', available: true, scopes: [], account: null, ...o });
+const nvRow = () => screen.getByText('NVIDIA', { selector: 'b' }).closest('li') as HTMLElement;
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
@@ -151,6 +154,44 @@ describe('Settings → Accounts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Disconnect' }).at(-1)!);
     await waitFor(() => expect(calls('DELETE', '/api/accounts/openrouter')).toHaveLength(1));
+  });
+
+  it('NVIDIA: Get a key links to NVIDIA’s key page; a pasted key connects, a rejected one says why in the field', async () => {
+    const sent: unknown[] = [];
+    let reply: unknown = new Error('NVIDIA rejected the key');
+    routeApi({ 'POST /api/accounts/nvidia': (b: unknown) => (sent.push(b), reply) });
+    const p = poll({ user: 'tushar', providers: [openrouter(), nvidia(), github()] });
+    renderApp(<Accounts poll={p} />);
+    expect(within(nvRow()).getByText('not connected')).toBeTruthy();
+    expect(within(nvRow()).getByText(/about 40 requests a minute, meant for trying things out/)).toBeTruthy();
+    expect(within(nvRow()).getByRole('link', { name: 'Get a key ↗' }).getAttribute('href')).toBe('https://build.nvidia.com/settings/api-keys');
+    const field = within(nvRow()).getByLabelText('NVIDIA API key') as HTMLInputElement;
+    expect(field.type).toBe('password');
+    const connect = within(nvRow()).getByRole('button', { name: 'Connect' }) as HTMLButtonElement;
+    expect(connect.disabled).toBe(true);
+    fireEvent.change(field, { target: { value: 'nvapi-wrong' } });
+    fireEvent.click(connect);
+    expect(await within(nvRow()).findByText('NVIDIA rejected the key')).toBeTruthy();
+    expect(p.refresh).not.toHaveBeenCalled();
+    reply = { account: { ...NV_ACCOUNT } };
+    fireEvent.change(field, { target: { value: 'nvapi-good0123456789' } });
+    fireEvent.submit(field.closest('form')!);
+    await waitFor(() => expect(p.refresh).toHaveBeenCalled());
+    expect(sent).toEqual([{ key: 'nvapi-wrong' }, { key: 'nvapi-good0123456789' }]);
+    expect(await screen.findByText(/NVIDIA connected/)).toBeTruthy();
+  });
+
+  it('NVIDIA connected: says the limit and disconnects after asking', async () => {
+    routeApi({ 'DELETE /api/accounts/nvidia': { ok: true } });
+    const p = poll({ user: 'tushar', providers: [nvidia({ account: NV_ACCOUNT })] });
+    renderApp(<Accounts poll={p} />);
+    expect(within(nvRow()).getByText('connected').closest('[data-status]')!.getAttribute('data-status')).toBe('success');
+    expect(within(nvRow()).getByText(/about 40 requests a minute. The key stays in your Keychain/)).toBeTruthy();
+    expect(within(nvRow()).queryByLabelText('NVIDIA API key')).toBeNull();
+    fireEvent.click(within(nvRow()).getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(within(nvRow()).getAllByRole('button', { name: 'Disconnect' }).at(-1)!);
+    await waitFor(() => expect(calls('DELETE', '/api/accounts/nvidia')).toHaveLength(1));
+    await waitFor(() => expect(p.refresh).toHaveBeenCalled());
   });
 
   it('gives the sidebar the account’s name and GitHub chip, or the local user and Connect', () => {

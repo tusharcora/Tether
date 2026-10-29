@@ -3,11 +3,15 @@ import type { OrModel } from '../../../src/openrouter';
 import { AIComposer } from '../components/composer/AIComposer';
 import { cn } from '../ui/cn';
 import { usePoll } from '../hooks';
-import { MODELS_PATH } from '../settings/accountsApi';
+import { MODELS_PATH, NV_MODELS_PATH } from '../settings/accountsApi';
 import type { Route } from '../hooks';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext } from './api';
 import { Thread } from './Thread';
 import type { Assistant } from './useAssistant';
+
+/** NVIDIA's models beside the bound agent's: one group, apart from OpenRouter's (whose `nvidia/…` models group as NVIDIA the maker). */
+const NV_GROUP = 'NVIDIA (build.nvidia.com)';
+const OR_GROUP = 'OpenRouter · free';
 
 /**
  * The prompt: text files, the model picker, dictation, send and stop. The picked model is kept per project and defaults
@@ -50,14 +54,21 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
     const next = await Promise.all(list.map(async (f) => ({ name: f.name, text: await f.slice(0, ATTACH_MAX_BYTES).text() })));
     setFiles((cur) => [...cur, ...next].slice(0, ATTACH_MAX_FILES));
   };
-  // on OpenRouter the menu says which models are free and what they can do (spec §7.4)
+  // on OpenRouter the menu says which models are free and what they can do (spec §7.4); on NVIDIA all are free at about 40 a minute
   const or = usePoll<{ models: OrModel[] }>(chat.agent === 'openrouter' || chat.openrouter ? MODELS_PATH : null, 3_600_000);
-  const tags = or.data && Object.fromEntries(or.data.models.map((m) => [m.id, [m.free && 'free', m.tools && 'tools', m.images && 'images'].filter((t): t is string => !!t)]));
-  // Tether on another agent: OpenRouter's free models follow its own, and picking one runs that turn on OpenRouter
+  const nv = usePoll<{ models: string[] }>(chat.agent === 'nvidia' || chat.nvidia ? NV_MODELS_PATH : null, 3_600_000);
+  const tags = {
+    ...(or.data && Object.fromEntries(or.data.models.map((m) => [m.id, [m.free && 'free', m.tools && 'tools', m.images && 'images'].filter((t): t is string => !!t)]))),
+    ...Object.fromEntries((nv.data?.models ?? []).map((id) => [id, ['free', '40/min']])),
+  };
+  // Tether on another agent: OpenRouter's free models and NVIDIA's follow its own, and picking one runs that turn there
   const orFree = chat.openrouter ? (or.data?.models ?? []).filter((m) => m.free).map((m) => m.id) : [];
-  const models = [...chat.models, ...orFree.filter((id) => !chat.models.includes(id))];
+  const nvFree = chat.nvidia ? (nv.data?.models ?? []).filter((id) => !chat.models.includes(id)) : [];
+  const orExtra = orFree.filter((id) => !chat.models.includes(id));
+  // the agent's own models, then NVIDIA, then OpenRouter's free ones as one group (not one maker group each)
+  const models = [...chat.models, ...nvFree, ...orExtra];
   const picked = model && models.includes(model) ? model : undefined;
-  const agentFor = (m?: string) => (m && orFree.includes(m) && !chat.models.includes(m) ? { agent: 'openrouter' } : {});
+  const agentFor = (m?: string) => (m && orFree.includes(m) && !chat.models.includes(m) ? { agent: 'openrouter' } : m && nvFree.includes(m) ? { agent: 'nvidia' } : {});
   return (
     <AIComposer
       aria-label="Message Tether"
@@ -77,6 +88,7 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
       accept="text/*,.md,.json,.ts,.tsx,.js,.py,.log,.csv,.yml,.yaml"
       favKey="tether.assistant.favModels"
       tags={tags}
+      groupOf={(m) => (nvFree.includes(m) ? NV_GROUP : orExtra.includes(m) ? OR_GROUP : undefined)}
     />
   );
 }

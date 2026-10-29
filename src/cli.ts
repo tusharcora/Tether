@@ -33,7 +33,9 @@ import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Pr
 import { createInterface } from 'node:readline/promises';
 import { ago as agoRel, refusal, reportOnce, ensureWebhookSecret, checkRuleRefs, checkWorkflow, dryRunVerdict, planRuleAdd, classifyFailure, ensureIds, explainMatch, findRule, formatTriggerLine, lastDelivery, parsePrTarget, parseRuleArgs, readDeliveries, recordDelivery, statusText, triggerStatus } from './triggers.js';
 import { ghExec } from './accounts/github.js';
+import { NvidiaAccount } from './accounts/nvidia.js';
 import { OpenRouterAccount } from './accounts/openrouter.js';
+import { KEYS_URL } from './nvidia.js';
 import { defaultExec } from './exec.js';
 import { DEFAULT_EVENTS, alreadyRan, fetchPr, loadSettings, matchRule, parsePr, pipelineFor, saveSettings, startPrRun, type Rule } from './pr.js';
 import { fetchUsage, spendNano, supportsUsage, usd as usdOf } from './usage.js';
@@ -86,6 +88,7 @@ Usage
   tether usage [provider] [--days 7]   spend and tokens from a provider's Spend API (Experiential Labs)
   tether providers [list|add|remove]   LLM providers: see what is set up, add DeepSeek / OpenRouter / your own server
   tether accounts [status | connect openrouter | disconnect openrouter]   free models: approve OpenRouter once in your browser (the key goes to the Keychain)
+  tether accounts [connect nvidia | disconnect nvidia]   NVIDIA's free models: pipe in a key from build.nvidia.com (pbpaste | tether accounts connect nvidia)
   tether theme [name]                  aurora · sunset · matrix · amber · mono
   tether runs [--all]                  list runs (--all includes Evolve probe replays)
   tether delete <runId>…               delete runs, their worktrees and chats (--keep-work keeps branch + files; 'all --finished' clears done/failed runs)
@@ -1067,15 +1070,28 @@ async function main() {
       const reg = makeRegistry(cfg);
       const usable = async () => anyUsable(cfg, Object.fromEntries(await Promise.all(reg.ids().map(async (id) => [id, await reg.get(id).detect()] as const))));
       const or = new OpenRouterAccount(cfg, reg, { usable });
+      const nv = new NvidiaAccount(cfg, reg);
       const sub = pos[0] ?? 'status';
       if (sub === 'status') {
         const a = or.account();
-        if (!a) return console.log(`  ${bold('OpenRouter')}  ${dim('not connected')}   ${cyan('tether accounts connect openrouter')}`);
-        const left = await or.allowance().catch(() => undefined);
-        console.log(`  ${bold('OpenRouter')}  ${green('connected')} ${dim(agoRel(a.connectedAt))}${left ? `   ${left.remaining} of ${left.limit} free requests left today · resets ${clock(left.resetsAt).slice(0, 5)}` : ''}`);
+        const left = a ? await or.allowance().catch(() => undefined) : undefined;
+        console.log(a ? `  ${bold('OpenRouter')}  ${green('connected')} ${dim(agoRel(a.connectedAt))}${left ? `   ${left.remaining} of ${left.limit} free requests left today · resets ${clock(left.resetsAt).slice(0, 5)}` : ''}` : `  ${bold('OpenRouter')}  ${dim('not connected')}   ${cyan('tether accounts connect openrouter')}`);
+        const n = nv.account();
+        console.log(n ? `  ${bold('NVIDIA')}      ${green('connected')} ${dim(agoRel(n.connectedAt))}   free · about 40 requests a minute` : `  ${bold('NVIDIA')}      ${dim('not connected')}   ${cyan('pbpaste | tether accounts connect nvidia')}`);
         return;
       }
-      if (pos[1] !== 'openrouter' || (sub !== 'connect' && sub !== 'disconnect')) return fail('usage: tether accounts [status | connect openrouter | disconnect openrouter]');
+      if (pos[1] === 'nvidia' && sub === 'disconnect') {
+        await nv.disconnect();
+        return console.log(`${green('✔')} NVIDIA disconnected (its key is gone from the Keychain)`);
+      }
+      if (pos[1] === 'nvidia' && sub === 'connect') {
+        // the key comes over stdin only: never argv (ps, shell history), and never echoed by a terminal prompt
+        if (pos[2]) return fail(`the key is read from stdin only, never from the command line: ${cyan('pbpaste | tether accounts connect nvidia')}`);
+        if (process.stdin.isTTY) return fail(`pipe the key in, for example: ${cyan('pbpaste | tether accounts connect nvidia')} (make one at ${KEYS_URL})`);
+        const a = await nv.connect(readFileSync(0, 'utf8')).catch((e: Error) => fail(`could not connect NVIDIA: ${e.message}`));
+        return console.log(`${green('✔')} NVIDIA connected ${dim(agoRel(a.connectedAt))} · the key is in ${process.platform === 'darwin' ? 'your Keychain' : join(cfg.home, 'secrets')}`);
+      }
+      if (pos[1] !== 'openrouter' || (sub !== 'connect' && sub !== 'disconnect')) return fail('usage: tether accounts [status | connect openrouter|nvidia | disconnect openrouter|nvidia]');
       if (sub === 'disconnect') {
         await or.disconnect();
         return console.log(`${green('✔')} OpenRouter disconnected (its key is gone from the Keychain)`);

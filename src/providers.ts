@@ -19,6 +19,7 @@ export const PRESETS: Preset[] = [
   { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', keyEnv: 'DEEPSEEK_API_KEY' },
   { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY' },
   { id: 'openrouter', label: 'OpenRouter (many models)', baseUrl: 'https://openrouter.ai/api/v1', keyEnv: 'OPENROUTER_API_KEY' },
+  { id: 'nvidia', label: 'NVIDIA (build.nvidia.com)', baseUrl: 'https://integrate.api.nvidia.com/v1', keyEnv: 'NVIDIA_API_KEY' },
   { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', keyEnv: 'GROQ_API_KEY' },
   { id: 'together', label: 'Together AI', baseUrl: 'https://api.together.xyz/v1', keyEnv: 'TOGETHER_API_KEY' },
   { id: 'fireworks', label: 'Fireworks', baseUrl: 'https://api.fireworks.ai/inference/v1', keyEnv: 'FIREWORKS_API_KEY' },
@@ -145,14 +146,14 @@ export function removeEndpoint(cfg: Config, id: string): void {
   cfg.endpoints = next;
 }
 
-/** Point the `openrouter` endpoint at the connected account's key (`account:openrouter`), adding it from the preset when missing. */
-export function useAccountEndpoint(cfg: Config): void {
-  const cur = cfg.endpoints.openrouter;
-  const ep: EndpointConfig = { ...cur, baseUrl: cur?.baseUrl ?? PRESETS.find((p) => p.id === 'openrouter')!.baseUrl, apiKey: 'account:openrouter' };
+/** Point the provider's endpoint at the connected account's key (`account:<id>`), adding it from the preset when missing. */
+export function useAccountEndpoint(cfg: Config, id: 'openrouter' | 'nvidia'): void {
+  const cur = cfg.endpoints[id];
+  const ep: EndpointConfig = { ...cur, baseUrl: cur?.baseUrl ?? PRESETS.find((p) => p.id === id)!.baseUrl, apiKey: `account:${id}` };
   const file = readFile(cfg.home);
-  const endpoints = { ...((file.endpoints as Record<string, EndpointConfig>) ?? {}), openrouter: ep };
+  const endpoints = { ...((file.endpoints as Record<string, EndpointConfig>) ?? {}), [id]: ep };
   writeFileSync(join(cfg.home, 'aorch.config.json'), JSON.stringify({ ...file, endpoints }, null, 2) + '\n');
-  cfg.endpoints = { ...cfg.endpoints, openrouter: ep };
+  cfg.endpoints = { ...cfg.endpoints, [id]: ep };
 }
 
 /** Change one setting of an endpoint you added (usage key, org id). */
