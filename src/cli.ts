@@ -1086,6 +1086,7 @@ async function main() {
       }
       if (pos[1] === 'nvidia' && sub === 'connect') {
         // the key comes over stdin only: never argv (ps, shell history), and never echoed by a terminal prompt
+        if (pos[2]) return fail(`the key is read from stdin only, never from the command line: ${cyan('pbpaste | tether accounts connect nvidia')}`);
         if (process.stdin.isTTY) return fail(`pipe the key in, for example: ${cyan('pbpaste | tether accounts connect nvidia')} (make one at ${KEYS_URL})`);
         const a = await nv.connect(readFileSync(0, 'utf8')).catch((e: Error) => fail(`could not connect NVIDIA: ${e.message}`));
         return console.log(`${green('✔')} NVIDIA connected ${dim(agoRel(a.connectedAt))} · the key is in ${process.platform === 'darwin' ? 'your Keychain' : join(cfg.home, 'secrets')}`);
