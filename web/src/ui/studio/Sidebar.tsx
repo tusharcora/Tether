@@ -1,4 +1,5 @@
-import { Bot, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
+import { Bot, Hash, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
+import { MARK, type TeamSummary } from '../../teams/teamsApi';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { ChatSummary } from '../../assistant/api';
@@ -81,6 +82,8 @@ export interface SidebarProps {
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
   /** The project's chats, newest first; `current` is what the Chats screen shows: '' All chats, 'new', or a chat id. */
   chats: { list: ChatSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void; onAll: () => void };
+  /** Every team (spec Teams §6.4); `current` is the team on screen ('new' while making one). */
+  teams: { list: TeamSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void };
   projects: ProjectsProps;
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void; onReorder: (next: Pin[]) => void };
   account: { name: string; provider?: string; onOpen: () => void };
@@ -180,6 +183,32 @@ export function Sidebar(p: SidebarProps) {
         <nav className="sl-side-nav" aria-label="Main">
           <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} rail={tipFor('search', 'Search')} />
           {top.map(navRow)}
+          <SideSection
+            id="teams"
+            title="Teams"
+            collapsed={collapsed}
+            actions={
+              <button type="button" className="sl-side-icon-btn" aria-label="New team" title="New team" onClick={p.teams.onNew}>
+                <Plus size={14} aria-hidden="true" />
+              </button>
+            }
+            empty="No teams yet. Make one with +."
+          >
+            {collapsed
+              ? [<SideRow key="teams" label="Teams" Icon={Hash} page current={p.teams.current !== undefined} onClick={() => (p.teams.list[0] ? p.teams.onOpen(p.teams.list[0].id) : p.teams.onNew())} rail={tipFor('teams', 'Teams')} />]
+              : p.teams.list.map((t) => (
+                  <SideRow
+                    key={t.id}
+                    label={t.name}
+                    name={t.status === 'idle' ? t.name : `${t.name} · ${t.status === 'live' ? 'working' : 'needs you'}`}
+                    lead={<span className="sl-side-mark">{MARK[t.place]}</span>}
+                    page
+                    current={p.teams.current === t.id}
+                    meta={t.status === 'idle' ? undefined : <span className={cn('sl-side-status', t.status)} aria-hidden="true" />}
+                    onClick={() => p.teams.onOpen(t.id)}
+                  />
+                ))}
+          </SideSection>
           <SideSection
             id="chats"
             title="Chats"

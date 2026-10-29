@@ -26,6 +26,7 @@ import { OpenFolderDialog } from './projects/OpenFolderDialog';
 import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
+import { TEAMS_PATH, type TeamSummary } from './teams/teamsApi';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
 import { Button } from './components/beui/kit/Button';
@@ -110,6 +111,8 @@ function Shell() {
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
   /** The project's chats: the sidebar's Chats section and the mini chat's switcher. */
   const chats = usePoll<{ chats: ChatSummary[] }>(chatsPath(projects.current?.id), CHATS_MS);
+  /** Every team, for the sidebar's Teams section (its dots: working, needs you). */
+  const teams = usePoll<{ teams: TeamSummary[] }>(TEAMS_PATH, COUNTS_MS);
   /**
    * Tether: the panel (mini chat) and the full-screen chat show one active chat per project. A chat screen's route makes its
    * chat the active one; a new chat's first message makes the chat (and, on New chat, moves to it); a chat that is gone
@@ -292,6 +295,7 @@ function Shell() {
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
               chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
+              teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: () => go({ tab: 'teams', id: 'new' }), onOpen: (id) => go({ tab: 'teams', id }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
