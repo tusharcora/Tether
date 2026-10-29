@@ -14,7 +14,7 @@ const MAX = 120;
 /** Remove control characters (agent output is untrusted and goes straight to a terminal). */
 export const clean = (s: string) => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').replace(/\s+/g, ' ').trim();
 
-const SECRET = /\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})\b|(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}|((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)\S+/gi;
+const SECRET = /\b(sk-[A-Za-z0-9_-]{16,}|nvapi-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})\b|(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}|((?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*)\S+/gi;
 /** Keep obvious credentials out of the event log and the screen. Best effort, not a guarantee. */
 export const redact = (s: string) => s.replace(SECRET, (m, a, b, c) => (b ? `${b}***` : c ? `${c}***` : '***'));
 

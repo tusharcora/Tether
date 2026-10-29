@@ -11,6 +11,7 @@ import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, re
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
 import { GithubAccount, ghExec } from './accounts/github.js';
+import { NvidiaAccount, type NvidiaDeps } from './accounts/nvidia.js';
 import { OpenRouterAccount, type OpenRouterDeps } from './accounts/openrouter.js';
 import { accountsRoute } from './accounts/routes.js';
 import { assistantRoute } from './assistant/routes.js';
@@ -66,6 +67,8 @@ export interface ServerOptions {
   github?: GithubAccount;
   /** The OpenRouter account's exchange and secret store; tests fake both. */
   openrouter?: OpenRouterDeps;
+  /** The NVIDIA account's API and secret store; tests fake both. */
+  nvidia?: NvidiaDeps;
 }
 
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
@@ -267,7 +270,9 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   let modelsCache: { at: number; data: Record<string, { ok: boolean; version?: string; detail?: string; models: string[] }> } | undefined;
   // connecting or disconnecting adds or cuts off an agent: the cached health and model lists go
-  const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: () => void ((doctorCache = undefined), (modelsCache = undefined)) });
+  const dropCaches = () => void ((doctorCache = undefined), (modelsCache = undefined));
+  const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: dropCaches });
+  const nvidia = new NvidiaAccount(cfg, registry, { ...o.nvidia, onChange: dropCaches });
 
   const runView = (id: string) => {
     const s = store.state(id);
@@ -325,7 +330,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
-    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter }, req, res, url);
+    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);

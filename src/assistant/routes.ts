@@ -69,7 +69,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const chat = id === null ? undefined : chatIn(c, ws, id);
     const { agent, model } = assistantAgent(c.home);
     const models = c.registry.has(agent) ? ((await c.registry.get(agent).listModels?.().catch(() => [])) ?? []) : [];
-    return send(res, 200, { ...(chat ? { id: chat.id, title: chat.title } : {}), messages: chat?.messages ?? [], agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}) } satisfies ChatView), true;
+    return send(res, 200, { ...(chat ? { id: chat.id, title: chat.title } : {}), messages: chat?.messages ?? [], agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}), ...(agent !== 'nvidia' && c.registry.has('nvidia') ? { nvidia: true } : {}) } satisfies ChatView), true;
   }
 
   if (p === '/api/assistant' && m === 'POST') {

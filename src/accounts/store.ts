@@ -14,8 +14,8 @@ export interface PublicAccount {
   name?: string;
   avatarUrl?: string;
   scopes: string[];
-  /** `gh`: Tether adopted the GitHub CLI's login and asks `gh auth token` when it needs one. `device`: signed in here. `browser`: approved in the browser (OpenRouter's key). */
-  via: 'gh' | 'device' | 'browser';
+  /** `gh`: Tether adopted the GitHub CLI's login and asks `gh auth token` when it needs one. `device`: signed in here. `browser`: approved in the browser (OpenRouter's key). `key`: an API key pasted once (NVIDIA's). */
+  via: 'gh' | 'device' | 'browser' | 'key';
   connectedAt: number;
 }
 
@@ -49,7 +49,7 @@ const clean = (a: PublicAccount): PublicAccount => ({
   ...(typeof a.name === 'string' && a.name ? { name: a.name } : {}),
   ...(typeof a.avatarUrl === 'string' && /^https:\/\//.test(a.avatarUrl) ? { avatarUrl: a.avatarUrl } : {}),
   scopes: Array.isArray(a.scopes) ? a.scopes.filter((s): s is string => typeof s === 'string') : [],
-  via: a.via === 'device' || a.via === 'browser' ? a.via : 'gh',
+  via: a.via === 'device' || a.via === 'browser' || a.via === 'key' ? a.via : 'gh',
   connectedAt: Number(a.connectedAt) || 0,
 });
 
