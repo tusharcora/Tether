@@ -8,6 +8,7 @@ import { accountKey } from '../src/accounts/keys.js';
 import { OpenRouterAccount } from '../src/accounts/openrouter.js';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
+import { nextUtcMidnight } from '../src/openrouter.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { authorizeUrl, challengeOf, checkCallback, loopbackRedirect, pkcePair, runPkceFlow } from '../src/accounts/pkce.js';
 import { PROVIDERS, providerOf } from '../src/accounts/registry.js';
@@ -432,6 +433,39 @@ describe('OpenRouter account', () => {
     expect(loadBindings(has)).toEqual({});
     expect(b.defaults()).toEqual({ fallback: false });
     expect(await b.useForCrew()).toEqual(['orchestrator', 'planner', 'architect', 'coder', 'reviewer', 'manager']);
+  });
+
+  it('serves tagged models (the last list when OpenRouter is down) and the free requests left, never the key', async () => {
+    const models = JSON.parse(readFileSync(new URL('./fixtures/openrouter-models.json', import.meta.url), 'utf8'));
+    let down = false;
+    const asked: string[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      asked.push(`${u} ${new Headers(init?.headers).get('authorization') ?? ''}`);
+      if (down) throw new TypeError('fetch failed');
+      if (String(u).endsWith('/key')) return new Response(JSON.stringify({ data: { free_model_daily_requests: { used: 18, limit: 50, remaining: 32 } } }));
+      return new Response(JSON.stringify(String(u).endsWith('/models') ? models : { key: OR_KEY }));
+    }) as unknown as typeof fetch;
+    const store = memStore();
+    const s = await startHttpTestServer({ openrouter: { fetch: f, store } });
+    cleanups.push(s.close);
+    expect((await s.api('GET', '/api/accounts/openrouter/allowance')).status).toBe(409);
+    const list = await s.api('GET', '/api/accounts/openrouter/models');
+    expect(list.json.models.find((m: { id: string }) => m.id === 'nvidia/nemotron-3.5-super-vl:free')).toMatchObject({ free: true, tools: true, images: true });
+    expect(asked.at(-1)).toBe('https://openrouter.ai/api/v1/models ');
+
+    await approve()((await s.api('POST', '/api/accounts/openrouter')).json.url);
+    await until(() => store.items.has('openrouter'));
+    const left = await s.api('GET', '/api/accounts/openrouter/allowance');
+    expect(left.json).toEqual({ used: 18, limit: 50, remaining: 32, resetsAt: nextUtcMidnight() });
+    expect(left.text).not.toContain(OR_KEY);
+    expect(asked.at(-1)).toBe(`https://openrouter.ai/api/v1/key Bearer ${OR_KEY}`);
+
+    down = true;
+    expect((await s.api('GET', '/api/accounts/openrouter/models')).json.models).toHaveLength(5);
+    expect((await s.api('GET', '/api/accounts/openrouter/allowance')).status).toBe(502);
+    const fresh = await startHttpTestServer({ openrouter: { fetch: f, store: memStore() } });
+    cleanups.push(fresh.close);
+    expect(await fresh.api('GET', '/api/accounts/openrouter/models')).toMatchObject({ status: 502, json: { error: "can't reach OpenRouter" } });
   });
 
   it('over /api/accounts: starts the approval, reports the flow, disconnects; never the key', async () => {

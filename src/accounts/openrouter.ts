@@ -8,9 +8,9 @@ import type { AdapterRegistry } from '../adapters/index.js';
 import { BUILTIN_BOTS } from '../crew.js';
 import { bindFree, loadBindings } from '../bindings.js';
 import type { Config } from '../config.js';
-import { FREE_DEFAULT, OR_API, authUrl, exchangeKey, freeDefault, tagModels, type OrModel } from '../openrouter.js';
+import { FREE_DEFAULT, OR_API, allowance, authUrl, exchangeKey, freeDefault, tagModels, type Allowance, type OrModel } from '../openrouter.js';
 import { useAccountEndpoint } from '../providers.js';
-import { setAccountKey } from './keys.js';
+import { accountKey, setAccountKey } from './keys.js';
 import { CALLBACK_PATH, loopbackCode } from './pkce.js';
 import { defaultStore, type SecretStore } from './secretStore.js';
 import { accountOf, setAccount, type PublicAccount } from './store.js';
@@ -111,6 +111,12 @@ export class OpenRouterAccount {
     const crew = b[BUILTIN_BOTS.find((d) => d.id !== 'orchestrator' && b[d.id]?.agent === 'openrouter')?.id ?? '']?.model;
     const assistant = b.orchestrator?.agent === 'openrouter' ? b.orchestrator.model : undefined;
     return { ...(crew ? { crew } : {}), ...(assistant ? { assistant } : {}), fallback: !!this.cache?.models.length && !this.cache.models.some((m) => m.id === FREE_DEFAULT) };
+  }
+
+  /** Today's free requests, asked with the stored key (which never leaves this process except to OpenRouter). Undefined: not connected. */
+  async allowance(): Promise<Allowance | undefined> {
+    const key = this.account() ? await accountKey(this.cfg.home, 'openrouter', this.deps.store) : undefined;
+    return key ? allowance(key, this.deps.fetch) : undefined;
   }
 
   /** Home's first-launch row: no account and nothing else that can run a step. */

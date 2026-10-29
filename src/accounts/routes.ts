@@ -58,6 +58,18 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
     return send(res, 200, started), true;
   }
   if (p === '/api/accounts/openrouter/flow' && m === 'GET') return send(res, 200, c.openrouter.flow()), true;
+  if (p === '/api/accounts/openrouter/models' && m === 'GET') {
+    const r = await c.openrouter.models();
+    if (!r.models.length) throw new HttpError(502, r.error ?? "can't reach OpenRouter");
+    return send(res, 200, r), true;
+  }
+  if (p === '/api/accounts/openrouter/allowance' && m === 'GET') {
+    const a = await c.openrouter.allowance().catch(() => {
+      throw new HttpError(502, "can't reach OpenRouter");
+    });
+    if (!a) throw new HttpError(409, 'OpenRouter is not connected');
+    return send(res, 200, a), true;
+  }
   if (p === '/api/accounts/openrouter/crew' && m === 'POST') {
     if (!c.openrouter.account()) throw new HttpError(409, 'connect OpenRouter first');
     return send(res, 200, { bound: await c.openrouter.useForCrew() }), true;
