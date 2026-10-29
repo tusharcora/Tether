@@ -22,7 +22,11 @@ import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
 import { buildPrompt, promptParts, type PromptInput } from './prompt.js';
 import { checkReply } from './reply.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type AssistantContext, type ChatMessage, type ContextUse, type StreamEvent, type ToolRun } from './types.js';
+import { splitArtifacts } from './artifactBlocks.js';
+import { artifactsDir, ensureIgnored, readArtifact, saveArtifact } from './artifacts.js';
+import { personaOf } from '../composer.js';
+import { AGENT_KINDS, loadCrew } from '../crew.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
   home: string;
@@ -50,6 +54,8 @@ export interface TurnBody {
   model?: string;
   /** Run this turn on another agent than Tether's binding (the picker's OpenRouter models). */
   agent?: string;
+  /** An @mentioned crew bot: the turn runs on its agent and model (its binding in Crew). */
+  bot?: string;
   attachments?: { name: string; text: string }[];
   answer?: { message: string; result: string };
 }
@@ -67,7 +73,9 @@ export function builtinStep(name: string, input: unknown, cwd: string): string |
   if (name === 'Read' || name === 'NotebookRead') return `repo.read(${s(i.file_path ?? i.notebook_path)})`;
   if (name === 'Grep') return `repo.search(${s(i.pattern)})`;
   if (name === 'Glob' || name === 'LS') return `repo.list(${s(i.pattern ?? i.path)})`;
-  if (name === 'WebFetch' || name === 'WebSearch') return `http.get(${s(i.url ?? i.query)})`;
+  if (name === 'WebFetch') return `http.get(${s(i.url)})`;
+  // no Code Mode call searches the web: its own name keeps it apart from a script's http.get
+  if (name === 'WebSearch') return `http.search(${s(i.query)})`;
   if (name === 'Bash') return bashStep(typeof i.command === 'string' ? i.command : '', s);
   const m = /^mcp__([^_].*?)__(.+)$/.exec(name);
   if (m && m[1] !== 'tether') return `mcp.${m[1]}.${m[2]}()`;
@@ -134,12 +142,19 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   emit({ type: 'start', you, id, chat: chat.id, title: chat.title });
 
   const binding = assistantAgent(c.home);
-  const agent = body.agent ?? binding.agent;
+  // an @mentioned crew agent with a binding answers as itself on that binding; with none, Tether answers
+  const routed = body.bot ? loadBindings(c.home)[body.bot] : undefined;
+  const as = routed ? loadCrew(c.home).find((b) => b.id === body.bot && AGENT_KINDS.has(b.kind)) : undefined;
+  const persona = as && personaOf(as);
+  const who = o.who ?? (as ? `You are ${as.name}${as.title ? `, the ${as.title}` : ''}, an agent in the person's Tether crew. They @mentioned you in their chat with Tether: answer as yourself, in your own voice, not as Tether.${persona ? `\n${persona}` : ''}` : undefined);
+  const by = as ? { by: { bot: as.id, name: as.name } } : {};
+  const agent = body.agent ?? routed?.agent ?? binding.agent;
   // the bound model belongs to the bound agent (claude's "haiku" means nothing to OpenRouter)
-  const bound = agent === binding.agent ? binding.model : undefined;
+  const bound = routed && agent === routed.agent ? routed.model : agent === binding.agent ? binding.model : undefined;
   const secrets = secretsFor(c.home, o.ws);
   const redact = (s: string) => redactText(s, secrets);
   const tools: ToolRun[] = [];
+  const retrieved: Retrieved[] = [];
   let text = '';
   // the trailing ```tether block is data: it never streams, and a partial fence waits until it is known not to be one
   let sent = 0;
@@ -156,7 +171,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     emit({ type: 'done', message: m });
     return m;
   };
-  const fail = (error: string) => done({ id, role: 'tether', text: redact(text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...(tools.length ? { tools } : {}), error });
+  // a half-written artifact is not kept: the reply's prose is
+  const fail = (error: string) => done({ id, role: 'tether', text: redact(splitArtifacts(text).text.split('```tether')[0]!.trimEnd()), at: Date.now(), ...by, ...(tools.length ? { tools } : {}), error });
   if (!c.registry.has(agent)) return fail(`"${agent}" is not set up. Link a model to Tether in the Crew tab.`);
   // a team agent's turn keeps no chat, so there is nothing to compact
   const latest = o.ephemeral ? undefined : latestContext(chat.messages)?.use;
@@ -191,6 +207,18 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, 8)
       .map((r) => `- ${r.id}: ${r.status}, ${r.kind === 'team' ? 'team' : r.pipeline}, "${r.task.replace(/\s+/g, ' ').slice(0, 80)}"`);
+    // the chat's artifacts at their latest version, and the newest one's content, so "change that page" can rewrite it
+    const made = chat.messages.flatMap((m) => m.artifacts ?? []);
+    const refs = made.filter((a, k) => made.findLastIndex((x) => x.id === a.id) === k);
+    let artifact: PromptInput['artifact'];
+    if (refs.length && !o.ephemeral) {
+      try {
+        const v = readArtifact(artifactsDir(c.home, o.root), refs.at(-1)!.id);
+        artifact = { ref: { id: v.meta.id, version: v.version, title: v.meta.title, kind: v.meta.kind }, content: v.content };
+      } catch {
+        /* deleted since: the list still names it */
+      }
+    }
     const input: PromptInput = {
       message: body.message,
       context: body.context,
@@ -198,11 +226,14 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       needs: c.needs(),
       runs,
       workflows: listPipelines(c.home).map((f) => f.name),
-      notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500 }).catch(() => '')) || undefined,
+      notes: (await c.vault.contextFor(body.message, { limit: 3, maxChars: 2500, used: (h) => void retrieved.push({ path: h.note.path, title: h.note.title, score: h.score, snippet: redact(h.snippet).slice(0, 300) }) }).catch(() => '')) || undefined,
       history: chat.messages.slice(0, -1),
       attachments,
-      who: o.who,
+      who,
+      ...(as && !o.who ? { mention: true as const } : {}),
       extra: o.extra,
+      ...(refs.length ? { artifacts: refs } : {}),
+      ...(artifact ? { artifact } : {}),
     };
     const prompt = buildPrompt(input);
     const cm = await openCodeModeFor({
@@ -230,6 +261,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     });
     sessionBox.close = cm.close;
     let streamed = false;
+    /** The agent's web searches by call id, so their results (titles and links) land on their step. */
+    const searches = new Map<string, ToolRun>();
     const model = body.model || bound;
     const res = await c.registry.get(agent).run({
       runId: 'tether-assistant',
@@ -254,11 +287,20 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       },
       onSession: () => {},
       // the agent's own reads and searches (Claude's Read, Grep…) show in the timeline like run_code steps
-      onTool: (name, input) => {
+      onTool: (name, input, useId) => {
         const code = builtinStep(name, input, cwd);
         if (!code) return;
         const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };
         tools.push(t);
+        if (name === 'WebSearch' && useId) searches.set(useId, t);
+        emit({ type: 'tool', tool: { ...t } });
+      },
+      // only a search's result is kept: the others are file contents the timeline does not show, and would swell the chat
+      onToolResult: (useId, output, isError) => {
+        const t = searches.get(useId);
+        if (!t) return;
+        t.output = redact(output).slice(0, 4000);
+        t.isError = isError || undefined;
         emit({ type: 'tool', tool: { ...t } });
       },
     });
@@ -266,6 +308,19 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (signal.aborted) return fail('Stopped.');
     if (res.exitCode !== 0 || res.error) return fail((res.error ?? `the agent exited ${res.exitCode}`).split('\n')[0]!.slice(0, 300));
     const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault });
+    // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either
+    const artifacts: ArtifactRef[] = [];
+    const unsaved: string[] = [];
+    if (!o.ephemeral)
+      for (const a of checked.artifacts) {
+        try {
+          if (o.root) ensureIgnored(o.root);
+          artifacts.push(saveArtifact(artifactsDir(c.home, o.root), a, chat.id));
+        } catch (e) {
+          unsaved.push(`Could not save the artifact "${a.title}": ${(e as Error).message.split('\n')[0]!.slice(0, 200)}`);
+        }
+      }
+    const replyText = [checked.text, ...unsaved].filter(Boolean).join('\n\n');
     const approvals = cm.approvals();
     const info = (await c.modelInfo?.(agent, model).catch(() => undefined)) ?? { size: knownSize(agent, model) };
     const context: ContextUse = {
@@ -279,12 +334,20 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     return done({
       id,
       role: 'tether',
-      text: checked.text || 'Done.',
+      text: replyText || (artifacts.length ? '' : 'Done.'),
       at: Date.now(),
+      ...by,
       ...(checked.cites.length ? { cites: checked.cites } : {}),
       ...(checked.proposals.length ? { proposals: checked.proposals } : {}),
       ...(checked.ask ? { ask: checked.ask } : {}),
       ...(checked.compare ? { compare: checked.compare } : {}),
+      ...(checked.report ? { report: checked.report } : {}),
+      ...(checked.spec ? { spec: checked.spec } : {}),
+      ...(checked.choice ? { choice: checked.choice } : {}),
+      ...(checked.diagram ? { diagram: checked.diagram } : {}),
+      ...(checked.timeline ? { timeline: checked.timeline } : {}),
+      ...(artifacts.length ? { artifacts } : {}),
+      ...(retrieved.length ? { retrieved } : {}),
       ...(approvals.length ? { toolAsks: approvals.map((what) => ({ id: mid('ta'), what, status: 'pending' as const })) } : {}),
       ...(tools.length ? { tools } : {}),
       ...(res.costUsd !== undefined ? { costUsd: res.costUsd } : {}),

@@ -8,6 +8,8 @@ import { join } from 'node:path';
 
 export type BotKind = 'agent' | 'verdict' | 'gate' | 'approval' | 'orchestrator';
 export const BOT_KINDS: BotKind[] = ['agent', 'verdict', 'gate', 'approval', 'orchestrator'];
+/** The kinds that answer as an agent (in a team, or @mentioned in a chat); not a person's approval, not Tether itself. */
+export const AGENT_KINDS: ReadonlySet<string> = new Set(['agent', 'verdict', 'gate']);
 export const KIND_BLURB: Record<BotKind, string> = {
   agent: 'does a job (read-only or writes)',
   verdict: 'reviews and ends with PASS / FAIL',

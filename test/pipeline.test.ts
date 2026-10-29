@@ -83,6 +83,18 @@ describe('claude stream parsing', () => {
     expect(acc.isError).toBe(true);
   });
 
+  it('reports tool calls with their id, and their results from the next user turn (a string or text blocks)', () => {
+    const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
+    const calls: unknown[][] = [];
+    const results: unknown[][] = [];
+    const feed = (o: unknown) => parseClaudeLine(JSON.stringify(o), acc, () => {}, () => {}, undefined, (...a) => calls.push(a), (...a) => results.push(a));
+    feed({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'u1', name: 'WebSearch', input: { query: 'q' } }] } });
+    feed({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Links: []' }] } });
+    feed({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u2', is_error: true, content: [{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }] }, { type: 'text', text: 'not a result' }] } });
+    expect(calls).toEqual([['WebSearch', { query: 'q' }, 'u1']]);
+    expect(results).toEqual([['u1', 'Links: []', false], ['u2', 'a\nb', true]]);
+  });
+
   it("keeps the first request's prompt tokens (what the prompt took) beside the totals", () => {
     const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
     const feed = (o: unknown) => parseClaudeLine(JSON.stringify(o), acc, () => {}, () => {});

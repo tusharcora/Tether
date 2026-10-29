@@ -4,6 +4,9 @@
  * the person's click), questions, blocked outside-world calls waiting for a decision, Code Mode runs and a comparison.
  */
 import type { TeamMode } from '../types.js';
+import type { ArtifactKind } from './artifactBlocks.js';
+
+export type { ArtifactKind };
 
 /** A source behind a claim: `file:line` opens Code, a run opens its page, a note opens the Graph. */
 export type Cite = { n: number; label: string } & ({ kind: 'file'; path: string; line?: number } | { kind: 'run'; id: string } | { kind: 'note'; path: string });
@@ -75,6 +78,87 @@ export interface Compare {
   rows: { label: string; cells: string[] }[];
 }
 
+/** A vault note the turn's prompt carried (keyword retrieval, raw score): what the reply could lean on. */
+export interface Retrieved {
+  path: string;
+  title: string;
+  score: number;
+  snippet: string;
+}
+
+/** A write-up in sections; `sources` counts the reply's real sources a section cites. */
+export interface Report {
+  title: string;
+  sections: { heading: string; summary?: string; sources: number }[];
+}
+
+/** Facts as label and value rows (versions, limits, settings). */
+export interface Spec {
+  title: string;
+  subtitle?: string;
+  rows: { label: string; value: string; emphasis?: true }[];
+}
+
+/** Options on the same traits (false: the option lacks it) and the one Tether would pick (empty: none). */
+export interface Choice {
+  traits: string[];
+  options: { name: string; headline: string; traits: (string | false)[] }[];
+  pick: string;
+  reason: string;
+}
+
+/** Boxes and arrows: edges only between listed nodes. */
+export interface Diagram {
+  title: string;
+  nodes: { id: string; label: string }[];
+  edges: { from: string; to: string; label?: string }[];
+}
+
+export interface TimelineEvent {
+  time: string;
+  title: string;
+  detail?: string;
+  when: 'past' | 'now' | 'future';
+}
+
+/** An artifact a reply made or rewrote: the message keeps this, the content lives in the artifacts folder (artifacts.ts). */
+export interface ArtifactRef {
+  id: string;
+  version: number;
+  title: string;
+  kind: ArtifactKind;
+}
+
+/** One saved version: `file` is `v<n>.html` or `v<n>.md`; `words` for Markdown, `bytes` for HTML. */
+export interface ArtifactVersion {
+  n: number;
+  at: number;
+  file: string;
+  words?: number;
+  bytes?: number;
+}
+
+/** `<artifacts folder>/<id>/meta.json`. */
+export interface ArtifactMeta {
+  id: string;
+  title: string;
+  kind: ArtifactKind;
+  /** The chat that made it (none: a chat with no id yet, or made elsewhere). */
+  chatId?: string;
+  createdAt: number;
+  updatedAt: number;
+  versions: ArtifactVersion[];
+}
+
+/** GET /api/assistant/artifacts/:id: the artifact and one version's content (the latest unless `v` names one). */
+export interface ArtifactView {
+  meta: ArtifactMeta;
+  version: number;
+  content: string;
+  /** The version's file on disk (Show in Finder in Tether.app). */
+  path: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'you' | 'tether';
@@ -88,6 +172,19 @@ export interface ChatMessage {
   compare?: Compare;
   attachments?: { name: string; size: number }[];
   feedback?: 'up' | 'down';
+  /** What was wrong, with a thumbs down. */
+  feedbackNote?: { reasons: string[]; note?: string };
+  /** The vault notes the prompt carried. */
+  retrieved?: Retrieved[];
+  report?: Report;
+  spec?: Spec;
+  choice?: Choice;
+  diagram?: Diagram;
+  timeline?: TimelineEvent[];
+  /** Artifacts the reply made or rewrote (a page, a doc), in the order it wrote them. */
+  artifacts?: ArtifactRef[];
+  /** An @mentioned crew agent answered (as itself, on its own binding), not Tether. */
+  by?: { bot: string; name: string };
   /** What the turn cost, where the agent reports it. */
   costUsd?: number;
   /** The turn failed: what to tell the person. */
@@ -98,6 +195,14 @@ export interface ChatMessage {
   compact?: { count: number; auto?: true };
   /** Folded into that summary message: kept in the chat, left out of the prompt, shown collapsed. */
   compactedBy?: string;
+}
+
+/** A prompt the person saved (GET /api/assistant/prompts): `variables` are its body's `{{name}}` tokens. */
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  body: string;
+  variables: string[];
 }
 
 /** What the person is looking at, sent with every message so Tether can use it. */

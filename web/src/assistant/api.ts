@@ -1,7 +1,7 @@
-import type { AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
+import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, SavedPrompt, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
-export type { AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Cite, Compare, ContextUse, OutcomeNode, Proposal, StreamEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
+export type { ArtifactKind, ArtifactMeta, ArtifactRef, ArtifactView, SavedPrompt, AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
 export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
 /** `?ws=…&chat=…` with the parts that are set. */
@@ -11,6 +11,10 @@ const q = (o: Record<string, string | undefined>) => {
 };
 /** Where the chat list is read (polled by the sidebar and All chats). */
 export const chatsPath = (ws: string | undefined, search?: string) => `/api/assistant/chats${q({ ws, q: search })}`;
+/** Where the project's artifacts are listed (the Artifacts screen polls it). */
+export const artifactsPath = (ws: string | undefined) => `/api/assistant/artifacts${q({ ws })}`;
+/** Where the project's saved prompts are read (the prompt library). */
+export const promptsPath = (ws: string | undefined) => `/api/assistant/prompts${q({ ws })}`;
 
 export interface SendBody {
   ws?: string;
@@ -20,9 +24,13 @@ export interface SendBody {
   context?: AssistantContext;
   model?: string;
   agent?: string;
+  /** An @mentioned crew bot: the turn runs on its agent and model. */
+  bot?: string;
   attachments?: { name: string; text: string }[];
   /** This message answers the question card on that Tether message; the card collapses to `result`. */
   answer?: { message: string; result: string };
+  /** Ask again in place of this reply (the latest): it and its question are dropped first. */
+  regenerate?: string;
 }
 
 /** The assistant's routes (server: src/assistant/routes.ts). */
@@ -34,9 +42,16 @@ export const assistantApi = {
   decide: (ws: string | undefined, chat: string | undefined, id: string, decision: 'start' | 'dismiss') => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, chat, decision }),
   turnIntoRun: (ws: string | undefined, chat: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, chat, from }),
   tool: (ws: string | undefined, chat: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, chat, decision }),
-  feedback: (ws: string | undefined, chat: string | undefined, id: string, value: 'up' | 'down' | null) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, chat, value }),
+  feedback: (ws: string | undefined, chat: string | undefined, id: string, value: 'up' | 'down' | null, why?: { reasons: string[]; note?: string }) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, chat, value, ...why }),
+  /** Drop a stopped or failed reply. */
+  discard: (ws: string | undefined, chat: string, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/messages/${encodeURIComponent(id)}${q({ ws, chat })}`),
   /** Compact now (a summary of the older messages) or, with `undo`, put the newest compaction's messages back. */
   compact: (ws: string | undefined, chat: string, undo?: boolean) => api<{ messages: ChatMessage[] }>('POST', '/api/assistant/compact', { ws, chat, ...(undo ? { undo: true } : {}) }),
+  /** An artifact with one version's content (the latest unless `v`). */
+  artifact: (ws: string | undefined, id: string, v?: number) => api<ArtifactView>('GET', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws, v: v === undefined ? undefined : String(v) })}`),
+  removeArtifact: (ws: string | undefined, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/artifacts/${encodeURIComponent(id)}${q({ ws })}`),
+  savePrompt: (ws: string | undefined, p: { name: string; body: string }) => api<{ prompt: SavedPrompt }>('POST', '/api/assistant/prompts', { ws, ...p }),
+  removePrompt: (ws: string | undefined, id: string) => api<{ ok: true }>('DELETE', `/api/assistant/prompts/${encodeURIComponent(id)}${q({ ws })}`),
 };
 
 /**

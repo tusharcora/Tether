@@ -12,7 +12,7 @@ import { runTurn } from '../assistant/turn.js';
 import { loadBindings } from '../bindings.js';
 import { projectRoot } from '../codeRoutes.js';
 import { detectTestCommand } from '../composer.js';
-import { loadCrew, type BotDef } from '../crew.js';
+import { AGENT_KINDS, loadCrew, type BotDef } from '../crew.js';
 import type { Engine } from '../engine.js';
 import type { Exec } from '../exec.js';
 import { fence } from '../fence.js';
@@ -43,7 +43,6 @@ export interface TeamsDeps {
   exec: Exec;
 }
 
-const AGENT_KINDS = new Set(['agent', 'verdict', 'gate']);
 const TEXT_MAX = 4000;
 /** Agent-to-agent hand-offs in a row before a person must step in. */
 export const MAX_HOPS = 3;

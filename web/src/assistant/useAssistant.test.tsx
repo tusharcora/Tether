@@ -2,17 +2,18 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import type { StreamEvent } from './api';
-import { useActiveChat, useAssistant } from './useAssistant';
+import { useActiveChat, useAssistant, withoutTurn } from './useAssistant';
 
 const api = vi.hoisted(() => ({
   chat: vi.fn(),
   compact: vi.fn(),
+  discard: vi.fn(async () => ({ ok: true })),
   turn: undefined as undefined | ((body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => Promise<void>),
   bodies: [] as unknown[],
 }));
 vi.mock('./api', async (orig) => ({
   ...(await orig<typeof import('./api')>()),
-  assistantApi: { chat: api.chat, compact: api.compact },
+  assistantApi: { chat: api.chat, compact: api.compact, discard: api.discard },
   streamTurn: (body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) => (api.bodies.push(body), api.turn!(body, on, signal)),
 }));
 
@@ -85,6 +86,84 @@ describe('useAssistant', () => {
     await waitFor(() => expect(result.current.title).toBe('Old chat'));
     expect(result.current.streaming).toBeUndefined();
     expect(result.current.messages.map((m) => m.text)).toEqual(['old']);
+  });
+});
+
+describe('useAssistant: queue, regenerate, retry, discard', () => {
+  const said = [
+    { id: 'y1', role: 'you', text: 'one', at: 1 },
+    { id: 'a1', role: 'tether', text: 'first', at: 2, context: { parts: {}, agent: 'openrouter', model: 'm/free' } },
+    { id: 'y2', role: 'you', text: 'two', at: 3 },
+    { id: 'a2', role: 'tether', text: 'second', at: 4, context: { parts: {}, agent: 'claude', model: 'opus' } },
+  ];
+  const answer = (id: string) => async (b: unknown, on: (e: StreamEvent) => void) => {
+    on({ type: 'start', you: { id: `y-${id}`, role: 'you', text: (b as { message: string }).message, at: 5 }, id, chat: 'c1', title: 't' });
+    on({ type: 'done', message: { id, role: 'tether', text: `again ${id}`, at: 6 } });
+  };
+
+  it('drops a turn the way the server does', () => {
+    expect(withoutTurn(said as never, 'a2').map((m) => m.id)).toEqual(['y1', 'a1']);
+    expect(withoutTurn(said as never, 'nope').map((m) => m.id)).toEqual(['y1', 'a1', 'y2', 'a2']);
+  });
+
+  it('regenerates the latest reply in place, on the agent and model that answered; an older one is asked again at the end', async () => {
+    api.chat.mockResolvedValue(view(said));
+    const { result } = renderHook(() => useAssistant('api', 'c1', true));
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    api.turn = answer('r1');
+    await act(() => result.current.regenerate('a2'));
+    expect(api.bodies[0]).toMatchObject({ chat: 'c1', message: 'two', regenerate: 'a2', agent: 'claude', model: 'opus' });
+    expect(result.current.messages.map((m) => m.id)).toEqual(['y1', 'a1', 'y-r1', 'r1']);
+    api.turn = answer('r2');
+    await act(() => result.current.regenerate('a1'));
+    expect(api.bodies[1]).toMatchObject({ message: 'one', agent: 'openrouter', model: 'm/free' });
+    expect(api.bodies[1]).not.toHaveProperty('regenerate');
+    expect(result.current.messages.map((m) => m.id)).toEqual(['y1', 'a1', 'y-r1', 'r1', 'y-r2', 'r2']);
+  });
+
+  it('queues while a reply streams, lets one be removed, and forgets the queue in another chat', async () => {
+    let finish!: () => void;
+    api.turn = (b, on) => new Promise<void>((resolve) => ((finish = resolve), on({ type: 'start', you: { id: 'y', role: 'you', text: (b as { message: string }).message, at: 1 }, id: 'r', chat: 'c1', title: 't' })));
+    const { result, rerender } = renderHook(({ id }) => useAssistant('api', id, true), { initialProps: { id: 'c1' } });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => void result.current.send('a'));
+    await act(() => result.current.send('b'));
+    await act(() => result.current.send('c'));
+    expect(result.current.queue.map((q) => q.text)).toEqual(['b', 'c']);
+    act(() => result.current.unqueue(result.current.queue[0]!.id));
+    expect(result.current.queue.map((q) => q.text)).toEqual(['c']);
+    await act(async () => finish());
+    await waitFor(() => expect(api.bodies.map((b) => (b as { message: string }).message)).toEqual(['a', 'c']));
+    act(() => void result.current.send('d'));
+    rerender({ id: 'c2' });
+    await waitFor(() => expect(result.current.queue).toEqual([]));
+  });
+
+  it('retries what failed: the load, or the send', async () => {
+    api.chat.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useAssistant('api', 'c1', true));
+    await waitFor(() => expect(result.current.error).toBe('offline'));
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeUndefined();
+    expect(api.chat).toHaveBeenCalledTimes(2);
+    api.turn = async () => {
+      throw new Error('HTTP 502');
+    };
+    await act(() => result.current.send('hi'));
+    expect(result.current.error).toBe('HTTP 502');
+    api.turn = answer('r');
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.messages.map((m) => m.text)).toEqual(['hi', 'again r']));
+  });
+
+  it('discards a reply here and on the server', async () => {
+    api.chat.mockResolvedValue(view([{ id: 'y', role: 'you', text: 'q', at: 1 }, { id: 'a', role: 'tether', text: 'half', at: 2, error: 'Stopped.' }]));
+    const { result } = renderHook(() => useAssistant('api', 'c1', true));
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    await act(() => result.current.discard('a'));
+    expect(result.current.messages.map((m) => m.id)).toEqual(['y']);
+    expect(api.discard).toHaveBeenCalledWith('api', 'c1', 'a');
   });
 });
 

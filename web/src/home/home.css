@@ -3,6 +3,7 @@
 .home-cols { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 28px; align-items: start; padding: 0 24px; }
 @media (max-width: 1099px) { .home-cols { grid-template-columns: minmax(0, 1fr); } }
 .home-main, .home-side { min-width: 0; }
+.home-graph { margin-top: 22px; }
 /* Inbox */
 .home-grid { display: flex; flex-direction: column; gap: 16px; padding: 0 24px; }
 @media (max-width: 899px) { .home-cols, .home-grid { padding: 0 12px; } }

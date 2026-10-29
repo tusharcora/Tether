@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { cssRule } from '../test/css';
+import { renderApp } from '../test/render';
 import { Chat } from './Chat';
 import { Markdown } from './Markdown';
 
@@ -36,13 +37,13 @@ describe('the prompt', () => {
   });
   it('keeps the picked model per project across a remount', () => {
     localStorage.clear();
-    const chat = { messages: [], models: ['opus', 'sonnet', 'haiku'], model: 'sonnet', loading: false, send: vi.fn(), stop: vi.fn() } as never;
+    const chat = { messages: [], models: ['opus', 'sonnet', 'haiku'], model: 'sonnet', loading: false, queue: [], send: vi.fn(), stop: vi.fn() } as never;
     const ui = <Chat chat={chat} project="api" context={{ page: 'home' }} onGo={() => {}} />;
-    const a = render(ui);
+    const a = renderApp(ui);
     expect(screen.getAllByText('sonnet').length).toBeGreaterThan(0);
     localStorage.setItem('tether.assistant.model.api', 'haiku');
     a.unmount();
-    render(ui);
+    renderApp(ui);
     expect(screen.getAllByText('haiku').length).toBeGreaterThan(0);
   });
 });

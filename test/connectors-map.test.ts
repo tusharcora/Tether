@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { GithubAccount } from '../src/accounts/github.js';
 import { connectorsView, testConnector } from '../src/codemode/connectorsView.js';
@@ -31,4 +32,12 @@ describe('the connectors map data', () => {
     expect(await testConnector(home, gh(false), 'github')).toMatchObject({ ok: false });
     expect(await testConnector(home, gh(true), 'mcp.nope')).toBeUndefined();
   });
+
+  it('tests an MCP server by connecting: its tool names, or why it failed', async () => {
+    const home = tmp('home-');
+    putMcpServer(home, { name: 'fake', command: process.execPath, args: [fileURLToPath(new URL('./fixtures/fake-mcp.mjs', import.meta.url))] });
+    putMcpServer(home, { name: 'broken', command: process.execPath, args: ['-e', 'process.exit(1)'] });
+    expect(await testConnector(home, gh(true), 'mcp.fake')).toEqual({ ok: true, detail: '3 tools', tools: ['echo', 'add_numbers', 'delete_note'] });
+    expect(await testConnector(home, gh(true), 'mcp.broken')).toMatchObject({ ok: false });
+  }, 20_000);
 });

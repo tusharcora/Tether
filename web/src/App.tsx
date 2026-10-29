@@ -5,6 +5,7 @@ import { Assistant } from './assistant/Assistant';
 import { useActiveChat, useAssistant } from './assistant/useAssistant';
 import { useAssistantShell } from './assistant/useAssistantShell';
 import { contextOf } from './assistant/context';
+import { Artifacts } from './artifacts/Artifacts';
 import { AllChats } from './chats/AllChats';
 import { Conversation } from './chats/Conversation';
 import { NewChat } from './chats/NewChat';
@@ -364,6 +365,7 @@ function Shell() {
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
+            {screen.tab === 'artifacts' ? <Artifacts key={projects.current?.id ?? '_'} ws={projects.current?.id} project={projects.current} onGo={go} /> : null}
             {screen.tab === 'chats' && !screen.id ? (
               <AllChats
                 key={projects.current?.id ?? '_'}
@@ -378,7 +380,7 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat key={screen.node ?? ''} chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} starter={screen.node === 'run' || screen.node === 'file' ? screen.node : undefined} /> : null}
-            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} /> : null}
+            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} /> : null}
             {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
               <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
             ) : null}

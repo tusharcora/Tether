@@ -1,11 +1,12 @@
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { Engine } from '../src/engine.js';
-import { deleteChat, listChats, loadAllow, readChat } from '../src/assistant/history.js';
+import { deleteChat, listChats, loadAllow, readChat, saveChat as saveChatFile } from '../src/assistant/history.js';
+import { checkCards } from '../src/assistant/reply.js';
 import { builtinStep, runTurn } from '../src/assistant/turn.js';
 import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
@@ -27,8 +28,8 @@ class Scripted implements AgentAdapter {
   reply = 'Hello.';
   script?: string;
   usage?: AgentUsage;
-  /** The agent's own tool calls to report (Claude's Read, Grep…). */
-  ownTools: [string, unknown][] = [];
+  /** The agent's own tool calls to report (Claude's Read, Grep…), with the call's id and what it returned. */
+  ownTools: [string, unknown, string?, string?][] = [];
   async detect() {
     return { ok: true };
   }
@@ -38,7 +39,10 @@ class Scripted implements AgentAdapter {
   async run(req: AgentRequest): Promise<AgentResult> {
     this.prompts.push(req.prompt);
     if (this.script && req.codeMode) await req.codeMode.runner.runCode(this.script);
-    for (const [name, input] of this.ownTools) req.onTool?.(name, input);
+    for (const [name, input, id, result] of this.ownTools) {
+      req.onTool?.(name, input, id);
+      if (id && result !== undefined) req.onToolResult?.(id, result, false);
+    }
     for (const part of this.reply.match(/[\s\S]{1,7}/g) ?? []) req.onDelta?.(part);
     return { output: this.reply, exitCode: 0, costUsd: 0.001, ...(this.usage ? { usage: this.usage } : {}) };
   }
@@ -88,7 +92,7 @@ async function boot() {
     const start = events.find((e) => e.type === 'start') as Extract<StreamEvent, { type: 'start' }> | undefined;
     return { events, start, chat: start?.chat, done: events.find((e) => e.type === 'done') as Extract<StreamEvent, { type: 'done' }> | undefined, status: r.status };
   };
-  return { home, dir, agent, registry, store, engine, call, turn };
+  return { home, dir, agent, registry, store, engine, vault, call, turn };
 }
 
 describe('the agent’s own tools in the timeline', () => {
@@ -97,6 +101,7 @@ describe('the agent’s own tools in the timeline', () => {
     expect(builtinStep('Grep', { pattern: 'runTurn' }, '/repo')).toBe('repo.search("runTurn")');
     expect(builtinStep('Glob', { pattern: 'test/**/*.ts' }, '/repo')).toBe('repo.list("test/**/*.ts")');
     expect(builtinStep('WebFetch', { url: 'https://x.dev' }, '/repo')).toBe('http.get("https://x.dev")');
+    expect(builtinStep('WebSearch', { query: 'react 19' }, '/repo')).toBe('http.search("react 19")');
     expect(builtinStep('mcp__linear__list_issues', {}, '/repo')).toBe('mcp.linear.list_issues()');
     expect(builtinStep('mcp__tether__run_code', { code: 'x' }, '/repo')).toBeUndefined();
     expect(builtinStep('TodoWrite', {}, '/repo')).toBeUndefined();
@@ -335,6 +340,211 @@ describe('POST /api/assistant', () => {
     const t = await boot();
     expect((await t.call('POST', '/api/assistant', { ws: 'api' })).status).toBe(400);
     expect((await t.call('POST', '/api/assistant', { ws: 'nope', message: 'x' })).status).toBe(404);
+  });
+});
+
+describe('what the chat elements read', () => {
+  it('keeps a web search’s result on its step, and no other tool’s', async () => {
+    const t = await boot();
+    const links = 'Web search results for query: "vitest"\n\nLinks: [{"title":"Vitest","url":"https://vitest.dev"}]';
+    t.agent.ownTools = [['WebSearch', { query: 'vitest' }, 'u1', links], ['Grep', { pattern: 'x' }, 'u2', 'a.ts:1:x']];
+    const { done } = await t.turn({ message: 'q' });
+    expect(done!.message.tools).toEqual([{ id: 't1', code: 'http.search("vitest")', output: links }, { id: 't2', code: 'repo.search("x")' }]);
+  });
+
+  it('saves the vault notes the prompt carried, with their score and a snippet', async () => {
+    const t = await boot();
+    await t.vault.writeNote('limits.md', '---\ntype: decision\n---\n# Rate limits\n\nThe API rate limit is five requests a minute.\n');
+    const { done } = await t.turn({ message: 'what is the rate limit?' });
+    expect(done!.message.retrieved).toEqual([{ path: 'limits.md', title: expect.any(String), score: expect.any(Number), snippet: 'The API rate limit is five requests a minute.' }]);
+    expect(done!.message.retrieved![0]!.score).toBeGreaterThan(0);
+    expect((await t.turn({ message: 'zzz qqq' })).done!.message.retrieved).toBeUndefined();
+  });
+
+  it('keeps a thumbs down’s reasons and note, checked at the door, and drops them on thumbs up', async () => {
+    const t = await boot();
+    const { chat, done } = await t.turn({ message: 'q' });
+    const fb = (body: Record<string, unknown>) => t.call('POST', `/api/assistant/feedback/${done!.message.id}`, { ws: 'api', chat, ...body });
+    expect((await fb({ value: 'down', reasons: ['Wrong', 'Too long'], note: ' missed the config ' })).status).toBe(200);
+    const saved = () => readChat(t.home, 'api', chat!)!.messages.at(-1)!;
+    expect(saved()).toMatchObject({ feedback: 'down', feedbackNote: { reasons: ['Wrong', 'Too long'], note: 'missed the config' } });
+    // a plain thumbs down keeps it
+    await fb({ value: 'down' });
+    expect(saved().feedbackNote?.reasons).toEqual(['Wrong', 'Too long']);
+    for (const bad of [{ value: 'down', reasons: 'Wrong' }, { value: 'down', reasons: Array(7).fill('x') }, { value: 'down', reasons: ['x'.repeat(61)] }, { value: 'down', reasons: [''] }, { value: 'down', note: 5 }, { value: 'down', note: 'x'.repeat(1001) }, { value: 'up', reasons: ['Wrong'] }])
+      expect((await fb(bad)).status, JSON.stringify(bad)).toBe(400);
+    await fb({ value: 'up' });
+    expect(saved().feedback).toBe('up');
+    expect(saved().feedbackNote).toBeUndefined();
+  });
+
+  it('regenerates only the latest reply: the reply and its question go, the question is asked again', async () => {
+    const t = await boot();
+    const first = await t.turn({ message: 'one' });
+    t.agent.reply = 'First answer.';
+    const second = await t.turn({ message: 'two', chat: first.chat });
+    t.agent.reply = 'Better answer.';
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', chat: first.chat, message: 'one', regenerate: first.done!.message.id })).status).toBe(409);
+    expect((await t.call('POST', '/api/assistant', { ws: 'api', message: 'one', regenerate: 'x' })).status).toBe(409);
+    const again = await t.turn({ message: 'two', chat: first.chat, regenerate: second.done!.message.id });
+    expect(again.done!.message.text).toBe('Better answer.');
+    expect(readChat(t.home, 'api', first.chat!)!.messages.map((m) => m.text)).toEqual(['one', 'Hello.', 'two', 'Better answer.']);
+  });
+
+  it('discards a stopped or failed reply and nothing else', async () => {
+    const t = await boot();
+    const { chat, done } = await t.turn({ message: 'q' });
+    const del = (id: string, c = chat) => t.call('DELETE', `/api/assistant/messages/${id}?ws=api&chat=${c}`);
+    expect((await del(done!.message.id)).status).toBe(404);
+    expect((await del(done!.message.id, '..%2Fx')).status).toBe(400);
+    const c = readChat(t.home, 'api', chat!)!;
+    c.messages.push({ id: 'm-stop', role: 'tether', text: 'half', at: 1, error: 'Stopped.' });
+    saveChatFile(t.home, 'api', c);
+    expect((await del('m-stop')).status).toBe(200);
+    expect(readChat(t.home, 'api', chat!)!.messages.map((m) => m.id)).toEqual(c.messages.slice(0, -1).map((m) => m.id));
+  });
+
+  it('checks the cards: real fields only, edges between listed nodes, sections counting real sources', () => {
+    const cards = checkCards(
+      {
+        report: { title: 'Limits', sections: [{ heading: 'Now', summary: 'Five a minute', cites: [1, 1, 2, 9, 'x'] }, { summary: 'no heading' }] },
+        spec: { title: 'Runtime', rows: [{ label: 'Node', value: '22', emphasis: true }, { label: 'Node', value: '20' }, { label: 'empty' }] },
+        choice: { traits: ['Tests', 'Cost'], options: [{ name: 'A', headline: 'fast', traits: ['pass', false] }, { name: 'B', traits: [false, '$2', 'extra'] }, { name: 'A' }], pick: 'C', reason: 'A is cheaper' },
+        diagram: { title: 'Flow', nodes: [{ id: 'a', label: 'Plan' }, { id: 'b' }, { id: 'a', label: 'dup' }], edges: [{ from: 'a', to: 'b', label: 'then' }, { from: 'a', to: 'z' }, { from: 'b', to: 'b' }] },
+        timeline: [{ time: '10:42', title: 'Started', when: 'past' }, { title: 'No when' }, { title: 'Next', when: 'future', detail: 'tests' }],
+      },
+      2,
+    );
+    expect(cards).toEqual({
+      report: { title: 'Limits', sections: [{ heading: 'Now', summary: 'Five a minute', sources: 2 }] },
+      spec: { title: 'Runtime', rows: [{ label: 'Node', value: '22', emphasis: true }] },
+      choice: { traits: ['Tests', 'Cost'], options: [{ name: 'A', headline: 'fast', traits: ['pass', false] }, { name: 'B', headline: '', traits: [false, '$2'] }], pick: '', reason: 'A is cheaper' },
+      diagram: { title: 'Flow', nodes: [{ id: 'a', label: 'Plan' }, { id: 'b', label: 'b' }], edges: [{ from: 'a', to: 'b', label: 'then' }] },
+      timeline: [{ time: '10:42', title: 'Started', when: 'past' }, { time: '', title: 'Next', detail: 'tests', when: 'future' }],
+    });
+    // a card missing what it needs is left out
+    expect(checkCards({ report: { sections: [{ heading: 'x' }] }, spec: { title: 't', rows: [] }, choice: { traits: ['', 'b'], options: [{ name: 'A' }, { name: 'B' }] }, diagram: { nodes: [{ id: 'a' }] }, timeline: 'x' }, 0)).toEqual({});
+  });
+
+  it('a reply’s cards reach the saved message', async () => {
+    const t = await boot();
+    t.agent.reply = 'See the spec.\n```tether\n{"spec":{"title":"Runtime","rows":[{"label":"Node","value":"22"}]}}\n```';
+    expect((await t.turn({ message: 'q' })).done!.message.spec).toEqual({ title: 'Runtime', rows: [{ label: 'Node', value: '22' }] });
+  });
+});
+
+describe('artifacts', () => {
+  it('saves a reply’s artifact in the project, keeps a reference on the message, and the next turn sees and rewrites it', async () => {
+    const t = await boot();
+    t.agent.reply = 'Here is the page.\n<artifact title="Landing page" kind="html">\n<!doctype html><h1>v1</h1>\n</artifact>';
+    const r = await t.turn({ message: 'make a landing page' });
+    expect(r.done!.message.text).toBe('Here is the page.');
+    expect(r.done!.message.artifacts).toEqual([{ id: 'landing-page', version: 1, title: 'Landing page', kind: 'html' }]);
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'artifacts', 'landing-page', 'v1.html'), 'utf8')).toBe('<!doctype html><h1>v1</h1>');
+    // kept out of the project's git: .aorch/.gitignore lists them
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
+    expect(t.agent.prompts[0]).toContain('<artifact title="Short title" kind="html">');
+    // the chat keeps the reference, not the content
+    expect(JSON.stringify(readChat(t.home, 'api', r.chat!))).not.toContain('<h1>v1</h1>');
+
+    t.agent.reply = 'Made it blue.\n<artifact id="landing-page" title="Landing page" kind="html">\n<h1 style="color:blue">v2</h1>\n</artifact>';
+    const r2 = await t.turn({ chat: r.chat, message: 'make it blue' });
+    const p = t.agent.prompts[1]!;
+    expect(p).toContain('Artifacts in this chat: "Landing page" (id landing-page, html, v1)');
+    expect(p).toContain('<current_artifact id="landing-page">\n<!doctype html><h1>v1</h1>\n</current_artifact>');
+    expect(p).toContain('[made artifact "Landing page" v1]');
+    expect(r2.done!.message.artifacts).toEqual([{ id: 'landing-page', version: 2, title: 'Landing page', kind: 'html' }]);
+    expect(r2.done!.message.context!.parts.messages.map(([l]) => l)).toContain('Artifacts in this chat');
+
+    const list = await t.call('GET', '/api/assistant/artifacts?ws=api');
+    expect(list.json.artifacts.map((a: { id: string; versions: unknown[] }) => [a.id, a.versions.length])).toEqual([['landing-page', 2]]);
+    const v = await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api');
+    expect(v.json).toMatchObject({ version: 2, content: '<h1 style="color:blue">v2</h1>', meta: { chatId: r.chat } });
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=1')).json.content).toBe('<!doctype html><h1>v1</h1>');
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=9')).status).toBe(404);
+    expect((await t.call('GET', '/api/assistant/artifacts/landing-page?ws=api&v=x')).status).toBe(400);
+    expect((await t.call('GET', `/api/assistant/artifacts/${encodeURIComponent('../x')}?ws=api`)).status).toBe(400);
+    expect((await t.call('GET', '/api/assistant/artifacts?ws=nope')).status).toBe(404);
+    expect((await t.call('DELETE', '/api/assistant/artifacts/landing-page?ws=api')).status).toBe(200);
+    expect((await t.call('DELETE', '/api/assistant/artifacts/landing-page?ws=api')).status).toBe(404);
+  });
+
+  it('streams the artifact for the card to count, keeps a reply that is only an artifact, and saves to Tether’s home with no project', async () => {
+    const t = await boot();
+    t.agent.reply = '<artifact title="Notes" kind="markdown">\n# Notes\n</artifact>';
+    const r = await t.turn({ message: 'notes please' });
+    const streamed = r.events.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text).join('');
+    expect(streamed).toContain('# Notes');
+    expect(r.done!.message.text).toBe('');
+    expect(r.done!.message.artifacts?.[0]?.id).toBe('notes');
+    // no project: Tether's own folder
+    const none = await t.call('POST', '/api/assistant', { message: 'notes please' });
+    expect(none.status).toBe(200);
+    expect(readFileSync(join(t.home, 'artifacts', 'notes', 'v1.md'), 'utf8')).toBe('# Notes');
+  });
+
+  it('a team agent’s turn has no artifact contract and saves none', async () => {
+    const t = await boot();
+    t.agent.reply = 'Sure.\n<artifact title="X" kind="markdown">\n# X\n</artifact>';
+    const m = await runTurn(
+      { home: t.home, store: t.store, engine: t.engine, registry: t.registry, vault: new Vault(tmp('vault-')), needs: () => [] },
+      { ws: 'api', root: realpathSync(t.dir), body: { message: 'hi', agent: 'scripted' }, who: 'You are Bolt.', ephemeral: true },
+      () => {},
+      new AbortController().signal,
+    );
+    expect(m.text).toBe('Sure.');
+    expect(m.artifacts).toBeUndefined();
+    expect(t.agent.prompts.at(-1)).not.toContain('<artifact title=');
+    expect(existsSync(join(realpathSync(t.dir), '.aorch', 'artifacts'))).toBe(false);
+  });
+});
+
+describe('the composer’s prompts and mentions', () => {
+  it('saves, lists, edits and deletes prompts per project, checked at the door', async () => {
+    const t = await boot();
+    const made = await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: 'Explain', body: 'Explain {{file}}' });
+    expect(made.json.prompt).toMatchObject({ name: 'Explain', variables: ['file'] });
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
+    // no project: Tether's home gets no .gitignore
+    await t.call('POST', '/api/assistant/prompts', { name: 'Home one', body: 'x' });
+    expect(existsSync(join(t.home, '.gitignore'))).toBe(false);
+    expect(readFileSync(join(realpathSync(t.dir), '.aorch', 'prompts.json'), 'utf8')).toContain('Explain {{file}}');
+    expect((await t.call('GET', '/api/assistant/prompts?ws=api')).json.prompts).toHaveLength(1);
+    // another project's (here: no project's) prompts are its own
+    expect((await t.call('GET', '/api/assistant/prompts')).json.prompts.map((x: { name: string }) => x.name)).toEqual(['Home one']);
+    const id = made.json.prompt.id as string;
+    expect((await t.call('PATCH', `/api/assistant/prompts/${id}`, { ws: 'api', name: 'Explain a file' })).json.prompt.name).toBe('Explain a file');
+    expect((await t.call('POST', '/api/assistant/prompts', { ws: 'api', name: '', body: 'x' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/assistant/prompts/${encodeURIComponent('../x')}`, { ws: 'api', name: 'y' })).status).toBe(400);
+    expect((await t.call('DELETE', `/api/assistant/prompts/${id}?ws=api`)).status).toBe(200);
+    expect((await t.call('DELETE', `/api/assistant/prompts/${id}?ws=api`)).status).toBe(404);
+  });
+
+  it('an @mentioned crew agent answers as itself on its own binding, keeping the page and artifacts; one with no binding leaves it to Tether', async () => {
+    const t = await boot();
+    const r = await t.turn({ message: '@Bolt what is the limit?', bot: 'coder' });
+    expect(r.done!.message.context?.agent).toBe('mock');
+    expect(r.done!.message.by).toEqual({ bot: 'coder', name: 'Bolt' });
+    expect(t.agent.prompts).toHaveLength(0);
+    // on the scripted agent the prompt can be read: Bolt's identity and persona, Tether's page line and artifact contract
+    link(t.home, 'coder', { agent: 'scripted', model: 'm2' });
+    t.agent.reply = 'Five, from limit.ts.';
+    const b = await t.turn({ chat: r.chat, message: '@Bolt and now?', bot: 'coder', context: { page: 'code' } });
+    const p = t.agent.prompts.at(-1)!;
+    expect(p.startsWith("You are Bolt, the coder, an agent in the person's Tether crew.")).toBe(true);
+    expect(p).toContain('Writes the change in the run worktree');
+    expect(p).not.toContain('You are Tether');
+    expect(p).toContain('on the code page');
+    expect(p).toContain('<artifact title="Short title" kind="html">');
+    expect(p).toContain(`Bolt: ${r.done!.message.text.slice(0, 40)}`);
+    expect(b.done!.message).toMatchObject({ by: { bot: 'coder', name: 'Bolt' }, text: 'Five, from limit.ts.', context: { agent: 'scripted', model: 'm2' } });
+    const r2 = await t.turn({ message: '@Lens hi', bot: 'reviewer' });
+    expect(r2.done!.message.context?.agent).toBe('scripted');
+    expect(r2.done!.message.by).toBeUndefined();
+    expect(t.agent.prompts.at(-1)!).toContain('You are Tether');
+    // not a bot id: ignored
+    const r3 = await t.turn({ message: 'hi', bot: '../x' });
+    expect(r3.done!.message.context?.agent).toBe('scripted');
   });
 });
 

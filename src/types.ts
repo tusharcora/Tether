@@ -688,7 +688,9 @@ export interface AgentRequest {
   /** Token-level text as it is written (Claude: `--include-partial-messages`). Adapters that cannot stream ignore it. */
   onDelta?(text: string): void;
   /** The agent's own tool calls (Claude: Read, Grep…), for the chat's thinking timeline. Adapters that cannot report them ignore it. */
-  onTool?(name: string, input: unknown): void;
+  onTool?(name: string, input: unknown, id?: string): void;
+  /** What one of those calls returned (Claude: its tool_result, by the call's id). */
+  onToolResult?(id: string, output: string, isError: boolean): void;
   /** A lean call (the assistant): skip the user's own settings, plugins, hooks and slash commands; only the project's count. Adapters that cannot ignore it. */
   lean?: boolean;
   onSession(id: string): void;

@@ -6,6 +6,8 @@
 @layer theme;
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' source(none);
+/* the assistant-ui elements' ShimmerLabel (the registry's elements-surfaces css) */
+@import 'tw-shimmer';
 @source './components/beui';
 @source './components/bencho';
 @source './components/aicss';
@@ -13,7 +15,9 @@
 @source './components/composer';
 @source './components/ui';
 @source './components/ai-elements';
+@source './components/assistant-ui';
 @source './assistant';
+@source './artifacts';
 @source not './**/*.test.{ts,tsx}';
 
 /* our theme attribute, not beui's .dark class */
@@ -58,6 +62,40 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The assistant-ui elements (components/assistant-ui) are written for Tailwind's preflight, which Tether does not load:
+   inside them controls, paragraphs, lists and links start bare. One element of weight, so their own utilities still win
+   and Tether's :where(button) defaults lose. */
+:where(
+  [data-slot='activity-graph'],
+  [data-slot='artifact-card'],
+  [data-slot='comparison-card'],
+  [data-slot='composer-menu'],
+  [data-slot='diagram'],
+  [data-slot='document-reference'],
+  [data-slot='error-state'],
+  [data-slot='feedback-dialog'],
+  [data-slot='link-preview'],
+  [data-slot='mcp-server-panel'],
+  [data-slot='memory-chips'],
+  [data-slot='message-actions'],
+  [data-slot='message-queue'],
+  [data-slot='permission-grant'],
+  [data-slot='prompt-library'],
+  [data-slot='research-report'],
+  [data-slot='retrieval-chunks'],
+  [data-slot='score-breakdown'],
+  [data-slot='speaker-identity'],
+  [data-slot='spec-sheet'],
+  [data-slot='stopped-run'],
+  [data-slot='task-card'],
+  [data-slot='timeline'],
+  [data-slot='web-search']
+) {
+  & :is(button, textarea) { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; color: inherit; }
+  & :is(p, ul, ol) { margin: 0; padding: 0; list-style: none; }
+  & a { color: inherit; text-decoration: inherit; }
 }
 
 /* lezer highlight classes for beui's code surfaces (components/beui/lib/highlight.ts), from Studio tokens like cmTheme.ts */

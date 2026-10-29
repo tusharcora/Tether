@@ -8,7 +8,9 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
+import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
+import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } from './prompts.js';
 import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
@@ -43,6 +45,7 @@ function parseBody(b: Record<string, unknown>): TurnBody {
     ...(context ? { context } : {}),
     ...(typeof b.model === 'string' && b.model ? { model: b.model.slice(0, 120) } : {}),
     ...(typeof b.agent === 'string' && b.agent ? { agent: b.agent.slice(0, 40) } : {}),
+    ...(typeof b.bot === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(b.bot) ? { bot: b.bot } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(ans && typeof ans.message === 'string' && typeof ans.result === 'string' ? { answer: { message: ans.message, result: ans.result } } : {}),
   };
@@ -80,6 +83,13 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const root = rootOf(c, ws);
     const body = parseBody(b);
     const chat = b.chat === undefined ? undefined : chatIn(c, ws, b.chat);
+    if (b.regenerate !== undefined) {
+      const last = chat?.messages.at(-1);
+      if (!chat || typeof b.regenerate !== 'string' || last?.id !== b.regenerate || last.role !== 'tether') throw new HttpError(409, 'only the latest reply can be regenerated');
+      // drop the reply and the question it answered: the turn asks it again
+      const q = chat.messages.findLastIndex((x) => x.role === 'you');
+      chat.messages.splice(q >= 0 ? q : -1);
+    }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     const ctl = new AbortController();
     // the person pressed Stop (or left): stop the agent
@@ -209,11 +219,70 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const ws = wsOf(b.ws);
     rootOf(c, ws);
     if (b.value !== null && b.value !== 'up' && b.value !== 'down') throw new HttpError(400, '"value" must be "up", "down" or null');
+    const reasons = b.reasons ?? [];
+    if (!Array.isArray(reasons) || reasons.length > 6 || !reasons.every((r) => typeof r === 'string' && r.trim() && r.length <= 60)) throw new HttpError(400, '"reasons" is at most 6 strings of up to 60 characters');
+    if (b.note !== undefined && (typeof b.note !== 'string' || b.note.length > 1000)) throw new HttpError(400, '"note" is a string of up to 1000 characters');
+    const note = typeof b.note === 'string' ? b.note.trim() : '';
+    if ((reasons.length || note) && b.value !== 'down') throw new HttpError(400, 'reasons and a note go with "down"');
     const chat = chatIn(c, ws, b.chat);
     const msg = chat.messages.find((x) => x.id === decodeURIComponent(g![1]!));
     if (!msg) throw new HttpError(404, 'unknown message');
     if (b.value) msg.feedback = b.value;
     else delete msg.feedback;
+    // a plain thumbs down keeps what was said before; anything else drops it
+    if (reasons.length || note) msg.feedbackNote = { reasons: (reasons as string[]).map((r) => r.trim()), ...(note ? { note } : {}) };
+    else if (b.value !== 'down') delete msg.feedbackNote;
+    saveChat(c.home, ws, chat);
+    return send(res, 200, { ok: true }), true;
+  }
+
+  // The project's artifacts (no project: Tether's own folder). An id is checked before any path is made from it.
+  if (p === '/api/assistant/artifacts' && m === 'GET') {
+    const dir = artifactsDir(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))));
+    return send(res, 200, { artifacts: listArtifacts(dir) }), true;
+  }
+  if ((g = p.match(/^\/api\/assistant\/artifacts\/([^/]+)$/)) && (m === 'GET' || m === 'DELETE')) {
+    const dir = artifactsDir(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))));
+    const id = decodeURIComponent(g[1]!);
+    if (m === 'DELETE') {
+      if (!deleteArtifact(dir, id)) throw new HttpError(404, 'no such artifact');
+      return send(res, 200, { ok: true }), true;
+    }
+    const v = url.searchParams.get('v');
+    if (v !== null && !/^\d{1,4}$/.test(v)) throw new HttpError(400, '"v" must be a version number');
+    return send(res, 200, readArtifact(dir, id, v === null ? undefined : Number(v))), true;
+  }
+
+  // The person's saved prompts (no project: Tether's own file)
+  if (p === '/api/assistant/prompts' && (m === 'GET' || m === 'POST')) {
+    if (m === 'GET') return send(res, 200, { prompts: listPrompts(promptsFile(c.home, rootOf(c, wsOf(url.searchParams.get('ws'))))) }), true;
+    const b = reqObject(await readJson(req, 100_000));
+    const root = rootOf(c, wsOf(b.ws));
+    const file = promptsFile(c.home, root);
+    if (root) ensureIgnored(root);
+    return send(res, 200, { prompt: createPrompt(file, b) }), true;
+  }
+  if ((g = p.match(/^\/api\/assistant\/prompts\/([^/]+)$/)) && (m === 'PATCH' || m === 'DELETE')) {
+    const id = decodeURIComponent(g[1]!);
+    const b = m === 'PATCH' ? reqObject(await readJson(req, 100_000)) : {};
+    const root = rootOf(c, wsOf(m === 'PATCH' ? b.ws : url.searchParams.get('ws')));
+    const file = promptsFile(c.home, root);
+    if (root) ensureIgnored(root);
+    if (m === 'DELETE') {
+      if (!deletePrompt(file, id)) throw new HttpError(404, 'no such prompt');
+      return send(res, 200, { ok: true }), true;
+    }
+    return send(res, 200, { prompt: updatePrompt(file, id, b) }), true;
+  }
+
+  // Discard a stopped or failed reply
+  if ((g = p.match(/^\/api\/assistant\/messages\/([^/]+)$/)) && m === 'DELETE') {
+    const ws = wsOf(url.searchParams.get('ws'));
+    rootOf(c, ws);
+    const chat = chatIn(c, ws, url.searchParams.get('chat'));
+    const i = chat.messages.findIndex((x) => x.id === decodeURIComponent(g![1]!) && x.role === 'tether' && !!x.error);
+    if (i < 0) throw new HttpError(404, 'no stopped or failed reply with that id');
+    chat.messages.splice(i, 1);
     saveChat(c.home, ws, chat);
     return send(res, 200, { ok: true }), true;
   }

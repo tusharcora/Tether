@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView } from '../../../src/goals/types.js';
 import { api, fmtUsd } from '../api';
-import type { RunState } from '../ui/studio/RunGlyph';
+import { shortRunId, type RunState } from '../ui/studio/RunGlyph';
 
 export type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView };
 
@@ -92,3 +92,46 @@ export const copyOf = (g: GoalView): Record<string, unknown> => ({
   ...(g.dueDate ? { dueDate: g.dueDate } : {}),
   ...(g.kind === 'loop' ? { check: g.check, budgetUsd: g.budgetUsd, maxRuns: g.maxRuns, approval: g.approval } : {}),
 });
+const OUT_OF = 10;
+const share = (n: number, of: number) => (of > 0 ? Math.min(1, Math.max(0, n / of)) : 0);
+
+/**
+ * A goal's score out of 10 from what it really has: a loop's last check (its passing share when the output counts tests),
+ * the budget and runs it has left; a tracker's items done. Equal weights: nothing says one matters more than another.
+ */
+export function goalScore(g: GoalView) {
+  const runs = g.items.filter((i) => i.kind === 'run').length;
+  const done = g.items.filter((i) => i.done || i.runStatus === 'done').length;
+  const c = g.lastCheck;
+  const counted = c?.passing !== undefined && c.failing !== undefined && c.passing + c.failing > 0;
+  const check = !c ? 0 : counted ? share(c.passing!, c.passing! + c.failing!) : c.ok ? 1 : 0;
+  const criteria =
+    g.kind === 'tracker'
+      ? [{ label: 'Items done', score: share(done, g.items.length) * OUT_OF, weight: 1, note: `${done} of ${g.items.length}` }]
+      : [
+          { label: 'Finish check', score: check * OUT_OF, weight: 1, note: c ? (c.summary ?? (c.ok ? 'passing' : 'failing')) : 'not checked yet' },
+          { label: 'Budget left', score: (1 - share(g.spentUsd, g.budgetUsd)) * OUT_OF, weight: 1, note: `${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)} spent` },
+          { label: 'Runs left', score: (1 - share(runs, g.maxRuns)) * OUT_OF, weight: 1, note: `${runs} of ${g.maxRuns} runs` },
+        ];
+  const total = criteria.reduce((a, x) => a + x.score * x.weight, 0) / criteria.reduce((a, x) => a + x.weight, 0);
+  return { verdict: g.kind === 'tracker' && g.status === 'active' ? 'Open' : STATUS_LABEL[g.status], total, outOf: OUT_OF, criteria };
+}
+
+const when = (at: number) => {
+  const d = new Date(at);
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+/** A loop's history: created, each run and the check after it, a later check, then the next run it proposes. A run still going is now. */
+export function goalEvents(g: GoalView): { id: string; when: 'past' | 'now' | 'future'; time: string; title: string; detail?: string }[] {
+  const checked = (r: CheckResult) => ({ title: r.ok ? 'Check passed' : 'Check failed', ...(r.summary ? { detail: r.summary } : {}) });
+  const ev: { id: string; at: number; when: 'past' | 'now'; title: string; detail?: string }[] = [{ id: 'created', at: g.createdAt, when: 'past', title: 'Goal created', ...(g.check ? { detail: `check: ${g.check.command}` } : {}) }];
+  for (const i of g.items.filter((x) => x.kind === 'run')) {
+    const going = !i.attempt?.after && isOpen(g);
+    ev.push({ id: `r${i.id}`, at: i.at, when: going ? 'now' : 'past', title: `Run ${i.runId ? shortRunId(i.runId) : ''}${going ? ' working' : ''}`.trim(), detail: i.text.split('\n')[0] });
+    if (i.attempt?.after) ev.push({ id: `c${i.id}`, at: i.attempt.after.at, when: 'past', ...checked(i.attempt.after) });
+  }
+  if (g.lastCheck && !ev.some((e) => e.at === g.lastCheck!.at)) ev.push({ id: 'check', at: g.lastCheck.at, when: 'past', ...checked(g.lastCheck) });
+  const out = ev.sort((a, b) => a.at - b.at).map(({ at, ...e }) => ({ ...e, time: when(at) }));
+  return g.pending && isOpen(g) ? [...out, { id: 'next', when: 'future', time: '', title: g.status === 'needs_you' ? 'Next run, waiting for you' : 'Next run', detail: g.pending.task.split('\n')[0] }] : out;
+}

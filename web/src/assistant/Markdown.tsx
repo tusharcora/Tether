@@ -1,10 +1,10 @@
-import { Fragment, type ReactNode } from 'react';
+import { createElement, Fragment, type ReactNode } from 'react';
 import { CodeBlock } from '../components/beui/agents/code-block';
 import { Citation } from '../components/beui/agents/citations';
 import type { AgentCodeLanguage } from '../components/beui/agents/agent-code';
 
 /**
- * A small Markdown renderer for the assistant's replies (no dependency): paragraphs, bullet and numbered lists, fenced code
+ * A small Markdown renderer for the assistant's replies and Markdown artifacts (no dependency): headings, paragraphs, bullet and numbered lists, fenced code
  * (a CodeBlock), and inline `code`, **bold**, *italic* and [n] citation markers. Everything is React text, never HTML.
  * While a reply streams, an unclosed fence or marker simply shows as it is until it closes.
  */
@@ -41,7 +41,11 @@ export function inline(text: string, o: Pick<MarkdownProps, 'cites' | 'idPrefix'
   return out;
 }
 
-type Block = { t: 'p'; text: string } | { t: 'ul' | 'ol'; items: string[] } | { t: 'code'; lang: string; code: string };
+type Block = { t: 'p'; text: string } | { t: 'h'; level: number; text: string } | { t: 'ul' | 'ol'; items: string[] } | { t: 'code'; lang: string; code: string };
+
+const HEADING = /^\s{0,3}(#{1,4})\s+(.+?)\s*#*\s*$/;
+/** `#` is the document's top heading: one level under the screen's own. */
+const H_CLASS = ['', 'text-lg', 'text-base', 'text-sm', 'text-sm'];
 
 export function blocks(src: string): Block[] {
   const out: Block[] = [];
@@ -55,6 +59,10 @@ export function blocks(src: string): Block[] {
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i]!)) code.push(lines[i++]!);
       i++;
       out.push({ t: 'code', lang: fence[1]!.toLowerCase(), code: code.join('\n') });
+    } else if (HEADING.test(line)) {
+      const h = HEADING.exec(line)!;
+      out.push({ t: 'h', level: h[1]!.length, text: h[2]! });
+      i++;
     } else if (/^\s*([-*•]|\d+[.)])\s+/.test(line)) {
       const ordered = /^\s*\d/.test(line);
       const items: string[] = [];
@@ -63,7 +71,7 @@ export function blocks(src: string): Block[] {
     } else if (!line.trim()) i++;
     else {
       const para: string[] = [];
-      while (i < lines.length && lines[i]!.trim() && !/^\s*```/.test(lines[i]!) && !/^\s*([-*•]|\d+[.)])\s+/.test(lines[i]!)) para.push(lines[i++]!);
+      while (i < lines.length && lines[i]!.trim() && !/^\s*```/.test(lines[i]!) && !HEADING.test(lines[i]!) && !/^\s*([-*•]|\d+[.)])\s+/.test(lines[i]!)) para.push(lines[i++]!);
       out.push({ t: 'p', text: para.join('\n') });
     }
   }
@@ -78,6 +86,8 @@ export function Markdown({ text, ...o }: MarkdownProps) {
           <p key={i} className="m-0 [&+*]:mt-3">
             {inline(b.text, o)}
           </p>
+        ) : b.t === 'h' ? (
+          createElement(`h${b.level + 1}`, { key: i, className: `mt-4 mb-2 font-semibold leading-snug first:mt-0 ${H_CLASS[b.level]}` }, inline(b.text, o))
         ) : b.t === 'code' ? (
           <div key={i} className="my-3">
             <CodeBlock code={b.code} language={LANGS[b.lang] ?? 'text'} status="complete" filename={b.lang || undefined} />

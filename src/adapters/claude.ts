@@ -11,7 +11,8 @@ export function parseClaudeLine(
   onChunk: (t: string) => void,
   onSession: (id: string) => void,
   onDelta?: (t: string) => void,
-  onTool?: (name: string, input: unknown) => void,
+  onTool?: (name: string, input: unknown, id?: string) => void,
+  onToolResult?: (id: string, output: string, isError: boolean) => void,
 ): void {
   let o: any;
   try {
@@ -48,8 +49,15 @@ export function parseClaudeLine(
       } else if (b?.type === 'tool_use') {
         acc.toolCalls = (acc.toolCalls ?? 0) + 1;
         onChunk(toolChunk(String(b.name ?? 'tool'), b.input));
-        onTool?.(String(b.name ?? 'tool'), b.input);
+        onTool?.(String(b.name ?? 'tool'), b.input, typeof b.id === 'string' ? b.id : undefined);
       }
+    }
+  } else if (o.type === 'user' && Array.isArray(o.message?.content)) {
+    // the CLI's tool results come back as the next user turn: a string, or text blocks
+    for (const b of o.message.content) {
+      if (b?.type !== 'tool_result' || typeof b.tool_use_id !== 'string') continue;
+      const out = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.filter((x: any) => x?.type === 'text' && typeof x.text === 'string').map((x: any) => x.text).join('\n') : '';
+      onToolResult?.(b.tool_use_id, out, b.is_error === true);
     }
   } else if (o.type === 'result') {
     if (typeof o.result === 'string') acc.result = o.result;
@@ -109,7 +117,7 @@ export class ClaudeAdapter implements AgentAdapter {
       cwd: req.cwd,
       stdin: req.prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
-      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool),
+      onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool, req.onToolResult),
     });
     if (r.spawnError) return { output: '', exitCode: 127, error: `claude: ${r.spawnError}` };
     const exitCode = r.aborted ? 130 : acc.isError ? 1 : (r.code ?? 1);

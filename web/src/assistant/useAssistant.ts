@@ -12,6 +12,8 @@ export interface Streaming {
 }
 
 export interface Assistant {
+  /** The project the chat is in (none: the chats with no project). */
+  ws?: string;
   /** The open chat; none is a new chat, saved by its first message. */
   chatId?: string;
   title?: string;
@@ -30,17 +32,45 @@ export interface Assistant {
   compacting: boolean;
   /** Summarize the older messages (one model call), or with `undo` put the newest compaction's messages back. */
   compact(undo?: boolean): Promise<void>;
-  send(text: string, o?: { context?: AssistantContext; model?: string; agent?: string; attachments?: { name: string; text: string }[]; answer?: { message: string; result: string } }): Promise<void>;
+  /** While a reply streams, a message waits in `queue` and goes out when the reply is over. */
+  send(text: string, o?: SendOptions): Promise<void>;
+  /** Messages sent while a reply streamed, oldest first. */
+  queue: { id: string; text: string }[];
+  unqueue(id: string): void;
+  /** Ask a reply's question again: in its place when it is the latest, else as a new message. */
+  regenerate(messageId: string): Promise<void>;
+  /** Try the last thing that failed again (loading the chat, or sending). */
+  retry(): void;
+  /** Drop a stopped or failed reply. */
+  discard(messageId: string): Promise<void>;
   stop(): void;
   /** Read the chat again (a turn made elsewhere); not while a reply streams. */
   refresh(): void;
   rename(title: string): Promise<void>;
   decide(proposal: Proposal, decision: 'start' | 'dismiss'): Promise<Proposal>;
   tool(messageId: string, askId: string, decision: 'once' | 'always' | 'deny'): Promise<void>;
-  feedback(messageId: string, value: 'up' | 'down' | null): void;
+  feedback(messageId: string, value: 'up' | 'down' | null, why?: { reasons: string[]; note?: string }): void;
   turnIntoRun(messageId: string): Promise<void>;
   /** Mark a question card answered locally (its answers go out as the next message). */
   answered(messageId: string, result: string): void;
+}
+
+export interface SendOptions {
+  context?: AssistantContext;
+  model?: string;
+  agent?: string;
+  bot?: string;
+  attachments?: { name: string; text: string }[];
+  answer?: { message: string; result: string };
+  regenerate?: string;
+}
+
+/** The messages left once `id` and the question before it are dropped (as the server does for a regenerate). */
+export function withoutTurn(list: ChatMessage[], id: string): ChatMessage[] {
+  const i = list.findIndex((m) => m.id === id);
+  if (i < 0) return list;
+  const q = list.slice(0, i).findLastIndex((m) => m.role === 'you');
+  return list.slice(0, q >= 0 ? q : i);
 }
 
 const patch = (list: ChatMessage[], id: string, f: (m: ChatMessage) => ChatMessage) => list.map((m) => (m.id === id ? f(m) : m));
@@ -61,6 +91,10 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
   const [streaming, setStreaming] = useState<Streaming>();
   const [compacting, setCompacting] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [queue, setQueueState] = useState<(Assistant['queue'][number] & { o: SendOptions })[]>([]);
+  const queued = useRef(queue);
+  const setQueue = (q: typeof queue) => ((queued.current = q), setQueueState(q));
+  const failed = useRef<(() => void) | undefined>(undefined);
   const loadedFor = useRef<string | null>(null);
   const abort = useRef<AbortController | undefined>(undefined);
   const ref = useRef({ ws, chatId, key: keyOf(ws, chatId), on });
@@ -71,6 +105,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
     if (!enabled || loadedFor.current === key) return;
     loadedFor.current = key;
     abort.current?.abort();
+    setQueue([]);
     setStreaming(undefined);
     setLoading(true);
     setError(undefined);
@@ -90,7 +125,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
         setLoading(false);
         loadedFor.current = null;
         if (chatId && e instanceof ApiError && e.status === 404) ref.current.on.gone?.(chatId);
-        else setError(e.message);
+        else (setError(e.message), (failed.current = () => setNonce((n) => n + 1)));
       },
     );
     return () => {
@@ -99,7 +134,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
   }, [ws, chatId, enabled, nonce]);
 
   const send: Assistant['send'] = useCallback(async (text, o = {}) => {
-    if (abort.current) return;
+    if (abort.current) return void setQueue([...queued.current, { id: `q-${Date.now().toString(36)}${queued.current.length}`, text, o }]);
     const ctl = new AbortController();
     abort.current = ctl;
     const { ws: forWs, chatId: forChat } = ref.current;
@@ -116,7 +151,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
           setTitle(e.title);
           ref.current.on.created?.(e.chat);
         }
-        setMessages((l) => [...l, e.you]);
+        setMessages((l) => [...(o.regenerate ? withoutTurn(l, o.regenerate) : l), e.you]);
         draft = { ...draft, id: e.id };
       } else if (e.type === 'delta') draft = { ...draft, text: draft.text + e.text };
       else if (e.type === 'tool') draft = { ...draft, tools: [...draft.tools.filter((t) => t.id !== e.tool.id), e.tool] };
@@ -136,17 +171,20 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       setStreaming(draft);
     };
     try {
-      await streamTurn({ ws: forWs, ...(forChat ? { chat: forChat } : {}), message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}) }, onEvent, ctl.signal);
+      await streamTurn({ ws: forWs, ...(forChat ? { chat: forChat } : {}), message: text, ...(o.context ? { context: o.context } : {}), ...(o.model ? { model: o.model } : {}), ...(o.agent ? { agent: o.agent } : {}), ...(o.bot ? { bot: o.bot } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}), ...(o.answer ? { answer: o.answer } : {}), ...(o.regenerate ? { regenerate: o.regenerate } : {}) }, onEvent, ctl.signal);
     } catch (e) {
       if (forKey === ref.current.key) {
         const stopped = ctl.signal.aborted;
         // a stopped turn keeps what was written; the server saves the same
         if (stopped && draft.id) setMessages((l) => [...l, { id: draft.id!, role: 'tether', text: draft.text, at: Date.now(), ...(draft.tools.length ? { tools: draft.tools } : {}), error: 'Stopped.' }]);
-        else if (!stopped) setError((e as Error).message);
+        else if (!stopped) (setError((e as Error).message), (failed.current = () => void send(text, o)));
       }
     } finally {
       if (abort.current === ctl) abort.current = undefined;
       setStreaming((s) => (s === draft || ctl.signal.aborted ? undefined : s));
+      // the next queued message goes out now the turn is over, in this chat only
+      const next = queued.current[0];
+      if (next && !abort.current && forKey === ref.current.key) (setQueue(queued.current.slice(1)), void send(next.text, next.o));
     }
   }, []);
 
@@ -154,6 +192,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
   const chat = () => ref.current.chatId;
 
   return {
+    ws,
     chatId,
     title,
     messages,
@@ -174,6 +213,28 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       }
     },
     send,
+    queue: queue.map(({ id, text }) => ({ id, text })),
+    unqueue: (id) => setQueue(queued.current.filter((x) => x.id !== id)),
+    regenerate: async (messageId) => {
+      const i = messages.findIndex((m) => m.id === messageId);
+      const question = messages.slice(0, i).findLast((m) => m.role === 'you');
+      if (i < 0 || !question) return;
+      // on the agent and model that answered (the page it was asked on is not kept)
+      const use = messages[i]!.context;
+      const on = { ...(use?.model ? { model: use.model } : {}), ...(use?.agent ? { agent: use.agent } : {}) };
+      await send(question.text, i === messages.length - 1 ? { ...on, regenerate: messageId } : on);
+    },
+    retry: () => {
+      const f = failed.current;
+      failed.current = undefined;
+      setError(undefined);
+      f?.();
+    },
+    discard: async (messageId) => {
+      const id = chat();
+      setMessages((l) => l.filter((m) => m.id !== messageId));
+      if (id) await assistantApi.discard(ref.current.ws, id, messageId);
+    },
     stop,
     refresh: () => {
       if (abort.current) return;
@@ -195,9 +256,9 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       const { ask } = await assistantApi.tool(ref.current.ws, chat(), askId, decision);
       setMessages((l) => patch(l, messageId, (m) => ({ ...m, toolAsks: m.toolAsks?.map((a) => (a.id === ask.id ? ask : a)) })));
     },
-    feedback: (messageId, value) => {
-      setMessages((l) => patch(l, messageId, (m) => ({ ...m, feedback: value ?? undefined })));
-      void assistantApi.feedback(ref.current.ws, chat(), messageId, value).catch(() => {});
+    feedback: (messageId, value, why) => {
+      setMessages((l) => patch(l, messageId, (m) => ({ ...m, feedback: value ?? undefined, ...(why ? { feedbackNote: why } : {}) })));
+      void assistantApi.feedback(ref.current.ws, chat(), messageId, value, why).catch(() => {});
     },
     turnIntoRun: async (messageId) => {
       const { message } = await assistantApi.turnIntoRun(ref.current.ws, chat(), messageId);

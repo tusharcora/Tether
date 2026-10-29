@@ -1,9 +1,12 @@
 import { Check, ChevronRight, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
+import { WebSearch } from '../components/assistant-ui/elements/web-search';
+import { hostOf } from '../components/assistant-ui/utils/href';
 import { ToolChip } from '../ui/studio/Section';
 import { cn } from '../ui/cn';
 import type { ToolRun } from './api';
-import { thinkingSummary, timeline, type Step } from './timeline';
+import { searchLinks, thinkingSummary, timeline, webCall, type Step } from './timeline';
 
 const CHIPS = 4;
 const secs = (ms: number) => Math.max(1, Math.round(ms / 1000));
@@ -13,6 +16,19 @@ function Mark({ s }: { s: Step }) {
   if (s.dead) return <X className="size-3 text-muted-foreground" strokeWidth={2.4} />;
   if (s.kind === 'search') return <Search className="size-3.5 text-muted-foreground" strokeWidth={2.2} />;
   return <span className="block size-[7px] rounded-full bg-muted-foreground" />;
+}
+
+/** A web step's searches (query and the results that came back) and the pages it read (titled when a search found them). */
+function WebViews({ s, tools }: { s: Step; tools: ToolRun[] }) {
+  const titles = new Map(tools.flatMap((t) => searchLinks(t.output)).map((l) => [l.url, l.title]));
+  return s.runs.map((t) => {
+    const call = webCall(t.code);
+    if (call && 'url' in call) return <LinkPreview key={t.id} layout="compact" href={call.url} title={titles.get(call.url)} />;
+    // a search with no result kept (an older chat) shows its label alone
+    if (!call || (t.output === undefined && !s.live)) return null;
+    const links = searchLinks(t.output);
+    return <WebSearch key={t.id} query={call.search} results={links.map((l) => ({ title: l.title, domain: hostOf(l.url) ?? l.url }))} visibleResults={links.length} searching={t.output === undefined} cycle={0} />;
+  });
 }
 
 /**
@@ -64,6 +80,7 @@ export function Thinking(p: { tools: ToolRun[]; startedAt?: number; ms?: number 
                   {s.chips.length > CHIPS ? <span className="text-xs text-muted-foreground">+{s.chips.length - CHIPS} more</span> : null}
                 </span>
               ) : null}
+              {s.kind === 'web' && !s.dead ? <WebViews s={s} tools={p.tools} /> : null}
             </li>
           ))}
           {!streaming ? (

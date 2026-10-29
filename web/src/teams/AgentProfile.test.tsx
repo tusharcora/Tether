@@ -33,14 +33,13 @@ describe('the agent profile on the Crew card (board 3)', () => {
       'PUT /api/agents/coder': (b: { specialty: string }) => view({ profile: { ...view().profile, specialty: b.specialty } }),
     });
     renderApp(<AgentProfile bot="coder" name="Bolt" title="coder" />);
-    const memory = await screen.findByRole('list', { name: 'Memory · lessons Bolt carries into every team' });
-    expect(within(memory).getByText('Tether core · Oct 29')).toBeTruthy();
-    expect(within(memory).getByText('from runs · Oct 28')).toBeTruthy();
+    const memory = await screen.findByRole('group', { name: 'Memory · lessons Bolt carries into every team' });
+    expect(within(memory).getByText('Commits are plain conventional messages.')).toBeTruthy();
     expect(screen.getByText('Answers when @mentioned, or handed a task or loop. Never acts unprompted.')).toBeTruthy();
     expect(within(screen.getByRole('list', { name: 'Teams' })).getByText('coding')).toBeTruthy();
     expect(screen.getByText('R-5A21 · probe timeout')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Forget: Rerun failing test files alone before calling a test broken.' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forget "Rerun failing test files alone before calling a test broken."' }));
     await waitFor(() => expect(screen.queryByText('Rerun failing test files alone before calling a test broken.')).toBeNull());
     expect(calls('DELETE', '/api/agents/coder/lessons/coder-aaaa1111')).toHaveLength(1);
 

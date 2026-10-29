@@ -19,6 +19,8 @@ export interface Step {
   chips: Chip[];
   /** Scripts in the step. */
   calls: number;
+  /** The scripts themselves. */
+  runs: ToolRun[];
   dead?: true;
   live?: true;
 }
@@ -78,8 +80,10 @@ function labelOf(kind: StepKind, calls: Call[]): string {
       return `Checked GitHub: ${uniq(calls.filter(under('github.')).map((c) => c.path.slice(7))).join(', ')}`;
     case 'mcp':
       return `Used ${uniq(calls.filter(under('mcp.')).map((c) => c.path.split('.')[1])).join(', ')}`;
-    case 'web':
-      return 'Called a web API';
+    case 'web': {
+      const q = argsOf(calls, is('http.search'));
+      return q.length === 1 ? `Searched the web for "${q[0]!.slice(0, 40)}"` : q.length ? `Searched the web ${q.length} times` : 'Called a web API';
+    }
     case 'list':
       return calls.some(is('repo.diff')) ? 'Looked at the uncommitted changes' : 'Looked through the folders';
     case 'discover':
@@ -108,10 +112,10 @@ const isLive = (t: ToolRun, streaming: boolean, last: boolean) => streaming && l
 
 function stepFor(group: ToolRun[], live: boolean): Step {
   const first = group[0]!;
-  if (first.isError) return { id: first.id, kind: kindOf(callsOf(first.code)), label: `Dead end: ${reason(first.output)}`, chips: [], calls: 1, dead: true };
+  if (first.isError) return { id: first.id, kind: kindOf(callsOf(first.code)), label: `Dead end: ${reason(first.output)}`, chips: [], calls: 1, runs: group, dead: true };
   const calls = group.flatMap((t) => callsOf(t.code));
   const kind = kindOf(calls);
-  return { id: first.id, kind, label: labelOf(kind, calls), chips: chipsOf(calls), calls: group.length, ...(live ? { live: true as const } : {}) };
+  return { id: first.id, kind, label: labelOf(kind, calls), chips: chipsOf(calls), calls: group.length, runs: group, ...(live ? { live: true as const } : {}) };
 }
 
 export const stepOf = (t: ToolRun): Step => stepFor([t], false);
@@ -142,4 +146,28 @@ export function thinkingSummary(tools: ToolRun[]): string {
     .filter(([k]) => k > 0)
     .map(([k, w]) => plural(k, w))
     .join(' · ');
+}
+
+/** A web step's call: the agent's own search (`http.search`, its query) or a page read (`http.get` of an http(s) URL). */
+export function webCall(code: string): { search: string } | { url: string } | undefined {
+  const c = callsOf(code).find((x) => (x.path === 'http.search' || x.path === 'http.get') && x.arg !== undefined);
+  if (!c) return undefined;
+  if (c.path === 'http.search') return { search: c.arg! };
+  return /^https?:\/\//i.test(c.arg!) ? { url: c.arg! } : undefined;
+}
+
+/** The links a web search returned: Claude's result lists them on `Links: [{"title","url"}, …]` lines. */
+export function searchLinks(output: string | undefined): { title: string; url: string }[] {
+  const out: { title: string; url: string }[] = [];
+  for (const m of (output ?? '').matchAll(/^Links: (\[.*\])\s*$/gm)) {
+    try {
+      for (const l of JSON.parse(m[1]!) as unknown[]) {
+        const x = (l ?? {}) as Record<string, unknown>;
+        if (typeof x.title === 'string' && typeof x.url === 'string') out.push({ title: x.title, url: x.url });
+      }
+    } catch {
+      /* a list cut short by the 4000-character cap */
+    }
+  }
+  return out;
 }

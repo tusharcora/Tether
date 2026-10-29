@@ -14,10 +14,9 @@
 .tm-empty { color: var(--mut); font-size: 13px; }
 .tm-msg { display: flex; gap: 12px; }
 .tm-msg-main { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
-.tm-msg-head { display: flex; align-items: baseline; gap: 6px; }
-.tm-msg-head b { font-weight: 600; }
-.tm-msg-head time { color: var(--mut); font-size: 12px; }
-.tm-pill { padding: 0 5px; border: 1px solid var(--line2); border-radius: 4px; color: var(--mut); font-size: 11px; }
+/* the speaker on top, the body under its name (icon 24px + gap 10px) */
+.tm-msg.who { flex-direction: column; gap: 0; }
+.tm-msg.who > .tm-msg-main { padding-left: 34px; }
 .tm-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tm-text.pending { color: var(--mut); }
 .tm-mention { padding: 0 3px; border-radius: 4px; background: var(--accBg); color: var(--accInk); }
@@ -38,8 +37,6 @@
 .tm-decided.rejected { color: var(--bad); }
 .tm-reject { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--mut); }
 .tm-reject textarea, .tm-edit { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
-.tm-pr { flex-direction: row; align-items: center; text-decoration: none; }
-.tm-pr b { flex: 1; }
 .tm-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accInk); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .tm-link:focus-visible, .tm-chip:focus-visible, .tm-work:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .tm-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--mut); }
@@ -104,12 +101,5 @@
 
 /* the agent profile on the Crew card (board 3) */
 .ap { display: flex; flex-direction: column; gap: 14px; }
-.ap-lessons { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.ap-lessons li { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
-.ap-lessons li > span:first-child { flex: 1; }
-.ap-when { color: var(--mut); font-size: 12px; white-space: nowrap; }
-.ap-forget { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--mut); cursor: pointer; }
-.ap-forget:hover { background: var(--s2); color: var(--ink); }
-.ap-forget:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 .ap-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
 .ap-list li { display: flex; align-items: center; gap: 8px; }

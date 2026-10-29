@@ -10,6 +10,9 @@
 .gl-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .gl-lists > .sl-section > .sl-sec { margin-top: 0; }
 .gl-title, .gl-dock-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+/* a list row's or a team card's score: the total and verdict, tighter than the card */
+.goal-score.brief { gap: 0; margin-top: 6px; padding: 6px 10px; }
+.goal-score.brief > :first-child > :first-child { font-size: 16px; }
 
 /* Now: three equal columns; every module is a 168 px node and a 48 px strip, so nothing in a row moves */
 .gn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }

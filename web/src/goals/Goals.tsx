@@ -1,6 +1,8 @@
 import { ArrowLeft, Copy, Link2, ListPlus, Settings } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, fmtUsd } from '../api';
+import { ScoreBreakdown } from '../components/assistant-ui/elements/score-breakdown';
+import { Timeline } from '../components/assistant-ui/elements/timeline';
 import type { NodeAction } from '../components/bencho/ActionNode';
 import { CreateMenu } from '../components/bencho/CreateMenu';
 import { Button, buttonClass } from '../components/beui/kit/Button';
@@ -21,7 +23,7 @@ import { cn } from '../ui/cn';
 import { AssigneePicker } from './AssigneePicker';
 import { Avatars, Roster, useWho } from './Avatars';
 import { endOf, GoalNode, sections, TypeTile } from './GoalNode';
-import { copyOf, goalsApi, inProject, STATUS_LABEL, TYPE_GLYPH, TYPE_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
+import { copyOf, goalEvents, goalScore, goalsApi, inProject, isOpen, STATUS_LABEL, TYPE_GLYPH, TYPE_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
 import { LoopFlow } from './LoopFlow';
 import { CheckDialog, NewGoalForm, TypeField } from './NewGoalDialog';
 import { Tracker } from './Tracker';
@@ -63,6 +65,12 @@ export interface GoalsProps {
 }
 
 const NEW_GOAL = (Object.keys(TYPE_LABEL) as GoalType[]).map((t) => ({ id: t, label: TYPE_LABEL[t], icon: <span className={`gn-glyph t-${t}`}>{TYPE_GLYPH[t]}</span> }));
+
+/** A goal's score from its real factors; `brief`: the total and verdict alone (a list row, a team card). */
+export function GoalScore({ goal, brief }: { goal: GoalView; brief?: boolean }) {
+  const s = goalScore(goal);
+  return <ScoreBreakdown className={cn('goal-score', { brief: !!brief })} verdict={s.verdict} total={s.total} outOf={s.outOf} criteria={s.criteria} visibleCount={brief ? 0 : s.criteria.length} />;
+}
 
 /** A row in Up next or Done; under the pointer it opens into the full goal node, pushing the rows below it down. */
 function GoalRow(p: { goal: GoalView; note: string; node: (g: GoalView) => ReactNode; onOpen: () => void }) {
@@ -289,6 +297,8 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
             onAdd={(text) => void run(async () => (await goalsApi.addItem(g.id, text), api<GoalView>('GET', `/api/goals/${g.id}`)))}
           />
         )}
+        <GoalScore goal={g} />
+        {loop ? <Timeline events={goalEvents(g)} visibleCount={Infinity} /> : null}
       </div>
       {loop ? (
         <FloatBar at="bottom" className="gl-limits">
