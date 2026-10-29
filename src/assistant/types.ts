@@ -91,6 +91,8 @@ export interface ChatView {
   model?: string;
   /** Models that agent offers, for the prompt's model picker. */
   models: string[];
+  /** OpenRouter is connected but Tether runs on another agent: the picker also offers OpenRouter's free models. */
+  openrouter?: boolean;
 }
 
 /** The server-sent events of one turn (POST /api/assistant). */

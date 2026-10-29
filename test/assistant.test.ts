@@ -80,7 +80,7 @@ async function boot() {
       .map((f) => JSON.parse(f.replace(/^data: /, '')) as StreamEvent);
     return { events, done: events.find((e) => e.type === 'done') as Extract<StreamEvent, { type: 'done' }> | undefined, status: r.status };
   };
-  return { home, dir, agent, store, engine, call, turn };
+  return { home, dir, agent, registry, store, engine, call, turn };
 }
 
 describe('POST /api/assistant', () => {
@@ -151,6 +151,27 @@ describe('POST /api/assistant', () => {
     expect((await t.call('POST', '/api/assistant/new', { ws: 'api' })).json.messages).toEqual([]);
     expect(readdirSync(join(t.home, 'assistant', 'api.archive')).length).toBe(20);
     expect((await t.call('GET', '/api/assistant?ws=api')).json.models).toEqual(['m1', 'm2']);
+  }, 60_000);
+
+  it('offers OpenRouter beside the bound agent, and a turn that names it runs there without the bound model', async () => {
+    const t = await boot();
+    link(t.home, 'orchestrator', { agent: 'scripted', model: 'm1' });
+    const or = new (class extends Scripted {
+      override readonly id = 'openrouter' as never;
+      models: (string | undefined)[] = [];
+      override async run(req: AgentRequest) {
+        this.models.push(req.model);
+        return super.run(req);
+      }
+    })();
+    t.registry.register(or);
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.openrouter).toBe(true);
+    const r = await t.turn({ message: 'hi', agent: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free' });
+    expect(r.done?.message.error).toBeUndefined();
+    expect(or.models).toEqual(['nvidia/nemotron-3.5-super-vl:free']);
+    expect(t.agent.prompts).toHaveLength(0);
+    await t.turn({ message: 'again', agent: 'openrouter' });
+    expect(or.models[1]).toBeUndefined();
   }, 60_000);
 
   it('turns a refused outside-world call into an approval card, and remembers "always"', async () => {

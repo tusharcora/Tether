@@ -36,6 +36,8 @@ export interface TurnBody {
   message: string;
   context?: AssistantContext;
   model?: string;
+  /** Run this turn on another agent than Tether's binding (the picker's OpenRouter models). */
+  agent?: string;
   attachments?: { name: string; text: string }[];
   answer?: { message: string; result: string };
 }
@@ -75,7 +77,10 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
   saveChat(c.home, o.ws, chat);
   emit({ type: 'start', you, id });
 
-  const { agent, model: bound } = assistantAgent(c.home);
+  const binding = assistantAgent(c.home);
+  const agent = body.agent ?? binding.agent;
+  // the bound model belongs to the bound agent (claude's "haiku" means nothing to OpenRouter)
+  const bound = agent === binding.agent ? binding.model : undefined;
   const secrets = secretsFor(c.home, o.ws);
   const redact = (s: string) => redactText(s, secrets);
   const tools: ToolRun[] = [];
