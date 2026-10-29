@@ -30,7 +30,12 @@ export async function teamsRoute(c: { home: string; teams: Teams; vault: Vault }
   const m = req.method ?? 'GET';
   let g: RegExpMatchArray | null;
 
-  if (p === '/api/teams' && m === 'GET') return send(res, 200, { teams: teams.list() }), true;
+  if (p === '/api/teams' && m === 'GET') {
+    // the crew bots that can join a team, with their specialty (New team's agent list)
+    const profiles = loadTeams(c.home).agents;
+    const agents = teams.agentBots().map((b) => ({ id: b.id, name: b.name, specialty: profiles[b.id]?.specialty ?? b.title }));
+    return send(res, 200, { teams: teams.list(), agents }), true;
+  }
   if (p === '/api/teams' && m === 'POST') return send(res, 201, teams.create(await readJson(req))), true;
 
   if ((g = p.match(/^\/api\/teams\/([a-z0-9][a-z0-9_-]{0,39})(?:\/(messages|cards|diff)(?:\/([A-Za-z0-9]{1,40}))?)?$/))) {

@@ -60,7 +60,10 @@ describe('/api/teams', () => {
     const t = await boot();
     expect(t.team).toMatchObject({ name: 'Core', place: 'tether', level: 'balanced', approvers: 'any', people: [OWNER] });
     expect((await t.call('POST', '/api/teams', { name: 'S', place: 'slack', project: 'app', agents: ['coder'] })).json.error).toMatch(/later phase/);
-    expect((await t.call('GET', '/api/teams')).json.teams).toEqual([{ id: t.team.id, name: 'Core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], status: 'idle' }]);
+    const list = (await t.call('GET', '/api/teams')).json;
+    expect(list.teams).toEqual([{ id: t.team.id, name: 'Core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], status: 'idle' }]);
+    expect(list.agents.map((a: { id: string }) => a.id)).toEqual(['planner', 'architect', 'coder', 'tester', 'reviewer', 'manager']);
+    expect(list.agents[2]).toEqual({ id: 'coder', name: 'Bolt', specialty: 'coder' });
     expect(await t.view()).toMatchObject({ messages: [], members: [{ id: 'coder', name: 'Bolt', specialty: 'coder', state: 'idle' }, { id: 'reviewer', name: 'Lens', state: 'idle' }], spend: { usd: 0, runs: 0 } });
     expect((await t.call('PATCH', `/api/teams/${t.team.id}`, { level: 'loose', limits: { usdPerDay: 3, runsPerDay: 5 } })).json).toMatchObject({ level: 'loose', limits: { usdPerDay: 3, runsPerDay: 5 } });
     expect((await t.call('DELETE', `/api/teams/${t.team.id}`)).status).toBe(200);

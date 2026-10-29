@@ -4,6 +4,11 @@ import { api } from '../api';
 export type { AgentState, AgentView, Card, Level, Place, Team, TeamMessage, TeamSummary, TeamView, WorkItem };
 
 export const TEAMS_PATH = '/api/teams';
+/** GET /api/teams: every team, and the crew bots that can join one. */
+export interface TeamsReply {
+  teams: TeamSummary[];
+  agents: { id: string; name: string; specialty: string }[];
+}
 /** The sidebar's place mark: # a Tether channel, S Slack, T Telegram. */
 export const MARK: Record<Place, string> = { tether: '#', slack: 'S', telegram: 'T' };
 export const PLACE: Record<Place, string> = { tether: 'Tether', slack: 'Slack', telegram: 'Telegram' };
