@@ -57,6 +57,22 @@ export interface TurnBody {
 let seq = 0;
 export const mid = (p: string) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}`;
 
+/**
+ * One of the agent's own tool calls as the Code Mode call it matches (Claude's Read → repo.read), so the timeline labels it
+ * the same way; Tether's own run_code and tools it has no step for are left out.
+ */
+export function builtinStep(name: string, input: unknown, cwd: string): string | undefined {
+  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const s = (v: unknown) => JSON.stringify(typeof v === 'string' ? (v.startsWith(`${cwd}/`) ? v.slice(cwd.length + 1) : v) : '');
+  if (name === 'Read' || name === 'NotebookRead') return `repo.read(${s(i.file_path ?? i.notebook_path)})`;
+  if (name === 'Grep') return `repo.search(${s(i.pattern)})`;
+  if (name === 'Glob' || name === 'LS') return `repo.list(${s(i.pattern ?? i.path)})`;
+  if (name === 'WebFetch' || name === 'WebSearch') return `http.get(${s(i.url ?? i.query)})`;
+  const m = /^mcp__([^_].*?)__(.+)$/.exec(name);
+  if (m && m[1] !== 'tether') return `mcp.${m[1]}.${m[2]}()`;
+  return undefined;
+}
+
 /** The agent behind Tether (the orchestrator bot's crew binding, claude by default) and its model. */
 export function assistantAgent(home: string): { agent: string; model?: string } {
   const b = loadBindings(home).orchestrator;
@@ -207,6 +223,14 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
         flush();
       },
       onSession: () => {},
+      // the agent's own reads and searches (Claude's Read, Grep…) show in the timeline like run_code steps
+      onTool: (name, input) => {
+        const code = builtinStep(name, input, cwd);
+        if (!code) return;
+        const t: ToolRun = { id: `t${tools.length + 1}`, code: redact(code).slice(0, 4000) };
+        tools.push(t);
+        emit({ type: 'tool', tool: { ...t } });
+      },
     });
     flush();
     if (signal.aborted) return fail('Stopped.');

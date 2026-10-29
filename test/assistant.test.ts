@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import { AdapterRegistry } from '../src/adapters/index.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { Engine } from '../src/engine.js';
 import { deleteChat, listChats, loadAllow, readChat } from '../src/assistant/history.js';
+import { builtinStep } from '../src/assistant/turn.js';
 import { setSecret } from '../src/http/secrets.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { startServer } from '../src/server.js';
@@ -26,6 +27,8 @@ class Scripted implements AgentAdapter {
   reply = 'Hello.';
   script?: string;
   usage?: AgentUsage;
+  /** The agent's own tool calls to report (Claude's Read, Grep…). */
+  ownTools: [string, unknown][] = [];
   async detect() {
     return { ok: true };
   }
@@ -35,6 +38,7 @@ class Scripted implements AgentAdapter {
   async run(req: AgentRequest): Promise<AgentResult> {
     this.prompts.push(req.prompt);
     if (this.script && req.codeMode) await req.codeMode.runner.runCode(this.script);
+    for (const [name, input] of this.ownTools) req.onTool?.(name, input);
     for (const part of this.reply.match(/[\s\S]{1,7}/g) ?? []) req.onDelta?.(part);
     return { output: this.reply, exitCode: 0, costUsd: 0.001, ...(this.usage ? { usage: this.usage } : {}) };
   }
@@ -86,6 +90,27 @@ async function boot() {
   };
   return { home, dir, agent, registry, store, engine, call, turn };
 }
+
+describe('the agent’s own tools in the timeline', () => {
+  it('maps Claude’s built-in calls to the Code Mode call they match, and leaves out run_code and unknown tools', () => {
+    expect(builtinStep('Read', { file_path: '/repo/src/a.ts' }, '/repo')).toBe('repo.read("src/a.ts")');
+    expect(builtinStep('Grep', { pattern: 'runTurn' }, '/repo')).toBe('repo.search("runTurn")');
+    expect(builtinStep('Glob', { pattern: 'test/**/*.ts' }, '/repo')).toBe('repo.list("test/**/*.ts")');
+    expect(builtinStep('WebFetch', { url: 'https://x.dev' }, '/repo')).toBe('http.get("https://x.dev")');
+    expect(builtinStep('mcp__linear__list_issues', {}, '/repo')).toBe('mcp.linear.list_issues()');
+    expect(builtinStep('mcp__tether__run_code', { code: 'x' }, '/repo')).toBeUndefined();
+    expect(builtinStep('TodoWrite', {}, '/repo')).toBeUndefined();
+  });
+
+  it('saves the agent’s own reads with the reply, so the timeline shows them', async () => {
+    const t = await boot();
+    // Claude reports paths under the folder it runs in: the project's real path (macOS temp dirs sit under /private)
+    t.agent.ownTools = [['Read', { file_path: join(realpathSync(t.dir), 'src', 'limit.ts') }], ['Grep', { pattern: 'limit' }], ['TodoWrite', {}]];
+    const r = await t.turn({ message: 'what is the limit?' });
+    expect(r.events.filter((e) => e.type === 'tool')).toHaveLength(2);
+    expect(r.done!.message.tools?.map((x) => x.code)).toEqual(['repo.read("src/limit.ts")', 'repo.search("limit")']);
+  });
+});
 
 describe('POST /api/assistant', () => {
   it('streams deltas, then the saved reply; the prompt carries page and selection; the tether block never streams', async () => {
