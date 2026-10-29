@@ -63,6 +63,36 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* The assistant-ui elements (components/assistant-ui) are written for Tailwind's preflight, which Tether does not load:
+   inside them controls, paragraphs, lists and links start bare. One element of weight, so their own utilities still win
+   and Tether's :where(button) defaults lose. */
+:where(
+  [data-slot='activity-graph'],
+  [data-slot='comparison-card'],
+  [data-slot='diagram'],
+  [data-slot='document-reference'],
+  [data-slot='error-state'],
+  [data-slot='feedback-dialog'],
+  [data-slot='link-preview'],
+  [data-slot='mcp-server-panel'],
+  [data-slot='memory-chips'],
+  [data-slot='message-actions'],
+  [data-slot='message-queue'],
+  [data-slot='permission-grant'],
+  [data-slot='research-report'],
+  [data-slot='retrieval-chunks'],
+  [data-slot='score-breakdown'],
+  [data-slot='speaker-identity'],
+  [data-slot='spec-sheet'],
+  [data-slot='stopped-run'],
+  [data-slot='timeline'],
+  [data-slot='web-search']
+) {
+  & :is(button, textarea) { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; color: inherit; }
+  & :is(p, ul, ol) { margin: 0; padding: 0; list-style: none; }
+  & a { color: inherit; text-decoration: inherit; }
+}
+
 /* lezer highlight classes for beui's code surfaces (components/beui/lib/highlight.ts), from Studio tokens like cmTheme.ts */
 .tk-kw { color: var(--ink); font-weight: 600; }
 .tk-str { color: var(--ok); }

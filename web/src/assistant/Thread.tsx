@@ -135,7 +135,7 @@ function TetherMessage({ m, asked, query, chat, onGo, dim }: { m: ChatMessage; a
       {m.tools?.length ? <Thinking tools={m.tools} ms={asked !== undefined ? m.at - asked : undefined} /> : null}
       {stopped ? (
         <StoppedRun words={text.split(/\s+/).filter(Boolean)} reason="stopped" onContinue={() => void chat.send('Continue')} onDiscard={() => void chat.discard(m.id).catch(notify.fail)} />
-      ) : text || m.error ? (
+      ) : text || m.error?.endsWith(SWITCH_MODEL) ? (
         <StreamingResponse status={m.error ? 'error' : 'complete'} announce={false} showActions={false}>
           <Markdown text={text} cites={new Set((m.cites ?? []).map((c) => c.n))} idPrefix={`src-${m.id}`} onCite={(n) => { const c = m.cites?.find((x) => x.n === n); if (c) onGo(routeOf(c)); }} />
           {m.error?.endsWith(SWITCH_MODEL) ? (
@@ -146,11 +146,11 @@ function TetherMessage({ m, asked, query, chat, onGo, dim }: { m: ChatMessage; a
                 Switch model
               </button>
             </p>
-          ) : m.error ? (
-            <ErrorState className="mt-2" title="Tether could not answer" detail={m.error} retrying={false} onRetry={() => void chat.regenerate(m.id)} />
           ) : null}
         </StreamingResponse>
       ) : null}
+      {/* outside the response: its prose rules would space the element's lines */}
+      {m.error && !stopped && !m.error.endsWith(SWITCH_MODEL) ? <ErrorState className="mt-2" title="Tether could not answer" detail={m.error} retrying={false} onRetry={() => void chat.regenerate(m.id)} /> : null}
       {m.cites?.length ? <Citations className="mt-1" citations={citationItems(m.cites, onGo)} idPrefix={`src-${m.id}`} /> : null}
       {m.compare ? (
         <div className="mt-2">

@@ -52,7 +52,11 @@ describe('the Tailwind foundation (spec §2)', () => {
     // the assistant-ui elements' shimmer utility
     expect(tw).toContain(`@import 'tw-shimmer';`);
   });
-  it('uses the Geist stacks', () => {
+  it('starts the assistant-ui elements bare: they assume a preflight Tether does not load', () => {
+    expect(tw).toContain(`[data-slot='message-actions']`);
+    expect(tw).toContain('& :is(button,textarea) { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; color: inherit; }');
+  });
+    it('uses the Geist stacks', () => {
     expect(mapped['--font-sans']).toBe('var(--font-ui)');
     expect(mapped['--font-mono']).toBe('var(--font-code)');
   });
