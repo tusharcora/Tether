@@ -68,6 +68,7 @@
    and Tether's :where(button) defaults lose. */
 :where(
   [data-slot='activity-graph'],
+  [data-slot='artifact-card'],
   [data-slot='comparison-card'],
   [data-slot='diagram'],
   [data-slot='document-reference'],
@@ -85,6 +86,7 @@
   [data-slot='speaker-identity'],
   [data-slot='spec-sheet'],
   [data-slot='stopped-run'],
+  [data-slot='task-card'],
   [data-slot='timeline'],
   [data-slot='web-search']
 ) {
