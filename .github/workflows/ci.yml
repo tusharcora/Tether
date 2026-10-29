@@ -1,13 +1,11 @@
 # Tests, typecheck and build on every PR and every push to main.
-# Kept small for Actions limits: one Linux job, superseded runs cancelled, docs-only changes skipped, 15 min cap.
+# Kept small for Actions limits: one Linux job, superseded runs cancelled, 15 min cap. No path filters: main requires this check, so every PR must report it.
 name: CI
 
 on:
   pull_request:
-    paths-ignore: ['docs/**', '**/*.md', 'assets/**']
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '**/*.md', 'assets/**']
   workflow_dispatch:
 
 concurrency:
