@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AttentionItem, Pin, RunRow } from './api';
+import { chatsPath, type ChatSummary } from './assistant/api';
 import { Assistant } from './assistant/Assistant';
 import { Builder } from './Builder';
 import { CommandMenu } from './CommandMenu';
@@ -49,6 +50,8 @@ const Code = lazy(() => import('./code/Code').then((m) => ({ default: m.Code }))
 
 /** How often the sidebar's counts (needs you, live) and project dots refresh. */
 const COUNTS_MS = 5000;
+/** How often the sidebar's chat titles refresh (a new chat also refreshes them at once). */
+const CHATS_MS = 10_000;
 /** What the leave dialog says about a screen's unsaved work. */
 const UNSAVED: Partial<Record<Screen, string>> = { api: 'The open API request has edits that are not saved.', code: 'Some open files have edits that are not saved.' };
 
@@ -95,6 +98,8 @@ function Shell() {
 
   const projects = useProjects();
   const runs = usePoll<RunRow[]>('/api/runs', COUNTS_MS);
+  /** The project's chats: the sidebar's Chats section and the mini chat's switcher. */
+  const chats = usePoll<{ chats: ChatSummary[] }>(chatsPath(projects.current?.id), CHATS_MS);
   const attention = usePoll<{ items: AttentionItem[] }>('/api/attention', COUNTS_MS);
   const goals = useGoals();
   const { pins, save: savePins } = usePins();
@@ -241,6 +246,7 @@ function Shell() {
               onCompose={compose}
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
+              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: () => go({ tab: 'chats', id: 'new' }), onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
