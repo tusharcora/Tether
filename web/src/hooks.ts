@@ -75,15 +75,16 @@ export function useUnloadWarning(on: boolean): void {
   }, [on]);
 }
 
-export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'goals' | 'api' | 'graph' | 'triggers';
+export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'goals' | 'api' | 'graph' | 'triggers' | 'chats';
 export type Tab = Screen | 'settings';
+/** The screens with a `G` key and a "Go to" in ⌘K (Chats has its own sidebar section). */
 export const SCREENS: Screen[] = ['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'goals', 'api', 'graph', 'triggers'];
-const TAB_IDS: readonly string[] = [...SCREENS, 'settings'];
-export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', goals: 'Goals', api: 'API', graph: 'Graph', triggers: 'Triggers', settings: 'Settings' };
+const TAB_IDS: readonly string[] = [...SCREENS, 'chats', 'settings'];
+export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', goals: 'Goals', api: 'API', graph: 'Graph', triggers: 'Triggers', chats: 'Chats', settings: 'Settings' };
 
 export interface Route {
   tab: Tab;
-  /** Runs: the run id. Builder: a saved workflow. Crew: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. */
+  /** Runs: the run id. Builder: a saved workflow. Crew: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. Chats: a chat id, or `new`. */
   id?: string;
   /** Code: the line to show (`#/code/<path>:<line>`). */
   line?: number;

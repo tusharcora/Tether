@@ -1,11 +1,10 @@
 import { useRef } from 'react';
 import type { Route, Screen } from '../hooks';
-import { useNotify } from '../ui/notify';
 import { Chat } from './Chat';
 import { contextLine, contextOf } from './context';
 import { Launcher } from './Launcher';
 import { Panel } from './Panel';
-import { useAssistant } from './useAssistant';
+import { useActiveChat, useAssistant } from './useAssistant';
 import { useAssistantShell } from './useAssistantShell';
 import './assistant.css';
 
@@ -26,9 +25,9 @@ export interface AssistantProps {
  * screen. Rendered inside the shell grid: docked, it is the grid's third column; floating, it is fixed over the screen.
  */
 export function Assistant(p: AssistantProps) {
-  const notify = useNotify();
   const shell = useAssistantShell({ needs: p.needs, phone: p.phone });
-  const chat = useAssistant(p.project?.id, shell.mode !== 'closed');
+  const [active, setActive] = useActiveChat(p.project?.id);
+  const chat = useAssistant(p.project?.id, active, shell.mode !== 'closed', { created: setActive, gone: () => setActive(undefined) });
   const launcherRef = useRef<HTMLButtonElement>(null);
   const close = () => {
     shell.close();
@@ -41,7 +40,7 @@ export function Assistant(p: AssistantProps) {
         context={contextLine(p.project?.name, p.route.tab)}
         canDock={!p.phone}
         onDock={shell.dock}
-        onNewChat={() => void chat.newChat().catch(notify.fail)}
+        onNewChat={() => setActive(undefined)}
         onClose={close}
       >
         <Chat chat={chat} project={p.project?.name} context={contextOf(p.route)} onGo={p.onGo} />

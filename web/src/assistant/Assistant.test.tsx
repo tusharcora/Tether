@@ -12,8 +12,7 @@ const chats: Record<string, { id: string; role: 'you' | 'tether'; text: string; 
 vi.mock('./api', async (orig) => ({
   ...(await orig<typeof import('./api')>()),
   assistantApi: {
-    chat: vi.fn(async (ws?: string) => ({ messages: chats[ws ?? ''] ?? [], agent: 'claude', models: [] })),
-    newChat: vi.fn(async () => ({ messages: [] })),
+    chat: vi.fn(async (ws?: string, chat?: string) => ({ messages: chat ? (chats[ws ?? ''] ?? []) : [], agent: 'claude', models: [] })),
   },
 }));
 
@@ -82,6 +81,8 @@ describe('Assistant shell', () => {
     expect(Number(bottom?.[1])).toBeGreaterThanOrEqual(64);
   });
   it('says what it knows and keeps one chat per project', async () => {
+    localStorage.setItem('tether.assistant.chat.a', 'ca');
+    localStorage.setItem('tether.assistant.chat.b', 'cb');
     const { rerender } = mount();
     fireEvent.keyDown(window, { key: 'j', metaKey: true });
     expect(screen.getByText('knows orders · sees the Runs page')).toBeTruthy();
