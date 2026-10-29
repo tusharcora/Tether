@@ -1,10 +1,13 @@
-import { ArrowUp, ExternalLink, Settings } from 'lucide-react';
+import { ArrowUp, Settings } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { fmtUsd } from '../api';
+import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
+import { SpeakerIdentity } from '../components/assistant-ui/elements/speaker-identity';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Loading } from '../components/Loading';
 import { Face } from '../Face';
+import { GoalScore } from '../goals/Goals';
 import type { GoalView } from '../goals/goalsApi';
 import type { WorkspaceRow } from '../home/workspaces';
 import { usePoll, type Route } from '../hooks';
@@ -22,6 +25,7 @@ import './teams.css';
 const VIEW_MS = 1500;
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SPEAKER = { person: 'user', agent: 'agent', tether: 'agent' } as const;
 
 /** Message text with its @mentions of the team's agents and people highlighted. */
 function withMentions(text: string, names: string[]): ReactNode[] {
@@ -84,14 +88,10 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
           <ol className="tm-msgs" aria-label="Messages" aria-live="polite">
             {v.messages.length ? null : <li className="tm-empty">Say hello, or @mention an agent to hand it a question, a task or a loop.</li>}
             {v.messages.map((m) => (
-              <li key={m.id} className="tm-msg">
-                {m.from.kind === 'person' ? <span className="tm-avatar">{m.from.name.charAt(0).toUpperCase()}</span> : <Face id={m.from.kind === 'tether' ? 'orchestrator' : m.from.id} size={32} />}
+              <li key={m.id} className="tm-msg who">
+                {/* who spoke, from the element; the body below keeps its mentions and cards (the element's text is plain) */}
+                <SpeakerIdentity turns={[{ id: m.id, kind: SPEAKER[m.from.kind], name: m.from.name, detail: [m.from.kind === 'agent' ? `agent${specialty(m.from.id) ? ` · ${specialty(m.from.id)}` : ''}` : '', time(m.at)].filter(Boolean).join(' · '), text: '' }]} />
                 <div className="tm-msg-main">
-                  <span className="tm-msg-head">
-                    <b>{m.from.name}</b>
-                    {m.from.kind === 'agent' ? <span className="tm-pill">{`agent${specialty(m.from.id) ? ` · ${specialty(m.from.id)}` : ''}`}</span> : null}
-                    <time>{time(m.at)}</time>
-                  </span>
                   <p className={cn('tm-text', { pending: !!m.pending })} aria-busy={m.pending || undefined}>
                     {withMentions(m.text, names)}
                   </p>
@@ -199,13 +199,8 @@ function CardView(p: { msg: TeamMessage; card: Card; team: TeamView; goals?: Goa
   if (c.kind === 'loop') return <LoopCard goal={p.goals?.find((g) => g.id === c.goalId)} onGo={p.onGo} />;
   if (c.kind === 'approval') return <AskCard msg={p.msg} card={c} team={p.team} onAct={p.onAct} onDiff={p.onDiff} />;
   if (c.kind === 'proposal') return <ProposalCard msg={p.msg} card={c} onAct={p.onAct} onGo={p.onGo} />;
-  return (
-    <a className="tm-card tm-pr" href={c.url} target="_blank" rel="noreferrer">
-      <ExternalLink size={14} aria-hidden="true" />
-      <b>{`PR #${c.number} · ${c.title}`}</b>
-      <span className={cn('tm-tag', c.merged ? 'done' : 'live')}>{c.merged ? 'merged' : 'open'}</span>
-    </a>
-  );
+  // no unfurl: the link and what the PR card already knows
+  return <LinkPreview layout="compact" href={c.url} title={`PR #${c.number} · ${c.title}`} description={c.merged ? 'merged' : 'open'} />;
 }
 
 /** A loop: its live state, spend against its limits, and the chain of runs leading to its check. */
@@ -233,6 +228,7 @@ function LoopCard({ goal: g, onGo }: { goal?: GoalView; onGo: (r: Route) => void
         </li>
       </ol>
       {g.status === 'met' || g.status === 'stopped' || g.status === 'paused' ? <span className="tm-muted">{g.status === 'met' ? 'Met' : `${g.status === 'paused' ? 'Paused' : 'Stopped'}${g.reason ? `: ${g.reason}` : ''}`}</span> : null}
+      <GoalScore goal={g} brief />
     </div>
   );
 }

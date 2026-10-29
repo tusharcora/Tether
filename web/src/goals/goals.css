@@ -8,6 +8,9 @@
 .gl-list .sl-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main side" "extra extra"; gap: 4px 8px; padding: 9px 8px; border-top: 0; }
 .gl-list .sl-row-lead { display: none; }
 .gl-row.current { background: var(--s2); }
+/* a list row's or a team card's score: the total and verdict, tighter than the card */
+.goal-score.brief { gap: 0; margin-top: 6px; padding: 6px 10px; }
+.goal-score.brief > :first-child > :first-child { font-size: 16px; }
 .gl-new { flex: none; padding: 9px 8px; border: 0; border-radius: 8px; background: none; color: var(--mut); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .gl-new:hover { background: var(--s2); color: var(--ink); }
 

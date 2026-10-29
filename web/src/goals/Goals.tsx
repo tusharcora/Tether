@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, fmtUsd } from '../api';
+import { ScoreBreakdown } from '../components/assistant-ui/elements/score-breakdown';
+import { Timeline } from '../components/assistant-ui/elements/timeline';
 import { Button } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
 import { SegmentedControl } from '../components/beui/kit/controls';
@@ -14,7 +16,7 @@ import { StatusBadge, type Tone } from '../ui/studio/StatusBadge';
 import { Dock, FloatBar, ToolScreen } from '../ui/studio/ToolFrame';
 import { useCreateIntent } from '../ui/useCreateIntent';
 import { cn } from '../ui/cn';
-import { goalLine, goalsApi, inProject, isOpen, STATUS_LABEL, type GoalView } from './goalsApi';
+import { goalEvents, goalLine, goalScore, goalsApi, inProject, isOpen, STATUS_LABEL, type GoalView } from './goalsApi';
 import { LoopFlow } from './LoopFlow';
 import { CheckDialog, NewGoalForm } from './NewGoalDialog';
 import { Tracker } from './Tracker';
@@ -44,6 +46,12 @@ export interface GoalsProps {
   onGo: (r: Route) => void;
   /** The Create menu or ⌘K asked for a new goal (a counter). */
   create?: number;
+}
+
+/** A goal's score from its real factors; `brief`: the total and verdict alone (a list row, a team card). */
+export function GoalScore({ goal, brief }: { goal: GoalView; brief?: boolean }) {
+  const s = goalScore(goal);
+  return <ScoreBreakdown className={cn('goal-score', { brief: !!brief })} verdict={s.verdict} total={s.total} outOf={s.outOf} criteria={s.criteria} visibleCount={brief ? 0 : s.criteria.length} />;
 }
 
 /** A visible approval: an amber button, since the run waits for the person. */
@@ -125,6 +133,7 @@ export function Goals(p: GoalsProps) {
               extra={
                 <>
                   {g.kind === 'loop' ? <Bar label={`${g.title} budget used`} value={pct(g.spentUsd, g.budgetUsd)} met={g.status === 'met'} /> : <Bar label={`${g.title} progress`} value={Math.round(g.progress * 100)} met={g.status === 'met'} />}
+                  <GoalScore goal={g} brief />
                   {g.status === 'needs_you' && g.pending ? <ApproveButton goal={g} onDone={set} /> : null}
                 </>
               }
@@ -241,6 +250,8 @@ function Detail({ goal: g, set, onSettings, onGo, newGoal }: { goal: GoalView; s
             onAdd={(text) => void run(async () => (await goalsApi.addItem(g.id, text), api<GoalView>('GET', `/api/goals/${g.id}`)))}
           />
         )}
+        <GoalScore goal={g} />
+        {loop ? <Timeline events={goalEvents(g)} visibleCount={Infinity} /> : null}
       </div>
       {loop ? (
         <FloatBar at="bottom" className="gl-limits">

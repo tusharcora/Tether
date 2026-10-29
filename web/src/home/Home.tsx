@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AttentionItem, RunRow } from '../api';
+import { ActivityGraph } from '../components/assistant-ui/elements/activity-graph';
 import { usePoll, type Poll, type Route } from '../hooks';
 import type { AccountsView } from '../settings/accountsApi';
 import { useNotify } from '../ui/notify';
@@ -17,6 +18,21 @@ import './home.css';
 
 export const LIVE_MS = 2000;
 export const IDLE_MS = 10_000;
+const WEEKS = 26;
+
+/** Runs started per local day over the last `weeks` weeks (the activity graph), and how many that is. */
+export function runActivity(runs: { startedAt: number }[], now = new Date(), weeks = WEEKS) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weeks * 7 + 1);
+  const by = new Map<string, number>();
+  for (const r of runs) {
+    const d = new Date(r.startedAt);
+    if (d < start) continue;
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    by.set(day, (by.get(day) ?? 0) + 1);
+  }
+  const data = [...by].map(([date, count]) => ({ date, count }));
+  return { data, start, end: now, total: data.reduce((a, x) => a + x.count, 0) };
+}
 
 /**
  * Home (the demo's home screen): a main column (start a run, what needs you, what is running, recent runs) and a 270 px
@@ -58,8 +74,14 @@ export function Home(props: { onGo: (r: Route) => void; goals?: GoalView[]; onGo
         <div className="home-side">
           <ActivityFeed feed={feed} />
           <CrewStrip runs={runs.data} />
+          {runs.data ? <RunsGraph runs={runs.data} /> : null}
         </div>
       </div>
     </div>
   );
+}
+
+function RunsGraph({ runs }: { runs: RunRow[] }) {
+  const a = runActivity(runs);
+  return <ActivityGraph className="home-graph" data={a.data} start={a.start} end={a.end} title="Runs" total={`${a.total} in ${WEEKS} weeks`} />;
 }

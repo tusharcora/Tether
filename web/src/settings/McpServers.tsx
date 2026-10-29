@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { McpServerPanel, type McpServerStatus } from '../components/assistant-ui/elements/mcp-server-panel';
 import { Button } from '../components/beui/kit/Button';
 import { Input } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
@@ -18,6 +19,26 @@ export interface McpServerView {
   headerKeys: string[];
 }
 export const MCP_PATH = '/api/codemode/mcp';
+
+/**
+ * Each server's state from a real connection: connecting while its test runs, then connected with its tool names, or
+ * failed. Tested when the list shows and whenever its names change.
+ */
+function useServerTests(names: string[]): Record<string, { status: McpServerStatus; tools: string[] }> {
+  const [tests, setTests] = useState<Record<string, { status: McpServerStatus; tools: string[] }>>({});
+  const key = names.join('\0');
+  useEffect(() => {
+    let live = true;
+    setTests(Object.fromEntries(names.map((n) => [n, { status: 'connecting', tools: [] }])));
+    for (const n of names)
+      api<{ ok: boolean; tools?: string[] }>('POST', `/api/codemode/connectors/${encodeURIComponent(`mcp.${n}`)}/test`, {}).then(
+        (r) => live && setTests((t) => ({ ...t, [n]: { status: r.ok ? 'connected' : 'failed', tools: r.tools ?? [] } })),
+        () => live && setTests((t) => ({ ...t, [n]: { status: 'failed', tools: [] } })),
+      );
+    return () => void (live = false);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return tests;
+}
 
 /** `KEY=value` lines as an object (blank lines and lines without `=` are skipped). */
 export function parsePairs(text: string, sep = '='): Record<string, string> {
@@ -52,6 +73,8 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
   const [pairs, setPairs] = useState('');
   const [busy, setBusy] = useState(false);
   const { data, error, refresh } = p.poll;
+  const tests = useServerTests((data?.servers ?? []).map((s) => s.name));
+  const [expanded, setExpanded] = useState<string>();
   const add = async () => {
     setBusy(true);
     try {
@@ -82,21 +105,28 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
         {error && !data ? (
           <InlineError compact message={error} onRetry={() => void refresh()} />
         ) : data?.servers.length ? (
-          <ul className="acc-list">
-            {data.servers.map((s) => (
-              <li key={s.name} className="acc-row">
-                <div className="acc-head">
-                  <b>mcp.{s.name}</b>
-                  <span className="acc-note">{s.kind === 'http' ? 'HTTP' : 'stdio'}</span>
-                </div>
-                <code className="mcp-target">{s.target}</code>
-                {s.envKeys.length || s.headerKeys.length ? <p className="acc-note">{[...s.envKeys, ...s.headerKeys].join(', ')} set (values hidden)</p> : null}
-                <div className="acc-actions">
-                  <ConfirmButton label="Remove" prompt={`Remove mcp.${s.name}? Agents lose its tools from the next run.`} confirmLabel="Remove" onConfirm={() => remove(s)} />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            <McpServerPanel
+              servers={data.servers.map((s) => ({ id: s.name, name: `mcp.${s.name}`, transport: s.kind === 'http' ? 'HTTP' : 'stdio', ...(tests[s.name] ?? { status: 'connecting', tools: [] }) }))}
+              expandedId={expanded}
+              onToggle={(id) => setExpanded((e) => (e === id ? undefined : id))}
+            />
+            <ul className="acc-list">
+              {data.servers.map((s) => (
+                <li key={s.name} className="acc-row">
+                  <div className="acc-head">
+                    <b>mcp.{s.name}</b>
+                    <span className="acc-note">{s.kind === 'http' ? 'HTTP' : 'stdio'}</span>
+                  </div>
+                  <code className="mcp-target">{s.target}</code>
+                  {s.envKeys.length || s.headerKeys.length ? <p className="acc-note">{[...s.envKeys, ...s.headerKeys].join(', ')} set (values hidden)</p> : null}
+                  <div className="acc-actions">
+                    <ConfirmButton label="Remove" prompt={`Remove mcp.${s.name}? Agents lose its tools from the next run.`} confirmLabel="Remove" onConfirm={() => remove(s)} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <p className="acc-note">No MCP servers yet.</p>
         )}

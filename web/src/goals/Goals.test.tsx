@@ -7,7 +7,7 @@ import { calls, routeApi } from '../test/fixtures';
 import { cssText } from '../test/css';
 import { renderApp } from '../test/render';
 import { Goals, type GoalsProps } from './Goals';
-import { glyphOf, goalLine, goalMeta, type GoalView } from './goalsApi';
+import { glyphOf, goalEvents, goalLine, goalMeta, goalScore, type GoalView } from './goalsApi';
 import { GoalsNeedYou } from './GoalsNeedYou';
 
 const fail = { ok: false, at: 1, summary: '1 failing · 11 passing', failing: 1, passing: 11, tail: 'FAIL login' };
@@ -131,6 +131,35 @@ describe('the frame', () => {
     expect(drop).toHaveBeenCalledWith('g1');
     expect(onSelect).toHaveBeenCalledWith();
     expect(screen.queryByRole('complementary', { name: 'Goal settings' })).toBeNull();
+  });
+});
+
+describe('a goal’s score and history', () => {
+  it('scores from real factors only, with equal weights', () => {
+    const s = goalScore(loop());
+    expect(s.criteria.map((c) => [c.label, Math.round(c.score * 100) / 100, c.weight, c.note])).toEqual([
+      ['Finish check', 9.17, 1, '1 failing · 11 passing'],
+      ['Budget left', 7.6, 1, '$1.20 of $5.00 spent'],
+      ['Runs left', 7.5, 1, '1 of 4 runs'],
+    ]);
+    expect(s).toMatchObject({ verdict: 'Needs you', outOf: 10 });
+    expect(s.total).toBeCloseTo((9.1667 + 7.6 + 7.5) / 3, 2);
+    expect(goalScore(loop({ lastCheck: undefined })).criteria[0]).toMatchObject({ score: 0, note: 'not checked yet' });
+    expect(goalScore(loop({ lastCheck: { ok: true, at: 1, tail: '' }, spentUsd: 9 })).criteria.map((c) => c.score)).toEqual([10, 0, 7.5]);
+    expect(goalScore(tracker())).toMatchObject({ verdict: 'Open', total: 5, criteria: [{ label: 'Items done', note: '1 of 2' }] });
+  });
+
+  it('tells a loop’s history in order: created, runs and their checks, the run going now, the next one proposed', () => {
+    // the last check is the latest run's check: told once
+    const g = loop({ createdAt: 10, lastCheck: { ...fail, at: 30 }, items: [{ ...loop().items[0]!, at: 20, attempt: { after: { ...fail, at: 30 } } }, { id: 2, goalId: 'g1', kind: 'run', text: 'Fix redirect', runId: 'rmh15a22', done: false, at: 40 }] });
+    expect(goalEvents(g).map((e) => [e.when, e.title, e.detail])).toEqual([
+      ['past', 'Goal created', 'check: npm test'],
+      ['past', 'Run R-R1', 'Fix session expiry'],
+      ['past', 'Check failed', '1 failing · 11 passing'],
+      ['now', 'Run R-5A22 working', 'Fix redirect'],
+      ['future', 'Next run, waiting for you', 'Fix the redirect after login'],
+    ]);
+    expect(goalEvents(loop({ status: 'met', pending: undefined })).map((e) => e.when)).not.toContain('now');
   });
 });
 
