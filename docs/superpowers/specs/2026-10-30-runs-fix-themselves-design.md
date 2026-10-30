@@ -41,6 +41,14 @@ Date: 2026-10-30 · Branch: `feature/runs-fix-themselves`, stacked on `feature/o
 - Visible: the run page shows "Auto-fixing · round 2 of 3 · moved Lens to Opus" in its header and as story rows; the Runs page shows such runs under Live; events `autofix.started|round|gave_up`.
 - Goals: a goal's run that auto-fixes counts as one run item (its rounds are not new tries).
 
+### 3.5 Recommendations that finish the job, and no silent failures (owner, added 2026-10-30)
+
+"Make sure that recommended options are the best options to get the job done efficiently, not one that silently fails without telling you why."
+
+- Every place Tether pre-selects or recommends a choice recommends the option most likely to finish the task well and fast, and right for the task at hand. The planner is told to recommend that for its own cards and never an option that makes the task impossible (read-only for a task that changes files); so are workers asking `@ASK user:`.
+- The plan check: when an approved plan's constraints contradict its goal (read-only while the task changes files; no step may write while the success criteria need a change), Tether flags it before running with a Needs you card that says why and offers the fix (Allow edits), instead of running and failing.
+- No silent failures: every path that refuses, skips, cuts or degrades (a refused hand-off, a skipped step, text cut or passed on as a file, a fallback) shows a specific reason on the run page, not only in the event log.
+
 ## 4. Constraints
 
 - Reuse `src/supervisor.ts` (`decide`, `culprit`, `failureBrief`) and `runchat.ts`'s brief; no second supervisor.
@@ -50,3 +58,45 @@ Date: 2026-10-30 · Branch: `feature/runs-fix-themselves`, stacked on `feature/o
 ## 5. Left to the builder
 
 How the diagnose turn is prompted (keep it short and read-only), where exactly each output cap lives, and the UI details of the auto-fix rows (match the run page's story rows).
+
+## My calls
+
+Made while building (2026-10-30); each is the smallest version that does the job. Confirm or change.
+
+**Writes (§3.1)**
+1. Writes are on unless the latest answer to the writes card is no, from anyone. The old rule (only a person's yes turns writes on) is gone, so `--yes` and autonomous mode now get writes too: they take the card's recommendation, which is yes. The model still cannot change it: its card text and its plan's limits are ignored.
+2. The default plan's assignment edits files when writes are on.
+
+**Nothing cut (§3.2)**
+3. One helper, `passOn` in `src/codemode/spill.ts`: whole up to 16,000 characters; longer text goes to `<worktree>/.tether/spill/pass-<hash>.txt` and the reader gets its head, its tail and the file's absolute path. The name is the text's hash, so a prompt built twice names one file; a file swept after 24 hours is written again when a prompt is rebuilt.
+4. It now covers: amended guidance and a manager's redo reason (were cut at 1,000), upstream output (12,000), a check's findings for its fix step (8,000), hand-off answers (6,000 in the prompt, 8,000 in the log), consult answers (6,000/8,000), the consulted step's earlier output (8,000), children's reports in a manager's review (4,000), and each child's part of a manager's summary (was a 1,500-character tail).
+5. The fold keeps earlier guidance while all of it fits in 32,000 characters, else only the newest, always whole (it kept the last 2,000).
+6. Left as they were: the diff in a prompt (30,000; not a step's output), the 400-character guidance of a chat "guide" option (a person picks it), a person's free-text answers (2,000), the plan's own length caps.
+
+**Fences (§3.3)**
+7. One scanner, `src/protocolLines.ts`, for `@HAND`, `@ASK user:` and step `@ASK` lines (the last ignored fences before). Indented code is four spaces or a tab; list items are not tracked, so a fence opened on a `- ` line is not seen. A step `@ASK` may still start up to three spaces in.
+
+**Auto-fix (§3.4)**
+8. Event-driven in the server (`src/autofix.ts`), reusing `decide`, `culprit`, `failureBrief` and runchat's run detail and model call. Not `supervise()`, whose loop waits in memory; the CLI and the TUI keep it.
+9. Round 1's diagnosis is one read-only call to the assistant's agent (the orchestrator link) in the run's worktree, given the failed steps' full outputs (passed on as in §3.2), answering `{"guidance","needsWrites"}`. No model or an unusable reply: a plain retry. The guidance goes to every failed agent step and to the step `culprit` blames, as "Auto-fix diagnosis (round 1): …". Only round 1 diagnoses, as the spec says.
+10. The give-up reason: past its rounds, the run's error line; otherwise the rule that stopped it ("nothing stronger to try", a hard stop). Needs you shows it ("Auto-fix gave up after 3 rounds: …", capped at 120 characters): the one place attention now carries error text.
+11. A person's retry or resume ends a cycle; if the run fails again, a new cycle starts with fresh rounds. Stop between rounds ends auto-fix ("Stop auto-fix" in the run header).
+12. "Read-only" means a team run with writes off; a workflow sets read-only per step and is never asked. Allow edits on a failed run turns on the plan's writes, `allowWrites` and (with hand-offs on) `allowWorkerWrites`; steps already handed out read-only stay read-only, so the manager hands out write work with the diagnosis.
+13. A run that failed outside any step (while planning) is left alone, as are probes, cap stops with caps on, rejected runs and gone worktrees.
+14. After a restart, a cycle between rounds carries on; a run that failed while the server was down, before any round, is not picked up.
+15. A fresh loop budget: a manager's redo count, and the redos counted in the spawn budget, start over after any retry (the person's or auto-fix's), as the fold already does for checks.
+16. A failed run auto-fix is working on reports live: it shows under Live, not as a Failed card, until auto-fix gives up.
+17. Not changed: a team's channel may post a run's failure before auto-fix fixes it.
+
+**Recommendations (§3.5), old → new**
+18. Writes card: no → yes (why: a read-only run cannot do a task that changes files; edits stay in the worktree until approved).
+19. The planner's own cards: no rule → recommend what finishes the task, never what makes it impossible. Workers' `@ASK user:`: the same.
+20. Try more ways' default picks: free models first → free models last (a weaker, capped model is the try most likely to fail; the owner runs on a paid subscription).
+21. Kept, with why: a goal's approval stays "ask each run" (auto with no run cap could loop without end; auto-fix already heals a run within itself); team runs stay live (a worker's question is rare and the person's to decide); New goal's workflow stays team; trigger and schedule forms keep full-review, the first preset and the default project; Spending caps off (PR #31); Auto-fix on; Tether's proposed commands still ask each time (safety); asks still become goals.
+
+**Plan check (§3.5)**
+22. A heuristic in `src/runLabels.ts` (`planConflict`), shared with the web: the task's first line or the plan's goal starts with a change verb (update, fix, add, write, refactor…), or a success criterion says something is updated, changed, fixed…; and writes are off, or every assignment is read-only. Needs you then shows "Check the plan: <why>" with Allow edits instead of Plan ready, and the plan review shows the same with "Allow edits and plan again" (the writes card answered yes, then one more planning call). The person may still approve it as it is.
+
+**No silent failures (§3.5)**
+23. A `run.notice` event (the last 50 kept), shown under the run header, newest first, three then "and N more": a refused hand-off, a question to a missing step or one that could not answer, a worker question Tether answered for the person, a manager's ignored or refused redo and unusable review, long text passed on as a file, an expired session restarted, a step run without its learned guidance. A skipped step's story row says why.
+24. Not added: vault and reflection failures (best effort, they never change a run), and notices in the terminal UI (they show in its event list).
