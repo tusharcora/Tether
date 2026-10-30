@@ -18,7 +18,7 @@ import { RUN_STATE_LABEL, runState } from '../ui/studio/RunGlyph';
 import { SideMenu } from '../ui/studio/SideParts';
 import { QuietLine } from '../ui/studio/Section';
 import { segmentsFor, trackLabel } from '../ui/studio/steps';
-import { filterRows, groupRuns, nowLine, ORIGIN_LABEL, PAGE, spendByDay, startedFrom, weekStats, type RunsTab } from './runsModel';
+import { collapseSets, filterRows, groupRuns, nowLine, ORIGIN_LABEL, PAGE, spendByDay, startedFrom, weekStats, type RunsTab, type SetRow } from './runsModel';
 
 /** A scheduled run (GET /api/schedules, once cron triggers exist; a 404 hides the section). */
 interface Schedule {
@@ -62,6 +62,33 @@ function Row({ r, team, goal, onOpen, now }: { r: RunRow; team?: string; goal?: 
       <Track r={r} />
       <span className="rl-num mono">{r.added !== undefined ? `+${r.added} −${r.deleted ?? 0}` : '—'}</span>
       <span className="rl-num">{`${fmtUsd(r.costUsd)} · ${fmtDur((r.finishedAt ?? (r.live ? now : r.lastTs)) - r.startedAt)}`}</span>
+    </button>
+  );
+}
+
+/** An attempt set as one row (board 3): the task with a "best of N" chip, one step track per attempt, their spend; it opens Compare. */
+function SetRowView({ r, onOpen, now }: { r: SetRow & { set: RunRow[] }; onOpen: () => void; now: number }) {
+  const live = r.set.some((x) => x.live);
+  const st = live ? 'running' : runState(r);
+  return (
+    <button type="button" className="rl-row" aria-label={`${taskTitle(r)}, best of ${r.set.length}, ${live ? 'working' : RUN_STATE_LABEL[st]}`} onClick={onOpen}>
+      <span className={cn('rl-dot', DOT[st])} aria-hidden="true" />
+      <span className="rl-t">
+        <b>
+          {taskTitle(r)} <span className="rl-best">{`best of ${r.set.length}`}</span>
+        </b>
+        <span>{r.set.map((x) => `${x.attemptLabel ?? '?'} ${RUN_STATE_LABEL[runState(x)]}`).join(' · ')}</span>
+      </span>
+      <span className="rl-faces">
+        <FaceStack bots={[...new Set(r.set.flatMap((x) => x.bots))]} size={20} max={3} />
+      </span>
+      <span className="rl-tracks">
+        {r.set.map((x) => (
+          <Track key={x.id} r={x} />
+        ))}
+      </span>
+      <span className="rl-num mono">{`${r.set.length} ways`}</span>
+      <span className="rl-num">{`${fmtUsd(r.set.reduce((a, x) => a + x.costUsd, 0))} · ${fmtDur(Math.max(...r.set.map((x) => (x.finishedAt ?? (x.live ? now : x.lastTs)) - x.startedAt)))}`}</span>
     </button>
   );
 }
@@ -121,6 +148,8 @@ export function RunList(props: {
   goals?: GoalView[];
   /** Approve & open PR, from a Needs you card. */
   onShip?: (id: string) => Promise<void>;
+  /** An attempt set's row opens Compare. */
+  onCompare?: (set: string) => void;
 }) {
   const [tab, setTab] = useState<RunsTab>('all');
   const [team, setTeam] = useState('');
@@ -138,7 +167,7 @@ export function RunList(props: {
   const goalTitle = (id: string) => props.goals?.find((g) => g.id === id)?.title;
   const scoped = props.project && mine ? props.project : undefined;
   const rows = filterRows(all, { tab: tab === 'scheduled' ? 'all' : tab, team: team || undefined, agent: agent || undefined, project: scoped, q }, goalTitle);
-  const g = groupRuns(rows, now);
+  const g = groupRuns(collapseSets(rows, all), now);
   const counts = groupRuns(all, now);
   const earlier = [...g.week, ...g.older];
   const shown = earlier.slice(0, pages * PAGE);
@@ -148,7 +177,8 @@ export function RunList(props: {
   const peak = Math.max(...days, 0.01);
   const from = startedFrom(all);
   const open = (r: RunRow) => props.onSelect(r.id);
-  const row = (r: RunRow) => <Row key={r.id} r={r} team={teamName(r.origin?.team)} goal={r.origin?.kind === 'goal'} onOpen={() => open(r)} now={now} />;
+  const row = (r: SetRow) =>
+    r.set && r.set.length > 1 ? <SetRowView key={r.id} r={r as SetRow & { set: RunRow[] }} onOpen={() => (props.onCompare ? props.onCompare(r.attemptSet!) : open(r))} now={now} /> : <Row key={r.id} r={r} team={teamName(r.origin?.team)} goal={r.origin?.kind === 'goal'} onOpen={() => open(r)} now={now} />;
   const filtered = tab !== 'all' || team || agent || scoped || q.trim();
 
   return (

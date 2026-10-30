@@ -213,6 +213,23 @@ export class Teams {
   owns(runId: string): boolean {
     return this.runs.has(runId);
   }
+  /** Why a team's run may not get `count` more attempts today (its runs and dollars per day), or undefined. */
+  siblingRefusal(runId: string, count: number): string | undefined {
+    const tid = this.runs.get(runId);
+    const team = tid ? this.all().find((t) => t.id === tid) : undefined;
+    if (!team) return undefined;
+    const spend = this.spend(team);
+    return limitReason(team, { ...spend, runs: spend.runs + count - 1 });
+  }
+  /** Another attempt of a team's run is the team's run too: its limits, its ship path, its approvers. Its own chain, never a loop's. */
+  adopt(runId: string, sibling: string): void {
+    const tid = this.runs.get(runId);
+    const task = tid ? readState(this.d.home, tid).tasks.find((t) => t.runId === runId) : undefined;
+    if (!tid || !task) return;
+    const { goal: _, ...rest } = task;
+    this.edit(tid, (st) => st.tasks.push({ ...rest, runId: sibling, chain: sibling, kind: 'task', reworked: undefined, pr: undefined, startedAt: Date.now() }));
+    this.runs.set(sibling, tid);
+  }
   /** For the run page and the Inbox: may this person approve this run? Runs no team started: yes. */
   mayApproveRun(runId: string, personId: string): boolean {
     const tid = this.runs.get(runId);

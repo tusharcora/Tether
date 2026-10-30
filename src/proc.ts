@@ -9,6 +9,10 @@ export interface ProcOptions {
   signal?: AbortSignal;
   /** Called for each complete stdout line. */
   onStdoutLine?: (line: string) => void;
+  /** Called with each stdout chunk as it arrives. */
+  onStdout?: (text: string) => void;
+  /** Called once the process exists, with its pid (its process group's id too). */
+  onSpawn?: (pid: number) => void;
   onStderr?: (text: string) => void;
   /** Max bytes of stdout/stderr kept in the result (the tail is kept). */
   maxBuffer?: number;
@@ -72,10 +76,12 @@ export function runProcess(o: ProcOptions): Promise<ProcResult> {
       else o.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    if (child.pid !== undefined) o.onSpawn?.(child.pid);
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     child.stdout?.on('data', (d: string) => {
       stdout = tail(stdout + d, max);
+      o.onStdout?.(d);
       if (o.onStdoutLine) {
         pending += d;
         let i: number;

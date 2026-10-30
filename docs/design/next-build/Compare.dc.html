@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Compare attempts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}a:hover{color:#bfdbfe}
+.fc{position:relative;display:inline-block;flex:none;width:24px;height:24px;border-radius:6px}
+.fc::before,.fc::after{content:'';position:absolute;top:8px;width:4px;height:5px;background:#141414;border-radius:1px}
+.fc::before{left:6px}.fc::after{right:6px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#2f2f2f;color:#d4d4d8;font-size:12px;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:8px;font:500 13px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.14);background:#2f2f2f;color:#f4f4f5;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.col{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:14px;background:#262626;border:1px solid rgba(255,255,255,.07)}
+.dl{display:grid;grid-template-columns:110px minmax(0,1fr);row-gap:8px;column-gap:10px;font-size:12.5px;margin:0}
+.dl dt{color:#a1a1aa}.dl dd{margin:0;color:#e4e4e7}
+.ln{display:block;padding:0 10px;white-space:pre;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:19px}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;box-sizing:border-box;padding:18px 24px;display:flex;flex-direction:column;gap:14px;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px">
+  <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#a1a1aa"><a href="Runs.dc.html">← Runs</a><span>/</span><span>Faster search results</span></div>
+  <header style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+    <h1 style="margin:0;font-size:19px;font-weight:600">Faster search results</h1>
+    <span class="chip">3 attempts</span>
+    <span class="chip" style="background:rgba(52,211,153,.12);color:#34d399">2 pass the check</span>
+    <span style="flex:1"></span>
+    <span class="mono" style="font-size:12px;color:#a1a1aa">$0.58 total · 12m</span>
+    <button class="btn" type="button">Try 1 more way</button>
+  </header>
+  <p style="margin:0;color:#a1a1aa;font-size:13px">Same task, three models, three branches. Pick the one to ship; the others are kept for a week, then cleaned up.</p>
+
+  <div style="display:flex;flex-wrap:wrap;gap:12px;flex:1">
+    <section class="col" aria-label="Attempt A" style="border-color:rgba(52,211,153,.5);box-shadow:0 0 0 3px rgba(52,211,153,.12)">
+      <div style="display:flex;align-items:center;gap:10px"><span class="fc" style="background:#fbbf24"></span><div style="display:flex;flex-direction:column"><b style="font-weight:600">A · Bolt</b><span style="font-size:12px;color:#a1a1aa">Sonnet 5.5</span></div><span class="chip" style="margin-left:auto;background:rgba(52,211,153,.12);color:#34d399">Tether's pick</span></div>
+      <dl class="dl">
+        <dt>Check</dt><dd style="color:#34d399">passes · 41 tests</dd>
+        <dt>Search time</dt><dd>180 ms → <b style="font-weight:600">42 ms</b></dd>
+        <dt>Changes</dt><dd class="mono" style="font-size:12px">4 files · <span style="color:#34d399">+96</span> <span style="color:#f87171">−31</span></dd>
+        <dt>Cost · time</dt><dd>$0.31 · 6m</dd>
+        <dt>Review</dt><dd>Lens: clean, adds an index</dd>
+      </dl>
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;overflow:hidden;background:#1d1d1d"><span class="ln" style="color:#a1a1aa">search/query.ts</span><span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ const idx = buildIndex(items);</span><span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ return idx.lookup(term);</span></div>
+      <div style="display:flex;gap:6px;margin-top:auto"><button class="btn pri" type="button">Pick A and ship</button><a class="btn ghost" href="RunDetail.dc.html">Open</a></div>
+    </section>
+
+    <section class="col" aria-label="Attempt B">
+      <div style="display:flex;align-items:center;gap:10px"><span class="fc" style="background:#f9a8d4"></span><div style="display:flex;flex-direction:column"><b style="font-weight:600">B · Kite</b><span style="font-size:12px;color:#a1a1aa">Kimi K2 · free</span></div></div>
+      <dl class="dl">
+        <dt>Check</dt><dd style="color:#34d399">passes · 41 tests</dd>
+        <dt>Search time</dt><dd>180 ms → 77 ms</dd>
+        <dt>Changes</dt><dd class="mono" style="font-size:12px">2 files · <span style="color:#34d399">+38</span> <span style="color:#f87171">−12</span></dd>
+        <dt>Cost · time</dt><dd>$0.00 · 9m</dd>
+        <dt>Review</dt><dd>Lens: smaller, caches results</dd>
+      </dl>
+      <div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;overflow:hidden;background:#1d1d1d"><span class="ln" style="color:#a1a1aa">search/query.ts</span><span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ const hit = cache.get(term);</span><span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ if (hit) return hit;</span></div>
+      <div style="display:flex;gap:6px;margin-top:auto"><button class="btn" type="button">Pick B and ship</button><a class="btn ghost" href="RunDetail.dc.html">Open</a></div>
+    </section>
+
+    <section class="col" aria-label="Attempt C" style="opacity:.75">
+      <div style="display:flex;align-items:center;gap:10px"><span class="fc" style="background:#c4b5fd"></span><div style="display:flex;flex-direction:column"><b style="font-weight:600">C · Probe</b><span style="font-size:12px;color:#a1a1aa">Nemotron · free</span></div><span class="chip" style="margin-left:auto;background:rgba(248,113,113,.12);color:#f87171">Failed</span></div>
+      <dl class="dl">
+        <dt>Check</dt><dd style="color:#f87171">2 tests fail</dd>
+        <dt>Search time</dt><dd>—</dd>
+        <dt>Changes</dt><dd class="mono" style="font-size:12px">5 files · <span style="color:#34d399">+140</span> <span style="color:#f87171">−66</span></dd>
+        <dt>Cost · time</dt><dd>$0.00 · 4m</dd>
+        <dt>Why</dt><dd>broke empty-query handling</dd>
+      </dl>
+      <div style="display:flex;gap:6px;margin-top:auto"><button class="btn ghost" type="button">Retry C</button><a class="btn ghost" href="RunDetail.dc.html">Open</a></div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

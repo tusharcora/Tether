@@ -26,6 +26,26 @@ export interface RunGroups {
   older: RunRow[];
 }
 
+/** A run that stands for its attempt set: the set's runs, A first. */
+export type SetRow = RunRow & { set?: RunRow[] };
+
+/**
+ * Try more ways on the Runs page: each attempt set becomes one row (its newest run's place) carrying every attempt; a run
+ * that waits on the person keeps its own card. `all` supplies attempts the filters left out.
+ */
+export function collapseSets(rows: RunRow[], all: RunRow[] = rows): SetRow[] {
+  const seen = new Set<string>();
+  const out: SetRow[] = [];
+  for (const r of [...rows].sort((a, b) => b.startedAt - a.startedAt)) {
+    if (!r.attemptSet || (needsYou(r) && !isFinished(r.status))) out.push(r);
+    else if (!seen.has(r.attemptSet)) {
+      seen.add(r.attemptSet);
+      out.push({ ...r, set: all.filter((x) => x.attemptSet === r.attemptSet).sort((a, b) => (a.attemptLabel ?? '').localeCompare(b.attemptLabel ?? '')) });
+    }
+  }
+  return out;
+}
+
 /** Needs you, Live, Today, Earlier (this week, then older); newest first in each. */
 export function groupRuns(rows: RunRow[], now = Date.now()): RunGroups {
   const sorted = [...rows].sort((a, b) => b.startedAt - a.startedAt);
@@ -111,7 +131,7 @@ export function spendByDay(rows: RunRow[], now = Date.now()): number[] {
   return days;
 }
 
-export const ORIGIN_LABEL = { chat: 'Chats', goal: 'Goals', team: 'Teams', trigger: 'Triggers', schedule: 'Schedule', other: 'Other' } as const;
+export const ORIGIN_LABEL = { chat: 'Chats', goal: 'Goals', team: 'Teams', trigger: 'Triggers', schedule: 'Schedule', fork: 'Forks', other: 'Other' } as const;
 export type OriginKey = keyof typeof ORIGIN_LABEL;
 
 /** Where the runs were started from, counted; a run from before origins counts as other. Zero counts are left out. */

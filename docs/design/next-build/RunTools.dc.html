@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Run tools</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}a:hover{color:#bfdbfe}
+.fc{position:relative;display:inline-block;flex:none;width:24px;height:24px;border-radius:6px}
+.fc::before,.fc::after{content:'';position:absolute;top:8px;width:4px;height:5px;background:#141414;border-radius:1px}
+.fc::before{left:6px}.fc::after{right:6px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#2f2f2f;color:#d4d4d8;font-size:12px;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:8px;font:500 13px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.14);background:#2f2f2f;color:#f4f4f5;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.st{position:relative;display:flex;gap:12px;padding:10px 12px;border-radius:10px;color:#f4f4f5;font:13px 'Geist',sans-serif;background:transparent;border:0;text-align:left;width:100%}
+.st small{display:block;color:#a1a1aa;font-size:11.5px;margin-top:3px}
+.tab{height:30px;padding:0 12px;border-radius:7px;border:0;background:transparent;color:#a1a1aa;font:500 13px 'Geist',sans-serif;cursor:pointer}
+.t{display:block;white-space:pre;font-family:'Geist Mono',monospace;font-size:12px;line-height:20px;padding:0 14px}
+.mi{height:32px;text-align:left;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#f4f4f5;font:13px 'Geist',sans-serif;display:flex;flex-direction:column;justify-content:center}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px">
+  <header style="padding:14px 24px 12px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+    <a href="Runs.dc.html" style="font-size:12.5px">← Runs</a>
+    <h1 style="margin:0;font-size:19px;font-weight:600">Dark mode for settings</h1>
+    <span class="chip" style="background:rgba(59,130,246,.15);color:#93c5fd">Live</span>
+    <span style="flex:1"></span>
+    <button class="btn" type="button">Try 2 more ways</button>
+    <button class="btn ghost" type="button">Stop</button>
+  </header>
+
+  <div style="flex:1;display:flex;flex-wrap:wrap;padding:12px 12px 0;gap:12px">
+    <nav aria-label="What happened" style="flex:1 1 250px;max-width:290px;display:flex;flex-direction:column;gap:2px">
+      <div style="padding:4px 12px 8px;font-size:13px;font-weight:600">What happened</div>
+      <div class="st"><span class="fc" style="background:#93c5fd"></span><span>Tether planned<small>6s</small></span></div>
+      <div style="position:relative">
+        <div class="st" style="background:#262626;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)"><span class="fc" style="background:#fbbf24"></span><span style="flex:1">Bolt added the theme<small>3 files · +118 −34 · $0.52</small></span><button type="button" aria-label="Step actions for Bolt added the theme" aria-expanded="true" style="width:26px;height:26px;border:0;border-radius:6px;background:#383838;color:#f4f4f5">⋯</button></div>
+        <div role="menu" aria-label="Step actions" style="position:absolute;left:calc(100% - 30px);top:40px;z-index:2;width:250px;padding:4px;border-radius:10px;background:#2f2f2f;border:1px solid rgba(255,255,255,.14);display:flex;flex-direction:column">
+          <button class="mi" role="menuitem" type="button" style="height:46px">Rewind to before this step<span style="font-size:11.5px;color:#a1a1aa">undo its code and everything after</span></button>
+          <button class="mi" role="menuitem" type="button" style="height:46px">Fork from after this step<span style="font-size:11.5px;color:#a1a1aa">a new run starting from here</span></button>
+          <button class="mi" role="menuitem" type="button">Open its changes</button>
+        </div>
+      </div>
+      <div class="st"><span class="fc" style="background:#c4b5fd"></span><span style="flex:1">Probe is running tests<small style="color:#93c5fd">0:42</small></span></div>
+      <div class="st" style="color:#a1a1aa"><span class="fc" style="background:#34d399;opacity:.5"></span><span>Lens reviews<small>next</small></span></div>
+    </nav>
+
+    <section aria-label="Terminal" style="flex:999 1 420px;min-width:0;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.07);border-radius:14px 14px 0 0;background:#141414">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.07);background:#1d1d1d;border-radius:14px 14px 0 0">
+        <div role="tablist" aria-label="Step view" style="display:flex;gap:2px;background:#232323;border-radius:9px;padding:3px">
+          <button class="tab" role="tab" aria-selected="false" type="button">Transcript</button>
+          <button class="tab" role="tab" aria-selected="false" type="button">Changes 3</button>
+          <button class="tab" role="tab" aria-selected="true" type="button" style="background:#383838;color:#f4f4f5">Terminal</button>
+          <button class="tab" role="tab" aria-selected="false" type="button">Preview</button>
+        </div>
+        <span class="mono" style="margin-left:auto;font-size:11.5px;color:#a1a1aa">~/.aorch/worktrees/r-2c91 · tether/r-2c91</span>
+      </div>
+      <div style="flex:1;padding:12px 0;color:#d4d4d8">
+        <span class="t" style="color:#93c5fd">$ git log --oneline -3</span>
+        <span class="t">a41c2e0 aorch: fix (coder) attempt 1</span>
+        <span class="t">29b66d4 Merge pull request #25</span>
+        <span class="t" style="color:#93c5fd">$ npm test -- settings</span>
+        <span class="t" style="color:#34d399"> ✓ settings/Theme.test.tsx (6 tests)</span>
+        <span class="t" style="color:#34d399"> ✓ settings/Tabs.test.tsx (4 tests)</span>
+        <span class="t"> Tests  10 passed (10)</span>
+        <span class="t" style="color:#a1a1aa">exit 0 · 3.1s</span>
+      </div>
+      <form aria-label="Run a command" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.07)">
+        <span class="mono" style="color:#93c5fd">$</span>
+        <label for="cmd" style="position:absolute;left:-9999px">Command</label>
+        <input id="cmd" placeholder="Run a command in this run's worktree" style="flex:1;background:transparent;border:0;outline:0;color:#f4f4f5;font:12.5px 'Geist Mono',monospace">
+        <span style="font-size:11.5px;color:#a1a1aa">↑ history · Ctrl+C stops</span>
+      </form>
+    </section>
+
+    <aside aria-label="Preview" style="flex:1 1 380px;max-width:460px;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.07);border-radius:14px 14px 0 0;background:#1d1d1d;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.07)">
+        <b style="font-weight:600;font-size:13px">Preview</b>
+        <span class="mono" style="flex:1;font-size:11.5px;color:#a1a1aa;background:#262626;border-radius:6px;padding:4px 8px">localhost:5174/settings</span>
+        <button class="btn ghost" type="button" aria-label="Reload preview" style="height:28px;padding:0 8px">↻</button>
+        <button class="btn ghost" type="button" aria-label="Open in browser" style="height:28px;padding:0 8px">↗</button>
+      </div>
+      <div style="padding:8px 12px;font-size:11.5px;color:#a1a1aa;display:flex;gap:8px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:#34d399"></span><span class="mono">npm run dev</span> running in the worktree · <a href="#">Stop</a></div>
+      <div style="flex:1;margin:0 12px 12px;border-radius:10px;background:#0f0f10;border:1px solid rgba(255,255,255,.07);padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-weight:600;font-size:15px">Settings</div>
+        <div style="display:flex;gap:8px"><span class="chip" style="background:#f4f4f5;color:#111">Dark</span><span class="chip">Light</span><span class="chip">System</span></div>
+        <div style="height:10px;width:70%;background:#262626;border-radius:4px"></div>
+        <div style="height:10px;width:55%;background:#262626;border-radius:4px"></div>
+        <div style="height:10px;width:62%;background:#262626;border-radius:4px"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

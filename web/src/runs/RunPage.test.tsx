@@ -148,7 +148,7 @@ describe('run page', () => {
     const p = open();
     expect(await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' })).toBeTruthy();
     const story = screen.getByRole('navigation', { name: 'What happened' });
-    expect(within(story).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Scout looked into it, done', 'Bolt is making the changes, working', 'Probe runs gate, not started']);
+    expect(within(story).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Scout looked into it, done', 'Step actions for Scout looked into it', 'Bolt is making the changes, working', 'Probe runs gate, not started']);
     // the working step is open; its transcript has its tool calls as rows
     expect(within(screen.getByRole('region', { name: 'Step' })).getByText('Bolt is making the changes')).toBeTruthy();
     const tools = await screen.findByRole('list', { name: 'Tool calls' });

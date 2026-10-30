@@ -14,6 +14,7 @@ import { TEAMS_PATH, type TeamsReply } from '../teams/teamsApi';
 import { cn } from '../ui/cn';
 import { useNotify } from '../ui/notify';
 import { shortRunId } from '../ui/studio/RunGlyph';
+import { TryMore } from '../runs/TryMore';
 import type { GoalDraft, Proposal } from './api';
 import type { Assistant } from './useAssistant';
 
@@ -46,6 +47,8 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
   const [limits, setLimits] = useState<LimitDraft>(() => draftOf(p.draft?.limits));
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'start' | 'dismiss'>();
+  /** The run Try more ways starts from, while its picker is open. */
+  const [trying, setTrying] = useState<string>();
   const open = p.status === 'proposed';
   const roster = usePoll<TeamsReply>(open ? TEAMS_PATH : null, 60_000).data;
   const workflows = usePoll<{ name: string }[]>(editing ? '/api/pipelines' : null, 60_000).data;
@@ -144,9 +147,16 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
         ) : p.status === 'dismissed' ? (
           <span className="mut">No goal made.</span>
         ) : lastRun ? (
-          <button type="button" className="gc-link" onClick={() => onGo({ tab: 'runs', id: lastRun.runId })}>
-            {`Run ${shortRunId(lastRun.runId!)}${lastRun.runStatus ? ` · ${lastRun.runStatus}` : ''}`}
-          </button>
+          <>
+            <button type="button" className="gc-link" onClick={() => onGo({ tab: 'runs', id: lastRun.runId })}>
+              {`Run ${shortRunId(lastRun.runId!)}${lastRun.runStatus ? ` · ${lastRun.runStatus}` : ''}`}
+            </button>
+            {draft.workflow !== 'team' ? (
+              <button type="button" className="gc-link" onClick={() => setTrying(lastRun.runId)}>
+                Try 2 more ways
+              </button>
+            ) : null}
+          </>
         ) : (
           <span className="mut">{goal?.status === 'active' && goal.kind === 'loop' ? 'Checking first…' : 'Starting its run…'}</span>
         )}
@@ -161,6 +171,7 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
           {editing ? <NewGoalForm projects={[]} workflows={(workflows ?? []).map((w) => w.name)} onCreated={() => {}} onCancel={() => setEditing(false)} draft={{ initial: { ...draft, ...(Object.keys(limitsBody(limits)).length ? { limits: limitsBody(limits) as DraftFields['limits'] } : {}) }, onSave: saveEdit }} /> : null}
         </DialogContent>
       </Dialog>
+      {trying ? <TryMore runId={trying} onClose={() => setTrying(undefined)} onStarted={(set) => (setTrying(undefined), onGo({ tab: 'attempts', id: set }))} /> : null}
     </article>
   );
 }

@@ -94,5 +94,23 @@ describe('the goal card', () => {
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open in Goals →' }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'goals', id: 'g1' });
+    // a team goal plans first: no Try more ways from its card
+    expect(screen.queryByRole('button', { name: 'Try 2 more ways' })).toBeNull();
+  });
+
+  it('a started workflow goal can try its run more ways: the picker, then Compare', async () => {
+    routeApi({
+      'GET /api/teams': roster,
+      'GET /api/pipelines/bugfix': { pipeline: { name: 'bugfix', nodes: [], edges: [] } },
+      'GET /api/goals/g1': { id: 'g1', status: 'active', kind: 'loop', items: [{ id: 1, kind: 'run', runId: 'r00001abcd', runStatus: 'paused', text: 'x', done: false, at: 1, goalId: 'g1' }] },
+      'GET /api/runs/r00001abcd/attempts?count=4': { picks: [{ agent: 'codex' }, null, null, null], choices: [{ agent: 'codex' }], original: { agent: 'claude' } },
+      'POST /api/runs/r00001abcd/attempts': { ids: ['r2', 'r3'], set: 'aset9' },
+    });
+    const onGo = vi.fn();
+    renderApp(<GoalCard proposal={proposal({ status: 'started', draft: { ...draft, workflow: 'bugfix' } })} chat={chat()} onGo={onGo} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Try 2 more ways' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Try more ways' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Start 2 more' }));
+    await waitFor(() => expect(onGo).toHaveBeenCalledWith({ tab: 'attempts', id: 'aset9' }));
   });
 });

@@ -778,7 +778,8 @@ describe('team run pause safety and stop', () => {
   it('stopping a live run with a card pending leaves no card or awaiting step, and resuming asks again once', async () => {
     const t = mk();
     const id = await start(t, script({ a: { output: ASK1 }, b: { output: 'b done', delayMs: 400 } }, [{ id: 'a' }, { id: 'b' }]));
-    await new Promise((r) => setTimeout(r, 150));
+    // the card is asked a moment after the run starts (each writing step reads HEAD first): wait for it, not a fixed time
+    for (let i = 0; i < 100 && !t.store.state(id)!.pending.length; i++) await new Promise((r) => setTimeout(r, 10));
     expect(t.store.state(id)!.pending).toHaveLength(1);
     expect(t.engine.stop(id)).toBe(true);
     let s = await t.engine.wait(id);

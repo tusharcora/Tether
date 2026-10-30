@@ -40,7 +40,7 @@ export function Runs(props: RunsProps) {
   const notify = useNotify();
   const [probes, setProbes] = useState(false);
   const list = usePoll<RunRow[]>(probes ? '/api/runs?all=1' : '/api/runs', 2000);
-  const { run, setRun, events, error, retry } = useRunStream(props.selected);
+  const { run, setRun, events, error, retry, onProc } = useRunStream(props.selected);
 
   const act: RunAct = async (path, body = {}) => {
     try {
@@ -55,7 +55,7 @@ export function Runs(props: RunsProps) {
 
   // no run open: the list alone, full width (spec §7: no "No run selected" pane)
   const ship = (id: string) => api('POST', `/api/runs/${id}/ship`, { merge: false }).then(() => notify.ok('Approved: the PR opens when the run finishes'), notify.fail);
-  if (!props.selected) return <div className="runs-list-page"><RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} goals={props.goals} onShip={ship} /></div>;
+  if (!props.selected) return <div className="runs-list-page"><RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} goals={props.goals} onShip={ship} onCompare={props.onGo && ((set) => props.onGo!({ tab: 'attempts', id: set }))} /></div>;
   if (!run) return <div className="run-page">{error ? <InlineError message={error} onRetry={retry} /> : <Loading loading lines={4} label="Loading run" />}</div>;
   return (
     <RunPage
@@ -72,6 +72,7 @@ export function Runs(props: RunsProps) {
       onOpenFile={props.onOpenFile && ((f) => props.onOpenFile!(run.repo, f))}
       goals={props.goals}
       onGo={props.onGo}
+      onProc={onProc}
     />
   );
 }

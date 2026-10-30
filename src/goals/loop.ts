@@ -79,6 +79,9 @@ export class Goals {
   private listeners = new Set<(g: Goal) => void>();
   /** run id -> goal id, for the runs this loop is waiting on. */
   private watched = new Map<string, string>();
+  /** run id -> goal id, for other attempts of a goal's run (Try more ways): settled when they end, nothing proposed after. */
+  // shortcut: in memory only; one still going when the server stops is never settled (its item shows no result)
+  private siblings = new Map<string, string>();
   private jobs = new Set<Promise<unknown>>();
 
   constructor(private d: GoalsDeps) {
@@ -86,6 +89,11 @@ export class Goals {
     d.store.onAppend((e) => {
       const gid = this.watched.get(e.runId);
       if (gid && this.runDone(e.runId)) this.job(this.afterRun(gid, e.runId));
+      const sib = this.siblings.get(e.runId);
+      if (sib && this.runDone(e.runId)) {
+        this.siblings.delete(e.runId);
+        this.job(this.settleSibling(sib, e.runId).catch(() => {}));
+      }
     });
     // after a restart: pick up the runs that were in flight
     for (const g of this.db.list()) {
@@ -344,6 +352,43 @@ export class Goals {
     }
     await this.startRun(taken, { task: plan?.trim() || g.pending.task, ...(g.pending.why ? { why: g.pending.why } : {}) });
     return this.db.must(id);
+  }
+
+  /** Why this goal may not take `count` more runs now (its run cap, its spent budget), or undefined. */
+  refusal(id: string, count: number): string | undefined {
+    const g = this.db.get(id);
+    if (!g) return undefined;
+    const runs = this.db.items(id).filter((i) => i.kind === 'run').length;
+    if (g.maxRuns !== undefined && runs + count > g.maxRuns) return `The goal allows ${g.maxRuns} runs and has ${runs}, so ${count} more would pass its cap.`;
+    if (g.budgetUsd !== undefined && g.spentUsd >= g.budgetUsd) return `The goal's budget is spent ($${g.spentUsd.toFixed(2)} of $${g.budgetUsd.toFixed(2)}).`;
+    return undefined;
+  }
+
+  /** Another attempt of one of this goal's runs: it is a run item of the goal, and its cost and check land when it ends. */
+  adoptSibling(id: string, runId: string, text: string): void {
+    if (!this.db.get(id)) return;
+    this.db.addItem({ goalId: id, kind: 'run', text, runId });
+    this.siblings.set(runId, id);
+  }
+  private async settleSibling(id: string, runId: string): Promise<void> {
+    const g = this.db.get(id);
+    const item = g && this.db.items(id).find((i) => i.runId === runId);
+    if (!g || !item) return;
+    const s = this.d.store.state(runId);
+    const after = g.check && s ? await this.runCheck(g, s.workdir).catch(() => undefined) : undefined;
+    this.db.saveItem({ ...item, attempt: { ...(after ? { after } : {}), costUsd: s?.costUsd ?? 0, runStatus: s?.status ?? 'gone' }, done: after ? after.ok : s?.status === 'done' });
+    const now = this.db.must(id);
+    this.save({ ...now, spentUsd: now.spentUsd + (s?.costUsd ?? 0) });
+  }
+
+  /** A number goal's value before and after one of its runs, when it was measured. */
+  metricFor(id: string, runId: string): { before?: number; after?: number } | undefined {
+    const g = this.db.get(id);
+    if (g?.check?.kind !== 'number') return undefined;
+    const items = this.db.items(id).filter((i) => i.kind === 'run');
+    const a = items.find((i) => i.runId === runId)?.attempt;
+    const before = a?.before?.value ?? items.find((i) => i.attempt?.before?.value !== undefined)?.attempt?.before?.value;
+    return before === undefined && a?.after?.value === undefined ? undefined : { ...(before !== undefined ? { before } : {}), ...(a?.after?.value !== undefined ? { after: a.after.value } : {}) };
   }
 
   addItem(id: string, i: { text: string; runId?: string }): GoalItem {

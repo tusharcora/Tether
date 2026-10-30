@@ -109,3 +109,24 @@
   .ac-list { width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .ac-rows { overflow: visible; }
 }
+
+/* Goals · next beside a chat (asks-goals-runs board 1): the project's open goals, this chat's own highlighted */
+.cg { display: flex; flex: none; flex-direction: column; gap: 12px; width: 320px; box-sizing: border-box; padding: 20px; overflow: auto; border-left: 1px solid var(--line); }
+.cg-head { display: flex; align-items: center; gap: 8px; }
+.cg-head b { font-weight: 600; }
+.cg-all { margin-left: auto; padding: 0; border: 0; background: none; color: var(--accInk); font: inherit; font-size: 12.5px; cursor: pointer; }
+.cg-all:hover { text-decoration: underline; }
+.cg-all:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.cg-goal { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--s1); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.cg-goal:hover { border-color: var(--line2); }
+.cg-goal:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.cg-goal.mine { border-color: var(--acc); background: var(--accBg); }
+.cg-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cg-title b { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.cg-glyph { flex: none; width: 12px; font-weight: 700; color: var(--mut); text-align: center; }
+.cg-glyph.bugfix { color: var(--bad); }
+.cg-glyph.feature { color: var(--accInk); }
+.cg-line { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--mut); }
+.cg-line > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-none, .cg-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--mut); }
+.cg-note { margin-top: 6px; }

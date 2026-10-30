@@ -1,7 +1,7 @@
 import type { Answer, Edge, NodeState, Pipeline, Question, RunRowExtras, RunState, StoredEvent, TeamMode, TeamPlan } from '../../src/types.js';
 
 export type { Answer, Edge, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
-export type { ActivityLine, AttentionAction, AttentionItem, Pin, RosterPreview, RunStep, VaultActivityItem } from '../../src/types.js';
+export type { ActivityLine, AgentPick, AttemptsReply, AttemptView, AttentionAction, AttentionItem, ExecEntry, Pin, PreviewView, ProcMessage, RosterPreview, RunStep, VaultActivityItem } from '../../src/types.js';
 export type RunView = RunState & { live: boolean };
 export interface RunRow extends RunRowExtras {
   id: string;
@@ -26,6 +26,9 @@ export interface RunRow extends RunRowExtras {
   origin?: RunState['origin'];
   /** Its PR, once shipped. */
   ship?: RunState['ship'];
+  /** Try more ways: its attempt set and letter. */
+  attemptSet?: string;
+  attemptLabel?: string;
 }
 export interface Issue {
   level: 'error' | 'warn';
@@ -170,6 +173,14 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
       return { text: `run ${e.status}${e.error ? ` — ${e.error.split('\n')[0]}` : ''}`, tone: e.status === 'done' ? 'done' : e.status === 'paused' ? 'wait' : 'error' };
     case 'http.attached':
       return { text: `API exchange #${e.historyId} attached`, tone: 'info' };
+    case 'run.rewound':
+      return { text: `rewound to before ${nameOf(e.node)} · ${e.nodes.length} step${e.nodes.length === 1 ? '' : 's'} queued again`, tone: 'wait' };
+    case 'run.unrewound':
+      return { text: 'rewind undone', tone: 'info' };
+    case 'attempt.set':
+      return { text: `attempt ${e.label} of a set`, tone: 'info' };
+    case 'attempt.picked':
+      return { text: 'an attempt was picked from its set', tone: 'info' };
     default:
       return undefined;
   }

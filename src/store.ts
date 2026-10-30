@@ -33,6 +33,9 @@ export interface RunSummary {
   probe?: true;
   origin?: RunState['origin'];
   ship?: RunState['ship'];
+  /** Try more ways: its attempt set and letter. */
+  attemptSet?: string;
+  attemptLabel?: string;
 }
 
 const summarize = (id: string, s: RunState): RunSummary => ({
@@ -52,6 +55,7 @@ const summarize = (id: string, s: RunState): RunSummary => ({
   ...(s.probe ? { probe: true as const } : {}),
   ...(s.origin ? { origin: s.origin } : {}),
   ...(s.ship ? { ship: s.ship } : {}),
+  ...(s.attemptSet ? { attemptSet: s.attemptSet, attemptLabel: s.attemptLabel } : {}),
 });
 
 /** A position in the cross-run event order (ts, run id, seq). */
