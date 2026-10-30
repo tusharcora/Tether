@@ -2,7 +2,7 @@
  * What needs the person (Home's "Needs you"), computed from run states and a few event types. Read-only.
  * No free text beyond a question's `ask` (which the spec allows): never prompts, outputs, secrets or error messages.
  */
-import { isFinished, runMeta } from './runLabels.js';
+import { isFinished, planConflict, runMeta } from './runLabels.js';
 import { nodeTitle } from './runRows.js';
 import type { RunSummary, Store } from './store.js';
 import { planWaiting, type AttentionAction, type AttentionItem, type AttentionKind, type RunEvent, type RunState, type StoredEvent } from './types.js';
@@ -48,7 +48,13 @@ export function attentionFor(r: AttentionRun, now = Date.now()): AttentionItem[]
   };
   const active = !isFinished(s.status);
 
-  if (active && planWaiting(s)) add('plan_ready', last((e) => e.type === 'plan.ready')?.ts ?? r.lastTs, 'Plan ready for approval', ['review']);
+  if (active && planWaiting(s)) {
+    const ts = last((e) => e.type === 'plan.ready')?.ts ?? r.lastTs;
+    // a plan that cannot do its task says why before it runs, with the fix (spec 2026-10-30 §3.5)
+    const why = planConflict(s.plan!, s.task);
+    if (why) add('plan_conflict', ts, `Check the plan: ${why}`, ['allow_edits', 'review']);
+    else add('plan_ready', ts, 'Plan ready for approval', ['review']);
+  }
 
   if (active) {
     for (const q of s.pending) {

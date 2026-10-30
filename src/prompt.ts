@@ -60,6 +60,7 @@ export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[]
           'You may put a question to the person in charge when a decision is theirs to make and you cannot sensibly assume it. ' +
             'Write one line at the very start of the line (column 0, outside code fences): `@ASK user: <question> | options: <a>; <b>; <c> | recommended: <the one you suggest>` ' +
             '(`options` and `recommended` are optional; at most four such lines) and stop. The answer comes back and you then finish. ' +
+            'Recommend the option that gets the task done well and fast, never one that would make the task impossible (such as not changing a file the task is about). ' +
             'Ask only what truly changes your work; otherwise state your assumption and carry on.',
         ]
       : []),

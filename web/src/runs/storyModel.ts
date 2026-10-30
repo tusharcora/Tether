@@ -4,6 +4,7 @@
  */
 import { fmtDur, fmtUsd, type RunView } from '../api';
 import type { PipelineNode } from '../../../src/types';
+import { planConflict } from '../../../src/runLabels';
 import { stepOrder } from './graphModel';
 
 export type StoryState = 'done' | 'working' | 'waiting' | 'failed' | 'queued' | 'skipped';
@@ -47,7 +48,7 @@ export function storyRows(r: RunView, botOf: (n: PipelineNode) => string, nameOf
     );
   }
   if (r.pending.length || (r.kind === 'team' && r.plan && !r.pipeline.nodes.length && r.status === 'running' && !r.planning)) {
-    rows.push(r.pending.length ? { id: 'questions', sentence: 'Tether asks you', line: plural(r.pending.length, 'question'), state: 'waiting', you: true } : { id: 'questions', sentence: 'You review the plan', line: 'the plan is ready', state: 'waiting', you: true });
+    rows.push(r.pending.length ? { id: 'questions', sentence: 'Tether asks you', line: plural(r.pending.length, 'question'), state: 'waiting', you: true } : { id: 'questions', sentence: 'You review the plan', line: r.plan && planConflict(r.plan, r.task) ? `check it: ${planConflict(r.plan, r.task)}` : 'the plan is ready', state: 'waiting', you: true });
   }
   const byId = new Map(r.pipeline.nodes.map((n) => [n.id, n]));
   for (const id of stepOrder(r.pipeline.nodes, r.pipeline.edges)) {

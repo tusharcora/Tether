@@ -31,13 +31,17 @@ const LETTERS = 'ABCDEFGH';
 const same = (a: AgentPick, b: AgentPick) => a.agent === b.agent && (a.model ?? '') === (b.model ?? '');
 export const isFree = (b: AgentPick) => b.agent === 'openrouter' || b.agent === 'nvidia' || !!b.model?.endsWith(':free');
 
-/** The agents and models the owner has: their crew's bindings, then every registered adapter on its own default; free first, none twice. */
+/**
+ * The agents and models the owner has: their crew's bindings, then every registered adapter on its own default; none twice.
+ * Their own (subscription) models first, free ones last: a free model is weaker and capped per day, so it is the try most
+ * likely to fail (spec 2026-10-30 §3.5).
+ */
 export function agentChoices(home: string, registry: AdapterRegistry): AgentPick[] {
   const out: AgentPick[] = [];
   const add = (x: AgentPick) => registry.has(x.agent) && x.agent !== 'mock' && !out.some((y) => same(x, y)) && out.push(x);
   for (const b of Object.values(loadBindings(home))) add({ agent: b.agent, ...(b.model ? { model: b.model } : {}) });
   for (const id of registry.ids()) add({ agent: id });
-  return [...out.filter(isFree), ...out.filter((x) => !isFree(x))];
+  return [...out.filter((x) => !isFree(x)), ...out.filter(isFree)];
 }
 
 /** `count` picks from `pool` that the set has not used; undefined where none is left (that attempt runs on the original's agents). */
