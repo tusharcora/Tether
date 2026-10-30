@@ -408,12 +408,12 @@ describe('/api/goals', () => {
     }
   });
 
-  it('description over 500 chars is 400', async () => {
+  it('description over 2000 chars is 400', async () => {
     const r = rig();
     const { s, call } = await serve(r);
     try {
-      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(501) })).status).toBe(400);
-      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(500) })).status).toBe(201);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(2001) })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, description: 'a'.repeat(2000) })).status).toBe(201);
     } finally {
       await s.close();
     }
