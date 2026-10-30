@@ -64,8 +64,8 @@ describe('Runs', () => {
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
     expect(await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' })).toBeTruthy();
-    act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'run.started' } }));
-    expect((await screen.findByText('run started')).closest('.out-line')).toBeTruthy();
+    act(() => FakeEventSource.all[0]!.emit('state', makeRun({ nodes: { ...makeRun().nodes, code: { ...makeRun().nodes.code!, status: 'done' } }, status: 'done', live: false })));
+    expect(await screen.findByRole('button', { name: 'Bolt made the changes, done' })).toBeTruthy();
   });
 
   it('opens on the Timeline when the link asks for it', async () => {
@@ -76,27 +76,23 @@ describe('Runs', () => {
     expect((await screen.findAllByText('run started')).length).toBeGreaterThan(0);
   });
 
-  it('approves an awaiting step and shows the returned state', async () => {
+  it('an approval part way through asks Approve or Reject, and the page takes the returned state', async () => {
+    // the approval comes before the gate: not the last word, so no Merge
+    const mid = { ...awaitingRun, pipeline: { ...awaitingRun.pipeline, edges: [{ from: 'plan', to: 'code' }, { from: 'code', to: 'ship' }, { from: 'ship', to: 'gate' }] }, nodes: { ...awaitingRun.nodes, gate: { status: 'queued' as const, attempts: 0, costUsd: 0, loops: 0 } } };
     renderApp(<Runs selected="r1" onSelect={() => {}} />);
-    act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
-    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Approve' })));
-    expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: true });
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull());
-  });
-
-  it('shows an awaiting approval step in the approval bar and rejects from it', async () => {
-    renderApp(<Runs selected="r1" onSelect={() => {}} />);
-    act(() => FakeEventSource.all[0]!.emit('state', awaitingRun));
+    act(() => FakeEventSource.all[0]!.emit('state', mid));
     expect(await screen.findByText('Approve “Ship it”?')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Merge to main' })).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reject' })));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: false });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Decision' })).toBeNull());
   });
 
   it('sends step feedback with its note and toasts failures', async () => {
     const run = makeRun({ status: 'done', live: false });
-    const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', run));
-    fireEvent.click((await waitFor(() => container.querySelector('.rg [data-id="plan"]')))!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Scout looked into it, done' }));
     await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Good' })));
     expect(calls('POST', '/api/runs/r1/feedback')[0]![2]).toEqual({ node: 'plan', rating: 'up' });
     fireEvent.change(screen.getByLabelText('Why (optional)'), { target: { value: 'clear plan' } });
@@ -110,9 +106,8 @@ describe('Runs', () => {
   it('fetches a step diff once per commit, not on every state update', async () => {
     routeApi({ 'GET /api/runs': [makeRow()], 'GET /api/runs/r1/events': [], 'GET /api/runs/r1/diff?node=plan': { diff: '+x' } });
     const withCommit = makeRun({ nodes: { ...makeRun().nodes, plan: { ...makeRun().nodes.plan!, commit: 'abc1234' } } });
-    const { container } = renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} />);
     act(() => FakeEventSource.all[0]!.emit('state', withCommit));
-    fireEvent.click((await waitFor(() => container.querySelector('.rg [data-id="plan"]')))!);
     await waitFor(() => expect(calls('GET', '/api/runs/r1/diff?node=plan')).toHaveLength(1));
     act(() => FakeEventSource.all[0]!.emit('state', { ...withCommit, costUsd: 0.5 }));
     act(() => FakeEventSource.all[0]!.emit('state', { ...withCommit, costUsd: 0.6 }));
@@ -139,6 +134,7 @@ describe('Runs', () => {
     act(() => FakeEventSource.all[0]!.emit('state', gateWaits));
     await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Decision' })).toBeNull();
   });
 
   it('heads the run with its task, a badge that says interrupted, and the mono line with cost of budget', async () => {
@@ -146,16 +142,16 @@ describe('Runs', () => {
     act(() => FakeEventSource.all[0]!.emit('state', makeRun({ live: false, pipeline: { ...makeRun().pipeline, settings: { ...makeRun().pipeline.settings, maxCostUsd: 5 } } })));
     await screen.findByRole('heading', { level: 1, name: 'Add rate limiting' });
     expect(screen.getAllByText('interrupted')).toHaveLength(1);
-    expect(screen.getByText(/^R-R1 · plan-code-review · .+ · \$0\.12 of \$5\.00$/)).toBeTruthy();
+    expect(screen.getByText(/^.+ · \$0\.12 of \$5\.00$/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
   });
 
   it('selects the step named in the route and reports clicks on steps', async () => {
     const onSelectNode = vi.fn();
-    const { container } = renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} onSelectNode={onSelectNode} />);
+    renderApp(<Runs selected="r1" node="plan" onSelect={() => {}} onSelectNode={onSelectNode} />);
     act(() => FakeEventSource.all[0]!.emit('state', makeRun({ status: 'done', live: false })));
     expect(await screen.findByText('How did Scout do?')).toBeTruthy();
-    fireEvent.click(container.querySelector('.rg [data-id="code"]')!);
+    fireEvent.click(screen.getByRole('button', { name: /^Bolt / }));
     expect(onSelectNode).toHaveBeenLastCalledWith('code');
   });
 

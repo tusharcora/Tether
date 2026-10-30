@@ -1,97 +1,76 @@
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import type { RunView, StoredEvent } from '../api';
+import { crewFor, useCrew } from '../crewStore';
+import type { GoalView } from '../goals/goalsApi';
+import { usePoll, type Route } from '../hooks';
 import type { RunAct } from '../Runs';
-import { dialogueCount, PlanningDialogue, TeamPanel } from '../Team';
-import { Disclosure, QuietLine } from '../ui/studio/Section';
-import { StepTodos } from '../ui/studio/StepTodos';
-import { ApprovalBar } from './ApprovalBar';
+import { TEAMS_PATH, type TeamsReply } from '../teams/teamsApi';
+import { useComments } from './comments';
+import { DecisionBanner } from './DecisionBanner';
 import { LimitBar } from './LimitBar';
-import { OutputLog } from './OutputLog';
-import { PlanCard } from './PlanCard';
-import { RunFiles } from './RunFiles';
-import { RunGraph } from './RunGraph';
+import { OutcomeRail } from './OutcomeRail';
 import { RunHeader } from './RunHeader';
 import { RunNotices } from './RunNotices';
 import { StepInspector } from './StepInspector';
+import { StepPane } from './StepPane';
+import { StoryList } from './StoryList';
+import { costParts, defaultStep, storyRows } from './storyModel';
 
 export type InspectorTarget = { mode: 'step'; node: string } | { mode: 'run'; tab: 'changes' | 'timeline' };
 
 /**
- * A run, full width (the demo's run screen): header, one-line notices, the graph, the team's questions and plan inline,
- * output and changed files side by side, planning and the team plan as collapsed rows, and the approval bar. The inspector
- * opens on a step (from a card, an output line or the route's node) or on the run (Run details, Review diff, ?pane=timeline).
+ * A run's page (board 4): the header, the decision banner when the run waits on the person, then three columns: What
+ * happened (the steps as a story), the step (Transcript and Changes, commentable), and the Outcome (check, branch, files,
+ * cost, every event). The route's node picks the step; ?pane=timeline opens every event.
  */
-export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: string; onRetryStream: () => void; onAct: RunAct; node?: string; pane?: 'timeline'; onSelectNode: (node?: string) => void; onBack: () => void; onOpenFile?: (file: string) => void }) {
+export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: string; onRetryStream: () => void; onAct: RunAct; node?: string; pane?: 'timeline'; onSelectNode: (node?: string) => void; onBack: () => void; onOpenFile?: (file: string) => void; goals?: GoalView[]; onGo?: (r: Route) => void }) {
   const r = p.run;
-  const fromRoute = (): InspectorTarget | undefined => (p.node ? { mode: 'step', node: p.node } : p.pane ? { mode: 'run', tab: 'timeline' } : undefined);
-  const [target, setTarget] = useState(fromRoute);
-  // the route leads: a new node or pane opens it, and a route without them closes it
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setTarget(fromRoute()), [p.node, p.pane]);
-  const openStep = (node: string) => {
-    setTarget({ mode: 'step', node });
-    p.onSelectNode(node);
+  const { crew } = useCrew();
+  const botOf = (n: { kind: string; role?: string }) => crewFor(n, crew);
+  const nameOf = (b: string) => (b === 'tether' ? 'Tether' : (crew[b]?.name ?? b));
+  const rows = storyRows(r, botOf, nameOf);
+  const [picked, setPicked] = useState<string>();
+  const selected = p.node ?? picked ?? defaultStep(r, rows);
+  const row = rows.find((x) => x.id === selected) ?? (p.node ? { id: p.node, node: p.node, sentence: p.node, line: '', state: 'queued' as const } : undefined);
+  const [events, setEvents] = useState(!!p.pane);
+  // the route leads: ?pane=timeline opens every event
+  useEffect(() => setEvents(!!p.pane), [p.pane]);
+  const comments = useComments(r.id);
+  const goal = p.goals?.find((g) => g.items.some((i) => i.runId === r.id)) ?? (r.origin?.kind === 'goal' ? p.goals?.find((g) => g.id === r.origin!.id) : undefined);
+  const teamId = r.origin?.team;
+  const teams = usePoll<TeamsReply>(teamId ? TEAMS_PATH : null, 60_000).data;
+  const teamName = teamId ? (teams?.teams.find((t) => t.id === teamId)?.name ?? teamId) : undefined;
+  const nodeName = (id: string) => {
+    const n = r.pipeline.nodes.find((x) => x.id === id);
+    return n ? nameOf(botOf(n)) : id;
   };
-  const openRun = (tab: 'changes' | 'timeline') => setTarget({ mode: 'run', tab });
-  const close = () => {
-    setTarget(undefined);
-    p.onSelectNode(undefined);
-  };
-
-  const hasNodes = r.pipeline.nodes.length > 0;
-  const planning = r.kind === 'team' && !hasNodes && r.planning && !r.pending.length && (r.status === 'running' || r.status === 'paused');
-  const steps = r.pipeline.nodes.map((n) => ({ id: n.id, title: n.title ?? n.role ?? n.kind, status: r.nodes[n.id]?.status ?? 'queued' }));
-  const done = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
-  const talk = dialogueCount(r);
-  const teamPlan = r.kind === 'team' && hasNodes;
+  const inspect: InspectorTarget | undefined = events ? { mode: 'run', tab: 'timeline' } : undefined;
 
   return (
     <div className="run-view">
-      <div className="run-page">
-        <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} onDetails={() => openRun('changes')} />
+      <div className="rp">
+        <RunHeader run={r} onAct={p.onAct} onBack={p.onBack} goal={goal} team={teamName} onGoal={goal && p.onGo ? () => p.onGo!({ tab: 'goals', id: goal.id }) : undefined} onTeam={teamId && p.onGo ? () => p.onGo!({ tab: 'teams', id: teamId }) : undefined} />
         <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
-        {/* the page says when Tether is planning; the card comes with the steps */}
-        {hasNodes ? <PlanCard run={r} compact /> : null}
-        <RunGraph run={r} selected={target?.mode === 'step' ? target.node : undefined} onSelect={openStep} onAct={p.onAct} onViewDiff={() => openRun('changes')} />
-        {r.kind === 'team' ? <TeamPanel run={r} send={(path, body) => p.onAct(path, body)} /> : null}
-        {planning ? <QuietLine>Tether is planning…</QuietLine> : null}
-        {hasNodes ? (
-          <div className="run-split">
-            <OutputLog run={r} events={p.events} onPick={openStep} />
-            <RunFiles run={r} onOpen={() => openRun('changes')} />
-          </div>
-        ) : null}
-        {talk || teamPlan ? (
-          <div className="run-disclosures">
-            {talk ? (
-              <Disclosure label="Planning" meta={`${talk} answer${talk === 1 ? '' : 's'}`} className="run-disclosure">
-                <PlanningDialogue run={r} />
-              </Disclosure>
-            ) : null}
-            {teamPlan ? (
-              <Disclosure label="Team plan" meta={`${done} of ${steps.length}`} className="run-disclosure">
-                <StepTodos steps={steps} title="Steps" className="run-todos" />
-              </Disclosure>
-            ) : null}
-          </div>
-        ) : null}
-        <ApprovalBar run={r} onAct={p.onAct} onReviewDiff={() => openRun('changes')} />
+        <DecisionBanner run={r} goal={goal} team={!!teamId} comments={comments} open={row?.node} onAct={p.onAct} nameOf={nodeName} botName={nodeName} />
         <LimitBar run={r} onAct={p.onAct} />
+        <div className="rp-cols">
+          <StoryList
+            run={r}
+            rows={rows}
+            selected={row?.id}
+            onAct={p.onAct}
+            onSelect={(x) => {
+              setPicked(x.id);
+              p.onSelectNode(x.node);
+            }}
+          />
+          <StepPane key={row?.id} run={r} row={row} comments={comments} onAct={p.onAct} onOpenFile={p.onOpenFile} />
+          <OutcomeRail run={r} goal={goal} teamName={teamName} cost={costParts(r, botOf, nameOf)} onGo={p.onGo} onOpenFile={p.onOpenFile} onEvents={() => setEvents(true)} />
+        </div>
       </div>
       <AnimatePresence>
-        {target ? (
-          <StepInspector
-            key="insp"
-            run={r}
-            events={p.events}
-            target={target}
-            onTarget={(t) => (t.mode === 'step' ? openStep(t.node) : setTarget(t))}
-            onClose={close}
-            onAct={p.onAct}
-            onOpenFile={p.onOpenFile}
-          />
-        ) : null}
+        {inspect ? <StepInspector key="insp" run={r} events={p.events} target={inspect} onTarget={(t) => (t.mode === 'step' ? (setEvents(false), setPicked(t.node), p.onSelectNode(t.node)) : undefined)} onClose={() => setEvents(false)} onAct={p.onAct} onOpenFile={p.onOpenFile} /> : null}
       </AnimatePresence>
     </div>
   );

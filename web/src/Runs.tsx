@@ -70,6 +70,8 @@ export function Runs(props: RunsProps) {
       onSelectNode={(n) => props.onSelectNode?.(n)}
       onBack={() => props.onSelect(undefined)}
       onOpenFile={props.onOpenFile && ((f) => props.onOpenFile!(run.repo, f))}
+      goals={props.goals}
+      onGo={props.onGo}
     />
   );
 }
