@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react';
 import { api } from './api';
 
 export interface Pixels { grid: string[]; colors: Record<string, string> }
-/** Pins for a bot's generated face (blobatar units: hue in degrees, tone and traits 0–1). */
-export interface FaceLook { hue?: number; tone?: number; traits?: Record<string, number> }
+/** Pins for a bot's face: one of faceArt's bodies and colours; unset parts come from the bot id. */
+export interface FaceLook { body?: string; color?: string }
 export interface Look { body: string; eyes: string; mouth: string; top: string; side: string; pattern: string; color: string; accent: string; guard?: boolean; face?: FaceLook }
 /** What the terminal's non-character styles draw (the web no longer uses it). */
 export interface MarkInfo { shape: string; symbol: string; initials: string }

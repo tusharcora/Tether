@@ -171,7 +171,7 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
           o.disabled && 'cursor-not-allowed opacity-50',
         )}
       >
-        <span className="grid size-7 flex-none place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium" aria-hidden="true">
+        <span className={cn('grid size-7 flex-none place-items-center overflow-hidden rounded-full text-xs font-medium', !o.lead && 'bg-muted')} aria-hidden="true">
           {o.lead ?? o.name.slice(0, 1).toUpperCase()}
         </span>
         <span className="grid min-w-0 flex-1" aria-hidden="true">
@@ -216,7 +216,7 @@ export function Picker({ label, options: given, value, onChange, multiple = fals
                 {chosen.map((o, i) => (
                   <motion.span
                     key={o.id}
-                    className="absolute left-0 top-0 grid size-7 place-items-center overflow-hidden rounded-full bg-muted text-xs font-medium"
+                    className={cn('absolute left-0 top-0 grid size-7 place-items-center overflow-hidden rounded-full text-xs font-medium', !o.lead && 'bg-muted')}
                     style={{ zIndex: chosen.length - i, x: multiple ? i * (28 - lap) : 0 }}
                     initial={reduce ? false : { scale: 0.6, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}

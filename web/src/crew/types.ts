@@ -15,5 +15,3 @@ export type Binding = { agent: string; model: string; toolStyle: 'code' | 'direc
 
 export const isEcc = (b?: BotDef) => !!b?.source?.startsWith('ecc@');
 export const sourceOf = (b?: BotDef): 'builtin' | 'custom' | 'ecc' => (isEcc(b) ? 'ecc' : b?.builtin ? 'builtin' : 'custom');
-/** The hue the slider shows before it is moved; not saved until then. */
-export const DEFAULT_HUE = 200;

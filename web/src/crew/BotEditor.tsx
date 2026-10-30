@@ -1,9 +1,26 @@
+import { useId, type ReactNode } from 'react';
 import { Button } from '../components/beui/kit/Button';
-import { Input, Select, Slider, Switch } from '../components/beui/kit/fields';
+import { Input, Select, Switch } from '../components/beui/kit/fields';
 import { Textarea } from '../components/kept/textarea/textarea';
 import type { BotDef, FaceLook } from '../crewStore';
-import { Face } from '../Face';
-import { DEFAULT_HUE, isEcc } from './types';
+import { Face, TETHER_ID } from '../Face';
+import { BODIES, COLORS, faceLook } from '../faceArt';
+import { isEcc } from './types';
+
+/** A labelled row of face picks, one pressed. */
+function Picks(p: { label: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <div>
+      <div id={id} className="cw-picks-label">
+        {p.label}
+      </div>
+      <div role="group" aria-labelledby={id} className="cw-picks">
+        {p.children}
+      </div>
+    </div>
+  );
+}
 
 /** A bot's look and words. Controlled: the Crew screen owns the draft and the persona loading. */
 export function BotEditor(p: {
@@ -22,10 +39,13 @@ export function BotEditor(p: {
   const b = p.bot;
   const name = b.name || 'New bot';
   const source = p.isNew ? 'new' : isEcc(b) ? (b.source ?? 'ECC') : b.builtin ? 'built-in' : 'yours';
+  const id = b.id || 'new-bot';
+  // the look on show (pins, else from the id): its body and colour are the pressed picks
+  const look = faceLook(id, b.look.face);
   return (
     <section className="cw-editor" aria-label={p.isNew ? 'New bot' : `Edit ${b.name}`}>
       <div className="cw-editor-head">
-        <Face id={b.id || 'new-bot'} face={b.look.face ?? {}} size={72} animate="hover" label={`${name} preview`} />
+        <Face id={id} face={b.look.face ?? {}} size={72} animate="hover" label={`${name} preview`} />
         <div>
           <h2>{name}</h2>
           <p className="sl-meta">
@@ -33,13 +53,30 @@ export function BotEditor(p: {
           </p>
         </div>
       </div>
-      <Slider label="Hue" min={0} max={359} step={1} value={b.look.face?.hue ?? DEFAULT_HUE} onValueChange={(v) => p.onFace({ hue: v })} />
-      <Slider label="Tone" min={0} max={1} step={0.05} value={b.look.face?.tone ?? 0.5} format={(v) => v.toFixed(2)} onValueChange={(v) => p.onFace({ tone: v })} />
-      <div>
-        <Button variant="ghost" size="sm" disabled={!b.look.face} onClick={p.onResetFace}>
-          Reset to generated
-        </Button>
-      </div>
+      {/* Tether's face is its eye tracker, not a pickable one */}
+      {b.id === TETHER_ID ? null : (
+        <>
+          <Picks label="Body">
+            {BODIES.map((body) => (
+              <Button key={body} variant="ghost" size="icon" className="cw-pick" aria-label={body} aria-pressed={look.body === body} onClick={() => p.onFace({ body })}>
+                <Face id={id} face={{ ...look, body }} size={28} label="" />
+              </Button>
+            ))}
+          </Picks>
+          <Picks label="Colour">
+            {COLORS.map(([color, colorName]) => (
+              <Button key={color} variant="ghost" size="icon" className="cw-pick" aria-label={colorName} aria-pressed={look.color === color} onClick={() => p.onFace({ color })}>
+                <span className="cw-swatch" style={{ background: color }} />
+              </Button>
+            ))}
+          </Picks>
+          <div>
+            <Button variant="ghost" size="sm" disabled={!b.look.face} onClick={p.onResetFace}>
+              Reset to generated
+            </Button>
+          </div>
+        </>
+      )}
       <div className="cw-pair">
         <Input label="Name" value={b.name} maxLength={24} onChange={(e) => p.onPatch({ name: e.target.value })} />
         <Select

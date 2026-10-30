@@ -3,10 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CREW, crewFor, lookSprite, refreshCrew, renderLook } from '../src/bots.js';
-import { BUILTIN_BOTS, LOOK_PARTS, freshId, loadCrew, removeBot, sanitizeBot, saveBot } from '../src/crew.js';
+import { BUILTIN_BOTS, FACE_BODIES, FACE_COLORS, LOOK_PARTS, freshId, loadCrew, removeBot, sanitizeBot, saveBot } from '../src/crew.js';
 import { blurbFor, makeStep, relink, stepChoices, blankPipeline, addStep } from '../src/composer.js';
 import { normalizePipeline, preflight } from '../src/pipeline.js';
 import { vlen } from '../src/ui.js';
+import { BODIES, COLORS } from '../web/src/faceArt.js';
 
 const quant = { id: 'quant', name: 'Quant', title: 'quant researcher', kind: 'agent', readOnly: true, persona: 'Backtests ideas.', look: { body: 'wide', eyes: 'visor', mouth: 'flat', top: 'antenna', side: 'none', pattern: 'none', color: '#f08a4b', accent: 'auto' } };
 const risk = { id: 'risk', name: 'Risk', title: 'risk gate', kind: 'gate', persona: 'Checks limits.', look: { ...quant.look, body: 'square' } };
@@ -114,11 +115,21 @@ describe('imported bots and faces', () => {
     expect(bot!.persona.length).toBe(600);
   });
 
-  it('cleans face overrides', () => {
-    const { bot } = sanitizeBot({ ...base, look: { face: { hue: 400, tone: 3, traits: { 'body.n': 0.4, Bad: 1, 'eyes.size': 'x' } } } });
-    expect(bot!.look.face).toEqual({ hue: 40, tone: 1, traits: { 'body.n': 0.4 } });
-    const plain = sanitizeBot(base).bot!;
-    expect(plain.look.face).toBeUndefined();
+  it('cleans face pins: a known body and a palette colour (stored upper-case), nothing else', () => {
+    const face = (f: unknown) => sanitizeBot({ ...base, look: { face: f } }).bot!.look.face;
+    expect(face({ body: 'cloud', color: '#e35a5a' })).toEqual({ body: 'cloud', color: '#E35A5A' });
+    expect(face({ body: 'blob', color: '#E35A5A' })).toEqual({ color: '#E35A5A' });
+    expect(face({ body: 'orb', color: '#123456' })).toEqual({ body: 'orb' });
+    expect(face({ body: 7, color: ['#E35A5A'] })).toBeUndefined();
+    // old pins from the hue / tone faces are dropped, not converted
+    expect(face({ hue: 40, tone: 1, traits: { 'body.n': 0.4 } })).toBeUndefined();
+    expect(face({ hue: 40, body: 'nub' })).toEqual({ body: 'nub' });
+    expect(sanitizeBot(base).bot!.look.face).toBeUndefined();
+  });
+
+  it('knows the same face bodies and colours the web draws', () => {
+    expect(FACE_BODIES).toEqual(BODIES);
+    expect(FACE_COLORS).toEqual(COLORS.map(([hex]) => hex));
   });
 
   it('loads up to 60 user bots and up to 150 imported bots, imported after user bots', () => {

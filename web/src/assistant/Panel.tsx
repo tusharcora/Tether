@@ -3,7 +3,7 @@ import { CreateMenu } from '../components/bencho/CreateMenu';
 import { NEW_CHAT } from '../ui/studio/Sidebar';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
-import { TetherFace } from '../components/faces/TetherFace';
+import { Face, TETHER_ID } from '../Face';
 
 /**
  * The mini chat (mockup boards 4, 5): floating (380×520, springing from the launcher's corner) or docked (420 px beside
@@ -24,7 +24,7 @@ export function Panel(p: { mode: 'float' | 'docked'; switcher: ReactNode; contex
       transition={{ duration: float ? 0.28 : 0.26, ease: [0.2, 0.8, 0.2, 1] }}
     >
       <header className="tether-head">
-        <TetherFace size={22} eyeScale={1.15} within=".tether-panel" />
+        <Face id={TETHER_ID} size={22} label="" animate="always" />
         {p.switcher}
         <CreateMenu label="New chat" title="New chat" className="tether-icon-btn" items={NEW_CHAT} onSelect={(id) => (id === 'empty' ? p.onNewChat() : p.onStarter(id as 'run' | 'file'))}>
           <Plus size={16} strokeWidth={1.8} aria-hidden="true" />

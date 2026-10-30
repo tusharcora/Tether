@@ -3,7 +3,7 @@ import type { RunRow } from '../api';
 import { ChatComposer } from '../assistant/Chat';
 import type { AssistantContext } from '../assistant/api';
 import type { Assistant } from '../assistant/useAssistant';
-import { TetherFace } from '../components/faces/TetherFace';
+import { Face, TETHER_ID } from '../Face';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import './chats.css';
 
@@ -41,7 +41,7 @@ export function NewChat(p: { chat: Assistant; project?: { id: string; name: stri
   return (
     <div className="chat-new">
       <div className="chat-new-hero">
-        <TetherFace size={64} eyeScale={1.1} />
+        <Face id={TETHER_ID} size={64} label="" animate="always" />
         <h1>{p.project ? `What should we look at in ${p.project.name}?` : 'What should we look at?'}</h1>
       </div>
       <div className="chat-new-box">

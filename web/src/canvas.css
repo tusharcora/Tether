@@ -41,7 +41,7 @@
 .node.s-done { border-color: var(--ok); }
 .node.s-skipped { opacity: .6; }
 .node-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; cursor: move; min-width: 0; }
-.node-head .face { border-radius: 8px; flex: none; }
+.node-head .face { flex: none; }
 .node-names { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .node-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
 .node-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-code); font-size: 11px; color: var(--mut); }

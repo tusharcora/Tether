@@ -416,14 +416,15 @@ describe('crew sources and faces', () => {
     expect(calls('POST', '/api/crew/import')[0]![2]).toEqual({ source: 'ecc' });
   });
 
-  it('edits a face with sliders and saves it on the bot', async () => {
+  it('picks a face body and colour and saves them on the bot', async () => {
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
     const before = (await screen.findByRole('img', { name: 'Bolt preview' })).innerHTML;
-    fireEvent.keyDown(screen.getByRole('slider', { name: /Hue/ }), { key: 'ArrowRight' });
+    fireEvent.click(within(screen.getByRole('group', { name: 'Body' })).getByRole('button', { name: 'cloud' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Colour' })).getByRole('button', { name: 'red' }));
     expect(screen.getByRole('img', { name: 'Bolt preview' }).innerHTML).not.toBe(before);
     await act(async () => fireEvent.click(screen.getAllByRole('button', { name: 'Save' }).at(-1)!));
-    expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ look: { face: { hue: expect.any(Number) } } });
+    expect(calls('PUT', '/api/crew/coder')[0]![2]).toMatchObject({ look: { face: { body: 'cloud', color: '#E35A5A' } } });
   });
 
   it('shows no ECC wording when nothing is imported except the import button', async () => {
@@ -438,8 +439,8 @@ describe('crew sources and faces', () => {
     expect(ecc[0]!.closest('button')?.textContent).toBe('Import ECC…');
   });
 
-  it('does not save the default hue until the slider moves, and resets to the generated face', async () => {
-    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [{ ...bots[0]!, look: { ...look, face: { hue: 10, tone: 0.3 } } }] } });
+  it('resets to the generated face', async () => {
+    routeApi({ ...routes, 'GET /api/crew': { ...crewReply, bots: [{ ...bots[0]!, look: { ...look, face: { body: 'tile', color: '#E35A5A' } } }] } });
     renderApp(<Crew />);
     fireEvent.click(await screen.findByRole('button', { name: /Edit Bolt/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Reset to generated' }));

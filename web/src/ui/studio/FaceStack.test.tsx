@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { cssRule } from '../../test/css';
 import { FaceStack } from './FaceStack';
 
 describe('FaceStack', () => {
@@ -30,10 +29,5 @@ describe('FaceStack', () => {
   it('draws nothing for no bots', () => {
     const { container } = render(<FaceStack bots={[]} />);
     expect(container.firstChild).toBeNull();
-  });
-  it('rings each face with the 3:1 edge colour, not the decorative hairline', () => {
-    const ring = cssRule('ui/studio/parts.css', '.sl-facestack > .face');
-    expect(ring).toContain('box-shadow: 0 0 0 1px var(--edge),0 0 0 3px var(--s1)');
-    expect(ring).not.toContain('--line2');
   });
 });

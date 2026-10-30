@@ -1,0 +1,23 @@
+/* Bot faces (Face.tsx, drawn by faceArt.ts): transparent, so nothing here paints behind them; they sit on whatever is there. */
+.face { display: inline-block; line-height: 0; }
+span.face > svg { width: 100%; height: 100%; overflow: visible; }
+/* a black body would vanish on the dark theme: a 1px hairline around its outline (works on <img> and inline SVG) */
+:root[data-theme="dark"] .face[data-dark-body] { filter: drop-shadow(1px 0 0 var(--edge)) drop-shadow(-1px 0 0 var(--edge)) drop-shadow(0 1px 0 var(--edge)) drop-shadow(0 -1px 0 var(--edge)); }
+
+/* Inline faces come alive: a slow bob (3% of the face), a blink every few seconds (~120 ms), a slow glance while working.
+   "always" loops; "hover" plays under a fine pointer (a tap would leave it on) or while its lineup slot has focus. */
+.fa-eye { transform-box: fill-box; transform-origin: center; }
+@keyframes fa-bob { 50% { transform: translateY(-3%); } }
+/* the blink comes about a second in, so a face woken by the pointer blinks while you are on it */
+@keyframes fa-blink { 0%, 20%, 22.5%, 100% { transform: none; } 21.25% { transform: scaleY(.1); } }
+@keyframes fa-glance { 0%, 25%, 100% { transform: none; } 40%, 70% { transform: translate(-6px, 2px); } }
+@media (prefers-reduced-motion: no-preference) {
+  :is(span.face[data-animate="always"], .cw-slot:focus-within span.face[data-animate]) > svg { animation: fa-bob 3.2s ease-in-out infinite; }
+  :is(span.face[data-animate="always"], .cw-slot:focus-within span.face[data-animate]) .fa-eye { animation: fa-blink 4.8s linear infinite; }
+  :is(span.face[data-animate="always"], .cw-slot:focus-within span.face[data-animate])[data-mood="working"] .fa-eyes { animation: fa-glance 6s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  :is(span.face[data-animate="hover"]:hover, .cw-slot:hover span.face[data-animate]) > svg { animation: fa-bob 3.2s ease-in-out infinite; }
+  :is(span.face[data-animate="hover"]:hover, .cw-slot:hover span.face[data-animate]) .fa-eye { animation: fa-blink 4.8s linear infinite; }
+  :is(span.face[data-animate="hover"]:hover, .cw-slot:hover span.face[data-animate])[data-mood="working"] .fa-eyes { animation: fa-glance 6s ease-in-out infinite; }
+}

@@ -13,8 +13,6 @@ const code = product
   .filter((p) => /\.tsx?$/.test(p))
   .map((p) => readFileSync(p, 'utf8'))
   .join('\n');
-/** Classes that libraries put on elements (blobatar's motion wrapper), not our components. */
-const FROM_LIBRARIES = new Set(['mo-root', 'mo-always']);
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 
 describe('the .studio alias is gone', () => {
@@ -35,7 +33,7 @@ describe('styles.css keeps no leftovers', () => {
   });
   it('styles only classes some component uses', () => {
     const classes = [...new Set([...styles.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]!))];
-    const unused = classes.filter((c) => !FROM_LIBRARIES.has(c) && !new RegExp(`(?<![\\w-])${escape(c)}(?![\\w-])`).test(code));
+    const unused = classes.filter((c) => !new RegExp(`(?<![\\w-])${escape(c)}(?![\\w-])`).test(code));
     expect(unused).toEqual([]);
   });
 });
