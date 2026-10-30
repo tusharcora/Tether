@@ -21,6 +21,8 @@ The full manual: every command, setting and limit. New here? Start with the [REA
   - [Commands Tether can run](#commands-tether-can-run)
 - [LLM providers](#llm-providers)
   - [Usage and spend (Experiential Labs)](#usage-and-spend-experiential-labs)
+- [Rewind, fork and try more ways](#rewind-fork-and-try-more-ways)
+- [Terminal and Preview](#terminal-and-preview)
 - [Deleting runs](#deleting-runs)
 
 ## Terminal UI tips
@@ -343,6 +345,27 @@ tether usage --days 30 --by key   # group by key, member, app, provider…
 ```
 
 The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `tether providers org-id <name> <id>` if that fails. If the key needs to differ for usage, `tether providers usage-key <name> <ENV_VAR>` sets an override. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.
+
+## Rewind, fork and try more ways
+
+On a run's page, a finished step's ⋯ menu has:
+
+- **Rewind to before this step.** The run's worktree goes back to the commit the step started from (untracked files the steps made are removed; setup output and git-ignored files stay). That step and every step after it are queued again, and the run is left stopped: press **Resume** to carry on. Nothing is lost: the old head, with any uncommitted work committed on top, is kept at `refs/tether/rewind/<run>/<n>`, and **Undo** in the banner puts it back until the run moves on. Spent cost stays spent. A live run is stopped first; a run already shipped as a PR is not rewound (fork it instead). In a team run, only the steps the manager handed out can be rewound, and their manager runs again.
+- **Fork from after this step.** A new run with the same task, workflow and project starts from the step's commit; the step and the ones before it show as done, "From run <id>".
+- **Open its changes.**
+
+**Try 2 more ways** (a run's header, or a started goal card) runs the same task 1 to 4 more times at once, each on another agent or model, from the same starting commit: an attempt set (A is the run you started from; a set holds up to 8). The defaults are the agents and models you have set up, free ones first, never the run's own and none twice. Each attempt counts toward its goal's run cap and budget and its team's daily limits like any run. **Compare** (`#/attempts/<set>`) lists them side by side with their check, changes, cost, time and review. Tether marks its pick (the check passes, then fewer failing tests, then the smaller diff, then the lower cost) but never ships on its own. **Pick X and ship** opens that run's PR (the team's approver rule applies) and stops the others; their worktrees and branches are removed 7 days later, their run records kept.
+
+API: `POST /api/runs/:id/rewind { node }`, `POST /api/runs/:id/rewind/undo`, `POST /api/runs/:id/fork { node }`, `GET|POST /api/runs/:id/attempts { count, agents? }`, `GET /api/attempts/:set`, `POST /api/attempts/:set/pick { run, merge? }`.
+
+## Terminal and Preview
+
+A run's page has two more tabs for checking its work without leaving Tether.
+
+- **Terminal** runs a command (`sh -lc`) in the run's worktree and streams what it prints. It is a console, not an interactive shell: one command at a time, ↑ and ↓ walk your earlier commands, Stop or Ctrl+C ends the command and everything it started. The first 100 000 characters show; a longer output is saved whole under the worktree's `.tether/spill/` (git ignores it). The last 50 commands are kept while Tether runs.
+- **Preview** starts the project's dev command in the worktree (`npm run dev`, else `npm run start`, else the command you type) with `PORT` set to a free port, and shows the page in a sandboxed frame once it prints a `localhost` or `127.0.0.1` address (or on its `PORT` after 20 seconds). On a wide window it opens beside the step. Reload, Open in browser and Stop are in its bar.
+
+Commands get your `PATH` and a few basics (`HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TMPDIR`, `TZ`), none of Tether's keys or tokens. Every process is ended by Stop, by deleting the run, and when Tether quits; ones a crash left behind are ended the next time it starts. The routes answer loopback only, like the rest of the API: `GET|POST /api/runs/:id/exec { command }`, `POST /api/runs/:id/exec/stop`, `GET|POST|DELETE /api/runs/:id/preview { command? }`; the output rides the run's stream (`/api/runs/:id/stream`) as `proc` events.
 
 ## Deleting runs
 
