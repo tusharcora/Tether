@@ -28,3 +28,13 @@ Date: 2026-10-30 · Branch: `feature/optional-run-budgets` (from main e30bc34).
 
 - Goal $ limits you add by hand and `--budget` still apply; probe replays keep their cap.
 - Daily $ limits on teams are off with the switch; runs-per-day stays.
+
+## 5. My calls (implementation, 2026-10-30)
+
+- **How "off" works:** a run started with caps off drops `maxCostUsd` from its own copy of the pipeline (the saved workflow keeps it), and a team plan made with caps off carries no `limits.maxCostUsd`. Every existing check and display reads the run's pipeline or plan, so none needed its own switch. `RunState.capsOn` is recorded in `run.started`.
+- **Old runs:** a `run.started` without `capsOn` folds as on (caps were always on then), so a run that was in flight at the upgrade keeps its cap.
+- **Explicit caps hold with the switch off:** `--budget` / API `budget` on a team run, probe replays, and a team loop goal's own `$` (its runs get the goal's remaining `$`, still clamped to `TEAM_MAX_BUDGET_USD` like goal-started team runs). Engine `start()` takes `capsOn: true` for these.
+- **Team loops:** with caps off, a loop made from a chat message gets a `$` limit only when the message names one (no `$5` default, not clamped to the daily `$`). The reply then reads "limit N runs".
+- **Forks and "try more ways"** copy the parent's starting pipeline, so a copy of a caps-off run has no cap even if caps are on now.
+- **Setting surface:** `GET /api/health` reports `spendingCaps`; `PUT /api/prefs {spendingCaps}` sets it; a "Runs" card in Settings holds the switch. The web reads it through a small `Caps` context.
+- **Not done:** no CLI or terminal-UI switch (edit `ui.json` or use Settings); the terminal builder's cost-cap field and header carry no hint.
