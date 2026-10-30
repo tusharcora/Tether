@@ -71,7 +71,7 @@ describe('the decision banner', () => {
     await team.idle();
     expect(r.store.state(r.id)!.status).toBe('done');
     expect(r.store.state(r.id)!.ship).toBeUndefined();
-    const other = await r.engine.start({ pipeline: pipe([{ id: 'code', role: 'coder', mock: { failFirst: 9 }, maxAttempts: 1 }], []), task: 'x', repo: r.repo });
+    const other = await r.engine.start({ pipeline: pipe([{ id: 'code', role: 'coder', mock: { failFirst: 9 } }], []), task: 'x', repo: r.repo });
     await r.engine.wait(other);
     await expect(r.ship.decide(other, true)).rejects.toThrow(/nothing in this run waits on you/);
   });
