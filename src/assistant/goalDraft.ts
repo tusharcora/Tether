@@ -5,6 +5,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { listPipelines } from '../config.js';
+import { loadBindings } from '../bindings.js';
 import { AGENT_KINDS, loadCrew } from '../crew.js';
 import { checkOf } from '../goals/routes.js';
 import { GOAL_TYPES, LIMITS, type Assignee, type Goal, type GoalOrigin, type GoalType, type LimitKey } from '../goals/types.js';
@@ -16,7 +17,7 @@ export const DRAFT_AGENTS_MAX = 5;
 /** What a draft may name: the project's teams (with their agents), the crew's agents and the saved workflows. */
 export interface DraftCtx {
   teams: { id: string; name: string; agents: string[] }[];
-  agents: { id: string; name: string; specialty: string }[];
+  agents: { id: string; name: string; specialty: string; model?: string }[];
   workflows: string[];
 }
 
@@ -24,9 +25,15 @@ export function draftContext(home: string, ws: string): DraftCtx {
   const f = loadTeams(home);
   const bots = loadCrew(home).filter((b) => AGENT_KINDS.has(b.kind));
   const known = new Set(bots.map((b) => b.id));
+  const links = loadBindings(home);
+  // what the card says each agent runs on: its model, or "free model" on OpenRouter and NVIDIA
+  const modelOf = (id: string) => {
+    const l = links[id];
+    return l?.model ?? (l?.agent === 'openrouter' || l?.agent === 'nvidia' ? 'free model' : l?.agent);
+  };
   return {
     teams: f.teams.filter((t) => t.project === ws).map((t) => ({ id: t.id, name: t.name, agents: t.agents.filter((a) => known.has(a)) })),
-    agents: bots.map((b) => ({ id: b.id, name: b.name, specialty: f.agents[b.id]?.specialty ?? b.title ?? '' })),
+    agents: bots.map((b) => ({ id: b.id, name: b.name, specialty: f.agents[b.id]?.specialty ?? b.title ?? '', ...(modelOf(b.id) ? { model: modelOf(b.id) } : {}) })),
     workflows: listPipelines(home).map((p) => p.name),
   };
 }
@@ -55,13 +62,14 @@ export function checkDraft(raw: unknown, ctx: DraftCtx, strict = false): GoalDra
   for (const a of rawAgents) {
     const o = obj(a) ?? {};
     const id = typeof o.id === 'string' ? o.id : '';
-    if (!ctx.agents.some((b) => b.id === id)) {
+    const known = ctx.agents.find((b) => b.id === id);
+    if (!known) {
       if (strict) return `unknown agent "${id}"`;
       continue;
     }
     if (agents.some((b) => b.id === id) || agents.length >= DRAFT_AGENTS_MAX) continue;
     const why = str(o.why, 120);
-    agents.push({ id, role: str(o.role, 60) || 'works on it', ...(why ? { why } : {}) });
+    agents.push({ id, role: str(o.role, 60) || 'works on it', ...(why ? { why } : {}), ...(known.model ? { model: known.model } : {}) });
   }
 
   let workflow = str(x.workflow, 64) || 'team';

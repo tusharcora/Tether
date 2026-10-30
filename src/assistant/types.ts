@@ -24,7 +24,7 @@ export interface GoalDraft {
   /** A Teams team in the project: its runs go through the team (its daily limits hold). */
   team?: string;
   /** Crew agents, each with its role on this goal and a line on why it was picked. */
-  agents: { id: string; role: string; why?: string }[];
+  agents: { id: string; role: string; why?: string; /** What it runs on (its binding), set by Tether, not the model. */ model?: string }[];
   /** A saved workflow's name, or 'team'. */
   workflow: string;
   limits?: { budgetUsd?: number; maxRuns?: number; maxMinutes?: number };

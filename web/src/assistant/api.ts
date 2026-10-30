@@ -1,6 +1,7 @@
-import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, Proposal, SavedPrompt, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
+import type { ArtifactView, AssistantContext, ChatMessage, ChatSummary, ChatView, GoalDraft, Proposal, SavedPrompt, StreamEvent, ToolAsk } from '../../../src/assistant/types.js';
 import { api, ApiError } from '../api';
 
+export type { GoalDraft } from '../../../src/assistant/types.js';
 export type { ArtifactKind, ArtifactMeta, ArtifactRef, ArtifactView, SavedPrompt, AskCard, AssistantContext, ChatMessage, ChatSummary, ChatView, Choice, Cite, Compare, ContextUse, Diagram, OutcomeNode, Proposal, Report, Retrieved, Spec, StreamEvent, TimelineEvent, ToolAsk, ToolRun } from '../../../src/assistant/types.js';
 export { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, TITLE_MAX } from '../../../src/assistant/types.js';
 
@@ -39,7 +40,9 @@ export const assistantApi = {
   chat: (ws: string | undefined, chat?: string) => api<ChatView>('GET', `/api/assistant${q({ ws, chat })}`),
   rename: (ws: string | undefined, chat: string, title: string) => api<{ chat: ChatSummary }>('PATCH', `/api/assistant/chats/${encodeURIComponent(chat)}`, { ws, title }),
   remove: (ws: string | undefined, chat: string) => api<{ ok: true }>('DELETE', `/api/assistant/chats/${encodeURIComponent(chat)}${q({ ws })}`),
-  decide: (ws: string | undefined, chat: string | undefined, id: string, decision: 'start' | 'dismiss') => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, chat, decision }),
+  decide: (ws: string | undefined, chat: string | undefined, id: string, decision: 'start' | 'dismiss', draft?: GoalDraft) => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, chat, decision, ...(draft ? { draft } : {}) }),
+  /** The composer's "Turn asks into goals" switch. */
+  settings: (asksToGoals: boolean) => api<{ asksToGoals: boolean }>('PUT', '/api/assistant/settings', { asksToGoals }),
   turnIntoRun: (ws: string | undefined, chat: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, chat, from }),
   tool: (ws: string | undefined, chat: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, chat, decision }),
   feedback: (ws: string | undefined, chat: string | undefined, id: string, value: 'up' | 'down' | null, why?: { reasons: string[]; note?: string }) => api<{ ok: true }>('POST', `/api/assistant/feedback/${encodeURIComponent(id)}`, { ws, chat, value, ...why }),

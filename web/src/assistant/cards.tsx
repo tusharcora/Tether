@@ -6,12 +6,14 @@ import type { ApprovalCardAnswers } from '../components/beui/agents/approval-car
 import type { Route } from '../hooks';
 import { useNotify } from '../ui/notify';
 import type { ChatMessage, Diagram as DiagramData, Proposal, ToolAsk } from './api';
+import { GoalCard } from './GoalCard';
 import { RunTaskCard } from './taskCards';
 import type { Assistant } from './useAssistant';
 
-/** A run Tether proposes, as an approval card in review mode. Nothing starts until Start run is clicked. */
-export function ProposalCard({ proposal: p, chat, onGo }: { proposal: Proposal; chat: Assistant; onGo: (r: Route) => void }) {
+/** A run Tether proposes, as an approval card in review mode (a goal: the goal card). Nothing starts until Start is clicked. */
+export function ProposalCard({ proposal: p, chat, onGo, project }: { proposal: Proposal; chat: Assistant; onGo: (r: Route) => void; project?: string }) {
   const notify = useNotify();
+  if (p.kind === 'goal' && p.draft) return <GoalCard proposal={p} chat={chat} project={project} onGo={onGo} />;
   const decide = (d: 'start' | 'dismiss') => void chat.decide(p, d).then((n) => n.status === 'started' && n.runId && notify.ok('Run started'), notify.fail);
   const status = p.status === 'proposed' ? 'pending' : p.status === 'started' ? 'approved' : 'rejected';
   return (
