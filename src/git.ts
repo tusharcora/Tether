@@ -129,6 +129,15 @@ export async function commitDiff(workdir: string, sha: string): Promise<string> 
   return r.stdout;
 }
 
+/** What one commit changed: files, lines added and removed (`git show --shortstat`). */
+export async function commitStat(workdir: string, sha: string): Promise<{ files: number; added: number; deleted: number }> {
+  return parseShortstat((await git(workdir, ['show', '--shortstat', '--format=', sha])).stdout);
+}
+export function parseShortstat(out: string): { files: number; added: number; deleted: number } {
+  const m = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(out);
+  return { files: Number(m?.[1] ?? 0), added: Number(m?.[2] ?? 0), deleted: Number(m?.[3] ?? 0) };
+}
+
 /** Files touched by one commit. */
 export async function commitFiles(workdir: string, sha: string): Promise<string[]> {
   const r = await git(workdir, ['show', '--name-only', '--format=', sha]);

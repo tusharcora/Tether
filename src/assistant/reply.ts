@@ -12,6 +12,7 @@ import { NAME_RE } from '../pipeline.js';
 import type { Store } from '../store.js';
 import type { Vault } from '../vault.js';
 import { splitArtifacts, type ArtifactBlock } from './artifactBlocks.js';
+import { checkDraft, type DraftCtx } from './goalDraft.js';
 import type { AskCard, Choice, Compare, Cite, Diagram, Proposal, Report, Spec, TimelineEvent } from './types.js';
 
 export interface Checked {
@@ -99,7 +100,8 @@ const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+
 let seq = 0;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-export async function checkReply(output: string, o: { home: string; repo?: string; store: Store; vault?: Vault }): Promise<Checked> {
+/** `drafts`: goal proposals are kept, checked against it (asks become goals); without it they are dropped. */
+export async function checkReply(output: string, o: { home: string; repo?: string; store: Store; vault?: Vault; drafts?: DraftCtx }): Promise<Checked> {
   const cut = splitArtifacts(output);
   const artifacts = cut.artifacts.filter((a) => a.content.trim()).slice(0, 3);
   const m = FENCE.exec(cut.text);
@@ -136,6 +138,12 @@ export async function checkReply(output: string, o: { home: string; repo?: strin
   const proposals: Proposal[] = [];
   for (const p of (Array.isArray(raw.proposals) ? raw.proposals : []).slice(0, 3)) {
     const x = (p ?? {}) as Record<string, unknown>;
+    if (x.kind === 'goal') {
+      // one goal card per reply
+      const draft = o.drafts && !proposals.some((y) => y.kind === 'goal') ? checkDraft(x.draft, o.drafts) : undefined;
+      if (draft && typeof draft !== 'string') proposals.push({ id: uid('p'), kind: 'goal', task: str(x.task, 2000) || draft.title, draft, status: 'proposed' });
+      continue;
+    }
     const task = str(x.task, 2000);
     if (!task) continue;
     const why = str(x.why, 200) || undefined;

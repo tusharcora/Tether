@@ -22,6 +22,10 @@ export interface RunRow extends RunRowExtras {
   planReady: boolean;
   /** An Evolve probe replay (listed only with ?all=1). */
   probe?: true;
+  /** Where it was started from (runs before 2026-10-29: none). */
+  origin?: RunState['origin'];
+  /** Its PR, once shipped. */
+  ship?: RunState['ship'];
 }
 export interface Issue {
   level: 'error' | 'warn';

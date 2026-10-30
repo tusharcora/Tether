@@ -235,9 +235,9 @@ describe('the detail page', () => {
     expect(within(bar).getByRole('button', { name: 'Duplicate' })).toBeTruthy();
     fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
     let dock = screen.getByRole('complementary', { name: 'Goal settings' });
-    fireEvent.change(within(dock).getByLabelText('Budget ($)'), { target: { value: '8' } });
+    fireEvent.change(within(dock).getByLabelText('Spend cap ($)'), { target: { value: '8' } });
     fireEvent.click(within(dock).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 8, maxRuns: 4, dueDate: null }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 8, maxRuns: 4, maxMinutes: null, dueDate: null }));
     await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Goal settings' })).toBeNull());
     fireEvent.click(within(bar).getByRole('button', { name: 'Settings' }));
     dock = screen.getByRole('complementary', { name: 'Goal settings' });
@@ -355,7 +355,9 @@ describe('New goal', () => {
     fireEvent.change(await within(dock).findByLabelText('Command'), { target: { value: 'npm run bench' } });
     fireEvent.click(within(dock).getByRole('button', { name: 'Create goal' }));
     await waitFor(() => expect(calls('POST', '/api/goals')).toHaveLength(1));
-    expect(calls('POST', '/api/goals')[0]?.[2]).toMatchObject({ title: 'p95 under 200 ms', workspace: 'w', workflow: 'team', check: { kind: 'command', command: 'npm run bench' }, budgetUsd: 5, maxRuns: 5, approval: 'ask' });
+    // limits are optional: none unless added
+    expect(calls('POST', '/api/goals')[0]?.[2]).toMatchObject({ title: 'p95 under 200 ms', workspace: 'w', workflow: 'team', check: { kind: 'command', command: 'npm run bench' }, approval: 'ask' });
+    expect(calls('POST', '/api/goals')[0]?.[2]).not.toHaveProperty('budgetUsd');
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith('g1'));
     expect(screen.queryByRole('complementary', { name: 'New goal' })).toBeNull();
   });
@@ -424,7 +426,27 @@ describe('type and description', () => {
     fireEvent.click(within(dock).getByRole('button', { name: 'Bug fix' }));
     fireEvent.change(within(dock).getByLabelText('Description'), { target: { value: 'Users get logged out after a minute.' } });
     fireEvent.click(within(dock).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 5, maxRuns: 4, dueDate: null, type: 'bugfix', description: 'Users get logged out after a minute.' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toEqual({ budgetUsd: 5, maxRuns: 4, maxMinutes: null, dueDate: null, type: 'bugfix', description: 'Users get logged out after a minute.' }));
+  });
+
+  it('limits are optional: "no limits" until added, a chip adds one, × clears it with null', async () => {
+    const free = loop({ status: 'active', pending: undefined, budgetUsd: undefined, maxRuns: undefined });
+    expect(goalMeta(free)).toBe('1 failing · 11 passing · 1 run · $1.20 · no limits');
+    expect(goalLine(free)).toBe('loop · 1 run · no limits');
+    expect(nextStrip(free)?.label).toBe('Step 2:');
+    expect(goalMeta(loop({ status: 'paused', startedAt: undefined }))).toMatch(/not started/);
+    routeApi({ 'PATCH /api/goals/g1': (b: object) => ({ ...free, ...b }) });
+    renderApp(<Goals {...props([free], { selected: 'g1' })} />);
+    expect(within(screen.getByRole('group', { name: 'Limits' })).getByText('No limits · $1.20 spent · 1 run')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Goal actions' })).getByRole('button', { name: 'Settings' }));
+    const dock = screen.getByRole('complementary', { name: 'Goal settings' });
+    const field = within(dock).getByRole('group', { name: 'Limits (optional)' });
+    expect(within(field).getByText('No limits')).toBeTruthy();
+    fireEvent.click(within(field).getByRole('button', { name: '+ Add limits' }));
+    fireEvent.click(within(field).getByRole('button', { name: 'time limit' }));
+    fireEvent.change(within(field).getByLabelText('Time limit (minutes)'), { target: { value: '90' } });
+    fireEvent.click(within(dock).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls('PATCH', '/api/goals/g1')[0]?.[2]).toMatchObject({ budgetUsd: null, maxRuns: null, maxMinutes: 90 }));
   });
 
   it('new goal form sends type and description', async () => {

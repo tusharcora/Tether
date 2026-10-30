@@ -5,6 +5,8 @@ import type { Pin, RunRow } from '../../api';
 import type { ChatSummary } from '../../assistant/api';
 import type { Screen } from '../../hooks';
 import { CreateMenu } from '../../components/bencho/CreateMenu';
+import { Button } from '../../components/beui/kit/Button';
+import { Dialog, DialogContent } from '../../components/beui/kit/overlays';
 import { cn } from '../cn';
 import { AccountRow } from './AccountRow';
 import { Kbd, isApple } from './Kbd';
@@ -12,7 +14,7 @@ import { NAV, goHint, type CreateKind } from './nav';
 import { PinList } from './PinList';
 import { ProjectSwitcher, type ProjectsProps } from './ProjectSwitcher';
 import { RUN_STATE_LABEL, RunGlyph, runState, shortRunId, type RunState } from './RunGlyph';
-import { SideRow, SideSection, type TipProps } from './SideParts';
+import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
@@ -78,6 +80,50 @@ export function sideRuns(runs: RunRow[]): { run: RunRow; state: RunState }[] {
 
 const firstLine = (t: string) => t.split('\n')[0]!.slice(0, 120);
 
+/**
+ * A chat in the Chats section, with its ⋯ (on hover and focus; always on the open chat): Rename edits the title in place
+ * (Enter saves, Escape or an unchanged title cancels), Delete chat asks first.
+ */
+function ChatRow(p: { chat: ChatSummary; current: boolean; onOpen: () => void; onRename?: (id: string, title: string) => Promise<void>; onDelete?: (id: string) => Promise<void> }) {
+  const [renaming, setRenaming] = useState<string>();
+  const [asking, setAsking] = useState(false);
+  // Enter, Escape and the blur that follows them end the edit once
+  const ended = useRef(false);
+  const c = p.chat;
+  const save = (t: string | undefined) => {
+    if (ended.current) return;
+    ended.current = true;
+    setRenaming(undefined);
+    if (t?.trim() && t.trim() !== c.title) void p.onRename?.(c.id, t.trim());
+  };
+  if (renaming !== undefined)
+    return (
+      <form className="sl-side-rename" onSubmit={(e) => (e.preventDefault(), save(renaming))}>
+        <input aria-label={`Rename ${c.title}`} value={renaming} maxLength={120} autoFocus onChange={(e) => setRenaming(e.target.value)} onBlur={() => save(renaming)} onKeyDown={(e) => e.key === 'Escape' && (e.preventDefault(), save(undefined))} />
+      </form>
+    );
+  const items = [...(p.onRename ? [{ label: 'Rename', onPick: () => ((ended.current = false), setRenaming(c.title)) }] : []), ...(p.onDelete ? [{ label: 'Delete chat', danger: true, onPick: () => setAsking(true) }] : [])];
+  return (
+    <>
+      <SideRow label={c.title} page current={p.current} onClick={p.onOpen} extra={items.length ? <SideMenu className="sl-side-row-more" label={`Chat actions for ${c.title}`} items={items} /> : undefined} />
+      <Dialog open={asking} onOpenChange={setAsking}>
+        {asking ? (
+          <DialogContent title="Delete this chat?" description={`"${c.title}" and its messages are deleted. Runs it started are kept.`}>
+            <div className="row end">
+              <Button variant="secondary" onClick={() => setAsking(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void p.onDelete!(c.id).finally(() => setAsking(false))}>
+                Delete
+              </Button>
+            </div>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </>
+  );
+}
+
 export interface SidebarProps {
   active: Screen;
   /** The Settings drawer is open over the active screen. */
@@ -94,7 +140,8 @@ export interface SidebarProps {
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
   /** The project's chats, newest first; `current` is what the Chats screen shows: '' All chats, 'new', or a chat id. */
-  chats: { list: ChatSummary[]; current?: string; onNew: () => void; onStarter: (s: ChatStarter) => void; onOpen: (id: string) => void; onAll: () => void };
+  /** A chat row's ⋯: Rename and Delete chat (the caller says when they fail). */
+  chats: { list: ChatSummary[]; current?: string; onNew: () => void; onStarter: (s: ChatStarter) => void; onOpen: (id: string) => void; onAll: () => void; onRename?: (id: string, title: string) => Promise<void>; onDelete?: (id: string) => Promise<void> };
   /** Every team (spec Teams §6.4); `current` is the team on screen ('new' while making one). */
   teams: { list: TeamSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void };
   projects: ProjectsProps;
@@ -236,7 +283,7 @@ export function Sidebar(p: SidebarProps) {
               ? [<SideRow key="all" label="Chats" Icon={MessagesSquare} page current={p.chats.current !== undefined} onClick={p.chats.onAll} rail={tipFor('chats', 'Chats')} />]
               : [
                   <SideRow key="new" label="New chat" Icon={Pencil} page current={p.chats.current === 'new'} hint={<Kbd mod>⇧O</Kbd>} onClick={p.chats.onNew} />,
-                  ...p.chats.list.slice(0, RECENT_CHATS).map((c) => <SideRow key={c.id} label={c.title} page current={p.chats.current === c.id} onClick={() => p.chats.onOpen(c.id)} />),
+                  ...p.chats.list.slice(0, RECENT_CHATS).map((c) => <ChatRow key={c.id} chat={c} current={p.chats.current === c.id} onOpen={() => p.chats.onOpen(c.id)} onRename={p.chats.onRename} onDelete={p.chats.onDelete} />),
                   <SideRow key="all" label="All chats →" name="All chats" page current={p.chats.current === ''} onClick={p.chats.onAll} />,
                 ]}
           </SideSection>

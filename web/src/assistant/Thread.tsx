@@ -215,7 +215,7 @@ function TetherMessage({ m, asked, query, chat, onGo, dim, project, onArtifact }
       {m.retrieved?.length ? <RetrievedNotes m={m} query={query ?? ''} onGo={onGo} /> : null}
       {m.ask ? <AskCardView message={m} chat={chat} /> : null}
       {m.toolAsks?.map((a) => <ToolAskCard key={a.id} ask={a} onDecide={(d) => chat.tool(m.id, a.id, d)} />)}
-      {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} chat={chat} onGo={onGo} />)}
+      {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} chat={chat} onGo={onGo} project={project} />)}
       {(text || m.artifacts?.length) && !m.error ? <ReplyActions m={m} text={text} chat={chat} /> : null}
     </div>
   );

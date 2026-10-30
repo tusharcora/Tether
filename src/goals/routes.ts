@@ -12,7 +12,7 @@ import { NAME_RE } from '../pipeline.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import type { Store } from '../store.js';
 import type { Goals } from './loop.js';
-import type { Assignee, Goal, GoalCheck, GoalType, GoalView } from './types.js';
+import { GOAL_TYPES, LIMITS, type Assignee, type Goal, type GoalCheck, type GoalView, type LimitKey } from './types.js';
 
 const num = (b: Record<string, unknown>, k: string, lo: number, hi: number, whole = false): number | undefined => {
   const v = b[k];
@@ -20,6 +20,9 @@ const num = (b: Record<string, unknown>, k: string, lo: number, hi: number, whol
   if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi || (whole && !Number.isInteger(v))) throw new HttpError(400, `"${k}" must be ${whole ? 'a whole number' : 'a number'} from ${lo} to ${hi}`);
   return v;
 };
+/** The caps: each optional; `null` clears one on a PATCH. */
+const limitsOf = (b: Record<string, unknown>): Partial<Record<LimitKey, number | null>> =>
+  Object.fromEntries((Object.keys(LIMITS) as LimitKey[]).flatMap((k): [LimitKey, number | null][] => (b[k] === null ? [[k, null]] : b[k] === undefined ? [] : [[k, num(b, k, ...LIMITS[k])!]])));
 const text = (b: Record<string, unknown>, k: string, max: number, oneLine = true): string | undefined => {
   const v = b[k];
   if (v === undefined || v === null) return undefined;
@@ -29,7 +32,7 @@ const text = (b: Record<string, unknown>, k: string, max: number, oneLine = true
   if (t.length > max) throw new HttpError(400, `"${k}" is too long (max ${max})`);
   return t || undefined;
 };
-function checkOf(v: unknown): GoalCheck {
+export function checkOf(v: unknown): GoalCheck {
   const c = reqObject(v);
   if (c.kind !== 'command' && c.kind !== 'tests' && c.kind !== 'number') throw new HttpError(400, '"check.kind" must be "command", "tests" or "number"');
   const command = text(c, 'command', 1000);
@@ -48,7 +51,6 @@ const dateOf = (b: Record<string, unknown>) => {
   if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, '"dueDate" must look like 2026-11-30');
   return d;
 };
-const TYPES = ['feature', 'bugfix', 'refactor', 'chore'] as const satisfies readonly GoalType[];
 /** Who works on it: at most 20 teams or agents. An id that no longer exists is kept (the page shows it as removed). */
 const assigneesOf = (b: Record<string, unknown>): Assignee[] | undefined => {
   const v = b.assignees;
@@ -110,7 +112,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
     const kind = enumOf(b, 'kind', ['loop', 'tracker'] as const) ?? (check ? 'loop' : 'tracker');
     if (kind === 'loop' && !check) throw new HttpError(400, 'a loop needs a "check"');
     const dueDate = dateOf(b);
-    const type = enumOf(b, 'type', TYPES);
+    const type = enumOf(b, 'type', GOAL_TYPES);
     const description = text(b, 'description', 500, false);
     const assignees = assigneesOf(b);
     const goal: Goal = {
@@ -120,8 +122,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       kind,
       status: 'active',
       ...(check ? { check } : {}),
-      budgetUsd: num(b, 'budgetUsd', 0.01, 1000) ?? 5,
-      maxRuns: num(b, 'maxRuns', 1, 50, true) ?? 5,
+      ...Object.fromEntries(Object.entries(limitsOf(b)).filter(([, v]) => v !== null)),
       approval: enumOf(b, 'approval', ['ask', 'auto'] as const) ?? 'ask',
       workflow: workflowOf(c.home, b) ?? 'team',
       ...(dueDate ? { dueDate } : {}),
@@ -134,7 +135,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
     return send(res, 201, view(goals.create(goal))), true;
   }
 
-  if ((g = p.match(/^\/api\/goals\/([^/]+)(?:\/(check|next|items)(?:\/(\d+))?)?$/))) {
+  if ((g = p.match(/^\/api\/goals\/([^/]+)(?:\/(check|next|items|start)(?:\/(\d+))?)?$/))) {
     let id: string;
     try {
       id = decodeURIComponent(g[1]!);
@@ -158,15 +159,12 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       if (title) patch.title = title;
       const approval = enumOf(b, 'approval', ['ask', 'auto'] as const);
       if (approval) patch.approval = approval;
-      const budgetUsd = num(b, 'budgetUsd', 0.01, 1000);
-      if (budgetUsd !== undefined) patch.budgetUsd = budgetUsd;
-      const maxRuns = num(b, 'maxRuns', 1, 50, true);
-      if (maxRuns !== undefined) patch.maxRuns = maxRuns;
+      for (const [k, v] of Object.entries(limitsOf(b))) patch[k as LimitKey] = v ?? undefined;
       const wf = workflowOf(c.home, b);
       if (wf) patch.workflow = wf;
       if (b.dueDate !== undefined) patch.dueDate = dateOf(b);
       if (b.check !== undefined && b.check !== null) patch.check = checkOf(b.check);
-      const type = enumOf(b, 'type', TYPES);
+      const type = enumOf(b, 'type', GOAL_TYPES);
       if (type) patch.type = type;
       if (b.description !== undefined) patch.description = text(b, 'description', 500, false);
       const assignees = assigneesOf(b);
@@ -175,6 +173,11 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       return send(res, 200, view(status ? goals.setStatus(id, status) : goals.db.must(id))), true;
     }
     if (sub === 'check' && m === 'POST') return send(res, 200, view(await goals.check(id))), true;
+    // the first Start of a goal that waits "not started": its title and description are the first run's task
+    if (sub === 'start' && m === 'POST') {
+      const x = goals.db.must(id);
+      return send(res, 200, view(goals.begin(id, [x.title, x.description].filter(Boolean).join('\n\n')))), true;
+    }
     if (sub === 'next' && m === 'POST') {
       const b = reqObject(await readJson(req));
       const action = enumOf(b, 'action', ['start', 'skip'] as const);

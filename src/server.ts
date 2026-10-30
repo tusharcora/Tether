@@ -40,6 +40,7 @@ import { PREVIEW_TASK_MAX, rosterPreview } from './rosterPreview.js';
 import { rowLive } from './runLabels.js';
 import { VAULT_ACTIVITY_LIMIT, VAULT_ACTIVITY_MAX, vaultActivity } from './vaultActivity.js';
 import { rowExtras } from './runRows.js';
+import { RunShip } from './runShip.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
@@ -266,6 +267,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
   /** Schedules start a workflow in their workspace, or give a goal its next turn. */
   const scheduler = new Scheduler(cfg.home, async (s) => {
     if (s.target.kind === 'goal') return void goals.kick(s.target.goalId);
@@ -362,7 +364,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     refreshCrew(cfg.home);
     const ref = { provider: 'github' as const, repo: pr.repo, number: pr.number, url: `https://github.com/${pr.repo}/pull/${pr.number}` };
     // answer GitHub at once (it gives up after 10s); the run goes on in the background
-    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment, workspace: rule.workspace, agent: rule.agent, model: rule.model })
+    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment, workspace: rule.workspace, agent: rule.agent, model: rule.model, ...(rule.id ? { origin: { kind: 'trigger' as const, id: rule.id } } : {}) })
       .then((r) => {
         recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: 'started', runId: r.runId });
         console.error(`[aorch] PR ${pr.repo}#${pr.number} -> run ${r.runId} (${rule.workflow})`);
@@ -405,7 +407,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
-      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo }, req, res, url);
+      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
@@ -779,7 +781,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       refreshCrew(cfg.home);
       const at = () => new Date().toISOString();
       try {
-        const started = await startPrRun({ home: cfg.home, engine, exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model });
+        const started = await startPrRun({ home: cfg.home, engine, exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model, ...(r.id ? { origin: { kind: 'trigger' as const, id: r.id } } : {}) });
         started.done.catch(() => undefined);
         recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: 'started', runId: started.runId });
         return send(res, 200, { matches: true, why: verdict.why, fired: true, runId: started.runId, pr }), true;
@@ -1005,6 +1007,28 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       } catch (e) {
         if (e instanceof HttpError) throw e;
         throw new HttpError(409, (e as Error).message);
+      }
+      return send(res, 200, runView(id)), true;
+    }
+    // the run page's decision banner: Merge to main / Open PR instead, and Send back with comments
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback)$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      const b = reqObject(await readJson(req));
+      if (g[2] === 'ship') {
+        if (typeof b.merge !== 'boolean') throw new HttpError(400, '"merge" must be true or false');
+        if (!teams.mayApproveRun(id, OWNER.id)) throw new HttpError(403, 'Only the team’s chosen approvers can decide this run');
+        await runShip.decide(id, b.merge);
+      } else {
+        const node = typeof b.node === 'string' ? b.node : '';
+        const note = typeof b.note === 'string' ? b.note.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim() : '';
+        if (!store.state(id)!.pipeline.nodes.some((n) => n.id === node && n.kind === 'agent')) throw new HttpError(400, '"node" must be an agent step of this run');
+        if (!note || note.length > 1000) throw new HttpError(400, '"note" is 1 to 1000 characters');
+        try {
+          await engine.sendBack(id, node, note);
+        } catch (e) {
+          throw new HttpError(409, (e as Error).message);
+        }
       }
       return send(res, 200, runView(id)), true;
     }

@@ -265,6 +265,20 @@ describe('loop work', () => {
   });
 });
 
+describe('a goal made elsewhere', () => {
+  it('a chat goal on a team runs as its agent, gets its card in the channel, and asks to ship when done', async () => {
+    const r = rig();
+    const goal = r.goals.create({ id: 'gchat', workspace: 'app', title: 'Write fix.txt', kind: 'tracker', status: 'paused', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, team: r.team.id, agent: 'coder', origin: { kind: 'chat', chat: 'c1', message: 'm1' } });
+    r.goals.begin(goal.id, 'write fix.txt');
+    await r.until(() => r.goals.db.must(goal.id).status === 'met');
+    await r.idle();
+    expect(r.card('loop')).toMatchObject({ text: 'Goal: Write fix.txt', from: { kind: 'tether' } });
+    expect(r.msgs().map((m) => m.text)).toContain('Done: Write fix.txt.');
+    expect(r.card('approval', 'pending')!.card).toMatchObject({ what: 'ship', goalId: goal.id });
+    expect(r.tasks()[0]).toMatchObject({ kind: 'loop', goal: goal.id, agent: 'coder' });
+  });
+});
+
 describe('merging', () => {
   it('merges the team’s PR when an allowed approver says so and its checks pass; nobody else can', async () => {
     const r = rig({ level: 'loose', people: [OWNER, { id: 'maya', name: 'Maya' }], approvers: ['owner'] });

@@ -36,6 +36,8 @@ export const goalsApi = {
   patch: (id: string, body: Record<string, unknown>) => api<GoalView>('PATCH', `/api/goals/${id}`, body),
   remove: (id: string) => api('DELETE', `/api/goals/${id}`),
   check: (id: string) => api<GoalView>('POST', `/api/goals/${id}/check`, {}),
+  /** The first Start of a goal that waits "not started" (one made from chat). */
+  start: (id: string) => api<GoalView>('POST', `/api/goals/${id}/start`, {}),
   next: (id: string, action: 'start' | 'skip', plan?: string) => api<GoalView>('POST', `/api/goals/${id}/next`, { action, ...(plan ? { plan } : {}) }),
   addItem: (id: string, text: string) => api('POST', `/api/goals/${id}/items`, { text }),
   toggleItem: (id: string, item: number, done: boolean) => api('PATCH', `/api/goals/${id}/items/${item}`, { done }),
@@ -60,14 +62,18 @@ export function goalMeta(g: GoalView): string {
   const check = g.lastCheck ? (g.lastCheck.summary ?? (g.lastCheck.ok ? 'Check passes' : g.lastCheck.value !== undefined ? `Check at ${g.lastCheck.value}` : 'Check failing')) : 'Not checked yet';
   if (g.status === 'met') return `${check} · ${fmtUsd(g.spentUsd)} · ${runs} ${runs === 1 ? 'run' : 'runs'}`;
   if (g.status === 'stopped') return `${g.reason ?? 'Stopped'} · ${runs} ${runs === 1 ? 'run' : 'runs'}`;
-  const state = g.status === 'needs_you' ? `run ${runs + 1} awaiting approval` : g.status === 'paused' ? 'paused' : `${runs} of ${g.maxRuns} runs`;
-  return `${check} · ${state} · ${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)}`;
+  const state = g.status === 'needs_you' ? `run ${runs + 1} awaiting approval` : g.status === 'paused' ? (g.startedAt ? 'paused' : 'not started') : g.maxRuns ? `${runs} of ${g.maxRuns} runs` : `${runs} ${runs === 1 ? 'run' : 'runs'}`;
+  return `${check} · ${state} · ${g.budgetUsd ? `${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)}` : fmtUsd(g.spentUsd)}${noLimits(g) ? ' · no limits' : g.maxMinutes ? ` · ${g.maxMinutes} min limit` : ''}`;
 }
+
+/** None of the three caps is set. */
+export const noLimits = (g: Pick<GoalView, 'budgetUsd' | 'maxRuns' | 'maxMinutes'>) => g.budgetUsd === undefined && g.maxRuns === undefined && g.maxMinutes === undefined;
 
 /** The muted line under a goal in the list: its kind and how far it has come. */
 export function goalLine(g: GoalView): string {
   if (g.kind === 'tracker') return `tracker · ${g.items.filter((i) => i.done || i.runStatus === 'done').length} of ${g.items.length} done`;
-  return `loop · ${g.items.filter((i) => i.kind === 'run').length} of ${g.maxRuns} runs`;
+  const runs = g.items.filter((i) => i.kind === 'run').length;
+  return `loop · ${g.maxRuns ? `${runs} of ${g.maxRuns} runs` : `${runs} ${runs === 1 ? 'run' : 'runs'}`}${noLimits(g) ? ' · no limits' : ''}`;
 }
 
 /** The goals of one project (every goal when none is open). */
@@ -79,7 +85,7 @@ export const TYPE_GLYPH: Record<GoalType, string> = { feature: '+', bugfix: '!',
 export const typeOf = (g: Pick<GoalView, 'type'>): GoalType => g.type ?? 'feature';
 
 /** The status word on a goal node: a working loop is Live, an open tracker Open. */
-export const statusWord = (g: Pick<GoalView, 'status' | 'kind'>): string => (g.status === 'active' ? (g.kind === 'loop' ? 'Live' : 'Open') : STATUS_LABEL[g.status]);
+export const statusWord = (g: Pick<GoalView, 'status' | 'kind' | 'startedAt'>): string => (g.status === 'active' ? (g.kind === 'loop' ? 'Live' : 'Open') : g.status === 'paused' && !g.startedAt ? 'Not started' : STATUS_LABEL[g.status]);
 
 /** What a duplicate is made from: every field, " (copy)" on the title, and a loop's check and limits. */
 export const copyOf = (g: GoalView): Record<string, unknown> => ({
@@ -90,7 +96,7 @@ export const copyOf = (g: GoalView): Record<string, unknown> => ({
   ...(g.description ? { description: g.description } : {}),
   ...(g.assignees?.length ? { assignees: g.assignees } : {}),
   ...(g.dueDate ? { dueDate: g.dueDate } : {}),
-  ...(g.kind === 'loop' ? { check: g.check, budgetUsd: g.budgetUsd, maxRuns: g.maxRuns, approval: g.approval } : {}),
+  ...(g.kind === 'loop' ? { check: g.check, approval: g.approval, ...(g.budgetUsd !== undefined ? { budgetUsd: g.budgetUsd } : {}), ...(g.maxRuns !== undefined ? { maxRuns: g.maxRuns } : {}), ...(g.maxMinutes !== undefined ? { maxMinutes: g.maxMinutes } : {}) } : {}),
 });
 const OUT_OF = 10;
 const share = (n: number, of: number) => (of > 0 ? Math.min(1, Math.max(0, n / of)) : 0);
@@ -110,8 +116,9 @@ export function goalScore(g: GoalView) {
       ? [{ label: 'Items done', score: share(done, g.items.length) * OUT_OF, weight: 1, note: `${done} of ${g.items.length}` }]
       : [
           { label: 'Finish check', score: check * OUT_OF, weight: 1, note: c ? (c.summary ?? (c.ok ? 'passing' : 'failing')) : 'not checked yet' },
-          { label: 'Budget left', score: (1 - share(g.spentUsd, g.budgetUsd)) * OUT_OF, weight: 1, note: `${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)} spent` },
-          { label: 'Runs left', score: (1 - share(runs, g.maxRuns)) * OUT_OF, weight: 1, note: `${runs} of ${g.maxRuns} runs` },
+          // a cap that is not set has nothing to run out of
+          ...(g.budgetUsd !== undefined ? [{ label: 'Budget left', score: (1 - share(g.spentUsd, g.budgetUsd)) * OUT_OF, weight: 1, note: `${fmtUsd(g.spentUsd)} of ${fmtUsd(g.budgetUsd)} spent` }] : []),
+          ...(g.maxRuns !== undefined ? [{ label: 'Runs left', score: (1 - share(runs, g.maxRuns)) * OUT_OF, weight: 1, note: `${runs} of ${g.maxRuns} runs` }] : []),
         ];
   const total = criteria.reduce((a, x) => a + x.score * x.weight, 0) / criteria.reduce((a, x) => a + x.weight, 0);
   return { verdict: g.kind === 'tracker' && g.status === 'active' ? 'Open' : STATUS_LABEL[g.status], total, outOf: OUT_OF, criteria };

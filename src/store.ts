@@ -31,6 +31,8 @@ export interface RunSummary {
   planReady: boolean;
   /** An Evolve probe replay (lists may hide it; it can be deleted like any run). */
   probe?: true;
+  origin?: RunState['origin'];
+  ship?: RunState['ship'];
 }
 
 const summarize = (id: string, s: RunState): RunSummary => ({
@@ -48,6 +50,8 @@ const summarize = (id: string, s: RunState): RunSummary => ({
   pending: s.pending.length,
   planReady: planWaiting(s),
   ...(s.probe ? { probe: true as const } : {}),
+  ...(s.origin ? { origin: s.origin } : {}),
+  ...(s.ship ? { ship: s.ship } : {}),
 });
 
 /** A position in the cross-run event order (ts, run id, seq). */

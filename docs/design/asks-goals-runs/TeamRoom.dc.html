@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team room</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}a:hover{color:#bfdbfe}
+.fc{position:relative;display:inline-block;flex:none;width:24px;height:24px;border-radius:6px}
+.fc::before,.fc::after{content:'';position:absolute;top:8px;width:4px;height:5px;background:#141414;border-radius:1px}
+.fc::before{left:6px}.fc::after{right:6px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#2f2f2f;color:#d4d4d8;font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:8px;font:500 13px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.14);background:#2f2f2f;color:#f4f4f5;cursor:pointer}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.node{position:absolute;display:flex;align-items:center;gap:10px;width:168px;height:56px;box-sizing:border-box;padding:0 12px;border-radius:12px;background:#262626;border:1px solid rgba(255,255,255,.14);font-size:13px;color:#f4f4f5;cursor:pointer;font-family:'Geist',sans-serif;text-align:left}
+.node small{display:block;color:#a1a1aa;font-size:11.5px;margin-top:2px}
+.seg{flex:1;height:4px;border-radius:2px;background:#383838}
+.tab{height:30px;padding:0 12px;border-radius:7px;border:0;background:transparent;color:#a1a1aa;font:500 13px 'Geist',sans-serif;cursor:pointer}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px">
+
+  <header style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <h1 style="margin:0;font-size:17px;font-weight:600"><span style="color:#a1a1aa">#</span> web</h1>
+    <span style="color:#a1a1aa;font-size:12.5px">Tether team · you + 3 agents · acme-web · any of you can approve</span>
+    <span style="flex:1"></span>
+    <span class="chip" style="background:rgba(59,130,246,.15);color:#93c5fd">1 live run</span>
+    <span class="chip" style="background:rgba(251,191,36,.12);color:#fbbf24">1 needs you</span>
+    <span style="color:#a1a1aa;font-size:12.5px">$1.12 of $10 today</span>
+    <button class="btn" type="button">Add member</button>
+    <button class="btn ghost" type="button" aria-label="Team settings">Settings</button>
+  </header>
+
+  <div style="flex:1;display:flex;flex-wrap:wrap;min-height:0">
+
+    <section aria-label="Team map" style="flex:999 1 620px;min-width:0;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.07)">
+      <div style="display:flex;align-items:center;gap:6px;padding:12px 20px">
+        <div role="tablist" aria-label="Map view" style="display:flex;gap:2px;background:#232323;border-radius:9px;padding:3px">
+          <button class="tab" role="tab" aria-selected="true" type="button" style="background:#383838;color:#f4f4f5">This run</button>
+          <button class="tab" role="tab" aria-selected="false" type="button">Whole team</button>
+        </div>
+        <span style="margin-left:8px;font-size:12.5px;color:#a1a1aa">Sign-in returns people to where they were · step 3 of 5</span>
+        <span style="margin-left:auto;font-size:12px;color:#a1a1aa">Click someone to focus the chat on them</span>
+      </div>
+
+      <div style="position:relative;flex:1;min-height:460px;margin:0 20px;border-radius:14px;background:#1d1d1d;border:1px solid rgba(255,255,255,.07);overflow:hidden;background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:18px 18px">
+        <svg aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 820 460" preserveAspectRatio="none">
+          <path d="M188 230 C220 230 220 120 252 120" stroke="#34d399" stroke-width="2" fill="none"/>
+          <path d="M420 120 C452 120 452 230 484 230" stroke="#34d399" stroke-width="2" fill="none"/>
+          <path d="M420 120 C452 120 452 340 484 340" stroke="#747478" stroke-width="2" stroke-dasharray="4 5" fill="none"/>
+          <path d="M652 230 C684 230 684 230 700 230" stroke="#2b6cf0" stroke-width="2" fill="none"/>
+          <circle cx="676" cy="230" r="4" fill="#93c5fd"/>
+          <path d="M652 340 C684 340 700 300 700 270" stroke="#747478" stroke-width="2" stroke-dasharray="4 5" fill="none"/>
+        </svg>
+
+        <button class="node" type="button" style="left:20px;top:202px"><span class="fc" style="background:#e4e4e7"></span><span>You<small>asked 14:02</small></span></button>
+        <button class="node" type="button" style="left:252px;top:92px;border-color:rgba(52,211,153,.5)"><span class="fc" style="background:#fbbf24"></span><span>Bolt · Fix<small>done · 3 files · $0.41</small></span></button>
+        <div class="node" style="left:252px;top:312px;border-style:dashed;background:transparent;color:#a1a1aa"><span class="mono" style="font-size:12px">npm test -- auth</span></div>
+        <button class="node" type="button" style="left:484px;top:202px;border-color:#2b6cf0;box-shadow:0 0 0 3px rgba(43,108,240,.2)"><span class="fc" style="background:#34d399"></span><span>Lens · Review<small style="color:#93c5fd">reviewing · 0:48</small></span></button>
+        <button class="node" type="button" style="left:484px;top:312px"><span class="fc" style="background:#c4b5fd"></span><span>Probe · Tests<small style="color:#34d399">24 passed</small></span></button>
+        <div class="node" style="left:640px;top:202px;width:160px;border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.06)"><span style="width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:rgba(251,191,36,.15);color:#fbbf24;font-weight:700">✓</span><span>You approve<small>then PR → main</small></span></div>
+
+        <div style="position:absolute;left:16px;bottom:14px;display:flex;gap:14px;font-size:11.5px;color:#a1a1aa">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:2px;background:#34d399"></span>done</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:2px;background:#2b6cf0"></span>working</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:0;border-top:2px dashed #747478"></span>next</span>
+        </div>
+        <div style="position:absolute;right:14px;bottom:12px;display:flex;gap:4px">
+          <button class="btn ghost" type="button" aria-label="Zoom out" style="height:28px;width:28px;padding:0">−</button>
+          <button class="btn ghost" type="button" aria-label="Zoom in" style="height:28px;width:28px;padding:0">+</button>
+          <button class="btn ghost" type="button" style="height:28px;font-size:12px">Fit</button>
+        </div>
+      </div>
+
+      <div style="padding:14px 20px 18px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:600">Runs in # web</b><span>switch the map between them</span><a href="#" style="margin-left:auto">All runs</a></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button type="button" style="display:flex;flex-direction:column;gap:8px;width:230px;padding:10px 12px;border-radius:10px;border:1px solid #2b6cf0;background:rgba(59,130,246,.08);color:#f4f4f5;font:13px 'Geist',sans-serif;text-align:left;cursor:pointer">
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:#2b6cf0"></span><b style="font-weight:500">Sign-in redirect</b></span>
+            <span style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#2b6cf0"></span><span class="seg"></span><span class="seg"></span></span>
+          </button>
+          <button type="button" style="display:flex;flex-direction:column;gap:8px;width:230px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:#262626;color:#f4f4f5;font:13px 'Geist',sans-serif;text-align:left;cursor:pointer">
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:#a1a1aa"></span><b style="font-weight:500">Keep main green</b><span style="margin-left:auto;font-size:11.5px;color:#a1a1aa">loop</span></span>
+            <span style="font-size:11.5px;color:#a1a1aa">Probe · next check 16:00</span>
+          </button>
+          <button type="button" style="display:flex;flex-direction:column;gap:8px;width:230px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:#262626;color:#f4f4f5;font:13px 'Geist',sans-serif;text-align:left;cursor:pointer">
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:#34d399"></span><b style="font-weight:500">Settings dark mode</b><span style="margin-left:auto;font-size:11.5px;color:#a1a1aa">PR #141</span></span>
+            <span style="font-size:11.5px;color:#a1a1aa">merged 11:20 · $0.84</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Team chat" style="flex:1 1 420px;max-width:520px;min-width:0;display:flex;flex-direction:column">
+      <ol style="list-style:none;margin:0;padding:18px 20px;flex:1;display:flex;flex-direction:column;gap:16px">
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#e4e4e7"></span><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">You</b> · 14:02</span><span style="line-height:1.5"><span style="color:#93c5fd">@Bolt</span> people land on /home after sign-in instead of where they were. Fix it.</span></div></li>
+
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#93c5fd"></span><div style="display:flex;flex-direction:column;gap:6px;flex:1"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Tether</b> · 14:02</span>
+          <div style="border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:#262626">
+            <span style="display:flex;gap:8px;align-items:center;font-size:13px"><span style="color:#f87171;font-weight:700">!</span><b style="font-weight:500">Goal: Sign-in returns people to where they were</b></span>
+            <span style="font-size:12px;color:#a1a1aa">Bolt fixes · Probe tests · Lens reviews · you approve · $2 cap</span>
+            <span style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#2b6cf0"></span><span class="seg"></span><span class="seg"></span></span>
+          </div></div></li>
+
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#fbbf24"></span><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Bolt</b> · 14:06</span><span style="line-height:1.5">Fixed: the callback now keeps <span class="mono">?next=</span> and only follows same-site paths. 3 files, +42 −9. Handing to <span style="color:#93c5fd">@Lens</span>.</span></div></li>
+
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#c4b5fd"></span><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Probe</b> · 14:07</span><span style="line-height:1.5"><span class="mono" style="color:#34d399">npm test -- auth</span> · 24 passed, 1 new</span></div></li>
+
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#34d399"></span><div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Lens</b> · reviewing…</span><span style="display:flex;gap:4px;padding-top:4px"><span style="width:6px;height:6px;border-radius:50%;background:#a1a1aa"></span><span style="width:6px;height:6px;border-radius:50%;background:#747478"></span><span style="width:6px;height:6px;border-radius:50%;background:#52525b"></span></span></div></li>
+
+        <li style="display:flex;gap:10px"><span class="fc" style="background:#93c5fd"></span><div style="display:flex;flex-direction:column;gap:6px;flex:1"><span style="font-size:12px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Tether</b> · waiting on review</span>
+          <div style="border:1px solid rgba(251,191,36,.45);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;background:rgba(251,191,36,.05)">
+            <b style="font-weight:500;font-size:13px">Ship to main once Lens passes it?</b>
+            <span style="font-size:12px;color:#a1a1aa" class="mono">3 files · +42 −9 · branch tether/r-8f2a</span>
+            <div style="display:flex;gap:6px"><button class="btn pri" type="button">Approve</button><button class="btn" type="button">View diff</button><button class="btn ghost" type="button">Reject…</button></div>
+          </div></div></li>
+      </ol>
+
+      <form aria-label="Message # web" style="padding:0 20px 18px">
+        <div style="border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#262626;padding:10px 12px;display:flex;align-items:center;gap:8px">
+          <label for="tm" style="position:absolute;left:-9999px">Message # web</label>
+          <input id="tm" placeholder="Message # web — @ an agent to hand it work" style="flex:1;background:transparent;border:0;outline:0;color:#f4f4f5;font:14px 'Geist',sans-serif">
+          <button class="btn" type="button" aria-label="Send" style="width:32px;padding:0">↑</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

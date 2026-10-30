@@ -156,6 +156,43 @@ describe('Sidebar', () => {
     expect(p.chats.onAll).toHaveBeenCalled();
   });
 
+  it('gives each chat a ⋯ menu: Rename edits the title in place, Delete chat asks first', async () => {
+    const onRename = vi.fn(async () => {});
+    const onDelete = vi.fn(async () => {});
+    setup({ chats: { ...setupProps().chats, current: 'c2', onRename, onDelete } });
+    const section = screen.getByRole('region', { name: 'Chats' });
+    const more = within(section).getByRole('button', { name: 'Chat actions for Chat 1' });
+    expect(more.closest('.sl-side-row-more')).toBeTruthy();
+    // keyboard: the menu opens on Enter and lists Rename and Delete chat
+    more.focus();
+    fireEvent.click(more);
+    const menu = within(section).getByRole('menu', { name: 'Chat actions for Chat 1' });
+    expect(within(menu).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Rename', 'Delete chat']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Rename' }));
+    const field = within(section).getByRole('textbox', { name: 'Rename Chat 1' });
+    fireEvent.change(field, { target: { value: 'Sign-in bug' } });
+    fireEvent.submit(field.closest('form')!);
+    fireEvent.blur(field);
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith('c1', 'Sign-in bug');
+    // Escape cancels
+    fireEvent.click(within(section).getByRole('button', { name: 'Chat actions for Chat 3' }));
+    fireEvent.click(within(section).getByRole('menuitem', { name: 'Rename' }));
+    fireEvent.keyDown(within(section).getByRole('textbox', { name: 'Rename Chat 3' }), { key: 'Escape' });
+    expect(onRename).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(section).getByRole('button', { name: 'Chat actions for Chat 2' }));
+    fireEvent.click(within(section).getByRole('menuitem', { name: 'Delete chat' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    const ask = await screen.findByRole('dialog');
+    expect(within(ask).getByText('Delete this chat?')).toBeTruthy();
+    fireEvent.click(within(ask).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith('c2'));
+  });
+
+  it('shows the ⋯ on hover and keyboard focus, and always on the open chat', () => {
+    expect(cssRule('ui/studio/shell.css', '.sl-side-row:hover .sl-side-row-more, .sl-side-row:focus-within .sl-side-row-more, .sl-side-row.current .sl-side-row-more')).toContain('opacity: 1');
+  });
+
   it('opens All chats from the one chat icon on the rail', () => {
     localStorage.setItem('tether.sidebar', 'collapsed');
     const p = setup({ chats: { ...setupProps().chats, current: '' } });

@@ -7,7 +7,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
+import { loadPrefs, savePrefs } from '../prefs.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
+import { checkDraft, draftContext, draftPatch, firstTask } from './goalDraft.js';
 import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
 import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } from './prompts.js';
@@ -59,6 +61,40 @@ function chatIn(c: AssistantCtx, ws: string | undefined, v: unknown): Chat {
   return chat;
 }
 
+/**
+ * A goal card's Start or "Just answer, no goal". Start applies the card's edits (checked strictly: 400 before anything
+ * changes), then the goal's first Start (`Goals.begin`); dismiss deletes the goal the card made, if it never started.
+ */
+async function decideGoal(c: AssistantCtx, ws: string | undefined, chat: Chat, prop: Proposal, b: Record<string, unknown>): Promise<Proposal> {
+  const ctx = ws ? draftContext(c.home, ws) : undefined;
+  const edit = b.draft === undefined || b.decision !== 'start' ? undefined : ctx ? checkDraft(b.draft, ctx, true) : 'Open a project first.';
+  if (typeof edit === 'string') throw new HttpError(400, edit);
+  if (prop.status !== 'proposed') return prop;
+  const goal = prop.goalId ? c.goals?.db.get(prop.goalId) : undefined;
+  if (goal?.startedAt) prop.status = 'started'; // started on Goals meanwhile
+  else if (b.decision === 'dismiss') {
+    if (goal && goal.status === 'paused' && !goal.startedAt) c.goals!.db.remove(goal.id);
+    prop.status = 'dismissed';
+  } else if (!goal || !ctx) {
+    prop.status = 'failed';
+    prop.note = 'This goal is gone: it was deleted on Goals.';
+  } else {
+    try {
+      if (edit) {
+        prop.draft = edit;
+        c.goals!.update(goal.id, draftPatch(edit, ctx));
+      }
+      c.goals!.begin(goal.id, firstTask(prop.task, prop.draft!));
+      prop.status = 'started';
+    } catch (e) {
+      prop.status = 'failed';
+      prop.note = (e as Error).message.split('\n')[0]!.slice(0, 200);
+    }
+  }
+  saveChat(c.home, ws, chat);
+  return prop;
+}
+
 /** Find a proposal, tool ask or message in the chat. */
 const findProposal = (messages: ChatMessage[], id: string) => messages.flatMap((m) => m.proposals ?? []).find((p) => p.id === id);
 
@@ -74,7 +110,15 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const chat = id === null ? undefined : chatIn(c, ws, id);
     const { agent, model } = assistantAgent(c.home);
     const models = c.registry.has(agent) ? ((await c.registry.get(agent).listModels?.().catch(() => [])) ?? []) : [];
-    return send(res, 200, { ...(chat ? { id: chat.id, title: chat.title } : {}), messages: chat?.messages ?? [], agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}), ...(agent !== 'nvidia' && c.registry.has('nvidia') ? { nvidia: true } : {}) } satisfies ChatView), true;
+    return send(res, 200, { ...(chat ? { id: chat.id, title: chat.title } : {}), messages: chat?.messages ?? [], agent, ...(model ? { model } : {}), models, ...(agent !== 'openrouter' && c.registry.has('openrouter') ? { openrouter: true } : {}), ...(agent !== 'nvidia' && c.registry.has('nvidia') ? { nvidia: true } : {}), asksToGoals: loadPrefs(c.home).asksToGoals !== false } satisfies ChatView), true;
+  }
+
+  // the composer's "Turn asks into goals" switch (a preference, so every chat and the mini chat agree)
+  if (p === '/api/assistant/settings' && m === 'PUT') {
+    const b = reqObject(await readJson(req));
+    if (typeof b.asksToGoals !== 'boolean') throw new HttpError(400, '"asksToGoals" must be true or false');
+    savePrefs(c.home, { asksToGoals: b.asksToGoals });
+    return send(res, 200, { asksToGoals: b.asksToGoals }), true;
   }
 
   if (p === '/api/assistant' && m === 'POST') {
@@ -173,6 +217,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     const chat = chatIn(c, ws, b.chat);
     const prop = findProposal(chat.messages, decodeURIComponent(g[1]!));
     if (!prop) throw new HttpError(404, 'unknown proposal');
+    if (prop.kind === 'goal') return send(res, 200, { proposal: await decideGoal(c, ws, chat, prop, b) }), true;
     // a proposal is decided once: a second click returns what the first did
     if (prop.status === 'proposed') {
       if (b.decision === 'dismiss') prop.status = 'dismissed';
@@ -183,8 +228,8 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
         try {
           prop.runId =
             prop.kind === 'workflow'
-              ? await c.engine.start({ pipeline: readPipeline(c.home, prop.workflow!), task: prop.task, repo: resolve(root) })
-              : await c.engine.startTeam({ task: prop.task, repo: resolve(root), mode: prop.mode, background: true });
+              ? await c.engine.start({ pipeline: readPipeline(c.home, prop.workflow!), task: prop.task, repo: resolve(root), origin: { kind: 'chat', id: chat.id } })
+              : await c.engine.startTeam({ task: prop.task, repo: resolve(root), mode: prop.mode, background: true, origin: { kind: 'chat', id: chat.id } });
           prop.status = 'started';
         } catch (e) {
           prop.status = 'failed';

@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api } from '../api';
 import type { GoalView } from '../goals/goalsApi';
-import { calls, routeApi } from '../test/fixtures';
+import { act } from '@testing-library/react';
+import { calls, FakeEventSource, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import type { TeamView } from './teamsApi';
 import { TeamScreen } from './TeamScreen';
@@ -15,11 +16,11 @@ const probe = { kind: 'agent' as const, id: 'tester', name: 'Probe' };
 const view = (): TeamView => ({
   team: { id: 'core', name: 'Tether core', place: 'tether', project: 'app', agents: ['coder', 'tester'], people: [{ id: 'owner', name: 'you' }], approvers: 'any', level: 'balanced', limits: { usdPerDay: 10, runsPerDay: 20 }, learn: true, createdAt: 1 },
   messages: [
-    { id: 'm1', at: 1, from: you, text: '@Probe keep main green. Stop at $5.' },
-    { id: 'm2', at: 2, from: probe, text: 'On it. I made it a loop.', card: { kind: 'loop', goalId: 'g1' } },
-    { id: 'm3', at: 3, from: bolt, text: 'On it. Started R-5A21 in its own worktree.', run: 'rmh15a21', card: { kind: 'run', runId: 'rmh15a21', title: 'probe timeout', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'awaiting' }], status: 'paused', costUsd: 0.4 } },
-    { id: 'm4', at: 4, from: bolt, text: 'Ready to ship. It needs a person to approve.', run: 'rmh15a21', card: { kind: 'approval', what: 'ship', title: 'Ship “probe timeout”?', detail: 'npm test passed · +12 −4 in 1 file', runId: 'rmh15a21', node: 'ship', status: 'pending' } },
-    { id: 'm5', at: 5, from: { kind: 'tether', id: 'tether', name: 'Tether' }, text: 'Opened the PR.', card: { kind: 'pr', url: 'https://github.com/o/r/pull/12', number: 12, title: 'probe timeout' } },
+    { id: 'm1', at: Date.now() - 5000, from: you, text: '@Probe keep main green. Stop at $5.' },
+    { id: 'm2', at: Date.now() - 4000, from: probe, text: 'On it. I made it a loop.', card: { kind: 'loop', goalId: 'g1' } },
+    { id: 'm3', at: Date.now() - 3000, from: bolt, text: 'On it. Started R-5A21 in its own worktree.', run: 'rmh15a21', card: { kind: 'run', runId: 'rmh15a21', title: 'probe timeout', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'awaiting' }], status: 'paused', costUsd: 0.4 } },
+    { id: 'm4', at: Date.now() - 2000, from: bolt, text: 'Ready to ship. It needs a person to approve.', run: 'rmh15a21', card: { kind: 'approval', what: 'ship', title: 'Ship “probe timeout”?', detail: 'npm test passed · +12 −4 in 1 file', runId: 'rmh15a21', node: 'ship', status: 'pending' } },
+    { id: 'm5', at: Date.now() - 1000, from: { kind: 'tether', id: 'tether', name: 'Tether' }, text: 'Opened the PR.', card: { kind: 'pr', url: 'https://github.com/o/r/pull/12', number: 12, title: 'probe timeout' } },
   ],
   members: [
     { id: 'coder', name: 'Bolt', specialty: 'code', state: 'waiting' },
@@ -33,7 +34,7 @@ const goal = { id: 'g1', workspace: 'app', title: 'Keep main green', kind: 'loop
   items: [{ id: 1, goalId: 'g1', kind: 'run', text: 'fix triggers', runId: 'rmh15a10', done: false, at: 1, attempt: { after: { ok: false, at: 2, summary: '2 failing', tail: '' } } }, { id: 2, goalId: 'g1', kind: 'run', text: 'fix evolve', runId: 'rmh15a22', done: false, at: 3 }] } as GoalView;
 
 const setup = () => {
-  routeApi({ 'GET /api/teams/core': view(), 'POST /api/teams/core/cards/m4': (b: unknown) => ({ ...view().messages[3], b }), 'POST /api/teams/core/messages': { id: 'm9' }, 'GET /api/teams/core/diff/m4': { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n', truncated: false } });
+  routeApi({ 'GET /api/teams/core': view(), 'GET /api/runs/rmh15a21/events': [], 'GET /api/runs/rmh15a10/events': [], 'GET /api/runs/rmh15a22/events': [], 'POST /api/teams/core/cards/m4': (b: unknown) => ({ ...view().messages[3], b }), 'POST /api/teams/core/messages': { id: 'm9' }, 'GET /api/teams/core/diff/m4': { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n', truncated: false } });
   const onGo = vi.fn();
   renderApp(<TeamScreen id="core" goals={[goal]} agents={[]} projects={[]} onGo={onGo} onChanged={vi.fn()} onNewAgent={vi.fn()} />);
   return { onGo };
@@ -41,41 +42,66 @@ const setup = () => {
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
+  FakeEventSource.all = [];
+  vi.stubGlobal('EventSource', FakeEventSource);
 });
 
 describe('the team screen (board 1)', () => {
-  it('shows the header, messages with mentions and agent pills, cards, and the right panel', async () => {
-    const { onGo } = setup();
+  it('heads the room with its live runs, what needs you and today’s spend; the channel keeps its messages and cards', async () => {
+    setup();
     await screen.findByRole('heading', { name: 'Tether core' });
-    expect(screen.getByText('Tether team · you + 2 agents')).toBeTruthy();
-    expect(document.querySelector('.tm-mention')!.textContent).toBe('@Probe');
+    expect(screen.getByText('Tether team · you + 2 agents · app · any of you can approve')).toBeTruthy();
+    expect(screen.getByText('1 live run')).toBeTruthy();
+    expect(screen.getByText('1 needs you')).toBeTruthy();
+    expect(screen.getByText('$1.80 of $10.00 today')).toBeTruthy();
+    const chat = screen.getByRole('region', { name: 'Team chat' });
+    expect(chat.querySelector('.tm-mention')!.textContent).toBe('@Probe');
     // who spoke: name, and an agent's specialty with the time
-    expect(screen.getAllByText(/^agent · code · /)).toHaveLength(2);
-    expect(screen.getAllByText('Bolt', { selector: '[data-slot="speaker-identity"] span' })).toHaveLength(2);
+    expect(within(chat).getAllByText(/^agent · code · /)).toHaveLength(2);
     // the loop card scores its goal: check 2 failing (0), budget left 72%, runs left 67%
-    expect(screen.getByText('4.6')).toBeTruthy();
-    expect(screen.getByText('Loop · Keep main green')).toBeTruthy();
-    expect(screen.getByText('run 2 of ≤6 · $1.40 / $5.00')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'R-5A10 · 2 failing' })).toBeTruthy();
-    expect(screen.getByText('check: npm test')).toBeTruthy();
-    // the agent's run is a task card: paused on its ship step, so it waits; open, its steps
-    const task = document.querySelector('[data-slot="task-card"]') as HTMLElement;
+    expect(within(chat).getByText('4.6')).toBeTruthy();
+    expect(within(chat).getByText('run 2 of ≤6 · $1.40 / $5.00')).toBeTruthy();
+    const task = chat.querySelector('[data-slot="task-card"]') as HTMLElement;
     expect(task.dataset.state).toBe('waiting');
-    expect(within(task).getByText('R-5A21')).toBeTruthy();
     expect(within(task).getByText('Spent $0.40')).toBeTruthy();
-    fireEvent.click(within(task).getByRole('button', { name: /probe timeout/ }));
-    expect(within(task).getByText('ship: awaiting')).toBeTruthy();
-    const panel = screen.getByRole('complementary', { name: 'About this team' });
-    expect(within(panel).getByRole('progressbar', { name: 'Keep main green progress' }).getAttribute('aria-valuenow')).toBe('33');
-    expect(within(panel).getByText('looping')).toBeTruthy();
-    expect(within(panel).getByText('Approvals: any teammate · Balanced')).toBeTruthy();
-    expect(within(panel).getByText('Limit: $10.00 a day · 20 runs a day')).toBeTruthy();
-    expect(within(panel).getByText('Lives in: Tether')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Open run' }));
-    expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'rmh15a21' });
     // a PR card is a link preview of what it knows (no unfurl)
-    expect(screen.getByRole('link', { name: /PR #12 · probe timeout/ }).getAttribute('href')).toBe('https://github.com/o/r/pull/12');
-    expect(screen.getByText('github.com')).toBeTruthy();
+    expect(within(chat).getByRole('link', { name: /PR #12 · probe timeout/ }).getAttribute('href')).toBe('https://github.com/o/r/pull/12');
+  });
+
+  it('maps the picked run from you to your approval; the strip switches runs and a team run opens in the room', async () => {
+    const { onGo } = setup();
+    const strip = await screen.findByRole('region', { name: 'Team map' });
+    // the live ones first: the run waiting on its ship step, then the loop
+    const cards = within(strip).getAllByRole('button', { pressed: false }).concat(within(strip).getAllByRole('button', { pressed: true })).filter((b) => b.classList.contains('tr-card'));
+    expect(cards.map((b) => b.querySelector('b')!.textContent).sort()).toEqual(['Keep main green', 'probe timeout']);
+    expect(within(strip).getByRole('button', { name: /probe timeout/, pressed: true })).toBeTruthy();
+    await waitFor(() => expect(FakeEventSource.all.at(-1)?.url).toBe('/api/runs/rmh15a21/stream'));
+    act(() => FakeEventSource.all.at(-1)!.emit('state', makeRun({ id: 'rmh15a21' })));
+    expect(await within(strip).findByText('You')).toBeTruthy();
+    expect(within(strip).getByRole('button', { name: /^Bolt,/ })).toBeTruthy();
+    fireEvent.click(within(strip).getByRole('button', { name: 'Zoom in' }));
+    expect((strip.querySelector('.rg-scale') as HTMLElement).style.transform).toBe('scale(1.25)');
+    // the loop's latest run
+    fireEvent.click(within(strip).getByRole('button', { name: /Keep main green/ }));
+    await waitFor(() => expect(FakeEventSource.all.at(-1)?.url).toBe('/api/runs/rmh15a22/stream'));
+    // Open run on a run card follows it here, not on a separate page
+    fireEvent.click(within(screen.getByRole('region', { name: 'Team chat' })).getByRole('button', { name: 'Open run' }));
+    await waitFor(() => expect(FakeEventSource.all.at(-1)?.url).toBe('/api/runs/rmh15a21/stream'));
+    expect(onGo).not.toHaveBeenCalled();
+  });
+
+  it('Whole team shows who hands work to whom; a member focuses the chat until Show all', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Whole team' }));
+    expect(screen.getByRole('tab', { name: 'Whole team' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('button', { name: 'you: focus the chat on them' }).textContent).toContain('1 hand-off this week');
+    fireEvent.click(screen.getByRole('button', { name: 'Bolt: focus the chat on them' }));
+    expect(screen.getByRole('status').textContent).toBe('Showing Bolt · Show all');
+    const chat = screen.getByRole('region', { name: 'Team chat' });
+    expect(within(chat).queryByText('On it. I made it a loop.')).toBeNull();
+    expect(within(chat).getByText('Ready to ship. It needs a person to approve.')).toBeTruthy();
+    fireEvent.click(within(chat).getByRole('button', { name: 'Show all' }));
+    expect(within(chat).getByText('On it. I made it a loop.')).toBeTruthy();
   });
 
   it('Approve decides the card; Reject asks for a reason first; Review diff shows the diff', async () => {
