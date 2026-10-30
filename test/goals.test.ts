@@ -315,6 +315,11 @@ describe('/api/goals', () => {
       expect(cleared.json).not.toHaveProperty('maxMinutes');
       expect(cleared.json.maxRuns).toBe(4);
       expect((await call('PATCH', `/api/goals/${id}`, { maxMinutes: 2000 })).status).toBe(400);
+      // a goal already going cannot be started again; one waiting "not started" can, once
+      expect((await call('POST', `/api/goals/${id}/start`, {})).status).toBe(409);
+      r.goals.create(r.goal({ id: 'gwait', status: 'paused', check: undefined, kind: 'tracker' }));
+      expect((await call('POST', '/api/goals/gwait/start', {})).json).toMatchObject({ status: 'active' });
+      expect((await call('POST', '/api/goals/gwait/start', {})).status).toBe(409);
       expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, maxRuns: 1.5 })).status).toBe(400);
     } finally {
       await s.close();

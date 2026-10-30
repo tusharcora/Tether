@@ -135,7 +135,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
     return send(res, 201, view(goals.create(goal))), true;
   }
 
-  if ((g = p.match(/^\/api\/goals\/([^/]+)(?:\/(check|next|items)(?:\/(\d+))?)?$/))) {
+  if ((g = p.match(/^\/api\/goals\/([^/]+)(?:\/(check|next|items|start)(?:\/(\d+))?)?$/))) {
     let id: string;
     try {
       id = decodeURIComponent(g[1]!);
@@ -173,6 +173,11 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       return send(res, 200, view(status ? goals.setStatus(id, status) : goals.db.must(id))), true;
     }
     if (sub === 'check' && m === 'POST') return send(res, 200, view(await goals.check(id))), true;
+    // the first Start of a goal that waits "not started": its title and description are the first run's task
+    if (sub === 'start' && m === 'POST') {
+      const x = goals.db.must(id);
+      return send(res, 200, view(goals.begin(id, [x.title, x.description].filter(Boolean).join('\n\n')))), true;
+    }
     if (sub === 'next' && m === 'POST') {
       const b = reqObject(await readJson(req));
       const action = enumOf(b, 'action', ['start', 'skip'] as const);

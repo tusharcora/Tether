@@ -9,7 +9,7 @@ import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Loading } from '../components/Loading';
 import { Face } from '../Face';
 import { GoalScore } from '../goals/Goals';
-import type { GoalView } from '../goals/goalsApi';
+import { noLimits, type GoalView } from '../goals/goalsApi';
 import type { WorkspaceRow } from '../home/workspaces';
 import { usePoll, type Route } from '../hooks';
 import { cn } from '../ui/cn';
@@ -202,7 +202,7 @@ function LoopCard({ goal: g, onGo }: { goal?: GoalView; onGo: (r: Route) => void
       <span className="tm-card-top">
         <span className={cn('tm-dot', { live })} aria-hidden="true" />
         <b>{`Loop · ${g.title}`}</b>
-        <span className="tm-mono">{`run ${runs.length} of ≤${g.maxRuns} · ${fmtUsd(g.spentUsd)} / ${fmtUsd(g.budgetUsd)}`}</span>
+        <span className="tm-mono">{`run ${runs.length}${g.maxRuns ? ` of ≤${g.maxRuns}` : ''} · ${fmtUsd(g.spentUsd)}${g.budgetUsd ? ` / ${fmtUsd(g.budgetUsd)}` : ''}${noLimits(g) ? ' · no limits' : ''}`}</span>
       </span>
       <ol className="tm-chain" aria-label="Runs so far">
         {runs.map((i) => (

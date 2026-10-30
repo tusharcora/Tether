@@ -5,6 +5,7 @@ import { SegmentedControl } from '../components/beui/kit/controls';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Textarea } from '../components/kept/textarea/textarea';
 import type { WorkspaceRow } from '../home/workspaces';
+import { LimitsField, limitsBody, type LimitDraft } from './LimitsField';
 import { goalsApi, TYPE_LABEL, type GoalCheck, type GoalType, type GoalView } from './goalsApi';
 import './goals.css';
 
@@ -43,8 +44,7 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
   const [workflow, setWorkflow] = useState('team');
   const [withCheck, setWithCheck] = useState(false);
   const [check, setCheck] = useState<GoalCheck>(BLANK);
-  const [budget, setBudget] = useState('5');
-  const [runs, setRuns] = useState('5');
+  const [limits, setLimits] = useState<LimitDraft>({});
   const [approval, setApproval] = useState<'ask' | 'auto'>('ask');
   const [due, setDue] = useState('');
   const [error, setError] = useState<string>();
@@ -61,7 +61,8 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
         ...(desc.trim() ? { description: desc.trim() } : {}),
         workspace: project,
         workflow,
-        ...(withCheck ? { check: { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) }, budgetUsd: Number(budget), maxRuns: Number(runs), approval } : {}),
+        ...(withCheck ? { check: { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) }, approval } : {}),
+        ...limitsBody(limits),
         ...(due ? { dueDate: due } : {}),
       });
       p.onCreated(g);
@@ -96,13 +97,10 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
       {withCheck ? (
         <>
           <CheckFields check={check} onChange={setCheck} />
-          <div className="gd-row">
-            <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />
-            <Input label="Max runs" type="number" min={1} max={50} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
-          </div>
           <SegmentedControl label="Approval" options={[{ value: 'ask', label: 'Ask each run' }, { value: 'auto', label: 'Auto' }]} value={approval} onValueChange={(v) => setApproval(v as 'ask' | 'auto')} />
         </>
       ) : null}
+      <LimitsField value={limits} onChange={setLimits} approval={withCheck ? approval : 'ask'} />
       <Input label="Due date (optional)" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
       {error ? (
         <p className="sl-alert" role="alert">

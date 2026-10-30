@@ -159,3 +159,13 @@
   .gn-mod:hover > .gn-node, .gn-mod:has(:focus-visible) > .gn-node { transform: none; }
   .gr > .gn-mod { animation: none; }
 }
+
+/* Limits, all optional (asks become goals, board 1): "No limits" + Add limits, dashed chips, a field per limit set */
+.gd-limits { display: flex; flex-direction: column; gap: 8px; }
+.gd-limits-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.gd-limits-add { color: var(--accInk); }
+.gd-limits-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gd-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px dashed var(--line2); border-radius: 999px; background: transparent; color: var(--mut); font: inherit; font-size: 12px; cursor: pointer; }
+.gd-chip:hover, .gd-chip:focus-visible { color: var(--ink); border-color: var(--edge); }
+.gd-limit { display: flex; align-items: flex-end; gap: 6px; }
+.gd-limit > :first-child { flex: 1; }
