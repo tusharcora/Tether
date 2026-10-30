@@ -5,6 +5,7 @@
 Parts of Tether are ported from deepseek-harness (re-implemented against Tether's code, keeping their algorithms, constants and test cases). Each ported file says which package it came from:
 
 - `compaction/compaction-tool-result-pruner` → `src/adapters/prune.ts`
+- `guard/repeat-tool-reminder` → `src/adapters/repeatGuard.ts`
 
 ```
 MIT License

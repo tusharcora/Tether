@@ -121,6 +121,18 @@ describe('OpenAICompatAdapter', () => {
     expect(tools(2)[1]).toBe('a');
   });
 
+  it('appends the repeat reminder to the third identical call, failed calls included, without blocking it', async () => {
+    const d = tmp('wt-');
+    const same = { name: 'read_file', args: { path: 'missing.txt' } };
+    script = [{ tools: [same] }, { tools: [same] }, { tools: [same] }, { content: 'gave up' }];
+    seen.length = 0;
+    const r = await new OpenAICompatAdapter('local', { baseUrl: base }).run(req(d, { model: 'm', readOnly: true }));
+    expect(r.exitCode).toBe(0);
+    const tools = seen[3]!.messages.filter((m) => m.role === 'tool').map((m) => m.content!);
+    expect(tools[0]).not.toContain('repeating');
+    expect(tools[2]).toMatch(/^error: .*\n\nYou are repeating the exact same tool call/s);
+  });
+
   it("reports the first request's prompt tokens beside the totals", async () => {
     const d = tmp('wt-');
     writeFileSync(join(d, 'a.txt'), 'a');
