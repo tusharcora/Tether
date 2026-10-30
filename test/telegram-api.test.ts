@@ -56,3 +56,44 @@ describe('the Bot API client', () => {
     await expect(api.download('../secrets', 50)).rejects.toThrow(/file path/);
   });
 });
+
+describe('Settings → Accounts → Telegram over the API', () => {
+  it('connects with a token (never echoed), shows the bot, hands out /iam and /pair codes, disconnects', async () => {
+    const { startHttpTestServer } = await import('./http-helpers.js');
+    const items = new Map<string, string>();
+    const secrets = { kind: 'file' as const, get: async (a: string) => items.get(a), set: async (a: string, v: string) => void items.set(a, v), delete: async (a: string) => void items.delete(a) };
+    const calls: string[] = [];
+    const api = {
+      call: async (method: string, _p?: unknown, o?: { signal?: AbortSignal }) => {
+        calls.push(method);
+        if (method === 'getMe') return { id: 999, username: 'tether_bot', first_name: 'Tether', can_read_all_group_messages: false };
+        if (method === 'getUpdates') return new Promise((_, rej) => o?.signal?.addEventListener('abort', () => rej(new Error('stopped'))));
+        return true;
+      },
+      download: async () => Buffer.alloc(0),
+    } as unknown as import('../src/teams/telegram/api.js').BotApi;
+    const t = await startHttpTestServer({ telegram: { api: () => api, secrets } });
+    try {
+      expect((await t.api('GET', '/api/telegram')).json).toMatchObject({ connected: false, polling: false, voice: { model: expect.any(Object), engine: expect.any(Boolean) } });
+      expect((await t.api('POST', '/api/telegram/iam')).status).toBe(409);
+      expect((await t.api('POST', '/api/accounts/telegram', { token: 'nope' })).status).toBe(400);
+      const c = await t.api('POST', '/api/accounts/telegram', { token: TOKEN });
+      expect(c.json.account).toMatchObject({ provider: 'telegram', login: 'tether_bot', via: 'key' });
+      const list = await t.api('GET', '/api/accounts');
+      expect(list.json.providers.find((p: { id: string }) => p.id === 'telegram')).toMatchObject({ kind: 'key', available: true, account: { login: 'tether_bot' } });
+      const view = await t.api('GET', '/api/telegram');
+      expect(view.json).toMatchObject({ connected: true, bot: { username: 'tether_bot', readsAll: false } });
+      const iam = (await t.api('POST', '/api/telegram/iam')).json;
+      expect(iam).toMatchObject({ code: expect.stringMatching(/^[A-Z2-9]{6}$/), bot: 'tether_bot' });
+      const team = (await t.api('POST', '/api/teams', { name: 'Ops', place: 'telegram', project: 'api', agents: ['coder'] })).json;
+      expect((await t.api('POST', `/api/teams/${team.id}/pair`)).json).toMatchObject({ code: expect.any(String), bot: 'tether_bot' });
+      for (const r of [c, list, view]) expect(r.text).not.toContain(TOKEN);
+      expect(calls).toContain('setMyCommands');
+      expect((await t.api('DELETE', '/api/accounts/telegram')).status).toBe(200);
+      expect(items.has('telegram')).toBe(false);
+      expect((await t.api('GET', '/api/telegram')).json).toMatchObject({ connected: false });
+    } finally {
+      await t.close();
+    }
+  });
+});

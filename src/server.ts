@@ -24,6 +24,11 @@ import { goalsRoute } from './goals/routes.js';
 import { teamsRoute } from './teams/routes.js';
 import { OWNER } from './teams/store.js';
 import { Teams } from './teams/teams.js';
+import { Telegram } from './teams/telegram/bot.js';
+import { telegramRoute } from './teams/telegram/routes.js';
+import type { BotApi } from './teams/telegram/api.js';
+import type { SecretStore } from './accounts/secretStore.js';
+import { LocalVoice } from './stt/voice.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, issueRefusal, lastDelivery, matchIssueRule, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -80,6 +85,8 @@ export interface ServerOptions {
   openrouter?: OpenRouterDeps;
   /** The NVIDIA account's API and secret store; tests fake both. */
   nvidia?: NvidiaDeps;
+  /** The Telegram bot's API and secret store; tests fake both. */
+  telegram?: { api?: (token: string) => BotApi; secrets?: SecretStore };
 }
 
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
@@ -326,6 +333,18 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const dropCaches = () => void ((doctorCache = undefined), (modelsCache = undefined));
   const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: dropCaches });
   const nvidia = new NvidiaAccount(cfg, registry, { ...o.nvidia, onChange: dropCaches });
+  /** Voice notes are transcribed on this Mac (the model downloads only when asked in Settings). */
+  const voice = new LocalVoice(cfg.home);
+  /** Does this crew bot's model read images? Claude does; an OpenRouter model when its list says so. */
+  const readsImages = async (bot: string): Promise<boolean> => {
+    const b = loadBindings(cfg.home)[bot];
+    const agent = b?.agent ?? 'claude';
+    if (agent === 'claude') return true;
+    if ((agent === 'openrouter' || isOpenRouter(cfg.endpoints[agent]?.baseUrl ?? '')) && b?.model) return !!(await openrouter.models()).models.find((m) => m.id === b.model)?.images;
+    return false;
+  };
+  const telegram = new Telegram({ home: cfg.home, teams, store, goals, voice, readsImages, ...(o.telegram?.api ? { api: o.telegram.api } : {}), ...(o.telegram?.secrets ? { secrets: o.telegram.secrets } : {}) });
+  void telegram.resume();
   /** The answering model's context size and free-tier limit, for the chat's context ring. */
   const modelInfo = async (agent: string, model?: string): Promise<{ size?: number; limit?: 'openrouter' | 'nvidia' }> => {
     const base = cfg.endpoints[agent]?.baseUrl ?? '';
@@ -428,7 +447,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
-    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
+    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia, telegram }, req, res, url);
+    if (p === '/api/telegram' || p.startsWith('/api/telegram/') || /^\/api\/teams\/[^/]+\/pair$/.test(p)) return telegramRoute({ telegram, voice }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs, modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
@@ -1165,6 +1185,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         close: async () => {
           scheduler.stop();
           clearInterval(sweeping);
+          telegram.stop();
+          await voice.dispose();
           await procs.stopAll();
           await new Promise<void>((r) => (server.closeAllConnections?.(), server.close(() => r())));
         },

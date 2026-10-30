@@ -163,12 +163,14 @@ export class Teams {
   }
   /** A person seen in the team's group: added once with both switches off; later sightings refresh their name and @username. */
   addPerson(teamId: string, p: Person): Person {
+    const had = this.must(teamId).people.find((x) => x.id === p.id);
+    if (had && had.name === p.name && (!p.username || had.username === p.username)) return had;
     let out = p;
     this.saveTeam(teamId, (t) => {
-      const had = t.people.find((x) => x.id === p.id);
-      if (!had && t.people.length >= MAX_PEOPLE) throw new HttpError(409, `at most ${MAX_PEOPLE} people in a team`);
-      out = had ? { ...had, name: p.name, ...(p.username ? { username: p.username } : {}) } : { ...p, canStartRuns: false, joinedAt: Date.now() };
-      return { ...t, people: had ? t.people.map((x) => (x.id === p.id ? out : x)) : [...t.people, out] };
+      const now = t.people.find((x) => x.id === p.id);
+      if (!now && t.people.length >= MAX_PEOPLE) throw new HttpError(409, `at most ${MAX_PEOPLE} people in a team`);
+      out = now ? { ...now, name: p.name, ...(p.username ? { username: p.username } : {}) } : { ...p, canStartRuns: false, joinedAt: Date.now() };
+      return { ...t, people: now ? t.people.map((x) => (x.id === p.id ? out : x)) : [...t.people, out] };
     });
     return out;
   }
@@ -187,6 +189,13 @@ export class Teams {
       return { ...t, people, approvers };
     });
   }
+  /** The Telegram chat a team is linked to (`/pair`), or none. Only the Telegram bridge sets it. */
+  setLink(teamId: string, link: string | undefined): Team {
+    return this.saveTeam(teamId, (t) => {
+      const { link: _, ...rest } = t;
+      return link ? { ...rest, link } : rest;
+    });
+  }
   removePerson(teamId: string, personId: string): Team {
     if (personId === OWNER.id) throw new HttpError(400, 'the owner cannot be removed');
     return this.saveTeam(teamId, (t) => {
@@ -198,7 +207,8 @@ export class Teams {
   private agentFrom(bot: string) {
     return { kind: 'agent' as const, id: bot, name: this.agentBots().find((b) => b.id === bot)?.name ?? bot };
   }
-  private who(team: Team) {
+  /** The team's agents that are still in the crew, by name. */
+  who(team: Team): { id: string; name: string }[] {
     const defs = this.agentBots();
     return team.agents.flatMap((id) => defs.filter((b) => b.id === id).map((b) => ({ id, name: b.name })));
   }

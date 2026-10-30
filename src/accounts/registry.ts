@@ -1,12 +1,13 @@
 /**
  * The providers Settings → Accounts lists (spec §3). OpenRouter is built: one browser approval hands Tether a key for
  * free models (accounts/openrouter.ts). NVIDIA is built: a key made on build.nvidia.com, pasted once (accounts/nvidia.ts). GitHub is built: the `gh` login or the device flow. Google is listed
- * with the generic PKCE loopback flow ready (pkce.ts), but stays "coming" until a Tether feature uses it. Adding GitLab,
+ * with the generic PKCE loopback flow ready (pkce.ts), but stays "coming" until a Tether feature uses it. Telegram is a bot
+ * token from @BotFather, pasted once, for teams that live in a Telegram group (teams/telegram/bot.ts). Adding GitLab,
  * Linear or Slack later is an entry here plus the feature that needs it.
  */
 import { KEYS_URL, NV_API } from '../nvidia.js';
 
-export type ProviderId = 'openrouter' | 'nvidia' | 'github' | 'google';
+export type ProviderId = 'openrouter' | 'nvidia' | 'github' | 'telegram' | 'google';
 
 export interface ProviderDef {
   id: ProviderId;
@@ -43,6 +44,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     scopes: ['repo', 'read:user', 'admin:repo_hook'],
     available: true,
   },
+  { id: 'telegram', name: 'Telegram', kind: 'key', endpoints: { token: 'https://t.me/BotFather', api: 'https://api.telegram.org' }, scopes: [], available: true },
   {
     id: 'google',
     name: 'Google',
