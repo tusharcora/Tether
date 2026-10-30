@@ -11,7 +11,8 @@ import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
-import { ApproveButton } from '../goals/Goals';
+import { ApproveButton } from '../goals/GoalNode';
+import { teamsApi } from '../teams/teamsApi';
 import { goalMeta, goalsApi, type GoalView } from '../goals/goalsApi';
 import { waitingGoals } from '../goals/GoalsNeedYou';
 import { QuietLine } from '../ui/studio/Section';
@@ -46,6 +47,18 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
     }
   };
   const send: TeamSend = (path, body) => post(path, body);
+  /** A team's own card (a loop's ship): decided through its team, which settles the card in Tether and Telegram alike. */
+  const decide = async (team: { id: string; msg?: string }, action: 'approve' | 'reject') => {
+    setBusy(true);
+    try {
+      await teamsApi.decide(team.id, team.msg!, { action });
+      await onChanged();
+    } catch (err) {
+      notify.fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   let body;
   if (needsRun)
@@ -66,7 +79,10 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
           ) : null}
         </Loading>
       );
-  else if (e.kind === 'approval')
+  else if (e.kind === 'approval' && it.team?.msg) {
+    const team = it.team;
+    body = <ApprovalCard title={it.title} description={it.meta} status={busy ? 'submitting' : 'pending'} onApprove={() => void decide(team, 'approve')} onReject={() => void decide(team, 'reject')} />;
+  } else if (e.kind === 'approval')
     body = <ApprovalCard title={it.title} description={it.meta} status={busy ? 'submitting' : 'pending'} onApprove={() => void post('approve', { node: it.node, approved: true })} onReject={() => void post('approve', { node: it.node, approved: false })} />;
   else
     body = (
@@ -113,7 +129,7 @@ function GoalDetail({ goal: g, onGo, onDone }: { goal: GoalView; onGo: (r: Route
         <Button variant="secondary" size="sm" onClick={() => void goalsApi.next(g.id, 'skip').then(onDone, notify.fail)}>
           Skip
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'goals', id: g.id })}>
+        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'tickets', id: g.id })}>
           Open goal
         </Button>
       </div>
@@ -163,7 +179,7 @@ export function Inbox(props: { onGo: (r: Route) => void; goals?: GoalView[]; onG
                       <span className="sl-dot pulse inbox-dot" aria-hidden="true" />
                       <span className="inbox-row-main">
                         <span className="sl-row-title">{g.title}</span>
-                        <span className="sl-row-meta">Goal · next run</span>
+                        <span className="sl-row-meta">Ticket · next run</span>
                       </span>
                       <StatusBadge tone="needs" label="approve run" />
                     </button>

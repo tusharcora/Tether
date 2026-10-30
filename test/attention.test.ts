@@ -18,7 +18,7 @@ describe('attention items', () => {
     seedRun(s, 't1', { kind: 'team' });
     s.append('t1', { type: 'plan.ready', plan });
     const [item] = attentionFor(runOf(s, 't1', true));
-    expect(item).toMatchObject({ id: 't1:plan_ready', kind: 'plan_ready', title: 'Plan ready for approval', actions: ['review'], meta: 'Team run · t1 · aorch/t1' });
+    expect(item).toMatchObject({ id: 't1:plan_ready', kind: 'plan_ready', title: 'Plan ready for approval', actions: ['review'], meta: 'Squad run · t1 · aorch/t1' });
     expect(item!.ts).toBe(s.eventsNoChunks('t1').at(-1)!.ts);
   });
 

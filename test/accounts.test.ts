@@ -78,11 +78,12 @@ afterEach(async () => {
 });
 
 describe('accounts registry', () => {
-  it('lists OpenRouter (browser approval for a key), NVIDIA (a pasted key), GitHub (device flow, gh login) and Google as registry-only with a reason', () => {
+  it('lists OpenRouter (browser approval for a key), NVIDIA (a pasted key), GitHub (device flow, gh login), Telegram (a bot token) and Google as registry-only with a reason', () => {
     expect(PROVIDERS.map((p) => [p.id, p.kind, p.available])).toEqual([
       ['openrouter', 'pkce-key', true],
       ['nvidia', 'key', true],
       ['github', 'device', true],
+      ['telegram', 'key', true],
       ['google', 'pkce', false],
     ]);
     expect(providerOf('github')!.scopes).toEqual(['repo', 'read:user', 'admin:repo_hook']);
@@ -315,9 +316,9 @@ describe('/api/accounts', () => {
     };
     const list = (await call('GET', '/api/accounts')).json;
     expect(list.user).toEqual(expect.any(String));
-    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['openrouter', 'nvidia', 'github', 'google']);
+    expect(list.providers.map((p: { id: string }) => p.id)).toEqual(['openrouter', 'nvidia', 'github', 'telegram', 'google']);
     expect(list.providers[2]).toMatchObject({ account: null, cli: { login: 'octo' }, device: { ready: false, setup: DEVICE_SETUP } });
-    expect(list.providers[3]).toMatchObject({ available: false, account: null });
+    expect(list.providers[4]).toMatchObject({ available: false, account: null });
 
     const dev = await call('POST', '/api/accounts/github/device');
     expect(dev.status).toBe(400);

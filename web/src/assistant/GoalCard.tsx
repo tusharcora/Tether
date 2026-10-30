@@ -19,7 +19,7 @@ import type { GoalDraft, Proposal } from './api';
 import type { Assistant } from './useAssistant';
 
 /** The follow-up "Just answer, no goal" sends, so Tether answers in prose instead. */
-export const JUST_ANSWER = "Just answer, don't make a goal.";
+export const JUST_ANSWER = "Just answer, don't make a ticket.";
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -33,7 +33,7 @@ export function stepsOf(d: Pick<GoalDraft, 'workflow' | 'agents' | 'team' | 'app
   return [...(d.team ? [] : [{ label: 'Tether plans' }]), ...(work.length ? work : [{ label: 'Work' }]), ...(d.approval === 'ask' ? [{ label: 'You approve', ask: true }] : []), { label: 'Open PR' }];
 }
 
-const CHIP: Record<Proposal['status'], string> = { proposed: 'Ready to start', started: 'Starting…', dismissed: 'No goal', failed: 'Could not start' };
+const CHIP: Record<Proposal['status'], string> = { proposed: 'Ready to start', started: 'Starting…', dismissed: 'No ticket', failed: 'Could not start' };
 
 /**
  * An ask that became a goal (board 1): what it is, when it is done, the team, the agents (each swappable), the workflow
@@ -53,8 +53,9 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
   const roster = usePoll<TeamsReply>(open ? TEAMS_PATH : null, 60_000).data;
   const workflows = usePoll<{ name: string }[]>(editing ? '/api/pipelines' : null, 60_000).data;
   const pipeline = usePoll<{ pipeline: Pipeline }>(draft.workflow !== 'team' ? `/api/pipelines/${encodeURIComponent(draft.workflow)}` : null, 300_000).data?.pipeline;
-  const goal = usePoll<GoalView>(p.status === 'started' && p.goalId ? `/api/goals/${encodeURIComponent(p.goalId)}` : null, 2500).data;
-  const team = roster?.teams.find((t) => t.id === draft.team);
+  // the card's ticket exists as soon as the card does: its key from the first read, its progress once started
+  const goal = usePoll<GoalView>(p.goalId && p.status !== 'dismissed' ? `/api/tickets/${encodeURIComponent(p.goalId)}` : null, p.status === 'started' ? 2500 : 60_000).data;
+  const team = roster?.squads.find((t) => t.id === draft.team);
   const nameOf = (id: string) => crew[id]?.name ?? roster?.agents.find((a) => a.id === id)?.name ?? id;
   const lastRun = goal?.items.filter((i) => i.kind === 'run' && i.runId).at(-1);
 
@@ -62,7 +63,7 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
     setBusy(d);
     try {
       const next = await chat.decide(p, d, d === 'start' ? { ...draft, limits: limitsBody(limits) as GoalDraft['limits'] } : undefined);
-      if (next.status === 'started') notify.ok('Goal started');
+      if (next.status === 'started') notify.ok('Ticket started');
       if (d === 'dismiss') await chat.send(JUST_ANSWER);
     } catch (e) {
       notify.fail(e);
@@ -78,20 +79,20 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
   };
 
   return (
-    <article className="gc mt-2" aria-label={`Goal card: ${draft.title}`}>
+    <article className="gc mt-2" aria-label={`Ticket card: ${draft.title}`}>
       <header className="gc-head">
         <TypeTile type={draft.type} />
         <span className="gc-title">
           <b>{draft.title}</b>
-          <span>{`${TYPE_LABEL[draft.type]} · new goal in ${project ?? 'this project'} · ${p.status === 'started' ? 'started' : 'not started'}`}</span>
+          <span>{`${goal?.key ? `${goal.key} · ` : ''}${TYPE_LABEL[draft.type]} · new ticket in ${project ?? 'this project'} · ${p.status === 'started' ? 'started' : 'not started'}`}</span>
         </span>
-        <span className={cn('gc-chip', p.status === 'proposed' ? 'needs' : p.status === 'failed' ? 'bad' : goal?.status === 'met' ? 'ok' : 'live')}>{goal ? statusWord(goal) : CHIP[p.status]}</span>
+        <span className={cn('gc-chip', p.status === 'proposed' ? 'needs' : p.status === 'failed' ? 'bad' : goal?.status === 'met' ? 'ok' : 'live')}>{p.status === 'started' && goal ? statusWord(goal) : CHIP[p.status]}</span>
       </header>
       <dl className="gc-rows">
         <dt>Done when</dt>
         <dd>{draft.check ? <code className="gc-mono">{draft.check.command}</code> : <span className="mut">its run is done (no check)</span>}{draft.check ? <span className="mut">{draft.check.kind === 'number' ? `reaches ${draft.check.target}` : 'passes'}</span> : null}</dd>
-        <dt>Team</dt>
-        <dd>{draft.team ? <span className="gc-tag">{`# ${team?.name ?? draft.team}`}</span> : <span className="mut">No team: Tether plans the run</span>}</dd>
+        <dt>Squad</dt>
+        <dd>{draft.team ? <span className="gc-tag">{`# ${team?.name ?? draft.team}`}</span> : <span className="mut">No squad: Tether plans the run</span>}</dd>
         <dt>Agents</dt>
         <dd className="gc-agents">
           {draft.agents.length ? null : <span className="mut">Tether picks them when it plans</span>}
@@ -122,7 +123,7 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
               <span className={cn('gc-step', s.ask && 'ask')}>{s.label}</span>
             </span>
           ))}
-          <span className="mut gc-wf">{draft.workflow === 'team' ? (draft.team ? 'Team workflow' : 'Team run') : `"${draft.workflow}" workflow`}</span>
+          <span className="mut gc-wf">{draft.workflow === 'team' ? (draft.team ? 'Squad workflow' : 'Squad run') : `"${draft.workflow}" workflow`}</span>
         </dd>
         <dt>
           Limits <span className="gc-opt">(optional)</span>
@@ -136,16 +137,16 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
               Start
             </Button>
             <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => setEditing(true)}>
-              Edit goal
+              Edit ticket
             </Button>
             <Button size="sm" variant="ghost" loading={busy === 'dismiss'} disabled={!!busy} onClick={() => void decide('dismiss')}>
-              Just answer, no goal
+              Just answer, no ticket
             </Button>
           </>
         ) : p.status === 'failed' ? (
           <span className="gc-note">{p.note ?? 'Could not start'}</span>
         ) : p.status === 'dismissed' ? (
-          <span className="mut">No goal made.</span>
+          <span className="mut">No ticket made.</span>
         ) : lastRun ? (
           <>
             <button type="button" className="gc-link" onClick={() => onGo({ tab: 'runs', id: lastRun.runId })}>
@@ -161,13 +162,13 @@ export function GoalCard({ proposal: p, chat, project, onGo }: { proposal: Propo
           <span className="mut">{goal?.status === 'active' && goal.kind === 'loop' ? 'Checking first…' : 'Starting its run…'}</span>
         )}
         {p.goalId && p.status !== 'dismissed' ? (
-          <button type="button" className="gc-link gc-open" onClick={() => onGo({ tab: 'goals', id: p.goalId })}>
-            Open in Goals →
+          <button type="button" className="gc-link gc-open" onClick={() => onGo({ tab: 'tickets', id: p.goalId })}>
+            Open in Tickets →
           </button>
         ) : null}
       </footer>
       <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent title="Edit goal" description="Changes stay on this card until you press Start.">
+        <DialogContent title="Edit ticket" description="Changes stay on this card until you press Start.">
           {editing ? <NewGoalForm projects={[]} workflows={(workflows ?? []).map((w) => w.name)} onCreated={() => {}} onCancel={() => setEditing(false)} draft={{ initial: { ...draft, ...(Object.keys(limitsBody(limits)).length ? { limits: limitsBody(limits) as DraftFields['limits'] } : {}) }, onSave: saveEdit }} /> : null}
         </DialogContent>
       </Dialog>

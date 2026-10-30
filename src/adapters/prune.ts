@@ -24,12 +24,12 @@ export function pruneText(text: string, b: PruneBudget = DEFAULTS): string | nul
 }
 
 /** Prune, in place, every tool result before the latest assistant message. A second pass changes nothing. */
-export function pruneToolResults(messages: { role: string; content: string | null }[]): void {
+export function pruneToolResults(messages: { role: string; content: unknown }[]): void {
   let latest = messages.length;
   while (latest > 0 && messages[latest - 1]!.role !== 'assistant') latest--;
   for (let i = 0; i < latest - 1; i++) {
     const m = messages[i]!;
-    if (m.role !== 'tool' || !m.content) continue;
+    if (m.role !== 'tool' || typeof m.content !== 'string' || !m.content) continue;
     const pruned = pruneText(m.content);
     if (pruned !== null) m.content = pruned;
   }

@@ -126,3 +126,28 @@
 .tr-chip.needs { background: var(--warnBg); color: var(--warn); }
 .tr-focus { padding: 8px 24px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--mut); }
 @media (max-width: 899px) { .tr-map { border-right: 0; border-bottom: 1px solid var(--line); } .tr-canvas { margin: 0 12px; min-height: 360px; } .tr-bar, .tr-strip { padding-left: 12px; padding-right: 12px; } }
+
+/* Telegram teams: the pairing panel, the read-only room, People and permissions (board 7) */
+.tm-pair { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 12px 24px 0; padding: 12px 14px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s1); }
+.tm-pair .acc-code-row { display: flex; align-items: center; gap: 8px; }
+.tm-pair .acc-code { padding: 6px 10px; border: 1px solid var(--line2); border-radius: 8px; font-family: var(--mono); font-size: 16px; letter-spacing: .06em; user-select: all; }
+.tm-readonly { margin: 0 24px 18px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 12px; color: var(--mut); font-size: 13px; }
+.tp { display: flex; flex-direction: column; gap: 10px; }
+.tp > p { margin: 0; }
+.tp-list { margin: 0; padding: 0; list-style: none; }
+.tp-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 130px 40px; align-items: center; justify-items: center; gap: 12px; padding: 10px 4px; border-top: 1px solid var(--line); font-size: 13px; }
+.tp-row > :first-child { justify-self: stretch; }
+.tp-cols { border-top: 0; padding-top: 0; padding-bottom: 4px; color: var(--mut); font-size: 12px; }
+.tp-row.agent { background: var(--s1); }
+.tp-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tp-who b { font-weight: 500; color: var(--ink); }
+.tp-na { color: var(--mut); font-size: 12px; }
+@media (max-width: 560px) { .tp-row { grid-template-columns: minmax(0, 1fr) 64px 64px 32px; gap: 6px; } }
+
+/* An agent's own page (#/agents/<id>): face, name and what it is doing, then its profile */
+.agent-page { max-width: 880px; margin: 0 auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+.agent-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.agent-page-who { flex: 1 1 240px; min-width: 0; }
+.agent-page-who h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.agent-page-who p { margin: 4px 0 0; color: var(--mut); font-size: 13px; }
+.agent-page-busy { color: var(--accInk); }

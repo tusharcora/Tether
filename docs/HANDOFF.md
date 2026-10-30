@@ -43,6 +43,18 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 ## Next steps (in order)
 
+0. **Squads and Tickets** (branch `feature/squads-tickets`; it has #30 Teams on Telegram, #31 optional run budgets and #32 runs fix themselves merged in; spec `docs/superpowers/specs/2026-10-30-squads-tickets-design.md`, plan `docs/superpowers/plans/2026-10-30-squads-tickets.md`, boards `docs/design/squads-tickets/`): built and checked in tests only (no real model, no network). Squads replace Teams and team runs, Tickets replace Goals; the old screens are gone from the sidebar and `#/goals…`, `#/teams…` links redirect; `/api/goals…` and `/api/teams…` answer as aliases for one release. Open its PR once #30, #31 and #32 are in `main` (retarget it then). Check in the app, on a copy of your home first if you want a way back (the first start moves `<home>/teams/` to `<home>/squads/` and numbers every goal as a ticket):
+   - **Migration**: your teams show under **Squads** with their messages; your goals show on **Tickets** (G K) with keys like `ORCH-1` in creation order and the status map (paused not started → Todo, paused → Backlog, active → In progress, needs you → In review, met → Done, stopped → Canceled). A Telegram squad still answers in its group.
+   - **A squad ask**: in a Tether squad, `@Bolt fix …`. Bolt says "On it."; a ticket appears In progress with Bolt as assignee and the squad's reviewer (Lens) as reviewer; Right now shows Bolt's card with a live line and timer; Lens's card filters the channel.
+   - **The voice**: when the work is done Bolt writes one or two sentences and asks @Lens; **What I did** opens files, +/−, the test command and its result, **Full report** shows the raw output. Lens's review lands in the channel; a failed review sends Bolt back in Lens's thread (open it from "2 replies · …") and the old ship card says it was replaced.
+   - **Ship it**: the ship card's chips (tests, Lens approved, criteria), Ship it, "Shipped by you · PR #n open, merging once checks pass" with **Undo** (closes the PR, card waits again), then "merged" with no Undo; the ticket goes In review then Done. **Not yet** with a reason reworks once.
+   - **Busy agents**: a second `@Bolt …` while Bolt works queues ("I'm in the middle of …"); the @ picker says busy · will queue / free now; the pulse's Coming up and Tickets' Ready for an agent show the pickup; Start now starts it.
+   - **Failures**: a run that fails says "I couldn't finish this: …"; with auto-fix on, "That didn't pass, so I'm having another go (round 1 of 3)." and, when it gives up, a plain message with the reason.
+   - **The pulse**: ticket counts (each opens the board on the squad), Shipped today with 5 days of bars, Coming up (queue, recurring tickets with their next scheduled time), Pinned (pin a message from its hover menu). Chat | Map: today's hand-offs, live lines move. Reactions, the typing line, the sidebar's unread count and needs-you badge, the Agents list.
+   - **Tickets**: This week (shipped, in flight, Todo → Done, oldest waiting on you), Board and List, filters, the detail panel (status, priority, assignee, reviewer, squad, criteria with the auto-checked one, the ship banner's Merge PR / Send back, a comment with `@Bolt` that hands it the ticket), New ticket, the key prefix in the header, Ideas from your chats (answer a chat's ticket card "Just answer, no ticket", then press +).
+   - **Telegram**: a squad message in the group is the sentence plus one *What I did* line; ship cards have Ship it / Not yet / Diff.
+   - **With a free model** (OpenRouter or NVIDIA bound to an agent of the squad): the done messages read in the agent's words; without one they are templates ("Done, 3 files changed, tests pass. @Lens mind reviewing it?").
+   The plan's "My calls" list what to confirm: tickets on the goals table (`stage` is the status), one auto-checked criterion, keys and the prefix rule, internal names kept as `team`, the status writer's model only for reports, the review as the default ticket reviewer, the queue and when an agent counts as busy, Ship it merging, Undo until merged, threads, the board's columns, no "Read" row in What I did, This week's week starting Monday and its Todo → Done measured from creation.
 0. **Runs fix themselves** (branch `feature/runs-fix-themselves`, stacked on `feature/optional-run-budgets` / PR #31; spec `docs/superpowers/specs/2026-10-30-runs-fix-themselves-design.md`): built and checked in tests only. Merge PR #31 first, then open this one against `main` (retarget it once #31 merges). Then check in the app:
    - A team run that changes a file: the writes card recommends yes, the plan has a write step, and the drafter edits the file.
    - A run that fails: the header says "Auto-fixing · round 1 of 3", story rows per round, the run under Live; after 3 rounds Needs you says "Auto-fix gave up after 3 rounds: …" with Retry / Open. Settings → Runs: Auto-fix failed runs and its rounds; Stop auto-fix between rounds.
@@ -64,13 +76,14 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - **Goals redesign (#25):** the palette, the hover arc (a second-row node's arc partly covers the strip above; widen the row gap if that bothers you), the 0.35 s hide delay, a tracker step's "+" picker, the fans on runs, triggers, All chats and Connectors.
    - **Teams Phase 1:** create a team, ping an agent, approve a ship (it opens a PR and merges only after approval).
    - **NVIDIA:** one real chat turn with an NVIDIA model.
-3. **Teams Phase 2: Telegram.** Decide first:
-   - how Telegram users map to teammates and approvers;
-   - whether loop ship approvals also land in the Inbox;
-   - which voice-note transcription endpoint to use;
-   - whether non-owners can start runs.
-
-   Then write the spec and plan, and build.
+3. **Teams Phase 2: Telegram** (branch `feature/teams-telegram`, spec and plan dated 2026-10-30): built and checked in tests only (fake Bot API, no network). Test with a real bot:
+   - @BotFather `/newbot`; Settings → Accounts → Telegram: paste the token; **Link my Telegram** and send `/iam <code>` to the bot in a private chat.
+   - New team → Telegram group; add the bot to a test group as an admin; send `/pair <code>`; check the pinned status appears.
+   - From your account: `@Bolt fix …` (run card edited in place, ship card with Approve / Reject / Diff), `/status`, `/runs`, `/new …`, `/mute 1h` then `/mute off`.
+   - From a second Telegram account in the group: an ask becomes a proposal card; its Approve is refused ("Only approvers can decide this"); switch it on in People and permissions and try again.
+   - Approve one ship from the Inbox and watch the Telegram card change to "Approved by …".
+   - A photo replying to an agent; a voice note before and after **Voice notes: download model** (~241 MB).
+   The plan's "My calls" list what to confirm (reply-to pings, the Diff reply, Edit by force-reply, /mute rules).
 4. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
 5. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
 6. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
@@ -88,8 +101,8 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 - Specs: `docs/superpowers/specs/` (free models, chats, teams, chat components, goals redesign, asks-goals-runs, dsh ports, rewind and attempts).
 - Plans: `docs/superpowers/plans/`.
-- Static boards: `docs/design/asks-goals-runs/` (#27) and `docs/design/next-build/` (rewind, Compare, Terminal and Preview).
-- Mockup canvases (claude.ai artifacts): rewind and attempts `WvgbPqG6rR4MaPwD7BUviV`, Goals `GdPwgpVVdZssnLHUdmasJ7`, Teams `1FvSbeztqQPHixmjw8zbwv`, chat components `UMzU5xrg3MtHZhSVY66PGw`, chats `F3oPzyByj5yVXP9mZXs9GV`, free models `BpJa3QcyWiQDwfKXRb5rT4`.
+- Static boards: `docs/design/asks-goals-runs/` (#27), `docs/design/next-build/` (rewind, Compare, Terminal and Preview) and `docs/design/squads-tickets/` (Squad channel with its pulse, agents writing like people, Tickets).
+- Mockup canvases (claude.ai artifacts): rewind and attempts, and Squads and Tickets (boards 8 to 10) `WvgbPqG6rR4MaPwD7BUviV`, Goals `GdPwgpVVdZssnLHUdmasJ7`, Teams `1FvSbeztqQPHixmjw8zbwv`, chat components `UMzU5xrg3MtHZhSVY66PGw`, chats `F3oPzyByj5yVXP9mZXs9GV`, free models `BpJa3QcyWiQDwfKXRb5rT4`.
 
 ## House rules
 

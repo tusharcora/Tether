@@ -106,7 +106,7 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
       <TypeField value={type} onChange={setType} />
       <Textarea label="Description" rows={2} maxLength={500} placeholder="One or two sentences (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
       {p.draft ? null : <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />}
-      <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Team' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
+      <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Squad run' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
       <div className="gd-switch">
         <div>
           <strong>Add a finish check</strong>
@@ -132,7 +132,7 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
           Cancel
         </Button>
         <Button type="submit" variant="primary" loading={busy} disabled={!title.trim() || (!project && !p.draft) || (withCheck && !check.command.trim())}>
-          {p.draft ? 'Save' : 'Create goal'}
+          {p.draft ? 'Save' : 'Create ticket'}
         </Button>
       </div>
     </form>

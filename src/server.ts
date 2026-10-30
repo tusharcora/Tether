@@ -21,10 +21,16 @@ import { isOpenRouter } from './openrouter.js';
 import { codemodeRoute } from './codemode/routes.js';
 import { sweepSpills } from './codemode/spill.js';
 import { Goals } from './goals/loop.js';
-import { goalsRoute } from './goals/routes.js';
+import { goalsRoute, type TicketHooks } from './goals/routes.js';
+import type { Goal } from './goals/types.js';
 import { teamsRoute } from './teams/routes.js';
 import { OWNER } from './teams/store.js';
 import { Teams } from './teams/teams.js';
+import { Telegram } from './teams/telegram/bot.js';
+import { telegramRoute } from './teams/telegram/routes.js';
+import type { BotApi } from './teams/telegram/api.js';
+import type { SecretStore } from './accounts/secretStore.js';
+import { LocalVoice } from './stt/voice.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, issueRefusal, lastDelivery, matchIssueRule, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
@@ -81,6 +87,8 @@ export interface ServerOptions {
   openrouter?: OpenRouterDeps;
   /** The NVIDIA account's API and secret store; tests fake both. */
   nvidia?: NvidiaDeps;
+  /** The Telegram bot's API and secret store; tests fake both. */
+  telegram?: { api?: (token: string) => BotApi; secrets?: SecretStore };
 }
 
 /** Imported personas can be 24 000 chars; the crew list sends at most this much of each (a save keeps the rest). */
@@ -222,6 +230,9 @@ function checkAnswers(body: unknown, s: RunState): Answer[] {
   return out;
 }
 
+/** `/api/goals…` → `/api/tickets…`, `/api/teams…` → `/api/squads…`: the old API names, kept as aliases for one release. */
+export const aliasPath = (p: string): string => p.replace(/^\/api\/goals(?=\/|$)/, '/api/tickets').replace(/^\/api\/teams(?=\/|$)/, '/api/squads');
+
 const isLoopback = (h: string) => h === '127.0.0.1' || h === '::1' || h === 'localhost' || h === '[::1]';
 
 /** Host header must name a loopback host: blocks DNS-rebinding against a loopback-bound server. */
@@ -270,12 +281,47 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** As every screen computes it, plus a failed run auto-fix is still working on (it shows under Live, not Needs you). */
   const live = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }, lastTs: number) => rowLive(engine, { ...r, lastTs }) || autofix.pending(r.id);
   // a team's loop starts its runs through its team (made just below; the hooks are only called after both exist)
-  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g) }, autofixing: (id) => autofix.pending(id) });
+  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) }, autofixing: (id) => autofix.pending(id) });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
-  const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec, autofixing: (id) => autofix.pending(id) });
   const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  /** A ticket's last run: what Merge PR and Send back act on. */
+  const ticketRun = (g: Goal) => {
+    const r = goals.db.items(g.id).filter((i) => i.runId && store.state(i.runId)).at(-1)?.runId;
+    if (!r) throw new HttpError(409, 'This ticket has no run yet.');
+    return r;
+  };
+  /** Tickets meet squads and runs (spec 2026-10-30-squads-tickets §2.5): hand-offs, Start on a squad agent, ship, send back. */
+  const ticketHooks: TicketHooks = {
+    hand: (g, text) => teams.handTicket(g, text),
+    start: (g) => teams.startTicket(g),
+    ship: async (g) => {
+      const r = ticketRun(g);
+      if (!teams.mayApproveRun(r, OWNER.id)) throw new HttpError(403, 'Only the squad’s chosen approvers can ship this.');
+      if (teams.owns(r)) return teams.shipRun(r, OWNER);
+      const s = store.state(r)!;
+      if (s.ship?.url && !s.ship.merged) return runShip.mergeOpen(r);
+      await runShip.decide(r, true);
+    },
+    sendBack: async (g, reason) => {
+      const r = ticketRun(g);
+      if (teams.owns(r)) return teams.sendBackRun(r, OWNER, reason);
+      const s = store.state(r)!;
+      // the run's last agent step that changes files (else its last agent step) does it again with the note
+      const agents = s.pipeline.nodes.filter((n) => n.kind === 'agent');
+      const node = [...agents].reverse().find((n) => !n.readOnly) ?? agents.at(-1);
+      if (!node) throw new HttpError(409, 'This ticket’s run has no step to send back to.');
+      try {
+        await engine.sendBack(r, node.id, reason || 'Sent back from its ticket: have another go.');
+      } catch (e) {
+        throw new HttpError(409, (e as Error).message);
+      }
+    },
+  };
+  /** What needs the person: every run's items, with the team named on a team's (and a loop's ship card from its team). */
+  const needs = () => teams.inbox(attention.items(live));
   /** Terminal and Preview processes; every one ends with the server (or, at the latest, with this process). */
   const procs = new RunProcs({ home: cfg.home, store });
   /** Try more ways: siblings count toward the original's goal and team. */
@@ -329,6 +375,18 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const dropCaches = () => void ((doctorCache = undefined), (modelsCache = undefined));
   const openrouter = new OpenRouterAccount(cfg, registry, { usable: async () => anyUsable(cfg, await doctor()), ...o.openrouter, onChange: dropCaches });
   const nvidia = new NvidiaAccount(cfg, registry, { ...o.nvidia, onChange: dropCaches });
+  /** Voice notes are transcribed on this Mac (the model downloads only when asked in Settings). */
+  const voice = new LocalVoice(cfg.home);
+  /** Does this crew bot's model read images? Claude does; an OpenRouter model when its list says so. */
+  const readsImages = async (bot: string): Promise<boolean> => {
+    const b = loadBindings(cfg.home)[bot];
+    const agent = b?.agent ?? 'claude';
+    if (agent === 'claude') return true;
+    if ((agent === 'openrouter' || isOpenRouter(cfg.endpoints[agent]?.baseUrl ?? '')) && b?.model) return !!(await openrouter.models()).models.find((m) => m.id === b.model)?.images;
+    return false;
+  };
+  const telegram = new Telegram({ home: cfg.home, teams, store, goals, voice, readsImages, ...(o.telegram?.api ? { api: o.telegram.api } : {}), ...(o.telegram?.secrets ? { secrets: o.telegram.secrets } : {}) });
+  void telegram.resume();
   /** The answering model's context size and free-tier limit, for the chat's context ring. */
   const modelInfo = async (agent: string, model?: string): Promise<{ size?: number; limit?: 'openrouter' | 'nvidia' }> => {
     const base = cfg.endpoints[agent]?.baseUrl ?? '';
@@ -425,18 +483,21 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
 
   async function route(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+    // the old names answer for one release (spec 2026-10-30-squads-tickets §6.1): /api/goals is /api/tickets, /api/teams is /api/squads
+    url.pathname = aliasPath(url.pathname);
     const p = url.pathname;
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
-    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
+    if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia, telegram }, req, res, url);
+    if (p === '/api/telegram' || p.startsWith('/api/telegram/') || /^\/api\/squads\/[^/]+\/pair$/.test(p)) return telegramRoute({ telegram, voice }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
-      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items(live), modelInfo, goals }, req, res, url);
+      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs, modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
-    if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
+    if (p === '/api/tickets' || p.startsWith('/api/tickets/')) return goalsRoute({ home: cfg.home, store, goals, hooks: ticketHooks }, req, res, url);
     if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
-    if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
+    if (p === '/api/squads' || p.startsWith('/api/squads/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
     if (p.startsWith('/api/attempts/') || /^\/api\/runs\/[^/]+\/(rewind|fork|attempts|exec|preview)(\/|$)/.test(p))
       return runToolsRoute({ store, engine, attempts, procs, runView, mayApprove: (id) => teams.mayApproveRun(id, OWNER.id) }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
@@ -902,7 +963,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: live(r, lastTs) }));
       return send(res, 200, rows), true;
     }
-    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items(live) }), true;
+    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: needs() }), true;
     if (p === '/api/activity' && m === 'GET') {
       const raw = url.searchParams.get('since');
       const since = raw ? parseCursor(raw) : undefined;
@@ -1198,6 +1259,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         close: async () => {
           scheduler.stop();
           clearInterval(sweeping);
+          telegram.stop();
+          await voice.dispose();
           await procs.stopAll();
           await new Promise<void>((r) => (server.closeAllConnections?.(), server.close(() => r())));
         },

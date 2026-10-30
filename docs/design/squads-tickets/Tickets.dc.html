@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tickets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;font:500 12.5px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.12);background:#2a2a2a;color:#f4f4f5;cursor:pointer}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#262626;border:1px solid rgba(255,255,255,.08);color:#d4d4d8;font-size:12px;white-space:nowrap;cursor:pointer;font-family:'Geist',sans-serif}
+.col{flex:1 1 210px;min-width:200px;display:flex;flex-direction:column;gap:8px}
+.colh{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12.5px;color:#a1a1aa}
+.colh b{color:#f4f4f5;font-weight:600}
+.tk{display:flex;flex-direction:column;gap:8px;padding:11px 12px;border-radius:12px;background:#222;border:1px solid rgba(255,255,255,.07);text-align:left;font-family:'Geist',sans-serif;color:#f4f4f5;cursor:pointer;transition:transform .15s,border-color .15s}
+.tk:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18)}
+.tid{font-family:'Geist Mono',monospace;font-size:11px;color:#71717a}
+.ty{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.pri{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.pri i{width:3px;border-radius:1px;background:#52525b}
+.bar{height:4px;border-radius:2px;background:#2f2f2f;overflow:hidden;position:relative}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:2px}
+.shimmer{background:linear-gradient(90deg,#2b6cf0 0%,#93c5fd 50%,#2b6cf0 100%);background-size:200% 100%;animation:sh 1.6s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.bob{animation:bob 1.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-2px)}}
+.prop{display:grid;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:8px;font-size:12.5px;min-height:30px}
+.prop span:first-child{color:#71717a}
+@media (prefers-reduced-motion: reduce){.bob,.shimmer{animation:none}}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif">
+  <header style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <h1 style="margin:0;font-size:18px;font-weight:600">Tickets</h1>
+    <span style="font-size:12.5px;color:#a1a1aa">acme-web · 3 in progress · 1 waiting on you</span>
+    <span style="flex:1"></span>
+    <div role="tablist" aria-label="View" style="display:flex;gap:2px;background:#222;border-radius:10px;padding:3px">
+      <button type="button" role="tab" aria-selected="true" style="height:28px;padding:0 12px;border:0;border-radius:8px;font:500 12.5px 'Geist',sans-serif;background:#383838;color:#f4f4f5">Board</button>
+      <button type="button" role="tab" aria-selected="false" style="height:28px;padding:0 12px;border:0;border-radius:8px;font:500 12.5px 'Geist',sans-serif;background:transparent;color:#a1a1aa">List</button>
+    </div>
+    <button class="btn pri" type="button">New ticket</button>
+  </header>
+  <section aria-label="This week" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:14px 22px 0">
+    <div style="padding:10px 12px;border-radius:12px;background:#212121;display:flex;align-items:center;gap:12px"><div><div style="font-size:20px;font-weight:600;color:#34d399">9</div><div style="font-size:11.5px;color:#a1a1aa">shipped this week</div></div><div style="margin-left:auto;display:flex;align-items:flex-end;gap:3px;height:30px" role="img" aria-label="Shipped per day: 1, 2, 0, 3, 3"><span style="width:6px;height:30%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:60%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:8%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:90%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:90%;background:#34d399;border-radius:2px"></span></div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:#212121"><div style="font-size:20px;font-weight:600;color:#93c5fd">2</div><div style="font-size:11.5px;color:#a1a1aa">in flight · Bolt, Lens</div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:#212121"><div style="font-size:20px;font-weight:600">38m</div><div style="font-size:11.5px;color:#a1a1aa">avg. Todo → Done</div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25)"><div style="font-size:20px;font-weight:600;color:#fbbf24">12m</div><div style="font-size:11.5px;color:#a1a1aa">oldest waiting on you · WEB-142</div></div>
+  </section>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 22px">
+    <button class="chip" type="button" onClick="{{ fAll }}" style="border-color:{{ allRing }}">All</button>
+    <button class="chip" type="button" onClick="{{ fMine }}" style="border-color:{{ mineRing }}">Needs me</button>
+    <button class="chip" type="button" onClick="{{ fBugs }}" style="border-color:{{ bugRing }}">Bugs</button>
+    <span class="chip" style="cursor:default"># web</span><span class="chip" style="cursor:default">Assignee: anyone</span>
+    <span style="margin-left:auto;font-size:12px;color:#71717a">Tip: say "fix the sign-in bug" in any chat or squad and a ticket appears here</span>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <section aria-label="Board" style="flex:1;min-width:0;display:flex;gap:12px;padding:4px 22px 22px;overflow-x:auto">
+      <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;border:2px dashed #71717a"></span><b>Backlog</b>3</div>
+        <sc-if value="{{ showFeat }}" hint-placeholder-val="{{ true }}">
+        <button class="tk" type="button" onClick="{{ open144 }}"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(147,197,253,.14);color:#93c5fd">+</span><span class="tid">WEB-144</span><span class="pri" style="margin-left:auto" aria-label="Low priority"><i style="height:5px;background:#a1a1aa"></i><i style="height:8px"></i><i style="height:11px"></i></span></span><span style="font-size:13.5px;line-height:1.35">Keyboard shortcuts for the settings tabs</span><span style="display:flex;gap:6px"><span class="chip" style="height:20px;font-size:11px;cursor:default">settings</span></span></button>
+        <button class="tk" type="button"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(161,161,170,.14);color:#a1a1aa">·</span><span class="tid">WEB-139</span></span><span style="font-size:13.5px;line-height:1.35">Bump vite to 7</span></button>
+        </sc-if>
+        <div style="margin-top:4px;padding:12px;border-radius:12px;border:1px dashed rgba(255,255,255,.12);display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:#a1a1aa">
+          <span>Ideas from your chats</span>
+          <button class="chip" type="button" style="justify-content:flex-start">+ "Add a loading state to search"</button>
+          <button class="chip" type="button" style="justify-content:flex-start">+ "Billing email typo"</button>
+          <span style="font-size:11.5px;color:#71717a">Or type in any chat: "make a ticket to…"</span>
+        </div>
+      </div>
+
+      <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;border:2px solid #a1a1aa"></span><b>Todo</b>2</div>
+        <button class="tk" type="button"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(248,113,113,.14);color:#f87171">!</span><span class="tid">WEB-143</span><span class="pri" style="margin-left:auto" aria-label="Urgent"><i style="height:5px;background:#f87171"></i><i style="height:8px;background:#f87171"></i><i style="height:11px;background:#f87171"></i></span></span><span style="font-size:13.5px;line-height:1.35">Billing page crashes with an empty cart</span><span style="display:flex;align-items:center;gap:6px"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="font-size:11.5px;color:#a1a1aa">Probe picks it up next</span></span></button>
+        <div style="margin-top:4px;padding:12px;border-radius:12px;background:#1e1e1e;border:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:10px">
+          <span style="font-size:12px;color:#a1a1aa">Ready for an agent</span>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="5" width="30" height="30" rx="9" transform="rotate(-8 20 20)" fill="#e35d5b"/><rect x="18" y="11" width="5.5" height="11" rx="2.75" transform="rotate(-18 20.7 16.5)" fill="#171717"/><rect x="26" y="10" width="4.5" height="9" rx="2.25" transform="rotate(-18 28.2 14.5)" fill="#171717"/></svg><span style="flex:1"><b style="font-weight:500">Boss</b> is free · could take WEB-144</span><button class="btn" type="button" style="height:26px;padding:0 9px;font-size:12px">Assign</button></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="flex:1"><b style="font-weight:500">Probe</b> · starts WEB-143 in ~2m</span><button class="btn ghost" type="button" style="height:26px;padding:0 9px;font-size:12px">Start now</button></div>
+        </div>
+      </div>
+
+      <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;border:2px solid #2b6cf0;border-right-color:transparent"></span><b>In progress</b>2</div>
+        <sc-if value="{{ showFeat }}" hint-placeholder-val="{{ true }}">
+        <button class="tk" type="button" onClick="{{ open145 }}" style="border-color:rgba(43,108,240,.45)"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(147,197,253,.14);color:#93c5fd">+</span><span class="tid">WEB-145</span><span class="pri" style="margin-left:auto" aria-label="Medium priority"><i style="height:5px;background:#fbbf24"></i><i style="height:8px;background:#fbbf24"></i><i style="height:11px"></i></span></span><span style="font-size:13.5px;line-height:1.35">Remember the last settings tab</span>
+          <span class="bar"><i class="shimmer" style="width:55%"></i></span>
+          <span style="display:flex;align-items:center;gap:6px"><svg class="bob" width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><span style="font-size:11.5px;color:#93c5fd">Bolt · editing Tabs.tsx</span><span class="mono" style="margin-left:auto;font-size:11px;color:#71717a">1:12</span></span></button>
+        </sc-if>
+      </div>
+
+      <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;background:conic-gradient(#fbbf24 0 75%,transparent 0);border:2px solid #fbbf24"></span><b>In review</b>1</div>
+        <button class="tk" type="button" onClick="{{ open142 }}" style="border-color:rgba(251,191,36,.45);background:linear-gradient(180deg,rgba(251,191,36,.06),#222)"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(248,113,113,.14);color:#f87171">!</span><span class="tid">WEB-142</span><span class="chip" style="margin-left:auto;height:20px;font-size:11px;color:#fbbf24;border-color:rgba(251,191,36,.4);cursor:default">needs you</span></span><span style="font-size:13.5px;line-height:1.35">Sign-in returns people to where they were</span>
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="chip" style="height:20px;font-size:11px;cursor:default;color:#34d399">2/2 criteria</span><span class="chip" style="height:20px;font-size:11px;cursor:default">PR #142</span><span style="margin-left:auto;display:flex"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true" style="margin-left:-5px"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg></span></span></button>
+      </div>
+
+      <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;background:#34d399"></span><b>Done</b>9</div>
+        <button class="tk" type="button" style="opacity:.75"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(147,197,253,.14);color:#93c5fd">+</span><span class="tid">WEB-141</span><span style="margin-left:auto;font-size:11px;color:#71717a">Mon</span></span><span style="font-size:13.5px;line-height:1.35;text-decoration:line-through;text-decoration-color:#52525b">Dark mode for settings</span><span class="chip" style="height:20px;font-size:11px;cursor:default;align-self:flex-start">PR #141 merged</span></button>
+      </div>
+    </section>
+
+    <sc-if value="{{ hasOpen }}" hint-placeholder-val="{{ true }}">
+    <aside aria-label="Ticket" style="flex:0 0 440px;max-width:44%;border-left:1px solid rgba(255,255,255,.06);background:#1c1c1c;display:flex;flex-direction:column;overflow:auto">
+      <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06)"><span class="ty" style="background:{{ t.tyBg }};color:{{ t.tyFg }}">{{ t.ty }}</span><span class="tid" style="font-size:12px">{{ t.id }}</span><span style="flex:1"></span><button class="btn ghost" type="button" aria-label="Close ticket" onClick="{{ close }}" style="width:28px;padding:0">×</button></div>
+      <div style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+        <h2 style="margin:0;font-size:19px;font-weight:600;line-height:1.3">{{ t.title }}</h2>
+        <p style="margin:0;font-size:13.5px;line-height:1.55;color:#d4d4d8">{{ t.desc }}</p>
+        <div style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:#222">
+          <div class="prop"><span>Status</span><span style="display:flex;align-items:center;gap:6px;color:{{ t.stFg }}">{{ t.status }}</span></div>
+          <div class="prop"><span>Priority</span><span>{{ t.priority }}</span></div>
+          <div class="prop"><span>Assignee</span><span style="display:flex;align-items:center;gap:6px"><svg width="18" height="18" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg>Bolt <span style="color:#71717a">· reviewer Lens</span></span></div>
+          <div class="prop"><span>Squad</span><span># web</span></div>
+          <div class="prop"><span>Linked PR</span><span>{{ t.pr }}</span></div>
+          <div class="prop"><span>Spent</span><span style="color:#a1a1aa">{{ t.cost }} · subscription</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font-weight:600;font-size:13px">Acceptance criteria</b>
+          <label style="display:flex;gap:10px;font-size:13px;align-items:flex-start"><input type="checkbox" checked="{{ t.c1 }}" style="accent-color:#34d399;margin-top:3px"><span>After sign-in, people land on the page in <span class="mono">?next=</span></span></label>
+          <label style="display:flex;gap:10px;font-size:13px;align-items:flex-start"><input type="checkbox" checked="{{ t.c2 }}" style="accent-color:#34d399;margin-top:3px"><span><span class="mono">npm test -- auth</span> passes <span style="color:#71717a">(checked automatically)</span></span></label>
+          <button class="btn ghost" type="button" style="justify-content:flex-start;padding:0;height:24px;font-size:12px">+ Add a criterion</button>
+        </div>
+        <sc-if value="{{ t.review }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:12px;border-radius:12px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.06)"><span style="flex:1 1 180px;font-size:13px">All criteria met and Lens approved. Ship it?</span><button class="btn pri" type="button">Merge PR #142</button><button class="btn" type="button">Send back</button></div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <b style="font-weight:600;font-size:13px">Activity</b>
+          <div style="display:flex;gap:10px;font-size:13px;line-height:1.5"><span style="width:22px;height:22px;border-radius:50%;background:#e4e4e7;color:#111;display:grid;place-items:center;font-size:10px;font-weight:600;flex:none">TU</span><span><b style="font-weight:500">You</b> created this from <a href="Main.dc.html">a chat</a> <span style="color:#71717a">· 14:02</span></span></div>
+          <div style="display:flex;gap:10px;font-size:13px;line-height:1.5"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><span><b style="font-weight:500">Bolt</b> {{ t.act1 }} <span style="color:#71717a">· {{ t.when1 }}</span> <a href="RunDetail.dc.html">run</a></span></div>
+          <div style="display:flex;gap:10px;font-size:13px;line-height:1.5"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><span><b style="font-weight:500">Lens</b> {{ t.act2 }} <span style="color:#71717a">· {{ t.when2 }}</span></span></div>
+          <div style="border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#232323;padding:9px 12px;font-size:13px;color:#71717a">Comment, or @ an agent to hand it work…</div>
+        </div>
+      </div>
+    </aside>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { open: '142', f: 'all' }; }
+  renderVals() {
+    const s = this.state;
+    const T = {
+      '142': { id: 'WEB-142', ty: '!', tyBg: 'rgba(248,113,113,.14)', tyFg: '#f87171', title: 'Sign-in returns people to where they were', desc: 'After signing in, people land on /home instead of the page they came from. Keep ?next= and only follow same-site paths.', status: 'In review · waiting on you', stFg: '#fbbf24', priority: 'High', pr: 'PR #142 · checks passing', cost: '$0.63', c1: true, c2: true, review: true, act1: 'fixed it in 3 files, tests pass', when1: '14:06', act2: 'reviewed: caught //evil.com, now fixed, approved', when2: '14:10' },
+      '145': { id: 'WEB-145', ty: '+', tyBg: 'rgba(147,197,253,.14)', tyFg: '#93c5fd', title: 'Remember the last settings tab', desc: 'Settings always opens on General. Reopen it on the tab the person used last.', status: 'In progress', stFg: '#93c5fd', priority: 'Medium', pr: 'not opened yet', cost: '$0.21', c1: false, c2: false, review: false, act1: 'is editing Tabs.tsx, step 2 of 4', when1: 'now', act2: 'will review when Bolt is done', when2: 'queued' },
+      '144': { id: 'WEB-144', ty: '+', tyBg: 'rgba(147,197,253,.14)', tyFg: '#93c5fd', title: 'Keyboard shortcuts for the settings tabs', desc: 'Cmd+1..4 switches settings tabs.', status: 'Backlog', stFg: '#a1a1aa', priority: 'Low', pr: '—', cost: '$0.00', c1: false, c2: false, review: false, act1: 'has not started', when1: '—', act2: '—', when2: '—' },
+    };
+    const set = (o) => () => this.setState(o);
+    const ring = (k) => (s.f === k ? '#2b6cf0' : 'rgba(255,255,255,.08)');
+    return {
+      t: T[s.open] || T['142'], hasOpen: !!s.open,
+      open142: set({ open: '142' }), open145: set({ open: '145' }), open144: set({ open: '144' }), close: set({ open: '' }),
+      showFeat: s.f !== 'bugs' && s.f !== 'mine',
+      fAll: set({ f: 'all' }), fMine: set({ f: 'mine' }), fBugs: set({ f: 'bugs' }),
+      allRing: ring('all'), mineRing: ring('mine'), bugRing: ring('bugs'),
+    };
+  }
+}
+</script>
+</body>
+</html>

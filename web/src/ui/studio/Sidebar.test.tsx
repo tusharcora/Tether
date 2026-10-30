@@ -16,17 +16,19 @@ const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
   onSettings: vi.fn(),
   onCompose: vi.fn(),
   onCreate: vi.fn(),
-  counts: { needs: 2, live: 1, goals: 0 },
+  counts: { needs: 2, live: 1, tickets: 0 },
   chats: { list: Array.from({ length: 7 }, (_, i) => chat(`c${i + 1}`, `Chat ${i + 1}`)), current: undefined, onNew: vi.fn(), onStarter: vi.fn(), onOpen: vi.fn(), onAll: vi.fn() },
-  teams: {
+  squads: {
     list: [
-      { id: 'core', name: 'Tether core', place: 'tether', project: 'shop', agents: ['coder'], status: 'live' },
-      { id: 'dev', name: 'tether-dev', place: 'slack', project: 'shop', agents: ['coder'], status: 'needs' },
-      { id: 'go', name: 'On the go', place: 'telegram', project: 'shop', agents: ['coder'], status: 'idle' },
+      { id: 'core', name: 'Tether core', place: 'tether', project: 'shop', agents: ['coder', 'tester'], status: 'live', needs: 0, recent: [], queue: [] },
+      { id: 'dev', name: 'tether-dev', place: 'slack', project: 'shop', agents: ['coder'], status: 'needs', needs: 1, recent: [], queue: [] },
+      { id: 'go', name: 'On the go', place: 'telegram', project: 'shop', agents: ['coder'], status: 'idle', needs: 0, recent: [], queue: [] },
     ],
+    agents: [],
     current: undefined,
     onNew: vi.fn(),
     onOpen: vi.fn(),
+    onAgent: vi.fn(),
   },
   runs: { list: [run('rmh0aaa1144', 'Tune the limit window', { live: true, status: 'running' }), run('rmh0aaa1142', 'Plan auth flow', { pending: 1, status: 'paused' }), run('rmh0aaa1141', 'Add rate limiting', { finishedAt: 5 })], onOpen: vi.fn() },
   projects: { list: [w('shop'), w('blog')], current: 'shop', live: new Set(['blog']), onSelect: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn() },
@@ -49,40 +51,65 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: 'Project: shop' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Tether core · working', 'tether-dev · needs you', 'On the go', 'Chats', 'New chat', 'New chat', 'Chat 1', 'Chat 2', 'Chat 3', 'Chat 4', 'Chat 5', 'All chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers', 'Artifacts']);
+    expect(names(nav)).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Squads', 'New squad', 'Tether core · working', 'tether-dev · 1 needs you', 'On the go', 'Chats', 'New chat', 'New chat', 'Chat 1', 'Chat 2', 'Chat 3', 'Chat 4', 'Chat 5', 'All chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Tickets', 'API client', 'Graph', 'Triggers', 'Artifacts']);
     const sections = [...document.querySelectorAll('.sl-side-section-title')].map((s) => s.textContent);
-    expect(sections).toEqual(['Teams', 'Chats', 'Workspace', 'Runs', 'Favorites']);
+    expect(sections).toEqual(['Squads', 'Chats', 'Workspace', 'Runs', 'Favorites']);
     const foot = document.querySelector('.sl-side-foot') as HTMLElement;
     expect(names(foot)).toEqual(['Settings', 'Tushar: GitHub connected. Open Accounts']);
   });
 
-  it('lists teams above Chats with their place mark and a status dot; + makes a new team', () => {
-    const p = setup({ active: 'teams' });
-    const row = screen.getByRole('button', { name: 'tether-dev · needs you' });
+  it('lists squads above Chats (board 8): a needs-you badge, unread since you last looked, a live dot, else idle', () => {
+    localStorage.setItem('tether.squads.seen', JSON.stringify({ go: 100 }));
+    const p = setup({ active: 'squads', squads: { ...setupProps().squads, list: setupProps().squads.list.map((x) => (x.id === 'go' ? { ...x, recent: [50, 150, 160, 170, 180] } : x)) } });
+    const row = screen.getByRole('button', { name: 'tether-dev · 1 needs you' });
     expect(row.querySelector('.sl-side-mark')!.textContent).toBe('S');
-    expect(row.querySelector('.sl-side-status.needs')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Tether core · working' }).querySelector('.sl-side-mark')!.textContent).toBe('#');
-    expect(screen.getByRole('button', { name: 'On the go' }).querySelector('.sl-side-status')).toBeNull();
+    expect(row.querySelector('.sl-side-count.needs')!.textContent).toBe('1');
+    const live = screen.getByRole('button', { name: 'Tether core · working' });
+    expect(live.querySelector('.sl-side-mark')!.textContent).toBe('#');
+    expect(live.querySelector('.sl-side-status.live.pulse')).toBeTruthy();
+    const go = screen.getByRole('button', { name: 'On the go · 4 unread' });
+    expect(go.querySelector('.sl-side-count')!.textContent).toBe('4');
     fireEvent.click(row);
-    expect(p.teams.onOpen).toHaveBeenCalledWith('dev');
+    expect(p.squads.onOpen).toHaveBeenCalledWith('dev');
   });
 
-  it('New team menu: In Tether opens the form; Slack channel and Telegram group are disabled "soon"', async () => {
+  it('lists the agents with their face and what each is doing now; a click opens the agent', () => {
+    const p = setup({ squads: { ...setupProps().squads, agents: [{ id: 'coder', name: 'Bolt', specialty: 'coder', state: 'coding', since: Date.now() - 72_000 }, { id: 'tester', name: 'Probe', specialty: 'tests', state: 'idle' }] } });
+    const agents = screen.getByRole('region', { name: 'Agents' });
+    expect(names(agents)).toEqual(['Agents', expect.stringMatching(/^Bolt · coding · 1:1\d$/), 'Probe · free']);
+    expect(agents.querySelector('.sl-side-face.bob')).toBeTruthy();
+    fireEvent.click(within(agents).getByRole('button', { name: /^Probe/ }));
+    expect(p.squads.onAgent).toHaveBeenCalledWith('tester');
+  });
+
+  it('lists only squad members (busy first, at most five) and sends the rest to All agents', () => {
+    const lib = Array.from({ length: 40 }, (_, i) => ({ id: `ecc-${i}`, name: `Ecc ${i}`, specialty: 'x', state: 'idle' as const }));
+    const members = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((id) => ({ id, name: id.toUpperCase(), specialty: 'x', state: 'idle' as const }));
+    const p = setup({ squads: { ...setupProps().squads, list: setupProps().squads.list.map((t) => ({ ...t, agents: members.map((m) => m.id) })), agents: [...lib, ...members] } });
+    const agents = screen.getByRole('region', { name: 'Agents' });
+    expect(names(agents)).toEqual(['Agents', 'A1 · free', 'A2 · free', 'A3 · free', 'A4 · free', 'A5 · free', 'All agents']);
+    fireEvent.click(within(agents).getByRole('button', { name: 'All agents' }));
+    expect(p.squads.onAgent).toHaveBeenCalledWith('');
+  });
+
+  it('New squad menu: In Tether or a Telegram group opens the form for that place; Slack channel is disabled "soon"', async () => {
     const p = setup();
-    const trigger = screen.getByRole('button', { name: 'New team' });
+    const trigger = screen.getByRole('button', { name: 'New squad' });
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(trigger);
-    const menu = await screen.findByRole('menu', { name: 'New team' });
+    const menu = await screen.findByRole('menu', { name: 'New squad' });
     expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['In Tether', 'Slack channel', 'Telegram group']);
-    for (const name of ['Slack channel', 'Telegram group']) {
-      const item = within(menu).getByRole('menuitem', { name });
-      expect(item.getAttribute('aria-disabled')).toBe('true');
-      expect(item.textContent).toContain('soon');
-      fireEvent.click(item);
-    }
-    expect(p.teams.onNew).not.toHaveBeenCalled();
+    const slack = within(menu).getByRole('menuitem', { name: 'Slack channel' });
+    expect(slack.getAttribute('aria-disabled')).toBe('true');
+    expect(slack.textContent).toContain('soon');
+    fireEvent.click(slack);
+    expect(p.squads.onNew).not.toHaveBeenCalled();
+    expect(within(menu).getByRole('menuitem', { name: 'Telegram group' }).getAttribute('aria-disabled')).not.toBe('true');
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'In Tether' }));
-    expect(p.teams.onNew).toHaveBeenCalledWith();
+    expect(p.squads.onNew).toHaveBeenCalledWith('tether');
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New squad' })).getByRole('menuitem', { name: 'Telegram group' }));
+    expect(p.squads.onNew).toHaveBeenLastCalledWith('telegram');
   });
 
   it('New chat menu: an empty chat, or one about a run or a file', async () => {
@@ -118,7 +145,7 @@ describe('Sidebar', () => {
     fireEvent.click(create);
     const menu = await screen.findByRole('menu', { name: 'Create' });
     expect(create.getAttribute('aria-expanded')).toBe('true');
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['New run', 'New workflow', 'New bot', 'New trigger', 'New request', 'New goal']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['New run', 'New ticket', 'New workflow', 'New bot', 'New trigger', 'New request']);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'New bot' }));
     expect(p.onCreate).toHaveBeenCalledWith('bot');
     expect(p.onCompose).not.toHaveBeenCalled();
@@ -132,9 +159,9 @@ describe('Sidebar', () => {
     const menu = await screen.findByRole('menu');
     expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New run' }));
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New workflow' }));
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New ticket' }));
     fireEvent.keyDown(menu, { key: 'End' });
-    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New goal' }));
+    expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New request' }));
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(within(menu).getByRole('menuitem', { name: 'New run' }));
     fireEvent.keyDown(menu, { key: 'Escape' });
@@ -212,8 +239,8 @@ describe('Sidebar', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Inbox' }).querySelector('.sl-side-count.needs')!.textContent).toBe('2');
     expect(screen.getByRole('button', { name: 'Runs' }).querySelector('.sl-side-count.live')!.textContent).toBe('1');
-    const hints = ['Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers'].map((n) => screen.getByRole('button', { name: n }).querySelector('.sl-side-hint')!.textContent);
-    expect(hints).toEqual(['G C', 'G B', 'G R', 'G O', 'G A', 'G G', 'G T']);
+    const hints = ['Code', 'Builder', 'Crew', 'Tickets', 'API client', 'Graph', 'Triggers'].map((n) => screen.getByRole('button', { name: n }).querySelector('.sl-side-hint')!.textContent);
+    expect(hints).toEqual(['G C', 'G B', 'G R', 'G K', 'G A', 'G G', 'G T']);
     expect(screen.getByRole('button', { name: 'Home' }).querySelector('.sl-side-hint')!.textContent).toBe('G H');
   });
 
@@ -364,7 +391,7 @@ describe('collapsing to the icon rail', () => {
     expect(screen.queryByRole('button', { name: 'Project: shop' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand sidebar' }).querySelector('.sl-switch-glyph .sl-glyph')).toBeTruthy();
     // Chats folds to one chat icon that opens All chats
-    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Teams', 'New team', 'Teams', 'Chats', 'New chat', 'Chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Goals', 'API client', 'Graph', 'Triggers', 'Artifacts']);
+    expect(names(screen.getByRole('navigation', { name: 'Main' }))).toEqual(['Search', 'Home', 'Inbox', 'Runs', 'Squads', 'New squad', 'Squads', 'Chats', 'New chat', 'Chats', 'Workspace', 'Code', 'Builder', 'Crew', 'Tickets', 'API client', 'Graph', 'Triggers', 'Artifacts']);
     expect(screen.getByRole('region', { name: 'Recent runs' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'README.md' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();

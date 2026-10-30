@@ -33,7 +33,7 @@ describe('the agent profile on the Crew card (board 3)', () => {
       'PUT /api/agents/coder': (b: { specialty: string }) => view({ profile: { ...view().profile, specialty: b.specialty } }),
     });
     renderApp(<AgentProfile bot="coder" name="Bolt" title="coder" />);
-    const memory = await screen.findByRole('group', { name: 'Memory · lessons Bolt carries into every team' });
+    const memory = await screen.findByRole('group', { name: 'Memory · lessons Bolt carries into every squad' });
     expect(within(memory).getByText('Commits are plain conventional messages.')).toBeTruthy();
     expect(screen.getByText('Answers when @mentioned, or handed a task or loop. Never acts unprompted.')).toBeTruthy();
     expect(within(screen.getByRole('list', { name: 'Teams' })).getByText('coding')).toBeTruthy();

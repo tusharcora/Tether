@@ -75,16 +75,18 @@ export function useUnloadWarning(on: boolean): void {
   }, [on]);
 }
 
-export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'goals' | 'api' | 'graph' | 'triggers' | 'artifacts' | 'chats' | 'teams' | 'attempts';
+export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'tickets' | 'api' | 'graph' | 'triggers' | 'artifacts' | 'chats' | 'squads' | 'attempts' | 'agents';
 export type Tab = Screen | 'settings';
 /** The screens with a `G` key and a "Go to" in ⌘K (Chats has its own sidebar section). */
-export const SCREENS: Screen[] = ['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'goals', 'api', 'graph', 'triggers', 'artifacts'];
-const TAB_IDS: readonly string[] = [...SCREENS, 'chats', 'teams', 'attempts', 'settings'];
-export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', goals: 'Goals', api: 'API', graph: 'Graph', triggers: 'Triggers', artifacts: 'Artifacts', chats: 'Chats', teams: 'Teams', attempts: 'Compare attempts', settings: 'Settings' };
+export const SCREENS: Screen[] = ['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'tickets', 'api', 'graph', 'triggers', 'artifacts'];
+const TAB_IDS: readonly string[] = [...SCREENS, 'chats', 'squads', 'attempts', 'agents', 'settings'];
+/** Old screens and where they went (spec 2026-10-30-squads-tickets): a saved `#/goals/…` or `#/teams/…` link still opens. */
+const MOVED: Record<string, Tab> = { goals: 'tickets', teams: 'squads' };
+export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', tickets: 'Tickets', api: 'API', graph: 'Graph', triggers: 'Triggers', artifacts: 'Artifacts', chats: 'Chats', squads: 'Squads', attempts: 'Compare attempts', agents: 'Agent', settings: 'Settings' };
 
 export interface Route {
   tab: Tab;
-  /** Runs: the run id. Attempts: an attempt set (Compare). Builder: a saved workflow. Crew: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. Chats: a chat id, or `new`. Teams: a team id, or `new`. */
+  /** Runs: the run id. Attempts: an attempt set (Compare). Builder: a saved workflow. Crew and Agents: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. Chats: a chat id, or `new`. Teams: a team id, or `new`. */
   id?: string;
   /** Code: the line to show (`#/code/<path>:<line>`). */
   line?: number;
@@ -92,17 +94,22 @@ export interface Route {
   node?: string;
   /** Runs: open the run on this pane instead of the step pane (a failed run opens on its Timeline). */
   pane?: 'timeline';
+  /** Tickets: the board filtered to one squad (`?squad=`), from a squad's pulse. */
+  squad?: string;
 }
 
 export function parseHash(h: string): Route {
   const [path = '', query = ''] = h.replace(/^#\/?/, '').split('?');
-  const [t, id, node] = path.split('/');
+  const [raw, id, node] = path.split('/');
+  const t = MOVED[raw ?? ''] ?? raw;
   if (!TAB_IDS.includes(t ?? '')) return { tab: 'home' };
   if (t === 'code') return codeRoute(path.slice('code'.length + 1));
   const r: Route = { tab: t as Tab };
   if (id) r.id = safeDecode(id);
-  if (id && node && (r.tab === 'runs' || r.tab === 'chats')) r.node = safeDecode(node);
+  if (id && node && (r.tab === 'runs' || r.tab === 'chats' || r.tab === 'squads')) r.node = safeDecode(node);
   if (id && r.tab === 'runs' && new URLSearchParams(query).get('pane') === 'timeline') r.pane = 'timeline';
+  const squad = r.tab === 'tickets' ? new URLSearchParams(query).get('squad') : null;
+  if (squad) r.squad = squad;
   return r;
 }
 
@@ -124,7 +131,9 @@ function codeRoute(raw: string): Route {
 const codeHash = (r: Route) => `#/code${r.id ? `/${r.id.split('/').map(encodeURIComponent).join('/')}${r.line ? `:${r.line}` : ''}` : ''}`;
 
 export const hashFor = (r: Route): string =>
-  r.tab === 'code' ? codeHash(r) : `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}${r.tab === 'runs' && r.pane ? `?pane=${r.pane}` : ''}` : ''}`;
+  r.tab === 'code'
+    ? codeHash(r)
+    : `#/${r.tab}${r.id ? `/${encodeURIComponent(r.id)}${r.node ? `/${encodeURIComponent(r.node)}` : ''}${r.tab === 'runs' && r.pane ? `?pane=${r.pane}` : ''}` : ''}${r.tab === 'tickets' && r.squad ? `?squad=${encodeURIComponent(r.squad)}` : ''}`;
 
 /** Each history entry the app reaches is stamped with its position, so a blocked Back/Forward can step back to it. */
 const POS = 'aorchPos';
@@ -157,8 +166,12 @@ export function useHashRoute(block?: (next: Route, current: Route) => boolean, o
     const at = posOf(history.state);
     if (at === undefined) history.replaceState(stamped(pos.current), '');
     else pos.current = at;
+    // an old screen's link (#/goals, #/teams) shows its new address
+    const redirect = () => /^#\/?(goals|teams)(\/|\?|$)/.test(location.hash) && history.replaceState(history.state, '', hashFor(parseHash(location.hash)));
+    redirect();
 
     const on = () => {
+      redirect();
       const next = parseHash(location.hash);
       const mine = expected.current === location.hash;
       expected.current = null;

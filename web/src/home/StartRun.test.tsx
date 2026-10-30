@@ -38,9 +38,9 @@ describe('Start a run', () => {
   it('picks autonomous from the run-kind chip and starts with Ctrl+Enter; plain Enter only adds a newline', async () => {
     setup();
     await type('Write the docs');
-    fireEvent.click(screen.getByRole('button', { name: /Team · live/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Team · autonomous' }));
-    expect(screen.getByRole('button', { name: /Team · autonomous/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Squad · live/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Squad · autonomous' }));
+    expect(screen.getByRole('button', { name: /Squad · autonomous/ })).toBeTruthy();
     fireEvent.keyDown(await taskField(), { key: 'Enter' });
     expect(calls('POST', '/api/runs')).toHaveLength(0);
     await act(async () => fireEvent.keyDown(await taskField(), { key: 'Enter', ctrlKey: true }));
@@ -144,7 +144,7 @@ describe('Start a run', () => {
     const onGo = vi.fn();
     setup({ onGo });
     await taskField();
-    fireEvent.click(screen.getByRole('button', { name: /Team · live/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Squad · live/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Workflow…' }));
     expect(onGo).toHaveBeenCalledWith({ tab: 'builder' });
   });

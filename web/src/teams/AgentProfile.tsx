@@ -45,14 +45,14 @@ export function AgentProfile({ bot, name, title }: { bot: string; name: string; 
       <SectionHeading id={ids.me} title="As a teammate" />
       <p className="sl-meta">Answers when @mentioned, or handed a task or loop. Never acts unprompted.</p>
       <Input label="Specialty" value={specialty} maxLength={24} placeholder={title} onChange={(e) => setSpecialty(e.target.value)} />
-      <Textarea label="Personality" rows={3} maxLength={500} value={personality} placeholder="How it talks in a team, in a few lines." onChange={(e) => setPersonality(e.target.value)} />
+      <Textarea label="Personality" rows={3} maxLength={500} value={personality} placeholder="How it talks in a squad, in a few lines." onChange={(e) => setPersonality(e.target.value)} />
       <div className="cw-actions">
         <Button variant="secondary" size="sm" disabled={!dirty} loading={busy} onClick={save}>
           Save teammate
         </Button>
       </div>
 
-      <SectionHeading id={ids.memory} title={`Memory · lessons ${name} carries into every team`} count={v.lessons.length} action={v.lessons.length ? <ConfirmButton label="Forget all" prompt={`Forget all ${v.lessons.length} lessons?`} confirmLabel="Forget all" variant="danger" onConfirm={() => forget()} /> : undefined} />
+      <SectionHeading id={ids.memory} title={`Memory · lessons ${name} carries into every squad`} count={v.lessons.length} action={v.lessons.length ? <ConfirmButton label="Forget all" prompt={`Forget all ${v.lessons.length} lessons?`} confirmLabel="Forget all" variant="danger" onConfirm={() => forget()} /> : undefined} />
       {v.lessons.length ? (
         // every lesson is one it already carries: nothing here was just learned
         <MemoryChips role="group" aria-labelledby={ids.memory} className="max-w-none" chips={v.lessons.map((l) => ({ id: l.id, text: l.text, change: 'existing' }))} onForget={(id) => void forget(id)} />
@@ -74,7 +74,7 @@ export function AgentProfile({ bot, name, title }: { bot: string; name: string; 
           ))}
         </ul>
       ) : (
-        <p className="sl-meta">Not in a team yet: add it from a team's settings.</p>
+        <p className="sl-meta">Not in a squad yet: add it from a squad's settings.</p>
       )}
       {v.recent.length ? (
         <>

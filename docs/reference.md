@@ -13,7 +13,9 @@ The full manual: every command, setting and limit. New here? Start with the [REA
 - [Bots asking each other](#bots-asking-each-other)
 - [Teams: a manager hands out work](#teams-a-manager-hands-out-work)
   - [Worker handoffs: `@HAND`](#worker-handoffs-hand)
-- [Team runs](#team-runs)
+- [Squad runs](#squad-runs)
+- [Squads](#squads)
+- [Tickets](#tickets)
 - [Evolve: bots that improve with use](#evolve-bots-that-improve-with-use)
 - [Crew styles (web dashboard)](#crew-styles-web-dashboard)
 - [Talking to Tether](#talking-to-tether)
@@ -23,6 +25,7 @@ The full manual: every command, setting and limit. New here? Start with the [REA
   - [Usage and spend (Experiential Labs)](#usage-and-spend-experiential-labs)
 - [Rewind, fork and try more ways](#rewind-fork-and-try-more-ways)
 - [Terminal and Preview](#terminal-and-preview)
+- [Telegram squads](#telegram-squads)
 - [Deleting runs](#deleting-runs)
 
 ## Terminal UI tips
@@ -190,9 +193,9 @@ A worker (any agent step, including one a manager spawned) can pass a sub-task t
 - `@ASK` is still the cheap way to ask a question: it consults a step that already finished and spawns nothing. Use `@HAND` when someone needs to do new work.
 
 
-## Team runs
+## Squad runs
 
-A run is either a **workflow** (a fixed pipeline of steps, everything above) or a **team** run: you give a goal, Tether asks you a few questions, writes a plan, and once you approve it a manager (Boss) hands the work to bots from the crew. Use a workflow when you know the steps; use a team when the work is open-ended. Tether proposes a team run when you describe open-ended work or ask for "a team".
+A run is either a **workflow** (a fixed pipeline of steps, everything above) or a **squad** run (the run kind is still called `team` in the API and the CLI, `tether team`): you give a goal, Tether asks you a few questions, writes a plan, and once you approve it a manager (Boss) hands the work to bots from the crew. Use a workflow when you know the steps; use a team when the work is open-ended. Tether proposes a team run when you describe open-ended work or ask for "a team".
 
 **Planning cards.** Before any plan, Tether asks in rounds. Each round has up to 4 questions (cards) with at most 6 options each; every card has a recommended option (marked with a star), and most carry a one-line reason for asking. Some cards also accept your own words (free text, up to 2000 characters). The "writes" card is always worded by Tether itself ("May agents change files in the worktree?"), whatever the model wrote, so its yes means yes. Press enter or run with `--yes` to take the recommended answers. After at most 3 rounds (`--rounds n`, 1 to 6) Tether has to write the plan, which lists the goal, success criteria, who does what (read or write) and the limits. Nothing starts until you approve it. Boss's first batch of work needs no second approval only when it stays inside the plan (the bots it names, writes only where the plan says write); anything beyond it, and every later batch, asks you again.
 
@@ -346,6 +349,53 @@ tether usage --days 30 --by key   # group by key, member, app, provider…
 
 The same view is in Settings → LLM providers → the provider → Usage and spend. The organisation id is read from `/api/whoami`; set it by hand with `tether providers org-id <name> <id>` if that fails. If the key needs to differ for usage, `tether providers usage-key <name> <ENV_VAR>` sets an override. All-in spend is paid + BYOK + free; money is kept as exact integers (nano-USD) and shown to the cent, and a report with unknown provider accounting is marked provisional.
 
+## Squads
+
+A **squad** is people and agents (Crew bots) working on one project, in Tether or in a Telegram group. Squads replaced Teams (2026-10-30): the same squads with the same ids; on first start Tether moves `<home>/teams/` to `<home>/squads/` once (a home that already has `squads/` keeps it and leaves `teams/` alone). The sidebar lists them under **Squads** (a pulsing dot while one works, the number of things waiting on you, or how many messages came since you last looked) and every agent under **Agents** with its face and what it is doing.
+
+**The channel (board 8).**
+
+- **Right now**: a card per busy agent (its face, a live line such as "editing Tabs.tsx", its progress, a timer and its ticket), a **You** card when something waits on you, and the free agents. A card filters the channel to that member; **Show everyone** clears it.
+- Agents write like teammates: one or two first-person sentences, at most 280 characters, no headings, lists, code blocks or other markdown; numbers that matter inline. The work sits behind **What I did** (files changed, +/−, the commands that ran with their results, time, model) with **Full report** (the agent's raw output, never posted in the channel), **Diff** and **Open the run**.
+- Hand-offs show as a chip ("Handed to Lens for a review"). Replies to an agent's message go in its thread (the first review of a hand-off stays in the channel); a person can reply in any thread from the panel on the right. Messages take reactions (Nice, Thanks, +1, Looking) and can be pinned; hover a message, or tab to it, for React, Reply in thread, Pin and Open the run. A line shows who is writing ("Lens is reading Bolt's change…").
+- **Chat | Map**: the map shows who handed work to whom today; lines move while that work is live.
+- The composer suggests asks ("Ask Bolt to…", "Have Lens review a PR", "What's everyone doing?"); `@` opens a picker that says whether each agent is **free now** or **busy · will queue**.
+- **Squad pulse** (right, when no thread is open): the squad's tickets per status (each opens the board on this squad), what shipped today with five days of shipping, what is coming up (queued pickups, recurring tickets and their next scheduled time) and what is pinned (a message with a link reads "Link", anything else "Decision").
+
+**The status writer.** Squad messages come from templates when they only restate facts (started, plan waiting, plan approved, queued, auto-fix round n, ready to ship, PR opened, merged). When there is a report to condense (work finished, failed, auto-fix gave up) the squad's cheapest model writes it: an agent of the squad on a free model first (OpenRouter, NVIDIA or a `:free` model), else the speaking agent's own binding. Its reply is checked (length, at most two sentences, where a fragment of three words or fewer such as "Fixed it." does not count, no markdown, every @mention a member of the squad, a failure that says so plainly) and replaced by the template when it breaks a rule. Agents answering a ping get the same rules in their prompt; an answer that breaks them is flattened to its first two sentences and the whole answer is kept as its report.
+
+**Work.** "@Bolt fix the sign-in redirect" becomes a ticket (assigned to Bolt, reviewed by the squad's reviewer agent when it has one, made from the message) and a run on Bolt's binding. If Bolt is already working on a run in the squad, the task waits in the squad's queue as a Todo ticket ("I'm in the middle of WEB-145, so I'll pick this up next.") and starts when that run stops working (it reaches its ship card or ends); **Start now** starts it at once. When the work is done Bolt says so and asks the reviewer; a failed review hands the work back as a rework on the same branch, in the reviewer's thread, and replaces the ship card that waited. Agents hand on at most 3 times in a row before a person must step in.
+
+**The ship card.** It shows the change's size (a +/− bar), the test gate, the review and the ticket's criteria. **Ship it** approves, opens the PR and merges it once its checks pass; until it merges the card says "Shipped by you · PR #n open" with **Undo** (the PR is closed, the merge watch stops and the card waits again). **Not yet** asks what should change and the agent reworks it once. A failure (a push or merge that did not work, a run that failed, auto-fix giving up) is said in the channel with its reason.
+
+**API** (loopback; `/api/teams…` answers the same for one release):
+
+- `GET /api/squads` → `{ squads, teams, agents }` (`teams` is the same list under its old name; each agent has `state`, `line`, `since`, `progress`, `ticket`). Each squad has `status`, `needs`, `recent` (when the newest messages from others came) and its `queue`.
+- `GET /api/squads/:id` (the squad, messages, members with what each is doing, queue, spend), `POST /api/squads`, `PATCH /api/squads/:id`, `DELETE /api/squads/:id`.
+- `POST /api/squads/:id/messages { text, thread? }`, `POST /api/squads/:id/messages/:msg/react { reaction }`, `POST /api/squads/:id/messages/:msg/pin { on }`.
+- `POST /api/squads/:id/cards/:msg { action, reason?, task? }`, `POST /api/squads/:id/cards/:msg/undo`, `GET /api/squads/:id/diff/:msg`, `POST /api/squads/:id/queue/:q/start`.
+
+## Tickets
+
+Every goal is a **ticket** (Tickets replaced Goals, 2026-10-30): software-engineering tickets with a key (`<PREFIX>-<n>`, numbered per project in creation order and never reused; the prefix is the last word of the project name, at most 4 letters, `acme-web` → `WEB`, and editable from the Tickets header, which renames every key of the project), a type (feature, bug, refactor, chore), a status (**Backlog, Todo, In progress, In review, Done, Canceled**), a priority (Urgent, High, Medium, Low, none), an assignee and an optional reviewer (an agent or you), a squad, labels, **acceptance criteria**, linked PRs, what it has spent (shown; a cap only with Spending caps on and a limit set), where it came from (a chat, a squad message) and its activity.
+
+- **Criteria**: the items you tick, and at most one **auto-checked** criterion: a command (the old goal check) run after each of the ticket's runs, in that run's worktree.
+- **Flow**: asking a chat or a squad to build, fix or change something makes a ticket (in a chat, the ticket card: Start, Edit ticket, or "Just answer, no ticket"). Its first run moves it to In progress; a run waiting on its ship approval, or a PR it opened, moves it to In review (it **needs you** when an approval waits); a send-back moves it back to In progress; the merge moves it to Done. A run that ends with nothing to ship is Done. A ticket you move to Canceled stops its loop, to Backlog pauses one, to Done ends one; moved out of Done or Canceled it waits for a Start again.
+- **Recurring tickets** are the old loops ("@Probe keep main green"): a ticket with an auto-checked criterion that runs until it passes, within its limits; schedules (Triggers → Schedules) give one its next turn.
+- **Start** on a ticket assigned to a squad's agent hands it to that agent in its squad; a comment that @mentions an agent hands it the ticket the same way (an agent in no squad of the project is refused, plainly). Otherwise Start runs it as goals ran: its workflow, or a squad run.
+
+**The screen (board 10)**: **This week** (shipped since Monday with a bar per day, in flight and who, the average Todo → Done time, the oldest ticket waiting on you), filters (All, Needs me, Bugs, Canceled, a squad, an assignee), **Board** (a column per status; in-progress cards show the agent's live line and timer, in-review cards their criteria and PR, Done cards their merged PR; Canceled shows in the List) or **List** (key, title, status, priority, assignee, squad, updated), and the detail panel (properties, criteria, the ship banner in review with Merge PR or Ship it and Send back, Start, the activity and a comment box). Backlog shows **Ideas from your chats** (asks a chat drafted a ticket for that were answered "no ticket"; **+** makes one); Todo shows **Ready for an agent** (a free squad agent for each unassigned ticket, with Assign, which also starts it, and the queued pickups, with Start now). Each box shows only when it has something real. `#/goals…` links open Tickets, `#/teams/…` links open Squads.
+
+**Migration**: on first start each goal gets a number (per project, in creation order), a status (paused not started → Todo, paused → Backlog, active → In progress, needs you → In review, met → Done, stopped → Canceled), an assignee and reviewer from its loop agent and assignees, and a squad from its team; its check, items and runs stay as they were (they are the criteria and the history). Running it again changes nothing.
+
+**API** (loopback; `/api/goals…` answers the same for one release):
+
+- `GET /api/tickets[?ws=]`, `GET /api/tickets/stream`, `GET /api/tickets/:id`. A ticket has the goal's fields plus `key`, `stage` (the status), `priority`, `assignee`, `reviewer`, `labels`, `prs`, `squad`, `criteria`, `activity` and `needs` (why it waits on you).
+- `POST /api/tickets { title, workspace, type?, priority?, stage?: 'backlog'|'todo', assignee?, reviewer?, labels?, squad?, criteria?, description?, check?, recurring? }`: with `stage` it waits for its Start; without it a goal starts as before.
+- `PATCH /api/tickets/:id { stage?, priority?, assignee?, reviewer?, labels?, squad?, recurring?, … }` (`null` clears an assignee, reviewer or squad), `DELETE /api/tickets/:id`.
+- `POST /api/tickets/:id/start`, `/comments { text }`, `/ship` (Ship it or Merge PR), `/send-back { reason? }`, `/check`, `/next`, `/items`, `PATCH /api/tickets/:id/items/:n`.
+- `PUT /api/tickets/prefix { workspace, prefix }`, `GET /api/tickets/ideas?ws=`, `POST /api/tickets/ideas { workspace, chat, proposal }`.
+
 ## Rewind, fork and try more ways
 
 On a run's page, a finished step's ⋯ menu has:
@@ -366,6 +416,34 @@ A run's page has two more tabs for checking its work without leaving Tether.
 - **Preview** starts the project's dev command in the worktree (`npm run dev`, else `npm run start`, else the command you type) with `PORT` set to a free port, and shows the page in a sandboxed frame once it prints a `localhost` or `127.0.0.1` address (or on its `PORT` after 20 seconds). On a wide window it opens beside the step. Reload, Open in browser and Stop are in its bar.
 
 Commands get your `PATH` and a few basics (`HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TMPDIR`, `TZ`), none of Tether's keys or tokens. Every process is ended by Stop, by deleting the run, and when Tether quits; ones a crash left behind are ended the next time it starts. The routes answer loopback only, like the rest of the API: `GET|POST /api/runs/:id/exec { command }`, `POST /api/runs/:id/exec/stop`, `GET|POST|DELETE /api/runs/:id/preview { command? }`; the output rides the run's stream (`/api/runs/:id/stream`) as `proc` events.
+
+## Telegram squads
+
+A squad can live in a Telegram group: people talk to Tether's agents there, get live progress, and approve ships from their phone. Everything runs on your Mac while Tether runs (long polling, no server, no public URL).
+
+**Set up once:**
+
+1. In Telegram, open @BotFather, send `/newbot`, and copy the token it gives you.
+2. Settings → Accounts → **Telegram**: paste the token and press Connect. Tether checks it with Telegram and keeps it in your Keychain; nothing else stores it.
+3. Press **Link my Telegram** and send the `/iam <code>` it shows to your bot in a private chat (within 10 minutes). From then on your Telegram account is you: you can approve and start runs in every Telegram squad.
+4. Optional, for voice notes: **Voice notes: download model (~241 MB)**. The model (SenseVoice, INT8) is checked against pinned hashes and kept in `<home>/models/sensevoice/`. Voice notes are decoded with the Mac's own `afconvert` (`ffmpeg` elsewhere) and transcribed on this machine: the audio never leaves it.
+
+**Make a squad:** New squad (+ beside Squads) → **Telegram group**. Once it is made, the squad shows a one-time pairing code. Add the bot to your group, make it an **admin** (it needs that to pin the live status and to see every message; or turn privacy off with BotFather's `/setprivacy`), and send `/pair <code>` in the group.
+
+**In the group:**
+
+- @mention an agent (`@Bolt fix the Back button`) or reply to an agent's message: the same squad rules as a Tether squad (an answer, a run and its ticket, recurring work, a review, a merge), within the squad's daily limits. Replies come labelled with the agent's name, in the squad voice: the agent's sentence and one line of What I did (files, +/−, the commands and their results), never its raw report.
+- Run progress and decisions are edited in place (at most one edit every 3 s per message). One pinned message shows what is running, what needs you and today's spend.
+- Cards have buttons: **Ship it / Not yet / Diff** on ship cards (then how the ship went: the PR open, merged, or why not), **Approve / Reject** on plans, **Start run / Edit / Dismiss** on proposals (Edit asks you to reply with the task as it should run).
+- `/status`, `/runs` (the last 5, with their PR links), `/new <task>` (a run on the agent it names, else the squad's first), `/mute 1h` (or `30m`, up to 24 h, or `off`: holds back everything but approvals and proposals).
+- A photo goes to the agent when its model reads images (Claude, or an OpenRouter model tagged for images); otherwise the agent gets the caption and the group is told.
+- A voice note is transcribed, echoed as "Voice: …", then handled like typed text. Until the model is downloaded the group is told so.
+
+**People and permissions** (the squad's header): everyone in the group can chat and @mention agents and appears as they speak or join. Per person, two switches, both off for new people: **Approver** (approve, reject, ask for a merge) and **Can start runs** (runs, loops and `/new`). Without it, an ask becomes a proposal card that an allowed person starts, and the asker is told why once. You always have both. Agents and other Telegram bots never approve; an agent starts runs only through a person who may.
+
+**Safety:** Tether acts only on the linked group (an unlinked group may only `/pair`, a private chat only `/iam`); every other update is dropped and logged by id only. Every approval asked in a Telegram squad also lands in your Inbox and Home "Needs you"; deciding in either place settles both, and a second press is told who decided first. The Tether room of a Telegram squad is a read-only mirror. Disconnecting removes the token from the Keychain and stops listening; squads keep their group link for later.
+
+API (loopback): `POST /api/accounts/telegram { token }`, `DELETE /api/accounts/telegram`, `GET /api/telegram`, `POST /api/telegram/iam`, `POST /api/telegram/voice`, `POST /api/squads/:id/pair`, `PATCH /api/squads/:id/people/:person { approver?, canStartRuns? }`, `DELETE /api/squads/:id/people/:person` (the `/api/teams/…` paths answer too, for one release).
 
 ## Deleting runs
 

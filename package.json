@@ -31,6 +31,7 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "cmdk": "^1.1.1",
     "quickjs-emscripten-core": "^0.32.0",
+    "sherpa-onnx-node": "1.13.8",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

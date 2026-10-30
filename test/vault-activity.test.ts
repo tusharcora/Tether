@@ -29,7 +29,7 @@ describe('vault activity', () => {
     });
     const r = vaultActivity(s, { limit: 10, now: 1_000 + SETTLE_MS });
     expect(r.items.map((i) => i.path)).toEqual(['Files/src/a.ts.md', 'Roles/coder.md', 'Runs/2026-10-25 ship r1.md']);
-    expect(r.items[0]).toEqual({ id: 't1:2', ts: 1000, runId: 't1', run: 'Team run', path: 'Files/src/a.ts.md' });
+    expect(r.items[0]).toEqual({ id: 't1:2', ts: 1000, runId: 't1', run: 'Squad run', path: 'Files/src/a.ts.md' });
     expect(r.items[1]!.run).toBe('ship');
     expect(JSON.stringify(r)).not.toContain('SENTINEL');
     expect(r.cursor).toBe('1000:t1:2');

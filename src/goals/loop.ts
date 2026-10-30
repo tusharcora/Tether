@@ -19,10 +19,17 @@ import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
 import { TEAM_MAX_BUDGET_USD } from '../team.js';
+import type { StoredEvent } from '../types.js';
 import { GoalStore } from './store.js';
-import type { Assignee, Attempt, CheckResult, Goal, GoalCheck, GoalItem, Plan } from './types.js';
+import { getWorkspace } from '../workspace.js';
+import { keyOf, nextStage, openPr, prefixFrom, stageOf, type TicketEvent } from './tickets.js';
+import { ACTIVITY_MAX, type Assignee, type Attempt, type CheckResult, type Goal, type GoalCheck, type GoalItem, type Plan, type Stage, type TicketActivity } from './types.js';
 
 const CHECK_MS = 300_000;
+const TETHER = { kind: 'tether' as const, id: 'tether', name: 'Tether' };
+const STAGE_WORD: Record<Stage, string> = { backlog: 'Backlog', todo: 'Todo', in_progress: 'In progress', in_review: 'In review', done: 'Done', canceled: 'Canceled' };
+/** The activity with one more line, the newest ACTIVITY_MAX kept. */
+const withNote = (g: Goal, n: Omit<TicketActivity, 'at'>): TicketActivity[] => [...(g.activity ?? []), { at: Date.now(), ...n, text: n.text.slice(0, 500) }].slice(-ACTIVITY_MAX);
 const TAIL = 4000;
 const tail = (s: string) => (s.length > TAIL ? s.slice(s.length - TAIL) : s);
 
@@ -52,6 +59,8 @@ export function judge(check: GoalCheck, code: number | null, out: string): Pick<
 export interface GoalHooks {
   start(g: Goal, plan: Plan): Promise<string>;
   blocked(g: Goal): string | undefined;
+  /** A waiting run was decided (from any surface): the team settles its card. */
+  decided?(g: Goal, action: 'start' | 'skip'): void;
 }
 
 /** Why a goal's caps stop it now; a cap that is not set is not checked. */
@@ -85,6 +94,8 @@ export class Goals {
   // shortcut: in memory only; one still going when the server stops is never settled (its item shows no result)
   private siblings = new Map<string, string>();
   private jobs = new Set<Promise<unknown>>();
+  /** Runs whose ticket's auto-checked criterion already ran. */
+  private checked = new Set<string>();
 
   constructor(private d: GoalsDeps) {
     this.db = new GoalStore(d.store.raw());
@@ -96,6 +107,8 @@ export class Goals {
         this.siblings.delete(e.runId);
         this.job(this.settleSibling(sib, e.runId).catch(() => {}));
       }
+      const t = e.event.type;
+      if (t === 'approval.requested' || t === 'approval.resolved' || t === 'run.shipped' || t === 'run.finished') this.track(e.runId, e.event);
     });
     // after a restart: pick up the runs that were in flight
     for (const g of this.db.list()) {
@@ -120,11 +133,15 @@ export class Goals {
     this.jobs.add(j);
   }
   private save(goal: Goal): Goal {
-    // the one place status lands: a goal that becomes met or stopped keeps the moment it did; a resumed one loses it. One
-    // that ended before endedAt existed stays without it (the page falls back to its last item), not stamped with today.
-    const ended = goal.status === 'met' || goal.status === 'stopped';
-    const now = ended && !goal.endedAt && this.db.get(goal.id)?.status !== goal.status;
-    const g = { ...goal, endedAt: ended ? (now ? Date.now() : goal.endedAt) : undefined };
+    // the one place status lands: a goal that becomes met or stopped (a ticket that reaches Done or Canceled) keeps the
+    // moment it did; a resumed one loses it. One that ended before endedAt existed stays without it, not stamped with today.
+    const prev = this.db.get(goal.id);
+    // the ticket follows the loop engine: a status change moves its status (spec 2026-10-30-squads-tickets §2.5)
+    const stage = prev && prev.status !== goal.status ? nextStage(stageOf(prev), { kind: 'loop', status: goal.status, started: !!goal.startedAt }, { openPr: openPr(goal) }) : stageOf(goal);
+    const over = (st: Stage, status: Goal['status']) => st === 'done' || st === 'canceled' || status === 'met' || status === 'stopped';
+    const ended = over(stage, goal.status);
+    const now = ended && !goal.endedAt && (!prev || !over(stageOf(prev), prev.status));
+    const g = { ...goal, stage, endedAt: ended ? (now ? Date.now() : goal.endedAt) : undefined };
     this.db.save(g);
     for (const l of this.listeners) l(g);
     return g;
@@ -139,8 +156,7 @@ export class Goals {
 
   /** Create: a loop begins at once with its first check; one made paused waits for `begin`. */
   create(goal: Goal): Goal {
-    const g = goal.status === 'active' && !goal.startedAt ? { ...goal, startedAt: goal.createdAt } : goal;
-    this.db.insert(g);
+    const g = this.db.insert(goal.status === 'active' && !goal.startedAt ? { ...goal, startedAt: goal.createdAt } : goal);
     this.save(g);
     if (g.kind === 'loop' && g.status === 'active') this.job(this.checkAndAdvance(g.id));
     return g;
@@ -164,10 +180,14 @@ export class Goals {
   }
 
   /** Edit a goal. Adding a finish check to a tracker turns it into a loop, which starts at once. */
-  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'maxMinutes' | 'dueDate' | 'workflow' | 'check' | 'type' | 'description' | 'assignees' | 'team' | 'agent'>>): Goal {
+  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'maxMinutes' | 'dueDate' | 'workflow' | 'check' | 'type' | 'description' | 'assignees' | 'team' | 'agent' | 'priority' | 'assignee' | 'reviewer' | 'labels' | 'squad'>> & { recurring?: boolean }): Goal {
+    const { recurring, ...rest } = patch;
+    patch = rest;
     const g = this.db.must(id);
+    // a ticket's check is an auto-checked criterion; it loops (a recurring ticket) only when asked to
+    if (recurring === false && g.kind === 'loop') return this.save({ ...g, ...patch, kind: 'tracker' });
     // a goal not started yet takes a check and stays waiting for its Start
-    const loops = !!patch.check && g.kind === 'tracker';
+    const loops = recurring === true && !!(patch.check ?? g.check) && g.kind === 'tracker';
     const waits = !g.startedAt && g.status === 'paused';
     const r = this.save({ ...g, ...patch, ...(loops ? { kind: 'loop' as const, ...(waits ? {} : { status: 'active' as const }) } : {}) });
     if (loops && !waits) this.job(this.checkAndAdvance(id));
@@ -348,6 +368,7 @@ export class Goals {
     if (g.status !== 'needs_you' || !g.pending) throw new HttpError(409, 'no run is waiting for you');
     // decided once: the status moves before anything awaits, so a second click is refused
     const taken = this.save({ ...g, status: 'active', pending: undefined });
+    if (g.team) this.d.hooks?.decided?.(g, action);
     if (action === 'skip') {
       this.job(this.advance(id).catch((e) => this.failed(id, e)));
       return taken;
@@ -393,11 +414,93 @@ export class Goals {
     return before === undefined && a?.after?.value === undefined ? undefined : { ...(before !== undefined ? { before } : {}), ...(a?.after?.value !== undefined ? { after: a.after.value } : {}) };
   }
 
+  /** A manual criterion, or a run linked to the ticket by hand or by its squad (its work starts the ticket). */
   addItem(id: string, i: { text: string; runId?: string }): GoalItem {
-    const g = this.db.must(id);
     const item = this.db.addItem({ goalId: id, kind: i.runId ? 'run' : 'manual', text: i.text, runId: i.runId });
-    this.save(g);
+    const s = i.runId ? this.d.store.state(i.runId) : undefined;
+    const g = this.db.must(id);
+    // a ticket waiting for its Start (queued in a squad) starts with its first run
+    if (s && g.kind === 'tracker' && g.status === 'paused' && !g.startedAt) this.save({ ...g, status: 'active', startedAt: Date.now() });
+    if (s && !isFinished(s.status)) this.ticketEvent(id, { kind: 'started' });
+    else this.save(this.db.must(id));
     return item;
+  }
+
+  // ---- tickets (spec 2026-10-30-squads-tickets §2.5) ----
+
+  /** Move a ticket on an event of its work, with a line of activity. */
+  ticketEvent(id: string, ev: TicketEvent, note?: Omit<TicketActivity, 'at'>): Goal | undefined {
+    const g = this.db.get(id);
+    if (!g) return undefined;
+    const stage = nextStage(stageOf(g), ev, { openPr: openPr(g) });
+    return this.save({ ...g, stage, ...(note ? { activity: withNote(g, note) } : {}) });
+  }
+  /** A ticket's key, `<PREFIX>-<n>`: the project's edited prefix, else one from its name. */
+  key(id: string): string | undefined {
+    const g = this.db.get(id);
+    return g && keyOf(this.db.prefix(g.workspace) ?? prefixFrom(getWorkspace(this.d.home, g.workspace)?.name ?? g.workspace), g.num);
+  }
+  /** A PR closed before it merged (a squad's Undo): off the ticket, which is back in review. */
+  dropPr(id: string, number: number, by: TicketActivity['who']): void {
+    const g = this.db.get(id);
+    if (!g) return;
+    this.save({ ...g, prs: (g.prs ?? []).filter((p) => p.number !== number) });
+    this.ticketEvent(id, { kind: 'asked', what: 'ship' }, { who: by, text: `undid the ship: PR #${number} is closed` });
+  }
+  /** A line of activity (an agent's update, a person's comment). */
+  note(id: string, note: Omit<TicketActivity, 'at'>): Goal | undefined {
+    const g = this.db.get(id);
+    return g && this.save({ ...g, activity: withNote(g, note) });
+  }
+  /**
+   * A person moves the ticket. Canceled stops its loop, Backlog pauses a running one, Done ends it; a run already going
+   * finishes. Todo and In progress change only the status (nothing starts without Start).
+   */
+  setStage(id: string, stage: Stage, by: TicketActivity['who']): Goal {
+    let g = this.db.must(id);
+    const open = g.status !== 'met' && g.status !== 'stopped';
+    if (stage === 'canceled' && open) g = this.save({ ...g, status: 'stopped', reason: `Canceled by ${by.name}`, pending: undefined });
+    else if (stage === 'backlog' && (g.status === 'active' || g.status === 'needs_you')) g = this.save({ ...g, status: 'paused', pending: undefined });
+    else if (stage === 'done' && open) g = this.save({ ...g, status: 'met', pending: undefined });
+    // reopened (moved out of Done or Canceled): its loop waits for a Start again
+    else if (!open && stage !== 'done' && stage !== 'canceled') g = this.save({ ...g, status: 'paused', reason: undefined });
+    return this.save({ ...this.db.must(id), stage, activity: withNote(g, { who: by, text: `moved it to ${STAGE_WORD[stage]}` }) });
+  }
+  /** The PR a ticket's run opened, or its merge. */
+  private pr(id: string, runId: string, ev: Extract<StoredEvent['event'], { type: 'run.shipped' }>): void {
+    const g = this.db.get(id);
+    if (!g) return;
+    const prs = [...(g.prs ?? [])];
+    const at = prs.findIndex((p) => p.runId === runId || (ev.number !== undefined && p.number === ev.number));
+    if (ev.url && ev.number !== undefined) {
+      if (at < 0) prs.push({ number: ev.number, url: ev.url, runId });
+    } else if (ev.merged && at >= 0) prs[at] = { ...prs[at]!, merged: true };
+    const n = ev.number ?? prs[at]?.number;
+    this.save({ ...g, prs });
+    if (ev.error) return void this.note(id, { who: TETHER, text: `could not ship: ${ev.error.slice(0, 200)}`, runId });
+    if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
+  }
+  /** A ticket's run moved: its approvals, its PR, how it ended (failures say so; a fixable one waits for auto-fix). */
+  private track(runId: string, ev: StoredEvent['event']): void {
+    const id = this.db.ofRun(runId);
+    if (!id) return;
+    if (ev.type === 'approval.requested') {
+      const ship = ev.node !== 'approve-plan';
+      this.ticketEvent(id, { kind: 'asked', what: ship ? 'ship' : 'plan' });
+      if (ship) this.job(this.autoCheck(id, runId));
+    } else if (ev.type === 'approval.resolved' && !ev.approved) this.ticketEvent(id, { kind: 'answered', approved: false }, { who: { kind: 'person', id: 'owner', name: ev.by && ev.by !== 'dashboard' ? ev.by : 'You' }, text: 'sent it back', runId });
+    else if (ev.type === 'run.shipped') this.pr(id, runId, ev);
+    else if (ev.type === 'run.finished' && ev.status === 'done') this.job(this.autoCheck(id, runId));
+    // a failure says so (a stop is someone's choice, and a squad's replaced run stops quietly)
+    else if (ev.type === 'run.finished' && ev.status === 'error' && !this.d.autofixing?.(runId)) this.note(id, { who: TETHER, text: `the run failed: ${(ev.error ?? 'a step failed').split('\n')[0]!.slice(0, 200)}`, runId });
+  }
+  /** The auto-checked criterion of a ticket that is not a loop (a loop checks after its own runs), in the run's worktree. Once per run. */
+  private async autoCheck(id: string, runId: string): Promise<void> {
+    const g = this.db.get(id);
+    if (!g?.check || g.kind === 'loop' || this.checked.has(runId)) return;
+    this.checked.add(runId);
+    const r = await this.runCheck(g, this.d.store.state(runId)?.workdir).catch(() => undefined);
+    if (r) this.settle(id, r);
   }
   /** Tick an item or set who works on it. */
   editItem(id: string, itemId: number, patch: { done?: boolean; assignees?: Assignee[] }): GoalItem {

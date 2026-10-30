@@ -14,10 +14,10 @@ import { Caps } from './caps';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/beui/kit/toast';
 import { Crew } from './Crew';
+import { AgentPage } from './teams/AgentPage';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
-import { Goals } from './goals/Goals';
-import { inProject, isOpen, useGoals } from './goals/goalsApi';
+import { inProject, useGoals } from './goals/goalsApi';
 import { Home } from './home/Home';
 import { Inbox } from './home/Inbox';
 import type { WorkspaceRow } from './home/workspaces';
@@ -29,9 +29,10 @@ import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } fr
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
 import { Compare } from './runs/Compare';
+import { SquadScreen } from './squads/SquadScreen';
 import { NewTeam } from './teams/NewTeam';
-import { TeamScreen } from './teams/TeamScreen';
 import { TEAMS_PATH, type TeamsReply } from './teams/teamsApi';
+import { Tickets } from './tickets/Tickets';
 import { useTheme } from './theme';
 import { Triggers } from './Triggers';
 import { Button } from './components/beui/kit/Button';
@@ -309,16 +310,16 @@ function Shell() {
         <div ref={shellRef} className={cn('shell', { phone })}>
           {phone ? null : (
             <Sidebar
-              active={screen.tab === 'attempts' ? 'runs' : screen.tab}
+              active={screen.tab === 'attempts' ? 'runs' : screen.tab === 'agents' ? 'squads' : screen.tab}
               settingsOpen={settingsOpen}
               onGo={openScreen}
               onSearch={() => setPalette(true)}
               onSettings={openSettings}
               onCompose={compose}
               onCreate={createNew}
-              counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
+              counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, tickets: inProject(goals.goals, projects.current?.id).filter((t) => t.stage === 'in_progress' || t.stage === 'in_review').length }}
               chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }), onRename: renameFromSide, onDelete: deleteFromSide }}
-              teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: () => go({ tab: 'teams', id: 'new' }), onOpen: (id) => go({ tab: 'teams', id }) }}
+              squads={{ list: teams.data?.squads ?? [], agents: teams.data?.agents ?? [], current: screen.tab === 'squads' ? (screen.id ?? 'new') : undefined, onNew: (place) => go({ tab: 'squads', id: 'new', ...(place === 'telegram' ? { node: 'telegram' } : {}) }), onOpen: (id) => go({ tab: 'squads', id }), onAgent: (id) => go(id ? { tab: 'agents', id } : { tab: 'crew' }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
@@ -384,6 +385,7 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
+            {screen.tab === 'agents' && screen.id ? <AgentPage key={screen.id} id={screen.id} agents={teams.data?.agents ?? []} onGo={go} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
             {screen.tab === 'artifacts' ? <Artifacts key={projects.current?.id ?? '_'} ws={projects.current?.id} project={projects.current} onGo={go} /> : null}
@@ -401,14 +403,28 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat key={screen.node ?? ''} chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} starter={screen.node === 'run' || screen.node === 'file' ? screen.node : undefined} /> : null}
-            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} goals={goals.goals} teamName={(id) => teams.data?.teams.find((t) => t.id === id)?.name ?? id} /> : null}
-            {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
-              <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
+            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} goals={goals.goals} teamName={(id) => teams.data?.squads.find((t) => t.id === id)?.name ?? id} /> : null}
+            {screen.tab === 'squads' && (!screen.id || screen.id === 'new') ? (
+              <NewTeam key={screen.node ?? 'tether'} place={screen.node === 'telegram' ? 'telegram' : 'tether'} agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'squads', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
             ) : null}
-            {screen.tab === 'teams' && screen.id && screen.id !== 'new' ? (
-              <TeamScreen key={screen.id} id={screen.id} goals={goals.goals} agents={teams.data?.agents ?? []} projects={list} onGo={go} onChanged={() => void teams.refresh()} onNewAgent={() => createNew('bot')} />
+            {screen.tab === 'squads' && screen.id && screen.id !== 'new' ? (
+              <SquadScreen key={screen.id} id={screen.id} tickets={goals.goals} agents={teams.data?.agents ?? []} projects={list} onGo={go} onChanged={() => void teams.refresh()} onNewAgent={() => createNew('bot')} />
             ) : null}
-            {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} teams={teams.data} /> : null}
+            {screen.tab === 'tickets' ? (
+              <Tickets
+                tickets={goals.goals}
+                error={goals.error}
+                onTicket={goals.set}
+                project={projects.current}
+                squads={teams.data}
+                onSquadsChanged={() => void teams.refresh()}
+                selected={screen.id}
+                squad={screen.squad}
+                onSelect={(id) => go(id ? { tab: 'tickets', id } : { tab: 'tickets', ...(screen.squad ? { squad: screen.squad } : {}) })}
+                onGo={go}
+                create={create?.what === 'ticket' ? create.n : undefined}
+              />
+            ) : null}
           </main>
           {settingsPage}
           {phone ? <BottomBar active={screen.tab === 'attempts' ? 'runs' : screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
@@ -429,7 +445,7 @@ function Shell() {
         </div>
       )}
       {welcome && settingsPage ? <div className="st-alone">{settingsPage}</div> : null}
-      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} goals={inProject(goals.goals, projects.current?.id)} onNewGoal={() => createNew('goal')} />
+      <CommandMenu open={palette} onOpenChange={setPalette} onGo={go} onSettings={openSettings} onTheme={setChoice} ws={projects.current?.id} goals={inProject(goals.goals, projects.current?.id)} onNewGoal={() => createNew('ticket')} />
       <OpenFolderDialog open={openFolder} onOpenChange={setOpenFolder} onAdd={projects.add} />
       <RemoveProjectDialog
         project={removing}

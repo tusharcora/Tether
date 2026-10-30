@@ -166,13 +166,13 @@ export function goalsPromptPart(ctx: DraftCtx): string {
   const name = (id: string) => ctx.agents.find((a) => a.id === id)?.name ?? id;
   const teams = ctx.teams.map((t) => `- ${t.id} "${t.name}": ${t.agents.map((a) => `${a} (${name(a)})`).join(', ') || 'no agents'}`).join('\n');
   const agents = ctx.agents.map((a) => `- ${a.id} "${a.name}"${a.specialty ? `: ${a.specialty}` : ''}`).join('\n');
-  return `Asks become goals: when the person asks you to build, fix, change or do something in this project, end with exactly one "goal" proposal (not "workflow" or "team") so the work is set up for them; a question gets no proposal. Name only what exists here:
-Teams in this project:
+  return `Asks become tickets: when the person asks you to build, fix, change or do something in this project (or says "make a ticket to …"), end with exactly one "goal" proposal (not "workflow" or "team") so the work is set up as a ticket; a question gets no proposal. Name only what exists here:
+Squads in this project (as "team"):
 ${teams || '- none'}
 Crew agents:
 ${agents || '- none'}
-Workflows: ${[...ctx.workflows, 'team (Tether plans a team run)'].join(', ')}
+Workflows: ${[...ctx.workflows, 'team (Tether plans a squad run)'].join(', ')}
 A goal proposal: {"kind":"goal","task":"the ask in one line","draft":{"title":"what done looks like","type":"feature|bugfix|refactor|chore","description":"one or two sentences","check":{"kind":"tests","command":"npm test -- auth"},"team":"<team id, or leave out>","agents":[{"id":"<agent id>","role":"fixes it","why":"one line: its specialty, or files it worked on lately"}],"workflow":"<workflow name or team>","approval":"ask"}}
-Up to ${DRAFT_AGENTS_MAX} agents. Add a "check" only when a command can tell it is done. No "limits" unless the person asked for a cap ({"budgetUsd":2,"maxRuns":3,"maxMinutes":60}). In your prose say in a sentence that you made it a goal and that it starts when they press Start.
+Up to ${DRAFT_AGENTS_MAX} agents. Add a "check" only when a command can tell it is done. No "limits" unless the person asked for a cap ({"budgetUsd":2,"maxRuns":3,"maxMinutes":60}). In your prose say in a sentence that you made it a ticket and that it starts when they press Start.
 `;
 }

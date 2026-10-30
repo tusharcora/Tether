@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView } from '../../../src/goals/types.js';
+import type { Assignee, CheckResult, Criterion, GoalCheck, GoalStatus, GoalType, GoalView, Member, Priority, Stage, TicketActivity } from '../../../src/goals/types.js';
 import { api, fmtUsd } from '../api';
 import { shortRunId, type RunState } from '../ui/studio/RunGlyph';
 
-export type { Assignee, CheckResult, GoalCheck, GoalStatus, GoalType, GoalView };
+export type { Assignee, CheckResult, Criterion, GoalCheck, GoalStatus, GoalType, GoalView, Member, Priority, Stage, TicketActivity };
 
 const upsert = (list: GoalView[], g: GoalView): GoalView[] => (list.some((x) => x.id === g.id) ? list.map((x) => (x.id === g.id ? g : x)) : [g, ...list]);
 
@@ -16,9 +16,9 @@ export function useGoals() {
   const [error, setError] = useState<string>();
   useEffect(() => {
     let closed = false;
-    api<GoalView[]>('GET', '/api/goals').then((l) => !closed && setGoals((cur) => cur ?? l), (e) => !closed && setError((e as Error).message));
+    api<GoalView[]>('GET', '/api/tickets').then((l) => !closed && setGoals((cur) => cur ?? l), (e) => !closed && setError((e as Error).message));
     if (typeof EventSource === 'undefined') return () => void (closed = true);
-    const es = new EventSource('/api/goals/stream');
+    const es = new EventSource('/api/tickets/stream');
     es.addEventListener('goals', (m) => !closed && setGoals(JSON.parse((m as MessageEvent).data)));
     es.addEventListener('goal', (m) => !closed && setGoals((cur) => upsert(cur ?? [], JSON.parse((m as MessageEvent).data))));
     return () => {
@@ -32,17 +32,33 @@ export function useGoals() {
 }
 
 export const goalsApi = {
-  create: (body: Record<string, unknown>) => api<GoalView>('POST', '/api/goals', body),
-  patch: (id: string, body: Record<string, unknown>) => api<GoalView>('PATCH', `/api/goals/${id}`, body),
-  remove: (id: string) => api('DELETE', `/api/goals/${id}`),
-  check: (id: string) => api<GoalView>('POST', `/api/goals/${id}/check`, {}),
+  create: (body: Record<string, unknown>) => api<GoalView>('POST', '/api/tickets', body),
+  patch: (id: string, body: Record<string, unknown>) => api<GoalView>('PATCH', `/api/tickets/${id}`, body),
+  remove: (id: string) => api('DELETE', `/api/tickets/${id}`),
+  check: (id: string) => api<GoalView>('POST', `/api/tickets/${id}/check`, {}),
   /** The first Start of a goal that waits "not started" (one made from chat). */
-  start: (id: string) => api<GoalView>('POST', `/api/goals/${id}/start`, {}),
-  next: (id: string, action: 'start' | 'skip', plan?: string) => api<GoalView>('POST', `/api/goals/${id}/next`, { action, ...(plan ? { plan } : {}) }),
-  addItem: (id: string, text: string) => api('POST', `/api/goals/${id}/items`, { text }),
-  toggleItem: (id: string, item: number, done: boolean) => api('PATCH', `/api/goals/${id}/items/${item}`, { done }),
-  assignItem: (id: string, item: number, assignees: Assignee[]) => api('PATCH', `/api/goals/${id}/items/${item}`, { assignees }),
+  start: (id: string) => api<GoalView>('POST', `/api/tickets/${id}/start`, {}),
+  next: (id: string, action: 'start' | 'skip', plan?: string) => api<GoalView>('POST', `/api/tickets/${id}/next`, { action, ...(plan ? { plan } : {}) }),
+  addItem: (id: string, text: string) => api('POST', `/api/tickets/${id}/items`, { text }),
+  toggleItem: (id: string, item: number, done: boolean) => api('PATCH', `/api/tickets/${id}/items/${item}`, { done }),
+  assignItem: (id: string, item: number, assignees: Assignee[]) => api('PATCH', `/api/tickets/${id}/items/${item}`, { assignees }),
+  /** A comment; an @agent in it hands the ticket to that agent in a squad. */
+  comment: (id: string, text: string) => api<GoalView>('POST', `/api/tickets/${id}/comments`, { text }),
+  /** Ship it / Merge PR: the waiting run ships, or the open PR merges once its checks pass. */
+  ship: (id: string) => api<GoalView>('POST', `/api/tickets/${id}/ship`, {}),
+  sendBack: (id: string, reason?: string) => api<GoalView>('POST', `/api/tickets/${id}/send-back`, reason ? { reason } : {}),
+  prefix: (workspace: string, prefix: string) => api<{ prefix: string }>('PUT', '/api/tickets/prefix', { workspace, prefix }),
+  ideas: (ws: string) => api<Idea[]>('GET', `/api/tickets/ideas?ws=${encodeURIComponent(ws)}`),
+  fromIdea: (workspace: string, i: Pick<Idea, 'chat' | 'proposal'>) => api<GoalView>('POST', '/api/tickets/ideas', { workspace, chat: i.chat, proposal: i.proposal }),
 };
+/** An ask a chat drafted a ticket for that was answered "no ticket" (board 10's Ideas from your chats). */
+export interface Idea {
+  chat: string;
+  proposal: string;
+  title: string;
+  type?: GoalType;
+  at: number;
+}
 
 export const STATUS_LABEL: Record<GoalStatus, string> = { active: 'Working', needs_you: 'Needs you', paused: 'Paused', met: 'Met', stopped: 'Stopped' };
 

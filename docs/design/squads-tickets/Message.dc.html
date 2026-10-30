@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What I did</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.at{color:#93c5fd;background:rgba(59,130,246,.12);border-radius:4px;padding:0 3px}
+.row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;background:#232323;font-size:12.5px;color:#d4d4d8}
+.row .mono{color:#a1a1aa;font-size:12px}
+.lbl{font-size:11px;letter-spacing:.06em;color:#71717a;margin-top:6px}
+</style>
+</helmet>
+<div style="width:100%;min-height:760px;box-sizing:border-box;padding:28px;display:flex;flex-wrap:wrap;gap:28px;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif">
+
+  <section aria-label="Before: agent output" style="flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:10px">
+    <div class="lbl">TODAY: THE AGENT'S RAW OUTPUT IN THE CHAT</div>
+    <div style="padding:14px;border-radius:12px;background:#1d1d1d;border:1px solid rgba(255,255,255,.07);font-size:12.5px;line-height:1.55;color:#a1a1aa">
+      <b style="color:#f4f4f5">Bolt</b><br>
+      ## Summary of changes<br>I have analyzed the authentication flow. The issue originates in <span class="mono">src/auth/callback.ts</span> where the <span class="mono">redirect()</span> call on line 42 ignores the <span class="mono">next</span> query parameter. I made the following changes:<br>1. **callback.ts**: Read <span class="mono">url.searchParams.get('next')</span>…<br>2. **sameSite.ts**: Created a new helper…<br>3. **callback.test.ts**: Added test cases…<br>### Verification<br>I ran <span class="mono">npm test -- auth</span> and all 24 tests passed…<br>### Notes for the reviewer<br>…
+      <div style="margin-top:8px;color:#71717a">(40 more lines)</div>
+    </div>
+  </section>
+
+  <section aria-label="After: human message" style="flex:1 1 440px;min-width:0;display:flex;flex-direction:column;gap:10px">
+    <div class="lbl">NEW: A MESSAGE LIKE A TEAMMATE WOULD SEND, WORK BEHIND IT</div>
+    <div style="display:flex;gap:12px;padding:14px;border-radius:12px;background:#262626;border:1px solid rgba(255,255,255,.14)">
+      <svg width="32" height="32" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.2)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:13px"><b style="font-weight:600">Bolt</b><span style="color:#71717a;font-size:11.5px;margin-left:6px">14:06</span></div>
+        <p style="margin:0;font-size:14px;line-height:1.5">Fixed it. 3 files, tests pass. <span class="at">@Lens</span> mind checking the redirect check?</p>
+        <details open="open" style="border-radius:10px;border:1px solid rgba(255,255,255,.07);background:#1d1d1d;padding:10px 12px">
+          <summary style="cursor:pointer;font-size:12.5px;color:#a1a1aa">What I did · 3 files · +42 −9 · 3m 40s · Sonnet 5.5</summary>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+            <div class="row"><span>Read</span><span class="mono">auth/callback.ts, auth/session.ts +2</span></div>
+            <div class="row"><span>Edited</span><span class="mono">auth/callback.ts · auth/sameSite.ts · callback.test.ts</span></div>
+            <div class="row"><span>Ran</span><span class="mono">npm test -- auth</span><span style="margin-left:auto;color:#34d399">24 passed</span></div>
+            <div style="display:flex;gap:12px;font-size:12px;margin-top:4px"><a href="#">Full report</a><a href="#">Diff</a><a href="RunDetail.dc.html">Open the run</a></div>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="lbl">HOW AGENTS WRITE HERE</div>
+    <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.7;color:#d4d4d8">
+      <li>One or two sentences, first person, like Slack: what I'll do, what I'm doing, what I did.</li>
+      <li>@ people or agents to hand off or ask; no headings, lists or report formatting.</li>
+      <li>Numbers that matter (files, tests, time) inline; everything else behind "What I did".</li>
+    </ul>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

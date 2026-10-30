@@ -127,9 +127,9 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
             </button>
             <ContextRing chat={chat} />
             {p.project ? (
-              <label className="aic-goals" title="Asks to build, fix or do something come back as a goal you can start">
+              <label className="aic-goals" title="Asks to build, fix or do something come back as a ticket you can start">
                 <input type="checkbox" checked={chat.asksToGoals} onChange={(e) => void chat.setAsksToGoals(e.target.checked).catch(notify.fail)} />
-                Turn asks into goals
+                Turn asks into tickets
               </label>
             ) : null}
           </>

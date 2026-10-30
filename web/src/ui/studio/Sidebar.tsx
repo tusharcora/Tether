@@ -1,5 +1,7 @@
-import { Bot, FileText, Hash, MessageSquare, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Target, Workflow, Zap } from 'lucide-react';
-import { MARK, type TeamSummary } from '../../teams/teamsApi';
+import { Bot, FileText, Hash, MessageSquare, MessagesSquare, PanelLeftClose, Pencil, Play, Plus, Search, Send, Settings, SquarePen, Ticket, Workflow, Zap } from 'lucide-react';
+import { Face } from '../../Face';
+import { seenAt, unread } from '../../squads/squadModel';
+import { MARK, type TeamsReply, type TeamSummary } from '../../teams/teamsApi';
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
 import type { Pin, RunRow } from '../../api';
 import type { ChatSummary } from '../../assistant/api';
@@ -18,11 +20,15 @@ import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
-/** Where a new team lives: only Tether for now. */
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+/** Where a new squad lives: Tether or a Telegram group; Slack comes later. */
 const NEW_TEAM = [
   { id: 'tether', label: 'In Tether', icon: <Hash size={15} strokeWidth={1.8} /> },
   { id: 'slack', label: 'Slack channel', icon: <span>S</span>, hint: 'soon', disabled: true },
-  { id: 'telegram', label: 'Telegram group', icon: <span>T</span>, hint: 'soon', disabled: true },
+  { id: 'telegram', label: 'Telegram group', icon: <span>T</span> },
 ];
 /** What a new chat starts with: nothing, or the New chat screen's run or file starter. */
 export type ChatStarter = 'run' | 'file';
@@ -135,15 +141,15 @@ export interface SidebarProps {
   onCompose: () => void;
   /** A new workflow, bot, trigger or request, from the Create menu. */
   onCreate: (what: Exclude<CreateKind, 'run'>) => void;
-  /** Inbox: items that need you (amber). Runs: live runs (blue). */
-  counts: { needs: number; live: number; goals: number };
+  /** Inbox: items that need you (amber). Runs: live runs (blue). Tickets: in progress or in review. */
+  counts: { needs: number; live: number; tickets: number };
   /** The current project's runs (all runs when no project is open), and the run shown in Runs. */
   runs: { list: RunRow[]; current?: string; onOpen: (id: string) => void };
   /** The project's chats, newest first; `current` is what the Chats screen shows: '' All chats, 'new', or a chat id. */
   /** A chat row's ⋯: Rename and Delete chat (the caller says when they fail). */
   chats: { list: ChatSummary[]; current?: string; onNew: () => void; onStarter: (s: ChatStarter) => void; onOpen: (id: string) => void; onAll: () => void; onRename?: (id: string, title: string) => Promise<void>; onDelete?: (id: string) => Promise<void> };
-  /** Every team (spec Teams §6.4); `current` is the team on screen ('new' while making one). */
-  teams: { list: TeamSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void };
+  /** Every squad (board 8: live dot, unread, needs you) and the agents with what each is doing; `current` is the squad on screen ('new' while making one). */
+  squads: { list: TeamSummary[]; agents: TeamsReply['agents']; current?: string; onNew: (place?: 'tether' | 'telegram') => void; onOpen: (id: string) => void; onAgent: (id: string) => void };
   projects: ProjectsProps;
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void; onReorder: (next: Pin[]) => void };
   account: { name: string; provider?: string; onOpen: () => void };
@@ -160,6 +166,17 @@ export interface SidebarProps {
  * expand control. Every rail icon shows its label as a tooltip on hover and focus (Escape dismisses it), level with the
  * row's centre; counts become dots.
  */
+/** How many agents the sidebar lists before "All agents"; busy ones always show. */
+export const SIDE_AGENTS = 5;
+/** The sidebar's agents: only those in a squad, busy first, at most SIDE_AGENTS unless more are busy (an imported library of dozens stays in Crew). */
+export function sideAgents<A extends { id: string; state?: string; since?: number }>(agents: A[], squads: { agents: string[] }[], max = SIDE_AGENTS): A[] {
+  const member = new Set(squads.flatMap((s) => s.agents));
+  const busy = (a: A) => !!a.state && a.state !== 'idle';
+  const mine = agents.filter((a) => member.has(a.id) || busy(a));
+  const ordered = [...mine.filter(busy).sort((a, b) => (a.since ?? 0) - (b.since ?? 0)), ...mine.filter((a) => !busy(a))];
+  return ordered.slice(0, Math.max(max, ordered.filter(busy).length));
+}
+
 export function Sidebar(p: SidebarProps) {
   const [collapsed, toggle] = useSidebarCollapsed();
   const asideRef = useRef<HTMLElement>(null);
@@ -194,6 +211,16 @@ export function Sidebar(p: SidebarProps) {
     return { onPointerEnter: show, onFocus: show, onPointerLeave: hideTip, onBlur: hideTip, 'aria-describedby': tip?.key === key ? tipId : undefined };
   };
   const page = (s: Screen) => !p.settingsOpen && p.active === s;
+  /** When each squad was last looked at (this machine), for its unread count; the clock for agents' timers. */
+  const seen = seenAt();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!p.squads.agents.some((a) => a.since)) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [p.squads.agents]);
+  const shown = sideAgents(p.squads.agents, p.squads.list);
+  const more = p.squads.agents.length > shown.length;
   const top = NAV.filter((n) => n.top);
   const work = NAV.filter((n) => !n.top);
   const runs = sideRuns(p.runs.list);
@@ -205,8 +232,8 @@ export function Sidebar(p: SidebarProps) {
       Icon={n.Icon}
       page
       current={page(n.id)}
-      count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : n.id === 'goals' ? { n: p.counts.goals } : undefined}
-      hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) || (n.id === 'goals' && p.counts.goals) ? undefined : goHint(n.id)}
+      count={n.id === 'inbox' ? { n: p.counts.needs, tone: 'needs' } : n.id === 'runs' ? { n: p.counts.live, tone: 'live' } : n.id === 'tickets' ? { n: p.counts.tickets } : undefined}
+      hint={(n.id === 'inbox' && p.counts.needs) || (n.id === 'runs' && p.counts.live) || (n.id === 'tickets' && p.counts.tickets) ? undefined : goHint(n.id)}
       onClick={() => p.onGo(n.id)}
       rail={tipFor(n.id, n.long ?? n.label)}
     />
@@ -223,11 +250,11 @@ export function Sidebar(p: SidebarProps) {
             className="sl-side-compose"
             items={[
               { id: 'run', label: 'New run', icon: <Play size={15} strokeWidth={1.8} />, hint: <Kbd>C</Kbd> },
+              { id: 'ticket', label: 'New ticket', icon: <Ticket size={15} strokeWidth={1.8} /> },
               { id: 'workflow', label: 'New workflow', icon: <Workflow size={15} strokeWidth={1.8} /> },
               { id: 'bot', label: 'New bot', icon: <Bot size={15} strokeWidth={1.8} /> },
               { id: 'trigger', label: 'New trigger', icon: <Zap size={15} strokeWidth={1.8} /> },
               { id: 'request', label: 'New request', icon: <Send size={15} strokeWidth={1.8} /> },
-              { id: 'goal', label: 'New goal', icon: <Target size={15} strokeWidth={1.8} /> },
             ]}
             onSelect={(id) => (id === 'run' ? p.onCompose() : p.onCreate(id as Exclude<CreateKind, 'run'>))}
           >
@@ -244,31 +271,58 @@ export function Sidebar(p: SidebarProps) {
           <SideRow label="Search" Icon={Search} meta={<Kbd mod>K</Kbd>} onClick={p.onSearch} rail={tipFor('search', 'Search')} />
           {top.map(navRow)}
           <SideSection
-            id="teams"
-            title="Teams"
+            id="squads"
+            title="Squads"
             collapsed={collapsed}
             actions={
-              <CreateMenu label="New team" title="New team" className="sl-side-icon-btn" items={NEW_TEAM} onSelect={() => p.teams.onNew()}>
+              <CreateMenu label="New squad" title="New squad" className="sl-side-icon-btn" items={NEW_TEAM} onSelect={(id) => p.squads.onNew(id === 'telegram' ? 'telegram' : 'tether')}>
                 <Plus size={14} aria-hidden="true" />
               </CreateMenu>
             }
-            empty="No teams yet. Make one with +."
+            empty="No squads yet. Make one with +."
           >
             {collapsed
-              ? [<SideRow key="teams" label="Teams" Icon={Hash} page current={p.teams.current !== undefined} onClick={() => (p.teams.list[0] ? p.teams.onOpen(p.teams.list[0].id) : p.teams.onNew())} rail={tipFor('teams', 'Teams')} />]
-              : p.teams.list.map((t) => (
-                  <SideRow
-                    key={t.id}
-                    label={t.name}
-                    name={t.status === 'idle' ? t.name : `${t.name} · ${t.status === 'live' ? 'working' : 'needs you'}`}
-                    lead={<span className="sl-side-mark">{MARK[t.place]}</span>}
-                    page
-                    current={p.teams.current === t.id}
-                    meta={t.status === 'idle' ? undefined : <span className={cn('sl-side-status', t.status)} aria-hidden="true" />}
-                    onClick={() => p.teams.onOpen(t.id)}
-                  />
-                ))}
+              ? [<SideRow key="squads" label="Squads" Icon={Hash} page current={p.squads.current !== undefined} onClick={() => (p.squads.list[0] ? p.squads.onOpen(p.squads.list[0].id) : p.squads.onNew())} rail={tipFor('squads', 'Squads')} />]
+              : p.squads.list.map((t) => {
+                  const fresh = p.squads.current === t.id ? 0 : unread(t.recent, seen[t.id]);
+                  return (
+                    <SideRow
+                      key={t.id}
+                      label={t.name}
+                      name={[t.name, t.needs ? `${t.needs} need${t.needs === 1 ? 's' : ''} you` : '', fresh ? `${fresh} unread` : '', t.status === 'live' ? 'working' : ''].filter(Boolean).join(' · ')}
+                      lead={<span className="sl-side-mark">{MARK[t.place]}</span>}
+                      page
+                      current={p.squads.current === t.id}
+                      count={t.needs ? { n: t.needs, tone: 'needs' } : fresh ? { n: fresh } : undefined}
+                      meta={t.needs || fresh ? undefined : t.status === 'live' ? <span className="sl-side-status live pulse" aria-hidden="true" /> : <span className="sl-side-idle">idle</span>}
+                      onClick={() => p.squads.onOpen(t.id)}
+                    />
+                  );
+                })}
           </SideSection>
+          {shown.length && !collapsed ? (
+            <SideSection id="agents" title="Agents" collapsed={collapsed}>
+              {shown.map((a) => {
+                const busy = !!a.state && a.state !== 'idle';
+                const line = !busy ? 'free' : `${a.state}${a.since ? ` · ${clock(now - a.since)}` : ''}`;
+                return (
+                  <SideRow
+                    key={a.id}
+                    label={a.name}
+                    name={`${a.name} · ${line}`}
+                    lead={
+                      <span className={cn('sl-side-face', { bob: busy })}>
+                        <Face id={a.id} size={20} label="" />
+                      </span>
+                    }
+                    meta={<span className={cn('sl-side-agent', { busy })}>{line}</span>}
+                    onClick={() => p.squads.onAgent(a.id)}
+                  />
+                );
+              })}
+              {more ? <SideRow key="more" label={`All agents (${p.squads.agents.length}) →`} name="All agents" page onClick={() => p.squads.onAgent('')} /> : null}
+            </SideSection>
+          ) : null}
           <SideSection
             id="chats"
             title="Chats"

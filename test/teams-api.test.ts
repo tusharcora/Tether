@@ -61,9 +61,12 @@ describe('/api/teams', () => {
     expect(t.team).toMatchObject({ name: 'Core', place: 'tether', level: 'balanced', approvers: 'any', people: [OWNER] });
     expect((await t.call('POST', '/api/teams', { name: 'S', place: 'slack', project: 'app', agents: ['coder'] })).json.error).toMatch(/later phase/);
     const list = (await t.call('GET', '/api/teams')).json;
-    expect(list.teams).toEqual([{ id: t.team.id, name: 'Core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], status: 'idle' }]);
+    expect(list.squads).toEqual([{ id: t.team.id, name: 'Core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], status: 'idle', needs: 0, recent: [], queue: [] }]);
+    // the old name answers the same for one release
+    expect(list.teams).toEqual(list.squads);
+    expect((await t.call('GET', '/api/squads')).json).toEqual(list);
     expect(list.agents.map((a: { id: string }) => a.id)).toEqual(['planner', 'architect', 'coder', 'tester', 'reviewer', 'manager']);
-    expect(list.agents[2]).toEqual({ id: 'coder', name: 'Bolt', specialty: 'coder' });
+    expect(list.agents[2]).toEqual({ id: 'coder', name: 'Bolt', specialty: 'coder', state: 'idle' });
     expect(await t.view()).toMatchObject({ messages: [], members: [{ id: 'coder', name: 'Bolt', specialty: 'coder', state: 'idle' }, { id: 'reviewer', name: 'Lens', state: 'idle' }], spend: { usd: 0, runs: 0 } });
     expect((await t.call('PATCH', `/api/teams/${t.team.id}`, { level: 'loose', limits: { usdPerDay: 3, runsPerDay: 5 } })).json).toMatchObject({ level: 'loose', limits: { usdPerDay: 3, runsPerDay: 5 } });
     expect((await t.call('DELETE', `/api/teams/${t.team.id}`)).status).toBe(200);
@@ -88,7 +91,24 @@ describe('/api/teams', () => {
     const done = await t.call('POST', `/api/teams/${t.team.id}/cards/${card.id}`, { action: 'approve' });
     expect(done.json.card).toMatchObject({ status: 'approved', by: 'you' });
     expect((await t.call('POST', `/api/teams/${t.team.id}/cards/${card.id}`, { action: 'approve' })).status).toBe(409);
-    await t.until(async () => (await t.view()).messages.some((m) => m.text === 'Nothing to ship: the run changed no files.'));
+    await t.until(async () => (await t.view()).messages.some((m) => m.card?.kind === 'approval' && m.card.ship?.state === 'failed' && m.card.ship.error === 'Nothing to ship: the run changed no files.'));
+  });
+});
+
+describe('a Telegram team over the API', () => {
+  it('is a read-only room; board 7 switches people; the owner is fixed', async () => {
+    const t = await boot();
+    const tg = (await t.call('POST', '/api/teams', { name: 'Ops', place: 'telegram', project: 'app', agents: ['coder'] })).json;
+    expect(tg).toMatchObject({ place: 'telegram', approvers: ['owner'], people: [OWNER] });
+    expect(tg.link).toBeUndefined();
+    expect((await t.call('POST', `/api/teams/${tg.id}/messages`, { text: '@Bolt hi' })).json.error).toMatch(/lives in Telegram/);
+    const f = loadTeams(t.home);
+    saveTeams(t.home, { ...f, teams: f.teams.map((x) => (x.id === tg.id ? { ...x, people: [OWNER, { id: 'tg42', name: 'Maya', via: 'telegram' as const, tgUserId: 42 }] } : x)) });
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/tg42`, { approver: true, canStartRuns: true })).json).toMatchObject({ approvers: ['owner', 'tg42'], people: [OWNER, { id: 'tg42', canStartRuns: true }] });
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/tg42`, { approver: 'yes' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/owner`, { approver: false })).status).toBe(400);
+    expect((await t.call('DELETE', `/api/teams/${tg.id}/people/tg42`)).json).toMatchObject({ approvers: ['owner'], people: [OWNER] });
+    expect((await t.call('DELETE', `/api/teams/${tg.id}/people/tg42`)).status).toBe(404);
   });
 });
 

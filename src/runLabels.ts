@@ -27,7 +27,7 @@ export const FINISHED: ReadonlySet<RunStatus> = new Set<RunStatus>(['done', 'err
 export const isFinished = (status: string): boolean => FINISHED.has(status as RunStatus);
 
 /** The run's label: its pipeline name, or "Team run". */
-export const runTitle = (r: { kind: string; pipeline: string }): string => (r.kind === 'team' ? 'Team run' : r.pipeline);
+export const runTitle = (r: { kind: string; pipeline: string }): string => (r.kind === 'team' ? 'Squad run' : r.pipeline);
 
 /** "label · id · branch", the line under a run's title. */
 export const runMeta = (r: { kind: string; pipeline: string; id: string; branch: string }): string => `${runTitle(r)} · ${r.id} · ${r.branch}`;
