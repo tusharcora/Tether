@@ -63,10 +63,10 @@ export function readState(home: string, id: string): TeamState {
   const j = read(stateFile(home, id));
   if (!isObj(j)) return { messages: [], tasks: [], answers: [] };
   const arr = <T>(v: unknown) => (Array.isArray(v) ? (v as T[]) : []);
-  return { messages: arr(j.messages), tasks: arr(j.tasks), answers: arr(j.answers) };
+  return { messages: arr(j.messages), tasks: arr(j.tasks), answers: arr(j.answers), ...(Array.isArray(j.told) ? { told: arr<string>(j.told) } : {}) };
 }
 export function writeState(home: string, id: string, s: TeamState, now = Date.now()): void {
-  write(stateFile(home, id), { messages: s.messages.slice(-MAX_MESSAGES), tasks: s.tasks.slice(-MAX_TASKS), answers: s.answers.filter((a) => a.at >= startOfDay(now)) });
+  write(stateFile(home, id), { messages: s.messages.slice(-MAX_MESSAGES), tasks: s.tasks.slice(-MAX_TASKS), answers: s.answers.filter((a) => a.at >= startOfDay(now)), ...(s.told?.length ? { told: s.told.slice(-MAX_TASKS) } : {}) });
 }
 export const removeState = (home: string, id: string): void => {
   try {
@@ -93,8 +93,8 @@ const num = (v: unknown, k: string, lo: number, hi: number, whole = false): numb
 };
 
 /**
- * A team from untrusted JSON, or a patch of `prev`. People are not taken from the client: a Tether team is its owner
- * (Slack and Telegram teams take their people from the channel, in later phases).
+ * A team from untrusted JSON, or a patch of `prev`. People are not taken from the client: a Tether team is its owner, a
+ * Telegram team adds people as they speak in the linked group. `link` is never taken from the client either (`/pair` sets it).
  */
 export function cleanTeam(raw: unknown, ctx: { bots: string[]; projects: string[] }, prev?: Team): Omit<Team, 'id' | 'createdAt'> & Partial<Pick<Team, 'id' | 'createdAt'>> {
   if (!isObj(raw)) throw bad('expected a JSON object');
@@ -102,8 +102,9 @@ export function cleanTeam(raw: unknown, ctx: { bots: string[]; projects: string[
   const name = has('name') || !prev ? line(raw.name, 'name', 60) : prev.name;
   if (!name) throw bad('"name" is required');
   const place = has('place') || !prev ? raw.place : prev.place;
-  if (place === 'slack' || place === 'telegram') throw bad('Slack and Telegram teams arrive in a later phase: make a Tether team for now');
-  if (place !== 'tether') throw bad('"place" must be "tether"');
+  if (place === 'slack') throw bad('Slack teams arrive in a later phase: make a Tether or Telegram team for now');
+  if (place !== 'tether' && place !== 'telegram') throw bad('"place" must be "tether" or "telegram"');
+  if (prev && place !== prev.place) throw bad('a team\'s place is fixed once it is made');
   const project = has('project') || !prev ? line(raw.project, 'project', 64) : prev.project;
   if (!project || !ctx.projects.includes(project)) throw bad(`unknown project "${project ?? ''}"`);
   let agents = prev?.agents ?? [];
@@ -114,13 +115,16 @@ export function cleanTeam(raw: unknown, ctx: { bots: string[]; projects: string[
     if (unknown) throw bad(`unknown agent "${unknown.slice(0, 40)}"`);
   }
   const people = prev?.people ?? [OWNER];
-  let approvers = prev?.approvers ?? 'any';
+  // a new Telegram team: only the owner approves until someone is switched on (board 7)
+  let approvers = prev?.approvers ?? (place === 'telegram' ? [OWNER.id] : 'any');
   if (has('approvers')) {
     const a = raw.approvers;
     if (a === 'any') approvers = 'any';
     else if (Array.isArray(a) && a.length && a.every((x) => typeof x === 'string' && people.some((p) => p.id === x))) approvers = [...new Set(a as string[])];
     else throw bad('"approvers" must be "any" or a list of people in the team');
   }
+  // the owner of a Telegram team always approves (board 7's switch is fixed on)
+  if (place === 'telegram' && approvers !== 'any' && !approvers.includes(OWNER.id)) approvers = [...approvers, OWNER.id];
   const level = has('level') ? raw.level : (prev?.level ?? 'balanced');
   if (!LEVELS.includes(level as Level)) throw bad('"level" must be tight, balanced or loose');
   let limits = prev?.limits ?? DEFAULT_LIMITS;
@@ -130,7 +134,7 @@ export function cleanTeam(raw: unknown, ctx: { bots: string[]; projects: string[
   }
   if (has('learn') && typeof raw.learn !== 'boolean') throw bad('"learn" must be true or false');
   const learn = has('learn') ? (raw.learn as boolean) : (prev?.learn ?? true);
-  return { ...(prev ? { id: prev.id, createdAt: prev.createdAt } : {}), name, place, project, agents, people, approvers, level: level as Level, limits, learn, ...(prev?.link ? { link: prev.link } : {}) };
+  return { ...(prev ? { id: prev.id, createdAt: prev.createdAt } : {}), name, place: place as Team['place'], project, agents, people, approvers, level: level as Level, limits, learn, ...(prev?.link ? { link: prev.link } : {}) };
 }
 
 export function cleanProfile(raw: unknown): AgentProfile {

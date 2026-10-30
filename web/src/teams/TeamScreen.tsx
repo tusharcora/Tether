@@ -24,7 +24,8 @@ import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { TeamForm } from './NewTeam';
 import { focusOn, handoffEdges, roomCounts, runOf, stripItems, type Who } from './roomModel';
-import { approversLine, PLACE, teamsApi, type Card, type TeamMessage, type TeamsReply, type TeamView } from './teamsApi';
+import { PairPanel, TeamPeople } from './TeamPeople';
+import { approversLine, MARK, PLACE, teamsApi, type Card, type TeamMessage, type TeamsReply, type TeamView } from './teamsApi';
 import './teams.css';
 
 const VIEW_MS = 1500;
@@ -84,6 +85,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
   const notify = useNotify();
   const view = usePoll<TeamView>(`/api/teams/${encodeURIComponent(p.id)}`, VIEW_MS);
   const [settings, setSettings] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const [diff, setDiff] = useState<{ title: string; text?: string }>();
   const [mapView, setMapView] = useState<'run' | 'team'>('run');
   const [pick, setPick] = useState<string>();
@@ -105,6 +107,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
 
   if (!v) return <Loading loading={!view.error} lines={6} label="Loading the team">{view.error ? <InlineError message={view.error} onRetry={() => void view.refresh()} /> : null}</Loading>;
   const t = v.team;
+  const telegram = t.place === 'telegram';
   const names = [...v.members.map((m) => m.name), ...t.people.filter((x) => x.id !== 'owner').map((x) => x.name)];
   const specialty = (id: string) => v.members.find((m) => m.id === id)?.specialty;
   const refresh = () => (void view.refresh(), p.onChanged());
@@ -140,17 +143,23 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
     <div className="tm">
       <header className="tm-head">
         <h1>
-          <span aria-hidden="true">#</span> {t.name}
+          <span aria-hidden="true">{MARK[t.place]}</span> {t.name}
         </h1>
-        <span className="tm-sub">{`${PLACE[t.place]} team · you + ${t.agents.length} agent${t.agents.length === 1 ? '' : 's'} · ${p.projects.find((w) => w.id === t.project)?.name ?? t.project} · ${t.approvers === 'any' ? 'any of you can approve' : `${approversLine(t)} can approve`}`}</span>
+        <span className="tm-sub">{`${PLACE[t.place]} team · ${telegram ? `${t.people.length} ${t.people.length === 1 ? 'person' : 'people'}` : 'you'} + ${t.agents.length} agent${t.agents.length === 1 ? '' : 's'} · ${p.projects.find((w) => w.id === t.project)?.name ?? t.project} · ${t.approvers === 'any' ? 'any of you can approve' : `${approversLine(t)} can approve`}`}</span>
         <span className="tm-gap" />
         {counts.live ? <span className="tr-chip live">{`${counts.live} live run${counts.live === 1 ? '' : 's'}`}</span> : null}
         {counts.needs ? <span className="tr-chip needs">{`${counts.needs} needs you`}</span> : null}
         <span className="tm-sub">{`${fmtUsd(v.spend.usd)} of ${fmtUsd(t.limits.usdPerDay)} today`}</span>
         <FaceStack bots={t.agents} size={22} />
-        <Button variant="secondary" size="sm" onClick={() => setSettings(true)}>
-          Add member
-        </Button>
+        {telegram ? (
+          <Button variant="secondary" size="sm" onClick={() => setPeopleOpen(true)}>
+            People and permissions
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={() => setSettings(true)}>
+            Add member
+          </Button>
+        )}
         <Button variant="secondary" size="icon" aria-label="Team settings" onClick={() => setSettings(true)}>
           <Settings size={15} aria-hidden="true" />
         </Button>
@@ -227,6 +236,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
           </div>
         </section>
         <section className="tm-channel" aria-label="Team chat">
+          {telegram && !t.link ? <PairPanel id={t.id} onGo={p.onGo} /> : null}
           {focus ? (
             <div className="tr-focus" role="status">
               {`Showing ${focus.name}`} ·{' '}
@@ -251,7 +261,11 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
             ))}
             <li ref={end} aria-hidden="true" />
           </ol>
-          <Composer name={t.name} options={v.members.map((m) => ({ id: m.id, name: m.name, hint: m.specialty }))} onSend={(text) => teamsApi.post(t.id, text).then(refresh)} />
+          {telegram ? (
+            <p className="tm-readonly">This team lives in Telegram: talk to it in the group. This room mirrors what Tether posted there and what it heard.</p>
+          ) : (
+            <Composer name={t.name} options={v.members.map((m) => ({ id: m.id, name: m.name, hint: m.specialty }))} onSend={(text) => teamsApi.post(t.id, text).then(refresh)} />
+          )}
         </section>
       </div>
 
@@ -269,6 +283,11 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
               onDeleted={() => (setSettings(false), p.onChanged(), p.onGo({ tab: 'home' }))}
             />
           ) : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={peopleOpen} onOpenChange={setPeopleOpen}>
+        <DialogContent title={`People and permissions · ${t.name}`} className="tm-dialog">
+          {peopleOpen ? <TeamPeople team={t} members={v.members} onChanged={refresh} /> : null}
         </DialogContent>
       </Dialog>
       <Dialog open={!!diff} onOpenChange={(o) => !o && setDiff(undefined)}>

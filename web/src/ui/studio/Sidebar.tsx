@@ -18,11 +18,11 @@ import { SideMenu, SideRow, SideSection, type TipProps } from './SideParts';
 import './shell.css';
 
 const KEY = 'tether.sidebar';
-/** Where a new team lives: only Tether for now. */
+/** Where a new team lives: Tether or a Telegram group; Slack comes later. */
 const NEW_TEAM = [
   { id: 'tether', label: 'In Tether', icon: <Hash size={15} strokeWidth={1.8} /> },
   { id: 'slack', label: 'Slack channel', icon: <span>S</span>, hint: 'soon', disabled: true },
-  { id: 'telegram', label: 'Telegram group', icon: <span>T</span>, hint: 'soon', disabled: true },
+  { id: 'telegram', label: 'Telegram group', icon: <span>T</span> },
 ];
 /** What a new chat starts with: nothing, or the New chat screen's run or file starter. */
 export type ChatStarter = 'run' | 'file';
@@ -143,7 +143,7 @@ export interface SidebarProps {
   /** A chat row's ⋯: Rename and Delete chat (the caller says when they fail). */
   chats: { list: ChatSummary[]; current?: string; onNew: () => void; onStarter: (s: ChatStarter) => void; onOpen: (id: string) => void; onAll: () => void; onRename?: (id: string, title: string) => Promise<void>; onDelete?: (id: string) => Promise<void> };
   /** Every team (spec Teams §6.4); `current` is the team on screen ('new' while making one). */
-  teams: { list: TeamSummary[]; current?: string; onNew: () => void; onOpen: (id: string) => void };
+  teams: { list: TeamSummary[]; current?: string; onNew: (place?: 'tether' | 'telegram') => void; onOpen: (id: string) => void };
   projects: ProjectsProps;
   pins: { list: Pin[]; canPin: boolean; onPin: () => void; onOpen: (p: Pin) => void; onUnpin: (p: Pin) => void; onReorder: (next: Pin[]) => void };
   account: { name: string; provider?: string; onOpen: () => void };
@@ -248,7 +248,7 @@ export function Sidebar(p: SidebarProps) {
             title="Teams"
             collapsed={collapsed}
             actions={
-              <CreateMenu label="New team" title="New team" className="sl-side-icon-btn" items={NEW_TEAM} onSelect={() => p.teams.onNew()}>
+              <CreateMenu label="New team" title="New team" className="sl-side-icon-btn" items={NEW_TEAM} onSelect={(id) => p.teams.onNew(id === 'telegram' ? 'telegram' : 'tether')}>
                 <Plus size={14} aria-hidden="true" />
               </CreateMenu>
             }

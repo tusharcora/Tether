@@ -49,7 +49,11 @@ const MAX_LIST = 400;
 const MAX_HITS = 50;
 const SKIP = new Set(['.git', 'node_modules', 'dist', 'build', '.next', 'target', '__pycache__', '.venv']);
 
-type Msg = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string };
+type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+type Msg = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | Part[] | null; tool_calls?: ToolCall[]; tool_call_id?: string };
+/** A teammate's photos after the prompt, as data URLs (OpenAI-compatible vision input). */
+const userContent = async (prompt: string, images: string[] = []): Promise<string | Part[]> =>
+  images.length ? [{ type: 'text', text: prompt }, ...(await Promise.all(images.map(async (f) => ({ type: 'image_url' as const, image_url: { url: `data:image/${/\.png$/i.test(f) ? 'png' : 'jpeg'};base64,${(await readFile(f)).toString('base64')}` } }))))] : prompt;
 interface ToolCall {
   id: string;
   type: 'function';
@@ -256,7 +260,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
           role: 'system',
           content: `You are a coding agent working in a repository. Use the tools to explore${writable ? ' and to write files' : ' (this step is read-only: do not try to change files)'}. Paths are relative to the repository root. Finish with a plain-text answer that follows the task's instructions.${cm ? `\n\n${cm.note}` : ''}`,
         },
-        { role: 'user', content: req.prompt },
+        { role: 'user', content: await userContent(req.prompt, req.images) },
       ];
       let tools: unknown[] | undefined = cm ? CODE_TOOLS(cm) : TOOLS(writable);
       let last = '';
@@ -292,7 +296,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
         usage.inputTokens += r.usage?.prompt_tokens ?? 0;
         usage.outputTokens += r.usage?.completion_tokens ?? 0;
         const m = r.message;
-        if (m.content) {
+        if (typeof m.content === 'string' && m.content) {
           last = m.content;
           req.onChunk(m.content + '\n');
         }

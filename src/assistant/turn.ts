@@ -63,6 +63,8 @@ export interface TurnBody {
   bot?: string;
   attachments?: { name: string; text: string }[];
   answer?: { message: string; result: string };
+  /** Local image files for a model that reads images (a team agent's turn on a Telegram photo). */
+  images?: string[];
 }
 
 let seq = 0;
@@ -284,6 +286,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       timeoutMs: 180_000,
       signal,
       ...(cm.request ? { codeMode: cm.request } : {}),
+      ...(body.images?.length ? { images: body.images } : {}),
       onChunk: (t) => {
         // adapters that cannot stream tokens deliver whole blocks here
         if (!streamed && !t.startsWith('[') && !t.startsWith('$')) (text += t, flush());

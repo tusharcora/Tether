@@ -92,6 +92,23 @@ describe('/api/teams', () => {
   });
 });
 
+describe('a Telegram team over the API', () => {
+  it('is a read-only room; board 7 switches people; the owner is fixed', async () => {
+    const t = await boot();
+    const tg = (await t.call('POST', '/api/teams', { name: 'Ops', place: 'telegram', project: 'app', agents: ['coder'] })).json;
+    expect(tg).toMatchObject({ place: 'telegram', approvers: ['owner'], people: [OWNER] });
+    expect(tg.link).toBeUndefined();
+    expect((await t.call('POST', `/api/teams/${tg.id}/messages`, { text: '@Bolt hi' })).json.error).toMatch(/lives in Telegram/);
+    const f = loadTeams(t.home);
+    saveTeams(t.home, { ...f, teams: f.teams.map((x) => (x.id === tg.id ? { ...x, people: [OWNER, { id: 'tg42', name: 'Maya', via: 'telegram' as const, tgUserId: 42 }] } : x)) });
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/tg42`, { approver: true, canStartRuns: true })).json).toMatchObject({ approvers: ['owner', 'tg42'], people: [OWNER, { id: 'tg42', canStartRuns: true }] });
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/tg42`, { approver: 'yes' })).status).toBe(400);
+    expect((await t.call('PATCH', `/api/teams/${tg.id}/people/owner`, { approver: false })).status).toBe(400);
+    expect((await t.call('DELETE', `/api/teams/${tg.id}/people/tg42`)).json).toMatchObject({ approvers: ['owner'], people: [OWNER] });
+    expect((await t.call('DELETE', `/api/teams/${tg.id}/people/tg42`)).status).toBe(404);
+  });
+});
+
 describe('/api/agents/:bot', () => {
   it('shows and edits the profile, lists memory with its team, and forgets one lesson or all', async () => {
     const t = await boot();
