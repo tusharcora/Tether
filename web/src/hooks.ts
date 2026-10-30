@@ -75,18 +75,18 @@ export function useUnloadWarning(on: boolean): void {
   }, [on]);
 }
 
-export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'tickets' | 'api' | 'graph' | 'triggers' | 'artifacts' | 'chats' | 'squads' | 'attempts';
+export type Screen = 'home' | 'inbox' | 'runs' | 'code' | 'builder' | 'crew' | 'tickets' | 'api' | 'graph' | 'triggers' | 'artifacts' | 'chats' | 'squads' | 'attempts' | 'agents';
 export type Tab = Screen | 'settings';
 /** The screens with a `G` key and a "Go to" in ⌘K (Chats has its own sidebar section). */
 export const SCREENS: Screen[] = ['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'tickets', 'api', 'graph', 'triggers', 'artifacts'];
-const TAB_IDS: readonly string[] = [...SCREENS, 'chats', 'squads', 'attempts', 'settings'];
+const TAB_IDS: readonly string[] = [...SCREENS, 'chats', 'squads', 'attempts', 'agents', 'settings'];
 /** Old screens and where they went (spec 2026-10-30-squads-tickets): a saved `#/goals/…` or `#/teams/…` link still opens. */
 const MOVED: Record<string, Tab> = { goals: 'tickets', teams: 'squads' };
-export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', tickets: 'Tickets', api: 'API', graph: 'Graph', triggers: 'Triggers', artifacts: 'Artifacts', chats: 'Chats', squads: 'Squads', attempts: 'Compare attempts', settings: 'Settings' };
+export const TAB_LABEL: Record<Tab, string> = { home: 'Home', inbox: 'Inbox', runs: 'Runs', code: 'Code', builder: 'Builder', crew: 'Crew', tickets: 'Tickets', api: 'API', graph: 'Graph', triggers: 'Triggers', artifacts: 'Artifacts', chats: 'Chats', squads: 'Squads', attempts: 'Compare attempts', agents: 'Agent', settings: 'Settings' };
 
 export interface Route {
   tab: Tab;
-  /** Runs: the run id. Attempts: an attempt set (Compare). Builder: a saved workflow. Crew: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. Chats: a chat id, or `new`. Teams: a team id, or `new`. */
+  /** Runs: the run id. Attempts: an attempt set (Compare). Builder: a saved workflow. Crew and Agents: a bot id. Graph: a note path. Code: a file path in the project. API: a saved request. Chats: a chat id, or `new`. Teams: a team id, or `new`. */
   id?: string;
   /** Code: the line to show (`#/code/<path>:<line>`). */
   line?: number;

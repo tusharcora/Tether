@@ -166,6 +166,17 @@ export interface SidebarProps {
  * expand control. Every rail icon shows its label as a tooltip on hover and focus (Escape dismisses it), level with the
  * row's centre; counts become dots.
  */
+/** How many agents the sidebar lists before "All agents"; busy ones always show. */
+export const SIDE_AGENTS = 5;
+/** The sidebar's agents: only those in a squad, busy first, at most SIDE_AGENTS unless more are busy (an imported library of dozens stays in Crew). */
+export function sideAgents<A extends { id: string; state?: string; since?: number }>(agents: A[], squads: { agents: string[] }[], max = SIDE_AGENTS): A[] {
+  const member = new Set(squads.flatMap((s) => s.agents));
+  const busy = (a: A) => !!a.state && a.state !== 'idle';
+  const mine = agents.filter((a) => member.has(a.id) || busy(a));
+  const ordered = [...mine.filter(busy).sort((a, b) => (a.since ?? 0) - (b.since ?? 0)), ...mine.filter((a) => !busy(a))];
+  return ordered.slice(0, Math.max(max, ordered.filter(busy).length));
+}
+
 export function Sidebar(p: SidebarProps) {
   const [collapsed, toggle] = useSidebarCollapsed();
   const asideRef = useRef<HTMLElement>(null);
@@ -208,6 +219,8 @@ export function Sidebar(p: SidebarProps) {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [p.squads.agents]);
+  const shown = sideAgents(p.squads.agents, p.squads.list);
+  const more = p.squads.agents.length > shown.length;
   const top = NAV.filter((n) => n.top);
   const work = NAV.filter((n) => !n.top);
   const runs = sideRuns(p.runs.list);
@@ -287,9 +300,9 @@ export function Sidebar(p: SidebarProps) {
                   );
                 })}
           </SideSection>
-          {p.squads.agents.length && !collapsed ? (
+          {shown.length && !collapsed ? (
             <SideSection id="agents" title="Agents" collapsed={collapsed}>
-              {p.squads.agents.map((a) => {
+              {shown.map((a) => {
                 const busy = !!a.state && a.state !== 'idle';
                 const line = !busy ? 'free' : `${a.state}${a.since ? ` · ${clock(now - a.since)}` : ''}`;
                 return (
@@ -307,6 +320,7 @@ export function Sidebar(p: SidebarProps) {
                   />
                 );
               })}
+              {more ? <SideRow key="more" label={`All agents (${p.squads.agents.length}) →`} name="All agents" page onClick={() => p.squads.onAgent('')} /> : null}
             </SideSection>
           ) : null}
           <SideSection

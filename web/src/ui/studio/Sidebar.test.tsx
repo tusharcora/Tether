@@ -20,7 +20,7 @@ const setupProps = (o: Partial<SidebarProps> = {}): SidebarProps => ({
   chats: { list: Array.from({ length: 7 }, (_, i) => chat(`c${i + 1}`, `Chat ${i + 1}`)), current: undefined, onNew: vi.fn(), onStarter: vi.fn(), onOpen: vi.fn(), onAll: vi.fn() },
   squads: {
     list: [
-      { id: 'core', name: 'Tether core', place: 'tether', project: 'shop', agents: ['coder'], status: 'live', needs: 0, recent: [], queue: [] },
+      { id: 'core', name: 'Tether core', place: 'tether', project: 'shop', agents: ['coder', 'tester'], status: 'live', needs: 0, recent: [], queue: [] },
       { id: 'dev', name: 'tether-dev', place: 'slack', project: 'shop', agents: ['coder'], status: 'needs', needs: 1, recent: [], queue: [] },
       { id: 'go', name: 'On the go', place: 'telegram', project: 'shop', agents: ['coder'], status: 'idle', needs: 0, recent: [], queue: [] },
     ],
@@ -80,6 +80,16 @@ describe('Sidebar', () => {
     expect(agents.querySelector('.sl-side-face.bob')).toBeTruthy();
     fireEvent.click(within(agents).getByRole('button', { name: /^Probe/ }));
     expect(p.squads.onAgent).toHaveBeenCalledWith('tester');
+  });
+
+  it('lists only squad members (busy first, at most five) and sends the rest to All agents', () => {
+    const lib = Array.from({ length: 40 }, (_, i) => ({ id: `ecc-${i}`, name: `Ecc ${i}`, specialty: 'x', state: 'idle' as const }));
+    const members = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((id) => ({ id, name: id.toUpperCase(), specialty: 'x', state: 'idle' as const }));
+    const p = setup({ squads: { ...setupProps().squads, list: setupProps().squads.list.map((t) => ({ ...t, agents: members.map((m) => m.id) })), agents: [...lib, ...members] } });
+    const agents = screen.getByRole('region', { name: 'Agents' });
+    expect(names(agents)).toEqual(['Agents', 'A1 · free', 'A2 · free', 'A3 · free', 'A4 · free', 'A5 · free', 'All agents']);
+    fireEvent.click(within(agents).getByRole('button', { name: 'All agents' }));
+    expect(p.squads.onAgent).toHaveBeenCalledWith('');
   });
 
   it('New squad menu: In Tether or a Telegram group opens the form for that place; Slack channel is disabled "soon"', async () => {

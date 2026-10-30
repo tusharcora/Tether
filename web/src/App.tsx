@@ -14,6 +14,7 @@ import { Caps } from './caps';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/beui/kit/toast';
 import { Crew } from './Crew';
+import { AgentPage } from './teams/AgentPage';
 import { loadCrewDefs } from './crewStore';
 import { GraphView } from './Graph';
 import { inProject, useGoals } from './goals/goalsApi';
@@ -309,7 +310,7 @@ function Shell() {
         <div ref={shellRef} className={cn('shell', { phone })}>
           {phone ? null : (
             <Sidebar
-              active={screen.tab === 'attempts' ? 'runs' : screen.tab}
+              active={screen.tab === 'attempts' ? 'runs' : screen.tab === 'agents' ? 'squads' : screen.tab}
               settingsOpen={settingsOpen}
               onGo={openScreen}
               onSearch={() => setPalette(true)}
@@ -318,7 +319,7 @@ function Shell() {
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, tickets: inProject(goals.goals, projects.current?.id).filter((t) => t.stage === 'in_progress' || t.stage === 'in_review').length }}
               chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }), onRename: renameFromSide, onDelete: deleteFromSide }}
-              squads={{ list: teams.data?.squads ?? [], agents: teams.data?.agents ?? [], current: screen.tab === 'squads' ? (screen.id ?? 'new') : undefined, onNew: (place) => go({ tab: 'squads', id: 'new', ...(place === 'telegram' ? { node: 'telegram' } : {}) }), onOpen: (id) => go({ tab: 'squads', id }), onAgent: (id) => go({ tab: 'crew', id }) }}
+              squads={{ list: teams.data?.squads ?? [], agents: teams.data?.agents ?? [], current: screen.tab === 'squads' ? (screen.id ?? 'new') : undefined, onNew: (place) => go({ tab: 'squads', id: 'new', ...(place === 'telegram' ? { node: 'telegram' } : {}) }), onOpen: (id) => go({ tab: 'squads', id }), onAgent: (id) => go(id ? { tab: 'agents', id } : { tab: 'crew' }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
@@ -384,6 +385,7 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'graph' ? <GraphView note={screen.id} onNote={(path) => go(path ? { tab: 'graph', id: path } : { tab: 'graph' })} onOpenFile={(path) => go({ tab: 'code', id: path })} /> : null}
+            {screen.tab === 'agents' && screen.id ? <AgentPage key={screen.id} id={screen.id} agents={teams.data?.agents ?? []} onGo={go} /> : null}
             {screen.tab === 'crew' ? <Crew bot={screen.id} onBot={(id) => go(id ? { tab: 'crew', id } : { tab: 'crew' })} create={create?.what === 'bot' ? create.n : undefined} /> : null}
             {screen.tab === 'triggers' ? <Triggers create={create?.what === 'trigger' ? create.n : undefined} /> : null}
             {screen.tab === 'artifacts' ? <Artifacts key={projects.current?.id ?? '_'} ws={projects.current?.id} project={projects.current} onGo={go} /> : null}
