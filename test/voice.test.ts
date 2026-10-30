@@ -7,7 +7,6 @@ const EVENTS: VoiceEvent[] = [
   { kind: 'started' },
   { kind: 'started', rework: true },
   { kind: 'started', from: 'Bolt' },
-  { kind: 'started', ticket: 'WEB-142' },
   { kind: 'plan_wait' },
   { kind: 'plan_ok' },
   { kind: 'finished', facts },

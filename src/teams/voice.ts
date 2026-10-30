@@ -18,7 +18,7 @@ export interface Facts {
   tests?: { ok: boolean; passing?: number; failing?: number };
 }
 export type VoiceEvent =
-  | { kind: 'started'; rework?: boolean; from?: string; ticket?: string }
+  | { kind: 'started'; rework?: boolean; from?: string }
   | { kind: 'plan_wait' }
   | { kind: 'plan_ok' }
   | { kind: 'finished'; facts: Facts; review?: string }
@@ -51,7 +51,7 @@ function testsLine(t?: Facts['tests']): string {
 export function template(ev: VoiceEvent): string {
   switch (ev.kind) {
     case 'started':
-      return ev.rework ? 'Good catch, on it.' : ev.from ? `Picking this up from ${ev.from}'s branch.` : ev.ticket ? `On it, ${ev.ticket} is mine.` : 'On it.';
+      return ev.rework ? 'Good catch, on it.' : ev.from ? `Picking this up from ${ev.from}'s branch.` : 'On it.';
     case 'plan_wait':
       return "Here's my plan. Can someone give it a look before I start?";
     case 'plan_ok':

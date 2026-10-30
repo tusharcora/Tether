@@ -1013,11 +1013,11 @@ import { TEAM_DEFAULT_BUDGET_USD, MAX_ANSWER_TEXT, MAX_QUESTIONS } from '../src/
 
 describe('team runs docs', () => {
   const readme = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
-  const section = readme.split(/^## /m).find((x) => x.startsWith('Team runs')) ?? '';
+  const section = readme.split(/^## /m).find((x) => x.startsWith('Squad runs')) ?? '';
   it('the team template points to aorch team', () => {
     expect(TEMPLATES.team.label).toMatch(/aorch team/);
   });
-  it('README has a Team runs section covering what exists, with the real limits', () => {
+  it('the reference has a Squad runs section covering what exists, with the real limits', () => {
     expect(section).not.toBe('');
     for (const s of ['workflow', 'planning', 'recommended', 'live', 'autonomous', '/mode', '@ASK user:', '--budget', 'tether team', 'tether answer', 'tether plan', '--reject', 'tether mode', 'tether show', '/api/runs/:id/answers', '/api/runs/:id/plan', '/api/runs/:id/mode', '/team', '/approve', '/reject', '`T`', 'explicit']) {
       expect(section, s).toContain(s);
