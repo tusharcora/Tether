@@ -2,6 +2,7 @@ import { ArrowUp, Settings } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { api, fmtUsd, type RunView } from '../api';
+import { useCaps } from '../caps';
 import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
 import { SpeakerIdentity } from '../components/assistant-ui/elements/speaker-identity';
 import { TeamRunCard } from '../assistant/taskCards';
@@ -83,6 +84,7 @@ const SEG: Record<string, string> = { done: 'done', running: 'working', awaiting
  */
 export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsReply['agents']; projects: WorkspaceRow[]; onGo: (r: Route) => void; onChanged: () => void; onNewAgent: () => void }) {
   const notify = useNotify();
+  const caps = useCaps();
   const view = usePoll<TeamView>(`/api/teams/${encodeURIComponent(p.id)}`, VIEW_MS);
   const [settings, setSettings] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -149,7 +151,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
         <span className="tm-gap" />
         {counts.live ? <span className="tr-chip live">{`${counts.live} live run${counts.live === 1 ? '' : 's'}`}</span> : null}
         {counts.needs ? <span className="tr-chip needs">{`${counts.needs} needs you`}</span> : null}
-        <span className="tm-sub">{`${fmtUsd(v.spend.usd)} of ${fmtUsd(t.limits.usdPerDay)} today`}</span>
+        <span className="tm-sub">{caps ? `${fmtUsd(v.spend.usd)} of ${fmtUsd(t.limits.usdPerDay)} today` : `${fmtUsd(v.spend.usd)} today`}</span>
         <FaceStack bots={t.agents} size={22} />
         {telegram ? (
           <Button variant="secondary" size="sm" onClick={() => setPeopleOpen(true)}>

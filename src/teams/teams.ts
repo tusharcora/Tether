@@ -22,6 +22,7 @@ import { git } from '../git.js';
 import type { Goals } from '../goals/loop.js';
 import type { Goal, Plan } from '../goals/types.js';
 import { addTeamLessons, isQuote, loadLessons } from '../lessons.js';
+import { capsOn } from '../prefs.js';
 import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
@@ -310,7 +311,7 @@ export class Teams {
     return spendToday(readState(this.d.home, team.id), (r) => this.d.store.state(r)?.costUsd ?? 0);
   }
   private limit(team: Team): string | undefined {
-    return limitReason(team, this.spend(team));
+    return limitReason(team, this.spend(team), capsOn(this.d.home));
   }
   /** A team agent started this run: its team ships it. */
   owns(runId: string): boolean {
@@ -322,7 +323,7 @@ export class Teams {
     const team = tid ? this.all().find((t) => t.id === tid) : undefined;
     if (!team) return undefined;
     const spend = this.spend(team);
-    return limitReason(team, { ...spend, runs: spend.runs + count - 1 });
+    return limitReason(team, { ...spend, runs: spend.runs + count - 1 }, capsOn(this.d.home));
   }
   /** Another attempt of a team's run is the team's run too: its limits, its ship path, its approvers. Its own chain, never a loop's. */
   adopt(runId: string, sibling: string): void {
@@ -600,11 +601,12 @@ export class Teams {
     const spec = loopSpec(said);
     const command = spec.command ?? this.gates(team).test;
     if (!command) return void this.say(team.id, from, 'Which command tells me it is done? Put it in backticks, like `npm test`.');
-    const budgetUsd = Math.min(spec.budgetUsd ?? 5, team.limits.usdPerDay);
+    // caps off: only a $ amount the person wrote limits the loop
+    const budgetUsd = capsOn(this.d.home) ? Math.min(spec.budgetUsd ?? 5, team.limits.usdPerDay) : spec.budgetUsd;
     const maxRuns = Math.min(spec.maxRuns ?? 6, team.limits.runsPerDay, 50);
     const id = `g${Date.now().toString(36)}${randomBytes(3).toString('hex')}`;
     // the card first: the goal's first change already looks for it
-    this.say(team.id, from, `On it. I made it a loop: the goal is \`${command}\` passing, limit ${usd(budgetUsd)} or ${maxRuns} runs. I'll post after each run.`, { card: { kind: 'loop', goalId: id } });
+    this.say(team.id, from, `On it. I made it a loop: the goal is \`${command}\` passing, limit ${budgetUsd !== undefined ? `${usd(budgetUsd)} or ` : ''}${maxRuns} runs. I'll post after each run.`, { card: { kind: 'loop', goalId: id } });
     this.d.goals.create({ id, workspace: team.project, title: firstLine(said, 200) || 'Loop', kind: 'loop', status: 'active', check: { kind: spec.command ? 'command' : 'tests', command }, budgetUsd, maxRuns, approval: team.level === 'tight' ? 'ask' : 'auto', workflow: 'team', createdAt: Date.now(), spentUsd: 0, team: team.id, agent: bot });
   }
 
@@ -616,8 +618,12 @@ export class Teams {
     const tasks = readState(this.d.home, team.id).tasks.filter((k) => k.goal === g.id);
     const prev = tasks.at(-1);
     const prevState = prev ? this.d.store.state(prev.runId) : undefined;
-    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd: this.budget(team, g.budgetUsd === undefined ? Infinity : g.budgetUsd - g.spentUsd), ship: false });
-    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id } });
+    const caps = capsOn(this.d.home);
+    const left = g.budgetUsd === undefined ? undefined : g.budgetUsd - g.spentUsd;
+    // caps off: a goal's own $ limit is the only cap its runs get (an explicit cap, so the run enforces it)
+    const budgetUsd = caps ? this.budget(team, left ?? Infinity) : left === undefined ? undefined : Math.min(Math.max(left, 0.01), TEAM_MAX_BUDGET_USD);
+    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd, ship: false });
+    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id }, capsOn: caps || left !== undefined });
     const s = this.d.store.state(runId)!;
     // a goal made elsewhere (a chat's goal card) gets its card in the channel on its first run, so the team sees it
     const msg = this.loopMsg(team.id, g.id)?.id ?? this.say(team.id, TETHER, `Goal: ${g.title}`, { card: { kind: 'loop', goalId: g.id } }).id;

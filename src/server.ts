@@ -6,7 +6,7 @@ import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config }
 import type { Engine } from './engine.js';
 import { CREW, CREW_STYLES, lookPixels, refreshCrew } from './bots.js';
 import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
-import { loadPrefs, savePrefs } from './prefs.js';
+import { capsOn, loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, pipelineFor, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
@@ -460,7 +460,13 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
-      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home }), true;
+      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home) }), true;
+    }
+    if (p === '/api/prefs' && m === 'PUT') {
+      const b = await readJson(req);
+      if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
+      savePrefs(cfg.home, { spendingCaps: b.spendingCaps });
+      return send(res, 200, { spendingCaps: b.spendingCaps }), true;
     }
     if (p === '/api/doctor' && m === 'GET') return send(res, 200, await doctor()), true;
     if (p === '/api/tools' && m === 'GET') {
@@ -864,7 +870,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/pipelines' && m === 'GET') return send(res, 200, listPipelines(cfg.home)), true;
     if (p === '/api/preflight' && m === 'POST') {
       const pl = normalizePipeline(await readJson(req));
-      return send(res, 200, { issues: preflight(engine.resolve(pl), registry) }), true;
+      return send(res, 200, { issues: preflight(engine.resolve(pl), registry, capsOn(cfg.home)) }), true;
     }
     if ((g = p.match(/^\/api\/pipelines\/([^/]+)$/))) {
       const name = decodeURIComponent(g[1]!);
@@ -872,7 +878,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (m === 'GET') {
         try {
           const pl = readPipeline(cfg.home, name);
-          return send(res, 200, { pipeline: pl, issues: preflight(engine.resolve(pl), registry) }), true;
+          return send(res, 200, { pipeline: pl, issues: preflight(engine.resolve(pl), registry, capsOn(cfg.home)) }), true;
         } catch {
           throw new HttpError(404, `no pipeline "${name}"`);
         }

@@ -60,6 +60,14 @@ beforeAll(async () => {
 afterAll(() => close());
 
 describe('http api', () => {
+  it('Spending caps: off by default, read with health, set with PUT /api/prefs', async () => {
+    expect((await api('GET', '/api/health')).json.spendingCaps).toBe(false);
+    expect((await api('PUT', '/api/prefs', { spendingCaps: 'yes' })).status).toBe(400);
+    expect((await api('PUT', '/api/prefs', { spendingCaps: true })).json).toEqual({ spendingCaps: true });
+    expect((await api('GET', '/api/health')).json.spendingCaps).toBe(true);
+    expect((await api('PUT', '/api/prefs', { spendingCaps: false })).json).toEqual({ spendingCaps: false });
+  });
+
   it('saves a pipeline, runs it, pauses at approval, approves over HTTP and finishes', async () => {
     expect((await api('GET', '/api/health')).json.ok).toBe(true);
     const put = await api('PUT', '/api/pipelines/demo-mock', demo);

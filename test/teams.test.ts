@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { addTeamLessons, loadLessons } from '../src/lessons.js';
 import { OWNER } from '../src/teams/store.js';
 import { g, rig } from './teams-rig.js';
+import { savePrefs } from '../src/prefs.js';
 
 describe('a ping', () => {
   it('gets one answer from the agent, as itself, with its memory and the message fenced; nothing runs', async () => {
@@ -148,6 +149,29 @@ describe('loop work', () => {
     await r.idle();
     expect(r.card('pr')).toBeDefined();
     expect(r.tasks()[0]).toMatchObject({ kind: 'loop', goal: goal.id });
+    // the $ the person wrote is the loop's own cap: its runs enforce it with Spending caps off
+    expect(r.store.state(r.tasks()[0]!.runId)).toMatchObject({ capsOn: true, pipeline: { settings: { maxCostUsd: 2 } } });
+  });
+
+  it('with Spending caps off and no $ in the message, the loop and its runs have no $ limit', async () => {
+    const r = rig();
+    r.post('@Probe keep `test -f fix.txt` passing, 3 runs');
+    const goal = await r.until(() => r.goals.db.list()[0]);
+    expect(goal).not.toHaveProperty('budgetUsd');
+    await r.until(() => r.goals.db.must(goal.id).status === 'met');
+    await r.idle();
+    expect(r.msgs().map((m) => m.text)).toContain("On it. I made it a loop: the goal is `test -f fix.txt` passing, limit 3 runs. I'll post after each run.");
+    const s = r.store.state(r.tasks()[0]!.runId)!;
+    expect(s.capsOn).toBe(false);
+    expect(s.pipeline.settings.maxCostUsd).toBeUndefined();
+  });
+
+  it('with Spending caps on, a loop gets the default $ limit', async () => {
+    const r = rig();
+    savePrefs(r.home, { spendingCaps: true });
+    r.post('@Probe keep `test -f fix.txt` passing, 3 runs');
+    const goal = await r.until(() => r.goals.db.list()[0]);
+    expect(goal.budgetUsd).toBe(5);
   });
 });
 
@@ -190,6 +214,23 @@ describe('limits and memory', () => {
     expect(r.msgs().at(-1)!.text).toMatch(/Today's limit is reached \(1 of 1 runs\)/);
     expect(r.store.listRows()).toHaveLength(1);
     expect(r.teams.view(r.team.id).spend).toEqual({ usd: 0, runs: 1 });
+  });
+
+  it('the day’s $ limit stops new work only with Spending caps on', async () => {
+    const off = rig({ level: 'loose', limits: { usdPerDay: 0.01, runsPerDay: 20 } });
+    off.post('@Lens what does the README say?');
+    await off.idle();
+    expect(off.teams.view(off.team.id).spend.usd).toBeCloseTo(0.01);
+    await off.runTask('@Bolt fix the thing');
+    expect(off.store.listRows()).toHaveLength(1);
+    const on = rig({ level: 'loose', limits: { usdPerDay: 0.01, runsPerDay: 20 } });
+    savePrefs(on.home, { spendingCaps: true });
+    on.post('@Lens what does the README say?');
+    await on.idle();
+    on.post('@Bolt fix the thing');
+    await on.idle();
+    expect(on.msgs().at(-1)!.text).toMatch(/Today's limit is reached \(\$0\.01 of \$0\.01\)/);
+    expect(on.store.listRows()).toHaveLength(0);
   });
 
   it('after a task the agent keeps a few lessons, never quotes; a team can turn learning off', async () => {

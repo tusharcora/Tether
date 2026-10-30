@@ -7,6 +7,7 @@ import type { GoalView } from '../goals/goalsApi';
 import { act } from '@testing-library/react';
 import { calls, FakeEventSource, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { Caps } from '../caps';
 import type { TeamView } from './teamsApi';
 import { TeamScreen } from './TeamScreen';
 
@@ -33,10 +34,14 @@ const view = (): TeamView => ({
 const goal = { id: 'g1', workspace: 'app', title: 'Keep main green', kind: 'loop', status: 'active', check: { kind: 'tests', command: 'npm test' }, budgetUsd: 5, maxRuns: 6, approval: 'auto', workflow: 'team', createdAt: 1, spentUsd: 1.4, progress: 0.3, team: 'core', agent: 'tester',
   items: [{ id: 1, goalId: 'g1', kind: 'run', text: 'fix triggers', runId: 'rmh15a10', done: false, at: 1, attempt: { after: { ok: false, at: 2, summary: '2 failing', tail: '' } } }, { id: 2, goalId: 'g1', kind: 'run', text: 'fix evolve', runId: 'rmh15a22', done: false, at: 3 }] } as GoalView;
 
-const setup = () => {
+const setup = (o: { caps?: boolean } = {}) => {
   routeApi({ 'GET /api/teams/core': view(), 'GET /api/runs/rmh15a21/events': [], 'GET /api/runs/rmh15a10/events': [], 'GET /api/runs/rmh15a22/events': [], 'POST /api/teams/core/cards/m4': (b: unknown) => ({ ...view().messages[3], b }), 'POST /api/teams/core/messages': { id: 'm9' }, 'GET /api/teams/core/diff/m4': { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n', truncated: false } });
   const onGo = vi.fn();
-  renderApp(<TeamScreen id="core" goals={[goal]} agents={[]} projects={[]} onGo={onGo} onChanged={vi.fn()} onNewAgent={vi.fn()} />);
+  renderApp(
+    <Caps.Provider value={!!o.caps}>
+      <TeamScreen id="core" goals={[goal]} agents={[]} projects={[]} onGo={onGo} onChanged={vi.fn()} onNewAgent={vi.fn()} />
+    </Caps.Provider>,
+  );
   return { onGo };
 };
 
@@ -47,13 +52,19 @@ beforeEach(() => {
 });
 
 describe('the team screen (board 1)', () => {
+  it('with Spending caps on, today’s spend shows against the daily limit', async () => {
+    setup({ caps: true });
+    expect(await screen.findByText('$1.80 of $10.00 today')).toBeTruthy();
+  });
+
   it('heads the room with its live runs, what needs you and today’s spend; the channel keeps its messages and cards', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Tether core' });
     expect(screen.getByText('Tether team · you + 2 agents · app · any of you can approve')).toBeTruthy();
     expect(screen.getByText('1 live run')).toBeTruthy();
     expect(screen.getByText('1 needs you')).toBeTruthy();
-    expect(screen.getByText('$1.80 of $10.00 today')).toBeTruthy();
+    // Spending caps off (the default): the day's cost, not a limit
+    expect(screen.getByText('$1.80 today')).toBeTruthy();
     const chat = screen.getByRole('region', { name: 'Team chat' });
     expect(chat.querySelector('.tm-mention')!.textContent).toBe('@Probe');
     // who spoke: name, and an agent's specialty with the time

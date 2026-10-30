@@ -13,6 +13,7 @@ import { Store } from '../src/store.js';
 import { cloneShared } from '../src/git.js';
 import { currentHarness, HarnessConflict, HarnessError, harnessDir, listVersions, saveVersion, type Harness } from '../src/harness.js';
 import { loadLessons, saveLessons, type Lesson } from '../src/lessons.js';
+import { savePrefs } from '../src/prefs.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 
 const coder = BUILTIN_BOTS.find((b) => b.id === 'coder')!;
@@ -1155,6 +1156,7 @@ describe('probe review fixes', () => {
   });
   it('budget stops are a structured flag, not error text', async () => {
     const t = setup();
+    savePrefs(t.home, { spendingCaps: true });
     const id = await t.engine.start({ pipeline: pipe([{ id: 'a', mock: { output: 'x', costUsd: 1 } }, { id: 'b', mock: { output: 'y' } }], [['a', 'b']], { maxCostUsd: 0.5 }), task: 't', repo: makeRepo() });
     const s = await t.engine.wait(id);
     expect(s.budgetStop).toBe(true);

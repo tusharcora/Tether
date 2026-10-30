@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { foldRun, type Question, type StoredEvent, type TeamPlan } from '../src/types.js';
 import { makeRepo, pipe, tmp } from './helpers.js';
+import { savePrefs } from '../src/prefs.js';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { Engine } from '../src/engine.js';
 import { Store } from '../src/store.js';
@@ -468,8 +469,9 @@ const script = (spawned: Record<string, object>, t: object[] = [{ id: 'a' }], ex
   ...extra,
 });
 
-async function approved(mockScript: object, o: { mode?: 'live' | 'autonomous' } = {}) {
+async function approved(mockScript: object, o: { mode?: 'live' | 'autonomous'; caps?: boolean } = {}) {
   const home = tmp('home-');
+  if (o.caps) savePrefs(home, { spendingCaps: true });
   const mock = new MockAdapter();
   const store = Store.open(':memory:');
   const engine = new Engine(store, { home, registry: new AdapterRegistry().register(mock), bindings: () => ({ orchestrator: { agent: 'mock' }, manager: { agent: 'mock' } }) });
@@ -483,7 +485,7 @@ const evs = (store: Store, id: string, type: string) => store.events(id).filter(
 
 describe('team run execution', () => {
   it('approving the plan builds the manager pipeline, skips a second approval and runs to done', async () => {
-    const t = await approved(script({ a: { output: 'fine' } }));
+    const t = await approved(script({ a: { output: 'fine' } }), { caps: true });
     expect(t.engine.isLive(t.id)).toBe(true);
     const s = await t.engine.wait(t.id);
     expect(s.error ?? s.nodes.manager?.error).toBeUndefined();
@@ -665,7 +667,8 @@ const WRITES = { id: 'writes', ask: 'writes?', options: [{ id: 'yes', label: 'ye
 const BINDS = () => ({ orchestrator: { agent: 'mock' }, manager: { agent: 'mock' } });
 function mk(adapter: MockAdapter = new MockAdapter()) {
   const store = Store.open(':memory:');
-  return { mock: adapter, store, engine: new Engine(store, { home: tmp('home-'), registry: new AdapterRegistry().register(adapter), bindings: BINDS }) };
+  const home = tmp('home-');
+  return { mock: adapter, store, home, engine: new Engine(store, { home, registry: new AdapterRegistry().register(adapter), bindings: BINDS }) };
 }
 async function start(t: ReturnType<typeof mk>, ms: object, o: { writes?: boolean; roster?: string[] } = {}) {
   const repo = makeRepo();
@@ -722,6 +725,7 @@ describe('team run pause safety and stop', () => {
 
   it('the plan shows the default cap; free text up to 2000 characters is kept', async () => {
     const t = mk();
+    savePrefs(t.home, { spendingCaps: true });
     const id = await start(t, script({ a: { output: '@ASK user: Anything?' } }));
     expect(t.store.state(id)!.plan!.limits.maxCostUsd).toBe(5);
     await t.engine.wait(id);

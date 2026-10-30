@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../components/beui/kit/Button';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Input, Select, Switch } from '../components/beui/kit/fields';
+import { CAPS_HINT, useCaps } from '../caps';
 import { Face } from '../Face';
 import type { WorkspaceRow } from '../home/workspaces';
 import { ConfirmButton } from '../ui/ConfirmButton';
@@ -16,6 +17,7 @@ import './teams.css';
  */
 export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onSaved: (t: Team) => void; onCancel: () => void; onNewAgent: () => void; onDeleted?: () => void }) {
   const notify = useNotify();
+  const caps = useCaps();
   const t = p.team;
   const [name, setName] = useState(t?.name ?? '');
   // a new team's place is picked in the sidebar's New team menu, and fixed once made
@@ -107,7 +109,7 @@ export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['ag
       </div>
       <fieldset className="tm-fieldset tm-limits">
         <legend>Limits for this team</legend>
-        <Input label="Per day ($)" type="number" min={0.01} step="any" value={usd} onChange={(e) => setUsd(e.target.value)} />
+        <Input label="Per day ($)" type="number" min={0.01} step="any" value={usd} description={caps ? undefined : CAPS_HINT} onChange={(e) => setUsd(e.target.value)} />
         <Input label="Runs per day" type="number" min={1} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
         <Select label="Project" options={p.projects.map((w) => ({ value: w.id, label: w.name }))} value={project} onValueChange={setProject} disabled={!!t} />
       </fieldset>

@@ -88,11 +88,11 @@ export function spendToday(s: TeamState, costOf: (runId: string) => number, now 
   const usd = today.reduce((a, t) => a + costOf(t.runId), 0) + s.answers.filter((x) => x.at >= from).reduce((a, x) => a + x.usd, 0);
   return { usd: Math.round(usd * 1e6) / 1e6, runs: today.length };
 }
-/** Why nothing new may start today, or undefined. */
-export function limitReason(team: Team, spend: { usd: number; runs: number }): string | undefined {
+/** Why nothing new may start today, or undefined. The $ limit counts only with Spending caps on (`caps`); runs per day always do. */
+export function limitReason(team: Team, spend: { usd: number; runs: number }, caps: boolean): string | undefined {
   const l = team.limits;
   if (spend.runs >= l.runsPerDay) return `Today's limit is reached (${spend.runs} of ${l.runsPerDay} runs). Nothing new starts until tomorrow.`;
-  if (spend.usd >= l.usdPerDay) return `Today's limit is reached ($${spend.usd.toFixed(2)} of $${l.usdPerDay.toFixed(2)}). Nothing new starts until tomorrow.`;
+  if (caps && spend.usd >= l.usdPerDay) return `Today's limit is reached ($${spend.usd.toFixed(2)} of $${l.usdPerDay.toFixed(2)}). Nothing new starts until tomorrow.`;
   return undefined;
 }
 
@@ -107,7 +107,7 @@ const DIRECT_ROLES = new Set(['planner', 'architect', 'coder', 'reviewer']);
  * level's approvals. Tight: plan → approve plan → work → gates → approve ship. Balanced: work → gates → approve ship. Loose
  * (or `ship: false`, a loop's runs): work → gates. A read-only agent only works: it has nothing to ship.
  */
-export function taskPipeline(o: { bot: BotDef; level: Level; gates: { build?: string; test?: string }; budgetUsd: number; ship: boolean }): Pipeline {
+export function taskPipeline(o: { bot: BotDef; level: Level; gates: { build?: string; test?: string }; budgetUsd?: number; ship: boolean }): Pipeline {
   const b = o.bot;
   const readOnly = b.kind === 'verdict' || !!b.readOnly;
   const own = BUILTIN_IDS.has(b.id) ? (DIRECT_ROLES.has(b.id) ? DEFAULT_ROLE_PROMPTS[b.id] : undefined) : personaOf(b);
@@ -120,5 +120,5 @@ export function taskPipeline(o: { bot: BotDef; level: Level; gates: { build?: st
     if (o.gates.test) nodes.push(node({ id: 'tests', kind: 'gate', title: 'tests', command: o.gates.test, maxLoops: 2 }));
     if (o.ship && o.level !== 'loose') nodes.push(node({ id: 'ship', kind: 'approval', title: 'Approve ship' }));
   }
-  return relink({ name: 'team-task', version: 1, mode: 'pipeline', nodes, edges: [], settings: { parallel: 1, nodeTimeoutMs: 30 * 60_000, pipeMode: 'ancestors', maxCostUsd: o.budgetUsd } });
+  return relink({ name: 'team-task', version: 1, mode: 'pipeline', nodes, edges: [], settings: { parallel: 1, nodeTimeoutMs: 30 * 60_000, pipeMode: 'ancestors', ...(o.budgetUsd !== undefined ? { maxCostUsd: o.budgetUsd } : {}) } });
 }

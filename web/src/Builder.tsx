@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from './components/beui/kit/overlays';
 import { SegmentedControl } from './components/beui/kit/controls';
 import { Textarea } from './components/kept/textarea/textarea';
 import { ModeToggle } from './Team';
+import { useCaps } from './caps';
 import { useNotify } from './ui/notify';
 import { AddStepBar, AddStepMenu, type EccSkill } from './builder/Palette';
 import { SettingsForm, StepForm, StepHead, type Adapters } from './builder/Inspector';
@@ -73,6 +74,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [auto, setAuto] = useState(false);
   const [endpoints, setEndpoints] = useState(true);
   const [busy, setBusy] = useState(false);
+  const caps = useCaps();
   const [teamRun, setTeamRun] = useState(false);
   const [teamMode, setTeamMode] = useState<'live' | 'autonomous'>('live');
   const [pending, setPending] = useState<null | (() => void)>(null);
@@ -395,7 +397,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         />
       </FloatBar>
       <FloatBar at="right">
-        {pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
+        {caps && pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
         {phone ? null : (
           <Button variant="secondary" size="sm" aria-pressed={settingsOpen} onClick={() => (setSelected(undefined), setSettingsOpen(!settingsOpen))}>
             Settings
