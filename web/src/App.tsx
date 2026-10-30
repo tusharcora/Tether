@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { AttentionItem, Pin, RunRow } from './api';
+import { api, type AttentionItem, type Pin, type RunRow } from './api';
 import { assistantApi, chatsPath, type ChatSummary } from './assistant/api';
 import { Assistant } from './assistant/Assistant';
 import { useActiveChat, useAssistant } from './assistant/useAssistant';
@@ -10,6 +10,7 @@ import { AllChats } from './chats/AllChats';
 import { Conversation } from './chats/Conversation';
 import { NewChat } from './chats/NewChat';
 import { Builder } from './Builder';
+import { Caps } from './caps';
 import { CommandMenu } from './CommandMenu';
 import { ToastStack, ToastStackProvider } from './components/beui/kit/toast';
 import { Crew } from './Crew';
@@ -105,7 +106,9 @@ function Shell() {
   const [removing, setRemoving] = useState<WorkspaceRow>();
   /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
   const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
-  const health = usePoll<{ ok: boolean; vault?: string; home?: string }>('/api/health', 5000);
+  const health = usePoll<{ ok: boolean; vault?: string; home?: string; spendingCaps?: boolean }>('/api/health', 5000);
+  const caps = health.data?.spendingCaps === true;
+  const setCaps = (on: boolean) => void api('PUT', '/api/prefs', { spendingCaps: on }).then(() => health.refresh(), notify.fail);
   const connection = useConnection(health);
   const phone = useMediaQuery(PHONE);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -285,13 +288,13 @@ function Shell() {
   const list = projects.list.data ?? [];
   /** Settings as a page over the content area (the screen under it stays mounted); over the Welcome screen it covers the window. */
   const settingsPage = settingsOpen ? (
-    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} returnFocus={settingsHome} />
+    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} caps={health.data ? { on: caps, onChange: setCaps } : undefined} returnFocus={settingsHome} />
   ) : null;
   /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
   const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);
 
   return (
-    <>
+    <Caps.Provider value={caps}>
       {welcome ? (
         <Welcome
           recent={list}
@@ -444,7 +447,7 @@ function Shell() {
           then?.();
         }}
       />
-    </>
+    </Caps.Provider>
   );
 }
 

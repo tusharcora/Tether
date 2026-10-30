@@ -3104,7 +3104,7 @@ export class Tui {
       lines.push(` ${dim(facts.join('  ·  '))}`);
     }
     lines.push('');
-    const issues = preflight(applyBindings(p, this.bindings()), this.registry);
+    const issues = preflight(applyBindings(p, this.bindings()), this.registry, this.prefs.spendingCaps === true);
     if (!issues.length) lines.push(` ${green('✔')} ${dim('preflight clean')}`);
     for (const i of issues.slice(0, Math.max(2, h - lines.length - 1))) lines.push(` ${i.level === 'error' ? red('✘') : amber('!')} ${i.node ? dim(`[${i.node}] `) : ''}${i.message}`);
     return lines;

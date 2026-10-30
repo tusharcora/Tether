@@ -264,6 +264,8 @@ export type RunEvent =
       /** Evolve probe replay: which proposal it tests and on which side. Probe runs never teach lessons or count in signals. */
       probe?: ProbeTag;
       origin?: RunOrigin;
+      /** Spending caps were on when the run started (the setting, or an explicit cap). Absent in logs from before the setting: on. */
+      capsOn?: boolean;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
   | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string }
@@ -429,6 +431,8 @@ export interface RunState {
   probe?: ProbeTag;
   /** The spend cap stopped the run or one of its steps (run.finished.budget / node.finished.budget). */
   budgetStop?: true;
+  /** Spending caps as the run started (run.started.capsOn). Off: its pipeline carries no cap and cost stops nothing. */
+  capsOn?: boolean;
   origin?: RunOrigin;
   /** Its PR, once shipped (merged when merged), or why shipping failed. */
   ship?: { url?: string; number?: number; merged?: boolean; error?: string };
@@ -471,6 +475,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         planning: e.kind === 'team',
         ...(e.probe ? { probe: e.probe } : {}),
         ...(e.origin ? { origin: e.origin } : {}),
+        capsOn: e.capsOn !== false,
         ...(e.kind === 'team' ? { team: { ...(e.roster?.length ? { roster: e.roster } : {}), maxRounds: e.maxRounds ?? 3, yes: !!e.yes, ...(e.budgetUsd !== undefined ? { budgetUsd: e.budgetUsd } : {}) } } : {}),
         round: 0,
         pending: [],

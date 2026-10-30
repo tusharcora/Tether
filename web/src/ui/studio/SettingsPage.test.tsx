@@ -48,6 +48,19 @@ describe('SettingsPage', () => {
     expect(onChange).toHaveBeenCalledWith(false);
   });
 
+  it('has the Spending caps switch, off by default, saying cost never stops a run while off', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<SettingsPage {...base} />);
+    expect(screen.queryByRole('region', { name: 'Runs' })).toBeNull();
+    rerender(<SettingsPage {...base} caps={{ on: false, onChange }} />);
+    const runs = screen.getByRole('region', { name: 'Runs' });
+    expect(runs.textContent).toContain('Off: runs never stop because of cost. Costs still show everywhere.');
+    const sw = within(runs).getByRole('switch', { name: /spending caps/i });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it('picks a theme', () => {
     const onChoice = vi.fn();
     render(<SettingsPage {...base} onChoice={onChoice} />);

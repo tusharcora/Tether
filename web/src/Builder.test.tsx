@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { Builder } from './Builder';
+import { Caps, CAPS_HINT } from './caps';
 import { calls, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 import { SettingsPage } from './ui/studio/SettingsPage';
@@ -257,9 +258,23 @@ describe('Builder', () => {
     expect(screen.queryByRole('complementary', { name: 'Workflow settings' })).toBeNull();
   });
 
-  it('shows Save only with unsaved changes and the spend cap when one is set', async () => {
+  it('with Spending caps off, a set cap is not shown as a limit and its field says it waits for the setting', async () => {
     routeApi({ ...routes, 'GET /api/pipelines/plan-code-review': { pipeline: { ...pcr, settings: { ...pcr.settings, maxCostUsd: 5 } } } });
     renderApp(<Builder onStarted={() => {}} />);
+    await screen.findByDisplayValue('plan-code-review');
+    expect(screen.queryByText('$5 cap')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByLabelText('Spend cap (USD, optional)')).toHaveProperty('value', '5');
+    expect(screen.getByText(CAPS_HINT)).toBeTruthy();
+  });
+
+  it('shows Save only with unsaved changes and the spend cap when one is set', async () => {
+    routeApi({ ...routes, 'GET /api/pipelines/plan-code-review': { pipeline: { ...pcr, settings: { ...pcr.settings, maxCostUsd: 5 } } } });
+    renderApp(
+      <Caps.Provider value>
+        <Builder onStarted={() => {}} />
+      </Caps.Provider>,
+    );
     await screen.findByDisplayValue('plan-code-review');
     expect(screen.getByText('$5 cap')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
