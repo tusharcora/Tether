@@ -65,10 +65,15 @@ export function runRefOf(text: string, tasks: TeamTask[]): TeamTask | undefined 
   return [...tasks].reverse().find((t) => t.runId === full || (!!short && t.runId.slice(-4) === short));
 }
 
-/** The approver rule (spec §6.3), checked on every approve, reject and merge. */
+/** The approver rule (spec §6.3), checked on every approve, reject and merge. `people` are persons only: an agent never is one. */
 export function mayApprove(team: Team, personId: string): boolean {
   const inTeam = team.people.some((p) => p.id === personId);
   return inTeam && (team.approvers === 'any' || team.approvers.includes(personId));
+}
+/** Who may start runs, loops and goals (spec 2026-10-30 §2.4): the owner, or a person with "Can start runs". */
+export function mayStart(team: Team, personId: string): boolean {
+  const p = team.people.find((x) => x.id === personId);
+  return !!p && (p.id === 'owner' || p.canStartRuns === true);
 }
 export function approverNames(team: Team): string {
   if (team.approvers === 'any') return 'Any teammate';
