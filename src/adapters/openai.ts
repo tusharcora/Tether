@@ -16,6 +16,7 @@ import { accountKey } from '../accounts/keys.js';
 import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
 import { NV_LIMIT, chatModels, isNvidia } from '../nvidia.js';
 import { OR_HEADERS, isOpenRouter, limitKind, limitMessage, nextUtcMidnight } from '../openrouter.js';
+import { pruneToolResults } from './prune.js';
 import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest } from '../types.js';
 
 export interface EndpointConfig {
@@ -223,6 +224,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
   }
 
   private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string; reset?: number; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
+    pruneToolResults(messages);
     const res = await fetch(this.url('/chat/completions'), {
       method: 'POST',
       headers: await this.headers(),

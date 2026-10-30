@@ -107,6 +107,20 @@ describe('OpenAICompatAdapter', () => {
     expect(chunks.join('')).toMatch(/\[tool\] write_file out\/HELLO\.md/);
   });
 
+  it('prunes a long tool result once a later turn has followed it, keeping the latest turn whole', async () => {
+    const d = tmp('wt-');
+    writeFileSync(join(d, 'big.txt'), 'b'.repeat(20_000));
+    writeFileSync(join(d, 'a.txt'), 'a');
+    script = [{ tools: [{ name: 'read_file', args: { path: 'big.txt' } }] }, { tools: [{ name: 'read_file', args: { path: 'a.txt' } }] }, { content: 'ok' }];
+    seen.length = 0;
+    await new OpenAICompatAdapter('local', { baseUrl: base }).run(req(d, { model: 'm', readOnly: true }));
+    const tools = (i: number) => seen[i]!.messages.filter((m) => m.role === 'tool').map((m) => m.content!);
+    expect(tools(1)[0]).toBe('b'.repeat(20_000));
+    expect(tools(2)[0]!.length).toBeLessThan(8192);
+    expect(tools(2)[0]).toContain(`${20_000 - 4096 - 1024} chars pruned`);
+    expect(tools(2)[1]).toBe('a');
+  });
+
   it("reports the first request's prompt tokens beside the totals", async () => {
     const d = tmp('wt-');
     writeFileSync(join(d, 'a.txt'), 'a');
