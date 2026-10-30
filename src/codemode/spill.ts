@@ -43,17 +43,23 @@ export async function spillText(workdir: string, text: string, max: number): Pro
   const rel = `${SPILL_DIR}/${randomBytes(6).toString('hex')}.txt`;
   const worst = notice(bytes(text), rel);
   if (worst.length > max) return undefined;
+  if (!(await saveSpill(workdir, text, rel))) return undefined;
+  const r = retain(text, Math.max(0, max - GAP.length - 2 - worst.length));
+  return r.head || r.tail ? `${r.head}${GAP}${r.tail}\n\n${notice(r.omittedBytes, rel)}` : notice(r.omittedBytes, rel);
+}
+
+/** Save `text` as a spill file (owner-only, git-ignored) and return its path relative to `workdir`, or undefined when it cannot. */
+export async function saveSpill(workdir: string, text: string, rel = `${SPILL_DIR}/${randomBytes(6).toString('hex')}.txt`): Promise<string | undefined> {
   try {
     await mkdir(join(workdir, SPILL_DIR), { recursive: true, mode: 0o700 });
     await writeFile(join(workdir, '.tether', '.gitignore'), '*\n', { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
       if (e.code !== 'EEXIST') throw e;
     });
     await writeFile(join(workdir, rel), text, { flag: 'wx', mode: 0o600 });
+    return rel;
   } catch {
     return undefined;
   }
-  const r = retain(text, Math.max(0, max - GAP.length - 2 - worst.length));
-  return r.head || r.tail ? `${r.head}${GAP}${r.tail}\n\n${notice(r.omittedBytes, rel)}` : notice(r.omittedBytes, rel);
 }
 
 /** Delete regular spill files under `workdir` whose mtime is strictly older than the cutoff; symlinks and other entries are left alone. Never throws. */
