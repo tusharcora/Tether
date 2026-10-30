@@ -360,6 +360,8 @@ function Shell() {
                 onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
                 onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
                 onStart={() => go({ tab: 'home' })}
+                goals={goals.goals}
+                onGo={go}
               />
             ) : null}
             {screen.tab === 'api' ? (

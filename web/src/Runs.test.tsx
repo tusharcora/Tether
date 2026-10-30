@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
@@ -29,15 +29,17 @@ describe('Runs', () => {
   it('lists runs and selects one', async () => {
     const onSelect = vi.fn();
     renderApp(<Runs onSelect={onSelect} />);
-    fireEvent.click(await screen.findByText('Second task'));
+    // a question waiting puts the run under Needs you, with Answer inline
+    fireEvent.click(within(await screen.findByRole('group', { name: 'Second task' })).getByRole('button', { name: 'Answer' }));
     expect(onSelect).toHaveBeenCalledWith('r2');
-    expect(screen.getByText('Second task').closest('tr')!.querySelector('[data-status="warning"]')!.textContent).toContain('needs you');
+    fireEvent.click(screen.getByRole('button', { name: 'Add rate limiting, Running' }));
+    expect(onSelect).toHaveBeenCalledWith('r1');
   });
 
   it('shows the list alone, full width, when no run is open', async () => {
     const { container } = renderApp(<Runs onSelect={() => {}} />);
     expect(await screen.findByText('Second task')).toBeTruthy();
-    expect(container.querySelector('.runs-list-page > .run-list')).toBeTruthy();
+    expect(container.querySelector('.runs-list-page > .rl')).toBeTruthy();
     expect(screen.queryByText('No run selected')).toBeNull();
   });
 

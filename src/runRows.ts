@@ -22,7 +22,7 @@ export const nodeTitle = (n: PipelineNode): string => n.title ?? n.role ?? n.id;
 
 /** Ids, names, statuses and the branch only: no task text, prompts or outputs. */
 export function rowExtras(s: RunState, lastTs: number): RunRowExtras {
-  const steps = s.pipeline.nodes.map((n) => ({ id: n.id, status: s.nodes[n.id]?.status ?? 'queued', bot: crewFor(n) }));
+  const steps = s.pipeline.nodes.map((n) => ({ id: n.id, status: s.nodes[n.id]?.status ?? 'queued', bot: crewFor(n), title: nodeTitle(n), kind: n.kind, ...(n.kind === 'agent' && (n.agent === 'openrouter' || n.agent === 'nvidia') ? { free: true as const } : {}) }));
   const cur = s.pipeline.nodes.find((n) => {
     const st = s.nodes[n.id]?.status;
     return st === 'running' || st === 'awaiting';
@@ -30,6 +30,7 @@ export function rowExtras(s: RunState, lastTs: number): RunRowExtras {
   const bots = [...new Set(s.pipeline.nodes.filter((n) => n.kind === 'agent').map((n) => crewFor(n)))];
   const stats = Object.values(s.nodes).flatMap((n) => (n.stat ? [n.stat] : []));
   return {
+    ...(Object.values(s.nodes).some((n) => n.attempts > 1 || n.loops > 0) ? { retried: true as const } : {}),
     ...(stats.length ? { added: stats.reduce((a, x) => a + x.added, 0), deleted: stats.reduce((a, x) => a + x.deleted, 0) } : {}),
     branch: s.branch,
     lastTs,

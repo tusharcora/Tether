@@ -32,6 +32,9 @@ describe('run rows for Home', () => {
     store.append('r2', { type: 'node.finished', node: 'b', status: 'done', output: '', durationMs: 1, attempt: 2, commit: 'c3', stat: { files: 1, added: 1, deleted: 0 } });
     expect(store.state('r2')!.nodes.b!.stat).toEqual({ files: 1, added: 13, deleted: 5 });
     expect(rowExtras(store.state('r2')!, 0)).toMatchObject({ added: 43, deleted: 9 });
+    expect(rowExtras(store.state('r2')!, 0)).not.toHaveProperty('retried');
+    store.append('r2', { type: 'node.started', node: 'b', attempt: 2 });
+    expect(rowExtras(store.state('r2')!, 0).retried).toBe(true);
   });
 
   it('keep where a run was started from, through the fold and the list row', () => {
@@ -51,10 +54,10 @@ describe('run rows for Home', () => {
     store.append('r1', { type: 'node.started', node: 'code', attempt: 1 });
     const x = rowExtras(store.state('r1')!, store.lastTs('r1'));
     expect(x.steps).toEqual([
-      { id: 'plan', status: 'done', bot: 'planner' },
-      { id: 'code', status: 'running', bot: 'coder' },
-      { id: 'gate', status: 'queued', bot: 'tester' },
-      { id: 'ok', status: 'queued', bot: 'approval' },
+      { id: 'plan', status: 'done', bot: 'planner', title: 'Plan', kind: 'agent' },
+      { id: 'code', status: 'running', bot: 'coder', title: 'Implement', kind: 'agent' },
+      { id: 'gate', status: 'queued', bot: 'tester', title: 'gate', kind: 'gate' },
+      { id: 'ok', status: 'queued', bot: 'approval', title: 'ok', kind: 'approval' },
     ]);
     expect(x.current).toEqual({ node: 'code', bot: 'Bolt', title: 'Implement' });
     expect(x.bots).toEqual(['planner', 'coder']);

@@ -4,6 +4,8 @@ import { Loading } from './components/Loading';
 import { usePoll } from './hooks';
 import { useRunStream } from './runStream';
 import type { WorkspaceRow } from './home/workspaces';
+import type { GoalView } from './goals/goalsApi';
+import type { Route } from './hooks';
 import { RunList } from './runs/RunList';
 import { RunPage } from './runs/RunPage';
 import { useNotify } from './ui/notify';
@@ -27,6 +29,10 @@ export interface RunsProps {
   project?: WorkspaceRow;
   /** Open a file a run changed in Code: the run's folder and the file's path in its repo. */
   onOpenFile?: (repo: string, file: string) => void;
+  /** The goals, for search by goal and a run's goal chip. */
+  goals?: GoalView[];
+  /** Go elsewhere: a run's goal, its team's room, its chat, its worktree in Code. */
+  onGo?: (r: Route) => void;
 }
 
 /** The runs list full width, or one run's page (`selected`). One EventSource: the selected run's. */
@@ -48,7 +54,8 @@ export function Runs(props: RunsProps) {
   };
 
   // no run open: the list alone, full width (spec §7: no "No run selected" pane)
-  if (!props.selected) return <div className="runs-list-page"><RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} /></div>;
+  const ship = (id: string) => api('POST', `/api/runs/${id}/ship`, { merge: false }).then(() => notify.ok('Approved: the PR opens when the run finishes'), notify.fail);
+  if (!props.selected) return <div className="runs-list-page"><RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} goals={props.goals} onShip={ship} /></div>;
   if (!run) return <div className="run-page">{error ? <InlineError message={error} onRetry={retry} /> : <Loading loading lines={4} label="Loading run" />}</div>;
   return (
     <RunPage

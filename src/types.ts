@@ -796,6 +796,11 @@ export interface RunStep {
   status: NodeStatus;
   /** The crew bot that runs it (a bot id, for faces). */
   bot: string;
+  /** Its title, role or id ("Retry from Tests"). */
+  title?: string;
+  kind?: PipelineNode['kind'];
+  /** An agent step on a free model (OpenRouter, NVIDIA). */
+  free?: true;
 }
 export interface RunCurrent {
   node: string;
@@ -815,6 +820,8 @@ export interface RunRowExtras {
   /** Lines added and removed by the run's commits; absent when no step recorded it (runs before 2026-10-29). */
   added?: number;
   deleted?: number;
+  /** A step ran more than once (a retry, a fix loop, a send back): it did not pass first try. */
+  retried?: true;
 }
 export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'free_limit' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
 export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open';
