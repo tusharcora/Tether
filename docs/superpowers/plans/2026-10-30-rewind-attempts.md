@@ -32,7 +32,8 @@
 13. **Leftover processes:** every spawned process group is recorded in `<home>/procs.json`; on server start, a recorded group whose leader is still alive and started at the recorded time (`ps -o lstart=`) is killed, and the file is cleared. Groups are killed on Stop, run delete, server close and process exit. A run's own Stop does not end its preview (you may want to look at it after stopping the agents).
 14. **Preview** default command: `npm run dev`, else `npm run start` from the worktree's `package.json`; else 400 asking for one. `PORT` is a free port; the URL is the first `http://localhost|127.0.0.1|[::1]` URL in its output (ANSI codes stripped), else `http://localhost:<PORT>` after 20 s. The page polls `GET …/preview`; the frame is an `<iframe sandbox>`; the app's CSP gains `frame-src` for loopback ports only.
 15. **Compare page** route `#/attempts/<set>`; the Runs page collapses a set into one row (newest member's place) with a "best of N" chip and one track per attempt; the row opens Compare.
-16. **Goals side panel** shows on a chat screen ≥ 1200 px wide, collapsible, remembered in `sessionStorage` (per window). The chat's own goal is the one whose `origin.chat` is this chat.
+16. **`base` only on writing steps and gates.** A read-only step never moves HEAD, so its rewind base is found from the commits before it; probe replays are never rewound. Skipping the git call keeps probe replays as fast as before.
+17. **Goals side panel** shows on a chat screen ≥ 1200 px wide, collapsible, remembered in `sessionStorage` (per window). The chat's own goal is the one whose `origin.chat` is this chat.
 
 ---
 

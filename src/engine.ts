@@ -1918,7 +1918,8 @@ export class Engine {
         console.error(`[harness] could not read or write the harness store (${(err as Error).message}); runs continue without harness data`);
       }
     }
-    const base = await headSha(state.workdir).catch(() => undefined);
+    // a read-only step never moves HEAD (rewindBase finds the same commit without it) and a probe is never rewound: spare them the git call
+    const base = node.readOnly || probe ? undefined : await headSha(state.workdir).catch(() => undefined);
     this.store.append(runId, { type: 'node.started', node: node.id, attempt, ...(harness ? { harness } : {}), ...(base ? { base } : {}) });
 
     let vaultContext: string | undefined;
