@@ -52,6 +52,8 @@ export function judge(check: GoalCheck, code: number | null, out: string): Pick<
 export interface GoalHooks {
   start(g: Goal, plan: Plan): Promise<string>;
   blocked(g: Goal): string | undefined;
+  /** A waiting run was decided (from any surface): the team settles its card. */
+  decided?(g: Goal, action: 'start' | 'skip'): void;
 }
 
 /** Why a goal's caps stop it now; a cap that is not set is not checked. */
@@ -346,6 +348,7 @@ export class Goals {
     if (g.status !== 'needs_you' || !g.pending) throw new HttpError(409, 'no run is waiting for you');
     // decided once: the status moves before anything awaits, so a second click is refused
     const taken = this.save({ ...g, status: 'active', pending: undefined });
+    if (g.team) this.d.hooks?.decided?.(g, action);
     if (action === 'skip') {
       this.job(this.advance(id).catch((e) => this.failed(id, e)));
       return taken;

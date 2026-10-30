@@ -265,12 +265,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
   // a team's loop starts its runs through its team (made just below; the hooks are only called after both exist)
-  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g) } });
+  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) } });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
   const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  /** What needs the person: every run's items, with the team named on a team's (and a loop's ship card from its team). */
+  const needs = () => teams.inbox(attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })));
   /** Terminal and Preview processes; every one ends with the server (or, at the latest, with this process). */
   const procs = new RunProcs({ home: cfg.home, store });
   /** Try more ways: siblings count toward the original's goal and team. */
@@ -428,7 +430,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
-      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo, goals }, req, res, url);
+      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs, modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
@@ -879,7 +881,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, { ...r, lastTs }) }));
       return send(res, 200, rows), true;
     }
-    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })) }), true;
+    if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: needs() }), true;
     if (p === '/api/activity' && m === 'GET') {
       const raw = url.searchParams.get('since');
       const since = raw ? parseCursor(raw) : undefined;

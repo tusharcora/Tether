@@ -7,6 +7,8 @@
  * among these actions.
  */
 import { randomBytes } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 import type { AdapterRegistry } from '../adapters/index.js';
 import { runTurn } from '../assistant/turn.js';
 import { loadBindings } from '../bindings.js';
@@ -24,12 +26,12 @@ import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
 import { TEAM_MAX_BUDGET_USD } from '../team.js';
-import type { StoredEvent } from '../types.js';
+import type { AttentionItem, StoredEvent } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, listWorkspaces } from '../workspace.js';
-import { approverNames, instructionOf, intentOf, limitReason, loopSpec, mayApprove, mentionsOf, runRefOf, spendToday, taskPipeline } from './rules.js';
+import { approverNames, instructionOf, intentOf, limitReason, loopSpec, mayApprove, mayStart, mentionsOf, runRefOf, spendToday, taskPipeline } from './rules.js';
 import { mergePr, prChecks, shipBranch } from './ship.js';
-import { cleanTeam, loadTeams, MAX_TEAMS, readState, removeState, saveTeams, writeState } from './store.js';
+import { cleanTeam, loadTeams, MAX_TEAMS, OWNER, readState, removeState, saveTeams, writeState } from './store.js';
 import type { AgentState, Card, Person, Team, TeamMessage, TeamState, TeamSummary, TeamTask, TeamView, WorkItem } from './types.js';
 
 export interface TeamsDeps {
@@ -60,6 +62,23 @@ const cleanText = (t: string) => t.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u
 const firstLine = (t: string, n = 80) => t.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, n) ?? '';
 const short = (runId: string) => `R-${runId.slice(-4).toUpperCase()}`;
 const usd = (n: number) => `$${n.toFixed(2)}`;
+const PLACE_NAME = { tether: 'Tether', slack: 'Slack', telegram: 'Telegram' } as const;
+const MAX_PEOPLE = 200;
+/** A photo handed to a team (Telegram) lives in its own `tether-img-*` temp folder, removed once the message is handled. */
+const dropImages = (files?: string[]) => {
+  for (const f of files ?? []) if (basename(dirname(f)).startsWith('tether-img-')) rmSync(dirname(f), { recursive: true, force: true });
+};
+
+/**
+ * How a person's message reaches an agent beyond its @mentions: `to` (a reply to that agent's message), `images` (a photo),
+ * `force: 'task'` (`/new`). `asker` is the person behind the chain: what they may start, its hand-offs may start.
+ */
+export interface Via {
+  to?: string;
+  images?: string[];
+  force?: 'task';
+  asker?: string;
+}
 
 export class Teams {
   /** run id -> team id, for every run a team agent started. */
@@ -69,6 +88,7 @@ export class Teams {
   private jobs = new Set<Promise<unknown>>();
   /** Ships in flight, so an approval and a Loose finish never push twice. */
   private shipping = new Set<string>();
+  private listeners = new Set<(teamId: string, m: TeamMessage) => void>();
 
   constructor(private d: TeamsDeps) {
     for (const t of this.all()) for (const k of readState(d.home, t.id).tasks) this.runs.set(k.runId, t.id);
@@ -133,6 +153,48 @@ export class Teams {
     removeState(this.d.home, id);
   }
 
+  // ---------- people (board 7) ----------
+
+  private saveTeam(id: string, fn: (t: Team) => Team): Team {
+    const f = loadTeams(this.d.home);
+    const team = fn(this.must(id));
+    saveTeams(this.d.home, { ...f, teams: f.teams.map((x) => (x.id === id ? team : x)) });
+    return team;
+  }
+  /** A person seen in the team's group: added once with both switches off; later sightings refresh their name and @username. */
+  addPerson(teamId: string, p: Person): Person {
+    let out = p;
+    this.saveTeam(teamId, (t) => {
+      const had = t.people.find((x) => x.id === p.id);
+      if (!had && t.people.length >= MAX_PEOPLE) throw new HttpError(409, `at most ${MAX_PEOPLE} people in a team`);
+      out = had ? { ...had, name: p.name, ...(p.username ? { username: p.username } : {}) } : { ...p, canStartRuns: false, joinedAt: Date.now() };
+      return { ...t, people: had ? t.people.map((x) => (x.id === p.id ? out : x)) : [...t.people, out] };
+    });
+    return out;
+  }
+  /** Board 7's switches. The owner's are fixed on; "any person" turns into everyone else when one is switched off. */
+  setPerson(teamId: string, personId: string, o: { approver?: boolean; canStartRuns?: boolean }): Team {
+    if (personId === OWNER.id) throw new HttpError(400, 'the owner always approves and starts runs');
+    return this.saveTeam(teamId, (t) => {
+      if (!t.people.some((p) => p.id === personId)) throw new HttpError(404, 'no such person in this team');
+      let approvers = t.approvers;
+      if (o.approver !== undefined) {
+        const list = approvers === 'any' ? t.people.map((p) => p.id) : approvers;
+        approvers = o.approver ? [...new Set([...list, personId])] : list.filter((x) => x !== personId);
+        if (!approvers.includes(OWNER.id)) approvers = [OWNER.id, ...approvers];
+      }
+      const people = o.canStartRuns === undefined ? t.people : t.people.map((p) => (p.id === personId ? { ...p, canStartRuns: o.canStartRuns } : p));
+      return { ...t, people, approvers };
+    });
+  }
+  removePerson(teamId: string, personId: string): Team {
+    if (personId === OWNER.id) throw new HttpError(400, 'the owner cannot be removed');
+    return this.saveTeam(teamId, (t) => {
+      if (!t.people.some((p) => p.id === personId)) throw new HttpError(404, 'no such person in this team');
+      return { ...t, people: t.people.filter((p) => p.id !== personId), approvers: t.approvers === 'any' ? 'any' : t.approvers.filter((x) => x !== personId) };
+    });
+  }
+
   private agentFrom(bot: string) {
     return { kind: 'agent' as const, id: bot, name: this.agentBots().find((b) => b.id === bot)?.name ?? bot };
   }
@@ -143,11 +205,28 @@ export class Teams {
 
   // ---------- the channel ----------
 
+  /** Every new message of a team, and every change to one (a card edited in place): Telegram mirrors them. */
+  onMessage(fn: (teamId: string, m: TeamMessage) => void): () => void {
+    this.listeners.add(fn);
+    return () => void this.listeners.delete(fn);
+  }
+
   /** Read-modify-write of a team's state. Synchronous: nothing else in this process interleaves. */
   private edit<T>(teamId: string, fn: (s: TeamState) => T): T {
     const s = readState(this.d.home, teamId);
+    const before = this.listeners.size ? new Map(s.messages.map((m) => [m.id, JSON.stringify(m)])) : undefined;
     const r = fn(s);
     writeState(this.d.home, teamId, s);
+    if (before)
+      for (const m of s.messages)
+        if (before.get(m.id) !== JSON.stringify(m))
+          for (const l of this.listeners) {
+            try {
+              l(teamId, m);
+            } catch (e) {
+              console.error(`[teams] listener: ${(e as Error).message}`);
+            }
+          }
     return r;
   }
   private say(teamId: string, from: TeamMessage['from'], text: string, extra: Partial<TeamMessage> = {}): TeamMessage {
@@ -164,41 +243,55 @@ export class Teams {
   }
 
   /** A teammate's message. Only people in the team may talk to its agents. */
-  post(teamId: string, o: { text: string; from: Person }): TeamMessage {
+  post(teamId: string, o: { text: string; from: Person } & Omit<Via, 'asker'>): TeamMessage {
     const team = this.must(teamId);
-    if (!team.people.some((p) => p.id === o.from.id)) throw new HttpError(403, 'only people in this team can talk to its agents');
+    if (!team.people.some((p) => p.id === o.from.id)) {
+      dropImages(o.images);
+      throw new HttpError(403, 'only people in this team can talk to its agents');
+    }
     const text = cleanText(o.text);
-    if (!text) throw new HttpError(400, '"text" is required');
+    if (!text) throw (dropImages(o.images), new HttpError(400, '"text" is required'));
     const m = this.say(teamId, { kind: 'person', id: o.from.id, name: o.from.name }, text);
-    this.dispatch(team, m, 0);
+    this.dispatch(team, m, 0, { ...(o.to ? { to: o.to } : {}), ...(o.images ? { images: o.images } : {}), ...(o.force ? { force: o.force } : {}), asker: o.from.id });
     return m;
   }
 
-  /** Hand a message to the first team agent it mentions (never the author itself). */
-  private dispatch(team: Team, m: TeamMessage, hops: number): void {
+  /** Hand a message to the first team agent it mentions (never the author itself), else to the agent it replies to. */
+  private dispatch(team: Team, m: TeamMessage, hops: number, via: Via = {}): void {
     const who = this.who(team);
-    const bot = mentionsOf(m.text, who).find((b) => !(m.from.kind === 'agent' && m.from.id === b));
-    if (!bot) return;
+    const named = mentionsOf(m.text, who).find((b) => !(m.from.kind === 'agent' && m.from.id === b));
+    const bot = named ?? (via.to && who.some((w) => w.id === via.to) ? via.to : undefined);
+    if (!bot) return dropImages(via.images);
     if (m.from.kind === 'agent' && hops > MAX_HOPS) return void this.say(team.id, TETHER, `The agents handed this on ${MAX_HOPS} times in a row; a person takes it from here.`);
     const name = who.find((w) => w.id === bot)!.name;
-    const said = instructionOf(m.text, new RegExp(`@${name}`, 'i').test(m.text) ? name : bot);
+    const said = named ? instructionOf(m.text, new RegExp(`@${name}`, 'i').test(m.text) ? name : bot) : m.text;
     const tasks = readState(this.d.home, team.id).tasks;
     const ref = runRefOf(m.text, tasks) ?? (m.run ? tasks.find((t) => t.runId === m.run) : undefined);
-    this.job(this.act(team, bot, said, m, ref, hops));
+    this.job(this.act(team, bot, said, m, ref, hops, via).finally(() => dropImages(via.images)));
   }
 
-  private async act(team: Team, bot: string, said: string, m: TeamMessage, ref: TeamTask | undefined, hops: number): Promise<void> {
-    const intent = intentOf(said);
+  private async act(team: Team, bot: string, said: string, m: TeamMessage, ref: TeamTask | undefined, hops: number, via: Via): Promise<void> {
+    const intent = via.force ?? intentOf(said);
     if (intent === 'merge') return this.merge(team, bot, m, said);
+    // permission before anything starts (spec 2026-10-30 §6.3): no run or loop for someone without "Can start runs"
+    if ((intent === 'task' || intent === 'loop') && via.asker && !mayStart(team, via.asker)) return this.propose(team, bot, said, via.asker, intent === 'loop');
     const why = this.limit(team);
     if (why) return void this.say(team.id, this.agentFrom(bot), why);
     if (intent === 'review') {
       const run = ref ?? [...readState(this.d.home, team.id).tasks].reverse().find((t) => this.d.store.state(t.runId)?.status === 'done');
-      if (run) return this.review(team, bot, run, m, hops);
+      if (run) return this.review(team, bot, run, m, hops, via.asker);
     }
     if (intent === 'loop') return this.loop(team, bot, said);
-    if (intent === 'task') return void (await this.task(team, bot, said, { ref, hops, kind: 'task' }));
-    return this.answer(team, bot, said, m, { hops });
+    if (intent === 'task') return void (await this.task(team, bot, said, { ref, hops, kind: 'task', by: via.asker }));
+    return this.answer(team, bot, said, m, { hops, asker: via.asker, images: via.images });
+  }
+
+  /** An ask someone may not start: a card that a person with "Can start runs" starts, and (once per person) why. */
+  private propose(team: Team, bot: string, said: string, asker: string, loop: boolean): void {
+    const name = team.people.find((p) => p.id === asker)?.name ?? 'Someone';
+    this.say(team.id, TETHER, `${name} asked: ${firstLine(said, 200)}`, { card: { kind: 'proposal', agent: bot, task: said, status: 'proposed', asker, ...(loop ? { loop: true } : {}) } });
+    const told = this.edit(team.id, (s) => (s.told?.includes(asker) ? true : ((s.told ??= []).push(asker), false)));
+    if (!told) this.say(team.id, TETHER, `${name}, only people with “Can start runs” can start runs here, so this waits for one of them to press Start run.`);
   }
 
   // ---------- limits and the approver rule ----------
@@ -272,7 +365,7 @@ export class Teams {
   }
 
   /** One answer as the agent: a placeholder that is replaced in place, then any proposals as cards, then its hand-offs. */
-  private async answer(team: Team, bot: string, said: string, m: TeamMessage, o: { hops: number; diff?: { task: TeamTask; text: string } }): Promise<void> {
+  private async answer(team: Team, bot: string, said: string, m: TeamMessage, o: { hops: number; asker?: string; images?: string[]; diff?: { task: TeamTask; text: string } }): Promise<void> {
     const key = `${team.id}:${bot}`;
     const reply = this.say(team.id, this.agentFrom(bot), o.diff ? `Reviewing ${short(o.diff.task.runId)}…` : '…', { pending: true, ...(o.diff ? { run: o.diff.task.runId } : {}) });
     this.busy.set(key, o.diff ? 'reviewing' : 'answering');
@@ -282,7 +375,7 @@ export class Teams {
       const diff = o.diff ? `The diff of ${short(o.diff.task.runId)} (task: ${firstLine(o.diff.task.task, 200)}), data:\n${fence('diff', o.diff.text)}\nReview it: say what is wrong or missing in a few lines, then end with exactly one line VERDICT: PASS or VERDICT: FAIL.\n` : '';
       const res = await runTurn(
         { home: this.d.home, store: this.d.store, engine: this.d.engine, registry: this.d.registry, vault: this.d.vault, needs: () => [] },
-        { ws: team.project, root, body: { message: fence('message', `${m.from.name}: ${said}`), agent: b?.agent ?? 'claude', ...(b?.model ? { model: b.model } : {}) }, who: this.whoIs(team, bot), extra: `${this.memory(bot)}${this.context(team.id, m.id)}${diff}`, ephemeral: true },
+        { ws: team.project, root, body: { message: fence('message', `${m.from.name}: ${said}`), agent: b?.agent ?? 'claude', ...(b?.model ? { model: b.model } : {}), ...(o.images?.length ? { images: o.images } : {}) }, who: this.whoIs(team, bot), extra: `${this.memory(bot)}${this.context(team.id, m.id)}${diff}`, ephemeral: true },
         () => {},
         AbortSignal.timeout(TURN_MS),
       );
@@ -294,7 +387,7 @@ export class Teams {
         if (res.cites?.length) x.cites = res.cites;
       })!;
       for (const p of res.proposals ?? []) this.say(team.id, this.agentFrom(bot), p.why ?? 'This needs a run.', { card: { kind: 'proposal', agent: bot, task: p.task, status: 'proposed' } });
-      if (!res.error) this.dispatch(team, done, o.hops + 1);
+      if (!res.error) this.dispatch(team, done, o.hops + 1, { ...(o.asker ? { asker: o.asker } : {}) });
     } catch (e) {
       this.patch(team.id, reply.id, (x) => ((x.text = `I could not answer: ${(e as Error).message.split('\n')[0]!.slice(0, 200)}`), (x.pending = undefined)));
     } finally {
@@ -303,10 +396,10 @@ export class Teams {
   }
 
   /** A review hand-off: a read-only answer over the run chain's diff, ending in a verdict. No run starts. */
-  private async review(team: Team, bot: string, task: TeamTask, m: TeamMessage, hops: number): Promise<void> {
+  private async review(team: Team, bot: string, task: TeamTask, m: TeamMessage, hops: number, asker?: string): Promise<void> {
     const s = this.d.store.state(task.runId);
     const text = s ? (await git(projectRoot(this.d.home, team.project), ['diff', '--no-color', task.base, s.branch])).stdout : '';
-    return this.answer(team, bot, `Review ${short(task.runId)}.`, m, { hops, diff: { task, text: text.slice(0, DIFF_MAX) || '(no changes)' } });
+    return this.answer(team, bot, `Review ${short(task.runId)}.`, m, { hops, ...(asker ? { asker } : {}), diff: { task, text: text.slice(0, DIFF_MAX) || '(no changes)' } });
   }
 
   // ---------- tasks ----------
@@ -321,7 +414,7 @@ export class Teams {
   }
 
   /** Start a run as the agent (a task, a hand-off on `ref`'s branch, or a rework), with its card. Returns the run id, or undefined. */
-  private async task(team: Team, bot: string, said: string, o: { ref?: TeamTask; hops: number; kind: 'task' | 'rework'; card?: string }): Promise<string | undefined> {
+  private async task(team: Team, bot: string, said: string, o: { ref?: TeamTask; hops: number; kind: 'task' | 'rework'; card?: string; by?: string }): Promise<string | undefined> {
     const def = this.agentBots().find((b) => b.id === bot);
     if (!def) return void this.say(team.id, TETHER, `${bot} is no longer in the crew.`);
     const prev = o.ref ? this.d.store.state(o.ref.runId) : undefined;
@@ -335,7 +428,8 @@ export class Teams {
     const s = this.d.store.state(runId)!;
     const text = o.kind === 'rework' ? `Reworking ${short(o.ref!.runId)}: started ${short(runId)} on the same branch.` : prev ? `Taking it. Started ${short(runId)} on ${short(o.ref!.runId)}'s branch.` : `On it. Started ${short(runId)} in its own worktree.`;
     const ack = this.say(team.id, this.agentFrom(bot), text, { run: runId, card: { kind: 'run', runId, title: firstLine(said), steps: [], status: s.status, costUsd: 0 } });
-    this.edit(team.id, (st) => st.tasks.push({ runId, agent: bot, kind: o.kind, task: said, chain: o.ref?.chain ?? runId, base: o.ref?.base ?? s.baseSha, msg: ack.id, hops: o.hops, startedAt: Date.now() }));
+    const by = o.by ?? o.ref?.by;
+    this.edit(team.id, (st) => st.tasks.push({ runId, agent: bot, kind: o.kind, task: said, chain: o.ref?.chain ?? runId, base: o.ref?.base ?? s.baseSha, msg: ack.id, hops: o.hops, startedAt: Date.now(), ...(by ? { by } : {}) }));
     this.runs.set(runId, team.id);
     this.syncCard(team.id, runId);
     return runId;
@@ -412,7 +506,7 @@ export class Teams {
       const out = (s.nodes.work?.output ?? '').trim();
       const msg = this.say(teamId, from, `Done with ${short(runId)}${out ? `: ${out.slice(0, 600)}` : '.'}`, { run: runId });
       if (writes && (team.level === 'loose' || s.nodes.ship?.status === 'done')) await this.ship(team, task);
-      this.dispatch(team, msg, task.hops + 1);
+      this.dispatch(team, msg, task.hops + 1, { ...(task.by ? { asker: task.by } : {}) });
       await this.learn(team, task, 'done', out);
       return;
     }
@@ -563,6 +657,34 @@ export class Teams {
     this.say(team.id, from, 'Ready to ship the loop’s work. It needs a person to approve.', { run: last.runId, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending' } });
   }
 
+  /** Goals hook: a waiting run was decided (the Inbox, Goals): the team's card says so, unless it was decided on the card. */
+  goalDecided(g: Goal, action: 'start' | 'skip'): void {
+    if (!g.team || !this.all().some((t) => t.id === g.team)) return;
+    this.edit(g.team, (s) => {
+      for (const m of s.messages) if (m.card?.kind === 'approval' && m.card.what === 'next' && m.card.goalId === g.id && m.card.status === 'pending') Object.assign(m.card, { status: action === 'start' ? 'approved' : 'rejected', by: OWNER.name, at: Date.now() });
+    });
+  }
+
+  /**
+   * Inbox parity (spec 2026-10-30 §6.4): a team run's items name the team and its place; a loop's ship card (no engine step
+   * behind it) is an item of its own, decided through the team. Goals' waiting runs reach the Inbox as goals already.
+   */
+  inbox(items: AttentionItem[]): AttentionItem[] {
+    const teams = this.all();
+    const label = (t: Team) => `${t.name} · ${PLACE_NAME[t.place]}`;
+    const out = items.map((it) => {
+      const t = teams.find((x) => x.id === this.runs.get(it.runId));
+      return t ? { ...it, meta: `${label(t)} · ${it.meta}`, team: { id: t.id, name: t.name, place: t.place } } : it;
+    });
+    for (const t of teams)
+      for (const m of readState(this.d.home, t.id).messages) {
+        const c = m.card;
+        if (c?.kind === 'approval' && c.status === 'pending' && c.what === 'ship' && c.runId && !c.node)
+          out.push({ id: `${c.runId}:team:${m.id}`, ts: m.at, runId: c.runId, kind: 'approval', title: c.title, meta: `${label(t)} · ${c.detail ?? 'loop work'}`, actions: ['approve', 'open'], team: { id: t.id, name: t.name, place: t.place, msg: m.id } });
+      }
+    return out.sort((a, b) => b.ts - a.ts || a.id.localeCompare(b.id));
+  }
+
   // ---------- cards ----------
 
   /** A person presses a card's button. Approval cards check the approver rule and are decided once. */
@@ -577,12 +699,14 @@ export class Teams {
       if (card.status !== 'proposed') throw new HttpError(409, 'this proposal is already decided');
       if (o.action === 'dismiss') return this.patch(teamId, msgId, (x) => void (x.card = { ...card, status: 'dismissed' }))!;
       if (o.action !== 'start') throw new HttpError(400, '"action" must be "start" or "dismiss"');
+      if (!mayStart(team, o.by.id)) throw new HttpError(403, 'Only people with “Can start runs” can start this.');
       const why = this.limit(team);
       if (why) throw new HttpError(409, why);
       const task = cleanText(o.task ?? '') || card.task;
-      this.patch(teamId, msgId, (x) => void (x.card = { ...card, task, status: 'started' }));
-      const runId = await this.task(team, card.agent, task, { hops: 0, kind: 'task' });
-      return this.patch(teamId, msgId, (x) => void (x.card = { ...card, task, status: runId ? 'started' : 'proposed', ...(runId ? { runId } : {}) }))!;
+      this.patch(teamId, msgId, (x) => void (x.card = { ...card, task, status: 'started', by: o.by.name }));
+      if (card.loop) return (await this.loop(team, card.agent, task), readState(this.d.home, teamId).messages.find((x) => x.id === msgId)!);
+      const runId = await this.task(team, card.agent, task, { hops: 0, kind: 'task', by: o.by.id });
+      return this.patch(teamId, msgId, (x) => void (x.card = { ...card, task, status: runId ? 'started' : 'proposed', ...(runId ? { runId, by: o.by.name } : {}) }))!;
     }
     throw new HttpError(400, 'this card has no buttons');
   }
