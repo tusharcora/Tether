@@ -17,5 +17,5 @@ describe('inboxModel', () => {
     expect(nextSelection(A, [], 'a')).toBeUndefined();
     expect(nextSelection([], A, undefined)).toBe('a');
   });
-  it('covers all eight kinds with an action word', () => expect(Object.keys(ACTION_WORD).sort()).toEqual(['approval', 'failed', 'free_limit', 'interrupted', 'paused', 'plan_ready', 'planning_error', 'question']));
+  it('covers all ten kinds with an action word', () => expect(Object.keys(ACTION_WORD).sort()).toEqual(['approval', 'autofix_writes', 'failed', 'free_limit', 'interrupted', 'paused', 'plan_conflict', 'plan_ready', 'planning_error', 'question']));
 });

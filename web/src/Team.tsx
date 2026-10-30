@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ToolApproval } from './components/beui/agents/tool-approval';
 import { fmtUsd, type Question, type RunView, type TeamMode } from './api';
+import { planConflict } from '../../src/runLabels';
 import { Button } from './components/beui/kit/Button';
 import { RadioCards } from './components/beui/kit/RadioCards';
 import { Picker } from './components/bencho/Picker';
@@ -114,7 +115,7 @@ function QuestionCard(props: { q: Question; index: number; total: number; pick: 
  * Everything a team run needs from the person: the pending banner, the question cards, the finished plan and the
  * live/autonomous switch. `send` posts to the run (answers, plan, mode, swap) and shows any error on the run page.
 /** Posts to a team run (answers, plan, mode, swap); resolves false when it failed (the caller shows the error). */
-export type TeamSend = (path: 'answers' | 'plan' | 'mode' | 'swap', body: unknown) => Promise<boolean>;
+export type TeamSend = (path: 'answers' | 'plan' | 'mode' | 'swap' | 'allow-edits', body: unknown) => Promise<boolean>;
 
 const isActive = (r: RunView) => r.status === 'running' || r.status === 'paused';
 
@@ -253,9 +254,28 @@ export function PlanReview(props: { run: RunView; send: TeamSend }) {
     }
   }
 
+  // the plan check (spec 2026-10-30 §3.5): a plan that cannot do its task says why before it runs
+  const conflict = planConflict(plan, r.task);
+  async function allowEdits() {
+    setBusy(true);
+    try {
+      await props.send('allow-edits', {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="sl-panel tm-plan" aria-label="The team's plan">
       <SectionHeading title="Plan ready for your approval" />
+      {conflict ? (
+        <div className="sl-alert tm-conflict" role="alert">
+          <p>{`Check the plan: ${conflict}.`}</p>
+          <Button variant="primary" size="sm" disabled={busy} onClick={() => void allowEdits()}>
+            Allow edits and plan again
+          </Button>
+        </div>
+      ) : null}
       <p className="tm-goal">{plan.goal}</p>
       {plan.success.length ? (
         <div className="tm-block">

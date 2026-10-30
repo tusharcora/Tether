@@ -263,7 +263,8 @@ describe('#10 the writes card text is the server\'s', () => {
     const q = parseQuestions(J({ questions: [tricky] })).questions[0]!;
     expect(q.ask).toBe('May agents change files in the worktree?');
     expect(q.options).toEqual([{ id: 'yes', label: 'Yes, allow edits' }, { id: 'no', label: 'No, read-only' }]);
-    expect(q.recommended).toBe('no');
+    expect(q.recommended).toBe('yes');
+    expect(q.why).toBe("Agents edit files in this run's own worktree; nothing reaches your branch until you approve or merge.");
     expect(q.allowOther).toBeUndefined();
     expect(JSON.stringify(q)).not.toContain('trust me');
   });

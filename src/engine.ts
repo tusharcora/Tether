@@ -17,7 +17,7 @@ import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } fr
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
-import { planWaiting, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
+import { planWaiting, type StoredEvent, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
 import { CREW, crewFor } from './bots.js';
@@ -29,6 +29,7 @@ import { reflect } from './lessons.js';
 import { Vault } from './vault.js';
 import { resolveWorkspace, snapshot } from './workspace.js';
 import { capsOn } from './prefs.js';
+import { passOn } from './codemode/spill.js';
 
 /** How long a finished run waits for its reflection before moving on. */
 const REFLECT_TIMEOUT_MS = 3000;
@@ -580,7 +581,7 @@ export class Engine {
     if (this.active.has(runId)) throw new Error('stop the run before amending it');
     const agent = patch.agent ?? n.agent ?? 'claude';
     if (!this.opts.registry.has(agent)) throw new Error(`unknown agent adapter "${agent}"`);
-    this.store.append(runId, { type: 'node.amended', node, agent: patch.agent ?? n.agent, model: patch.agent ? patch.model : n.model, guidance: patch.guidance?.slice(0, 1000), reason });
+    this.store.append(runId, { type: 'node.amended', node, agent: patch.agent ?? n.agent, model: patch.agent ? patch.model : n.model, guidance: patch.guidance === undefined ? undefined : passOn(patch.guidance, s.workdir), reason });
   }
 
   // ---------- team runs: planning dialogue ----------
@@ -716,6 +717,26 @@ export class Engine {
     this.teams.delete(runId);
     this.store.append(runId, { type: 'team.pipeline', pipeline });
     this.launch(runId);
+  }
+
+  /**
+   * The person allows edits on a read-only team run (Allow edits). A plan still waiting for approval is planned again with
+   * writes on, since its steps were planned read-only; a run that already ran gets the write settings for its next retry.
+   */
+  async allowEdits(runId: string, o: { background?: boolean } = {}): Promise<void> {
+    const s = this.store.state(runId);
+    if (!s) throw new TeamError('unknown_run', `unknown run ${runId}`);
+    if (s.kind !== 'team') throw new TeamError('not_team', 'a workflow sets edits per step: change the step in the builder');
+    if (planWaiting(s)) {
+      this.store.append(runId, { type: 'plan.answer', answers: [{ question: WRITES_QUESTION, option: 'yes', by: 'user' }] });
+      this.store.append(runId, { type: 'plan.reopened' });
+      if (o.background) this.continuePlanningInBackground(runId);
+      else await this.continuePlanning(runId);
+      return;
+    }
+    if (this.active.has(runId)) throw new TeamError('conflict', 'the run is still going: stop it first');
+    if (s.planning) throw new TeamError('conflict', 'the run is still planning: answer the writes card instead');
+    if (!s.pipeline.settings.allowWrites) this.store.append(runId, { type: 'run.writes' });
   }
 
   /** Before approval, the person may give an assignment to another bot from the planning roster. */
@@ -1267,7 +1288,7 @@ export class Engine {
     const st = this.state(runId);
     const settings = st.pipeline.settings;
     const log = (to: string, answer: string, costUsd?: number) =>
-      this.store.append(runId, { type: 'handoff', from: delegator.id, to, goal: req.goal, answer: answer.slice(0, 8000), round, costUsd: costUsd || undefined });
+      this.store.append(runId, { type: 'handoff', from: delegator.id, to, goal: req.goal, answer: passOn(answer, st.workdir), round, costUsd: costUsd || undefined });
     const result = (answer: string, ok: boolean): HandResult => ({ to: req.to, goal: req.goal, answer, ok });
     const mine = st.pipeline.nodes.filter((n) => n.spawn?.kind === 'hand' && n.spawn.parent === delegator.id);
     const mode = req.write ? 'write' : 'read';
@@ -1286,6 +1307,7 @@ export class Engine {
     }
     const refuse = (why: string) => {
       log(req.to, `refused: ${why}`);
+      this.notice(runId, `${delegator.id} could not hand work to ${req.to}: ${why}`, delegator.id);
       return result(`refused: ${why}`, false);
     };
     // re-running an existing step costs time too
@@ -1431,6 +1453,8 @@ export class Engine {
     const notes: string[] = [];
     let lastReview = '';
     let reviewCalls = 0;
+    // what the manager let go of (an ignored redo, an unusable review) is said on the run page as well as in its summary
+    const note = (text: string) => (notes.push(text), this.notice(runId, `${node.id}: ${text}`, node.id));
 
     const finish = (status: 'done' | 'error', error?: string): NodeOutcome => {
       this.store.append(runId, {
@@ -1596,7 +1620,7 @@ export class Engine {
         }
         extra = `\n\nYour previous reply was rejected: ${reason}\nAnswer again with ONLY one JSON object.`;
       }
-      notes.push(`review reply could not be used (${reason}); treated as accept`);
+      note(`review reply could not be used (${reason}); treated as accept`);
       return { accept: true };
     };
 
@@ -1612,25 +1636,25 @@ export class Engine {
           const kids = this.spawnedBy(this.state(runId), node.id);
           const child = kids.find((k) => k.kind === 'agent' && (k.id === item.id || k.id === `${node.id}-${item.id}`));
           if (!child) {
-            notes.push(`redo of "${item.id}" ignored: not a step ${node.id} spawned`);
+            note(`redo of "${item.id}" ignored: not a step ${node.id} spawned`);
             continue;
           }
-          const done = this.store.eventsNoChunks(runId).filter((e) => e.event.type === 'loop' && e.event.check === node.id && e.event.fixNode === child.id).length;
+          const done = this.sinceRetry(runId).filter((e) => e.event.type === 'loop' && e.event.check === node.id && e.event.fixNode === child.id).length;
           if (done >= MAX_REDOS) {
-            notes.push(`redo of ${child.id} ignored: it was already sent back ${MAX_REDOS} times`);
+            note(`redo of ${child.id} ignored: it was already sent back ${MAX_REDOS} times`);
             continue;
           }
           const now = this.state(runId);
           const used = this.spawnUsed(now);
           const { maxSpawn } = limitsOf(now.pipeline);
           if (used >= maxSpawn) {
-            notes.push(`redo of ${child.id} refused: the spawn budget is used up (${used} of ${maxSpawn}, redos included)`);
+            note(`redo of ${child.id} refused: the spawn budget is used up (${used} of ${maxSpawn}, redos included)`);
             continue;
           }
           const brokeNow = limit();
           if (brokeNow) return halted(brokeNow);
           this.store.append(runId, { type: 'loop', check: node.id, fixNode: child.id, n: done + 1 });
-          this.store.append(runId, { type: 'node.amended', node: child.id, guidance: `Redo requested by ${node.id}: ${item.reason}`.slice(0, 1000), reason: `redo requested by ${node.id}` });
+          this.store.append(runId, { type: 'node.amended', node: child.id, guidance: passOn(`Redo requested by ${node.id}: ${item.reason}`, now.workdir), reason: `redo requested by ${node.id}` });
           const fresh = this.state(runId).pipeline.nodes.find((n) => n.id === child.id)!;
           const r = await this.runAgentOnce(runId, fresh, signal);
           if (r.aborted || signal.aborted) return { ok: false, aborted: true };
@@ -1638,7 +1662,7 @@ export class Engine {
           did++;
         }
         if (!did) {
-          notes.push('nothing left to redo; treated as accept');
+          note('nothing left to redo; treated as accept');
           break;
         }
         // steps that were skipped because the redone one had failed can run now
@@ -1649,7 +1673,7 @@ export class Engine {
         const halt = afterWork(await work());
         if (halt) return halt;
       }
-      if (round === 3) notes.push('review limit reached (3 rounds); finished with the work as it stands');
+      if (round === 3) note('review limit reached (3 rounds); finished with the work as it stands');
     }
 
     // 4. Done. A spawned step that is still failed fails the manager, even if it accepted.
@@ -1659,11 +1683,32 @@ export class Engine {
     return finish('done');
   }
 
-  /** Spawn budget used so far in this run: spawned work steps plus every redo a manager asked for. */
+  /** Spawn budget used so far in this run: spawned work steps plus every redo a manager asked for since the last retry. */
   private spawnUsed(s: RunState): number {
     const managers = new Set(s.pipeline.nodes.filter((n) => n.manager).map((n) => n.id));
-    const redos = this.store.eventsNoChunks(s.id).filter((e) => e.event.type === 'loop' && managers.has(e.event.check)).length;
+    const redos = this.sinceRetry(s.id).filter((e) => e.event.type === 'loop' && managers.has(e.event.check)).length;
     return s.spawned + redos;
+  }
+
+  /** Say on the run page what was refused, skipped, cut or degraded (spec 2026-10-30 §3.5), not only in the event log. */
+  private notice(runId: string, text: string, node?: string): void {
+    this.store.append(runId, { type: 'run.notice', ...(node ? { node } : {}), text: text.replace(/\s+/g, ' ').trim().slice(0, 400) });
+  }
+
+  /** A prompt carried long text as a spill file (passOn): say so once per file. */
+  private noticeSpills(runId: string, node: string, prompt: string): void {
+    const seen = new Set((this.state(runId).notices ?? []).map((n) => n.text));
+    for (const m of prompt.matchAll(/(\d+) characters not shown here\. Read the full text before acting on it: (\S+\.txt)/g)) {
+      const text = `long text (${Number(m[1]).toLocaleString('en-US')} more characters) reached ${node} as a file it was told to read: ${m[2]}`;
+      if (!seen.has(text)) (seen.add(text), this.notice(runId, text, node));
+    }
+  }
+
+  /** The run's events since its last retry: a retry (the person's or auto-fix's) gives a manager's review loops a fresh budget, as the fold does for checks. */
+  private sinceRetry(runId: string): StoredEvent[] {
+    const ev = this.store.eventsNoChunks(runId);
+    const at = ev.findLastIndex((e) => e.event.type === 'run.resumed' && !!e.event.retryFailed);
+    return ev.slice(at + 1);
   }
 
   /** After a redo succeeded: queue again the manager's steps that were skipped below it. */
@@ -1700,6 +1745,7 @@ export class Engine {
     const settings = st.pipeline.settings;
     const remaining = settings.maxCostUsd !== undefined ? Math.max(0, settings.maxCostUsd - st.costUsd) : undefined;
     const adapter = this.opts.registry.get(node.agent ?? 'claude');
+    this.noticeSpills(runId, node.id, prompt);
     const dirtyBefore = new Set(await statusEntries(st.workdir));
     const sig = AbortSignal.any([signal, AbortSignal.timeout(settings.nodeTimeoutMs)]);
     let res: AgentResult;
@@ -1743,15 +1789,19 @@ export class Engine {
     const target = resolveTarget(st, asker, ask.target);
     const tnsHarness = target ? st.nodes[target.id]?.harness : undefined;
     const done = (to: string, answer: string, cost = 0) => {
-      this.store.append(runId, { type: 'consult', from: asker.id, to, question: ask.question, answer: answer.slice(0, 8000), round, costUsd: cost || undefined, ...(tnsHarness ? { harness: tnsHarness } : {}) });
+      this.store.append(runId, { type: 'consult', from: asker.id, to, question: ask.question, answer: passOn(answer, st.workdir), round, costUsd: cost || undefined, ...(tnsHarness ? { harness: tnsHarness } : {}) });
       return { to, answer, cost };
     };
     if (!target) {
       const names = askable(st, asker).map((n) => n.id).join(', ') || 'none yet';
+      this.notice(runId, `${asker.id} asked "${ask.target}", which is not a finished step; it carried on without an answer`, asker.id);
       return done(ask.target, `There is no finished step called "${ask.target}". Steps that can be asked: ${names}.`);
     }
     const remaining = st.pipeline.settings.maxCostUsd !== undefined ? st.pipeline.settings.maxCostUsd - st.costUsd : undefined;
-    if (remaining !== undefined && remaining <= 0) return done(target.id, 'The run is out of budget, so this question was not asked. Proceed on your best assumption.');
+    if (remaining !== undefined && remaining <= 0) {
+      this.notice(runId, `${asker.id}'s question to ${target.id} was not asked: the run is out of budget`, asker.id);
+      return done(target.id, 'The run is out of budget, so this question was not asked. Proceed on your best assumption.');
+    }
     const adapter = this.opts.registry.get(target.agent ?? 'claude');
     const tns = st.nodes[target.id]!;
     const resumed = adapter.supportsResume && !!tns.sessionId;
@@ -1761,7 +1811,7 @@ export class Engine {
       res = await adapter.run({
         runId,
         nodeId: `${target.id}.consult`,
-        prompt: consultPrompt(st, asker, target, ask.question, resumed),
+        prompt: ((p) => (this.noticeSpills(runId, target.id, p), p))(consultPrompt(st, asker, target, ask.question, resumed)),
         cwd: st.workdir,
         model: target.model,
         readOnly: true,
@@ -1785,6 +1835,7 @@ export class Engine {
       /* best effort: a consult must not break the run */
     }
     const answer = res.exitCode === 0 && res.output.trim() ? res.output.trim() : `${target.id} could not answer (${res.error ?? 'no output'}). Proceed on your best assumption.`;
+    if (!(res.exitCode === 0 && res.output.trim())) this.notice(runId, `${target.id} could not answer ${asker.id}'s question (${res.error ?? 'no output'})`, asker.id);
     return done(target.id, answer, res.costUsd ?? 0);
   }
 
@@ -1822,7 +1873,10 @@ export class Engine {
       this.store.append(runId, { type: 'user.ask', node: node.id, question: q, wait: false });
       const ans: Answer = { question: q.id, option: q.recommended, ...(text ? { text } : {}), by: 'tether' };
       this.store.append(runId, { type: 'user.answer', question: q.id, answer: ans });
-      if (why) this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[tether] answered "${a.question.slice(0, 80)}" with the recommended option: ${why}\n` });
+      if (why) {
+        this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[tether] answered "${a.question.slice(0, 80)}" with the recommended option: ${why}\n` });
+        this.notice(runId, `Tether answered ${node.id}'s question "${a.question.slice(0, 80)}" with the recommended option: ${why}`, node.id);
+      }
       answered.push({ question: a.question, answer: describeAnswer(ans, [q]), by: 'tether' });
     }
     return { answered, waiting };
@@ -1931,6 +1985,7 @@ export class Engine {
         harnessWarned = true;
         console.error(`[harness] could not read or write the harness store (${(err as Error).message}); runs continue without harness data`);
       }
+      this.notice(runId, `${node.id} ran without its learned guidance: the harness store could not be read (${(err as Error).message.split('\n')[0]})`, node.id);
     }
     // a read-only step never moves HEAD (rewindBase finds the same commit without it) and a probe is never rewound: spare them the git call
     const base = node.readOnly || probe ? undefined : await headSha(state.workdir).catch(() => undefined);
@@ -1950,6 +2005,7 @@ export class Engine {
     // What was already dirty when this node began (setup output, a gate's artifacts): not this node's doing.
     const dirtyBefore = new Set(await statusEntries(state.workdir));
     const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona });
+    this.noticeSpills(runId, node.id, prompt);
 
     let buf = '';
     let timer: NodeJS.Timeout | undefined;
@@ -2024,7 +2080,10 @@ export class Engine {
       afterPause ? userAnswersBlock(answered.map((a) => ({ question: a.question.ask, answer: describeAnswer(a.answer!, [a.question]), by: a.answer!.by })), { reverted: !node.readOnly }) : prompt,
     );
     // A vendor session can expire; fall back to a fresh one rather than failing the node.
-    if (resumeId && res.exitCode !== 0 && !res.output && !sig.aborted) res = await call(undefined);
+    if (resumeId && res.exitCode !== 0 && !res.output && !sig.aborted) {
+      this.notice(runId, `${node.id} could not continue its earlier session (${(res.error ?? `exit ${res.exitCode}`).split('\n')[0]}); it started a fresh one`, node.id);
+      res = await call(undefined);
+    }
     flush();
 
     // Team runs: a worker's `@ASK user:` lines, taken from the first reply and from every follow-up (after consults and hand-offs).
@@ -2079,7 +2138,7 @@ export class Engine {
       }
       const live = this.state(runId).nodes[node.id]!;
       const canResume = adapter.supportsResume && !!live.sessionId;
-      const follow = canResume ? answersBlock(answered) : `${prompt}\n\n# Your answer so far\n${stripAsks(res.output)}\n\n${answersBlock(answered)}`;
+      const follow = canResume ? answersBlock(answered, state.workdir) : `${prompt}\n\n# Your answer so far\n${stripAsks(res.output)}\n\n${answersBlock(answered, state.workdir)}`;
       const before = res;
       res = await call(canResume ? live.sessionId : undefined, follow);
       extraCost += before.costUsd ?? 0;
@@ -2108,7 +2167,7 @@ export class Engine {
       sig = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
       const live = this.state(runId);
       const canResume = adapter.supportsResume && !!live.nodes[node.id]!.sessionId;
-      const block = handoffBlock(results, round === handRounds);
+      const block = handoffBlock(results, live.workdir, round === handRounds);
       const follow = canResume ? block : `${prompt}\n\n# Your answer so far\n${stripHands(res.output)}\n\n${block}`;
       const before = res;
       handCost += before.costUsd ?? 0;
@@ -2211,10 +2270,10 @@ function managerSummary(s: RunState, node: PipelineNode, kids: PipelineNode[], n
     }
     lines.push(`- ${k.id} → ${k.role ?? 'agent'}: ${k.spawn?.contract.goal ?? ''} [${ns?.status ?? 'unknown'}]`);
     const body = ns?.error ? `error: ${ns.error}` : ns?.output;
-    if (body) lines.push(`  ${tail(body, 1500).replace(/\n/g, '\n  ')}`);
+    if (body) lines.push(`  ${passOn(body, s.workdir).replace(/\n/g, '\n  ')}`);
   }
   if (notes.length) lines.push('', 'Notes:', ...notes.map((n) => `- ${n}`));
-  if (lastReview) lines.push('', `Final review:\n${tail(lastReview, 2000)}`);
+  if (lastReview) lines.push('', `Final review:\n${passOn(lastReview, s.workdir)}`);
   return lines.join('\n');
 }
 

@@ -6,6 +6,8 @@ import { CREW } from './bots.js';
 import { STEP_BLURB, STEP_TYPES, blurbFor, extractJson, makeStep, type StepType } from './composer.js';
 import { ancestorsOf, parentsOf } from './pipeline.js';
 import { DEFAULT_ROLE_PROMPTS, planText } from './prompt.js';
+import { liveLines } from './protocolLines.js';
+import { passOn } from './codemode/spill.js';
 import type { Contract, Pipeline, PipelineNode, RunState } from './types.js';
 
 export interface PlanTask extends Contract {
@@ -15,8 +17,6 @@ export interface PlanTask extends Contract {
 export const DEFAULT_MAX_DEPTH = 3;
 export const DEFAULT_MAX_SPAWN = 12;
 const LOCAL_ID = /^[A-Za-z0-9_]{1,30}$/;
-const OUTPUT_CLIP = 4000;
-const UPSTREAM_CLIP = 12_000;
 /** Plan size caps, checked before anything is spawned. */
 export const PLAN_CAPS = { tasks: 12, goal: 500, expected: 500, context: 10 };
 
@@ -187,7 +187,7 @@ function managerContext(state: RunState, manager: PipelineNode): string[] {
   for (const id of upstream) {
     const un = byId.get(id);
     const o = state.nodes[id]?.output;
-    if (un?.kind === 'agent' && o) blocks.push(`## ${un.role ?? un.kind} (${un.id})\n${clip(o, UPSTREAM_CLIP)}`);
+    if (un?.kind === 'agent' && o) blocks.push(`## ${un.role ?? un.kind} (${un.id})\n${passOn(o, state.workdir)}`);
   }
   if (blocks.length) out.push(`Upstream output:\n${blocks.join('\n\n')}`);
   const steps = p.nodes
@@ -231,7 +231,7 @@ export function reviewPrompt(state: RunState, manager: PipelineNode, children: P
   const parts = children.map((c) => {
     const ns = state.nodes[c.id];
     const exp = c.spawn?.contract.expected;
-    const body = ns?.error ? `error: ${ns.error}` : `output:\n${clip(ns?.output ?? '(none)', OUTPUT_CLIP)}`;
+    const body = ns?.error ? `error: ${ns.error}` : `output:\n${passOn(ns?.output ?? '(none)', state.workdir)}`;
     return `### ${c.id} (${c.role ?? c.kind})\ngoal: ${c.spawn?.contract.goal ?? ''}\nexpected: ${exp ?? '(unspecified)'}\nstatus: ${ns?.status ?? 'unknown'}\n${body}`;
   });
   return [
@@ -241,10 +241,6 @@ export function reviewPrompt(state: RunState, manager: PipelineNode, children: P
     parts.join('\n\n'),
     `Decide. Reply with ONLY one JSON object:\n{"decision":"accept"}  when the work meets what was expected,\n{"redo":[{"id":"<step id>","reason":"what to fix"}]}  to send steps back,\n{"more":[${TASK_SHAPE}]}  to add further tasks.`,
   ].join('\n\n');
-}
-
-function clip(s: string, max: number): string {
-  return s.length <= max ? s : `${s.slice(0, Math.floor(max / 2))}\n[... ${s.length - max} chars omitted ...]\n${s.slice(-Math.floor(max / 2))}`;
 }
 
 // ---- Worker hand-offs: a working step ends its answer with `@HAND <bot>: <goal> | expect: <expected> | context: <ids>` ----
@@ -259,7 +255,6 @@ export interface HandRequest {
 
 const HAND_LINE = /^@HAND(!)?[ \t]+([^\s:]+)[ \t]*:[ \t]*(.*)$/i;
 const MAX_HANDS = 2;
-const RESULT_CLIP = 6000;
 
 /** Hand-off requests a step put on their own lines (at most two). */
 export function parseHands(output: string): HandRequest[] {
@@ -286,17 +281,9 @@ export function stripHands(output: string): string {
   return scanHands(output).filter((l) => !l.hand).map((l) => l.raw).join('\n').trimEnd();
 }
 
-/** Lines of the output, flagged when they are a real @HAND line: at column 0 and outside ``` fences. CRLF tolerated. */
+/** Lines of the output, flagged when they are a real @HAND line: at column 0, outside fences, quotes and indented code. */
 function scanHands(output: string): { raw: string; line: string; hand: boolean }[] {
-  let fenced = false;
-  return output.split('\n').map((raw) => {
-    const line = raw.replace(/\r$/, '');
-    if (/^\s*```/.test(line)) {
-      fenced = !fenced;
-      return { raw, line, hand: false };
-    }
-    return { raw, line, hand: !fenced && HAND_LINE.test(line) };
-  });
+  return liveLines(output).map(({ raw, line, live }) => ({ raw, line, hand: live && HAND_LINE.test(line) }));
 }
 
 /** Why this hand-off cannot be run, or undefined when it can. `used` is the spawn budget already spent. */
@@ -331,10 +318,10 @@ export function handNode(req: HandRequest, delegator: PipelineNode, n: number): 
   return { ...node, spawn: { ...node.spawn!, kind: 'hand' } };
 }
 
-/** What the delegator receives for its next call. `last`: no further round of hand-offs is allowed. */
-export function handoffBlock(results: { to: string; goal: string; answer: string; ok: boolean }[], last = true): string {
+/** What the delegator receives for its next call. `workdir`: where a long answer is saved (passOn). `last`: no further round of hand-offs is allowed. */
+export function handoffBlock(results: { to: string; goal: string; answer: string; ok: boolean }[], workdir: string | undefined, last = true): string {
   const body = results
-    .map((r, i) => `${i + 1}. You handed to ${r.to}: ${r.goal}\n   Result: ${(r.ok ? clip(r.answer, RESULT_CLIP) : `failed: ${clip(r.answer, RESULT_CLIP)}`).replace(/\n/g, '\n   ')}`)
+    .map((r, i) => `${i + 1}. You handed to ${r.to}: ${r.goal}\n   Result: ${(r.ok ? passOn(r.answer, workdir) : `failed: ${passOn(r.answer, workdir)}`).replace(/\n/g, '\n   ')}`)
     .join('\n\n');
   return `# Handoff results\n${body}\n\n${last ? 'Now give your complete final answer using these results. Do not add new @HAND lines.' : 'Now give your complete final answer using these results. Hand off again (a new @HAND line) only if more work is clearly needed.'}`;
 }

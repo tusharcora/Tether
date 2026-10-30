@@ -43,14 +43,20 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 ## Next steps (in order)
 
-0. **Rewind, try more ways, Terminal and Preview** (branch `feature/rewind-attempts`, spec and plan dated 2026-10-30): built and checked in tests only. Open the PR against `main`, then check in the app:
+0. **Runs fix themselves** (branch `feature/runs-fix-themselves`, stacked on `feature/optional-run-budgets` / PR #31; spec `docs/superpowers/specs/2026-10-30-runs-fix-themselves-design.md`): built and checked in tests only. Merge PR #31 first, then open this one against `main` (retarget it once #31 merges). Then check in the app:
+   - A team run that changes a file: the writes card recommends yes, the plan has a write step, and the drafter edits the file.
+   - A run that fails: the header says "Auto-fixing · round 1 of 3", story rows per round, the run under Live; after 3 rounds Needs you says "Auto-fix gave up after 3 rounds: …" with Retry / Open. Settings → Runs: Auto-fix failed runs and its rounds; Stop auto-fix between rounds.
+   - A read-only team run whose task changes files: "Check the plan" in Needs you and the plan review, and Allow edits plans again with writes on.
+   - Notices under a run's header for a refused hand-off, an ignored redo, long text passed on as a file.
+   The spec's "My calls" list what to confirm (writes default, the 16,000 limit, the diagnosis prompt, the plan check heuristic, free models last in Try more ways).
+1. **Rewind, try more ways, Terminal and Preview** (branch `feature/rewind-attempts`, spec and plan dated 2026-10-30): built and checked in tests only. Open the PR against `main`, then check in the app:
    - A finished step's ⋯: Rewind to before it (the dialog, the banner's Undo and Resume), Fork from after it, Open its changes. A live run offers Stop & rewind.
    - Try 2 more ways from a run's header and from a started goal card; the picker's defaults; Compare (`#/attempts/<set>`): Tether's pick, Pick X and ship, Retry, Try 1 more way; the Runs list's best-of-N row.
    - Terminal: a command's output, Stop and Ctrl+C, ↑ history, a long output saved under `.tether/spill/`.
    - Preview: Start preview on a project with a `dev` script; the frame in Tether.app (the content policy now allows loopback frames); reload, open in browser, Stop; quitting the app ends the dev server.
    - Goals · next beside a chat on a wide window; the Goals button hides it.
    The plan's "My calls" list what to confirm (which steps a rewind requeues, the default picks, the pick ranking, the 7-day sweep, the clean env, the Preview width).
-1. **Check the merged work in the app** (#27, #26 and earlier): built but only checked in tests and a browser.
+2. **Check the merged work in the app** (#27, #26 and earlier): built but only checked in tests and a browser.
    - **Asks become goals:** a chat ask to fix something gives a goal card; Start runs it; "Just answer, no goal" deletes the goal; "+ Add limits" on New goal, Settings and the card; the sidebar chat ⋯ (Rename, Delete chat).
    - **Runs and a run's page:** Needs you cards, Approve & open PR, the week rail; comment a diff line, Send back; Merge to main on a repo with a GitHub remote (without one the push error shows: there is no local merge path).
    - **Team room:** This run / Whole team, the strip, Open run from a card.
@@ -58,25 +64,25 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - **Goals redesign (#25):** the palette, the hover arc (a second-row node's arc partly covers the strip above; widen the row gap if that bothers you), the 0.35 s hide delay, a tracker step's "+" picker, the fans on runs, triggers, All chats and Connectors.
    - **Teams Phase 1:** create a team, ping an agent, approve a ship (it opens a PR and merges only after approval).
    - **NVIDIA:** one real chat turn with an NVIDIA model.
-2. **Teams Phase 2: Telegram.** Decide first:
+3. **Teams Phase 2: Telegram.** Decide first:
    - how Telegram users map to teammates and approvers;
    - whether loop ship approvals also land in the Inbox;
    - which voice-note transcription endpoint to use;
    - whether non-owners can start runs.
 
    Then write the spec and plan, and build.
-3. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
-4. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
-5. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
-6. **Chat components phase B:** the PR and merge-conflict card in chat.
-7. **Small bugs:**
+4. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
+5. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
+6. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
+7. **Chat components phase B:** the PR and merge-conflict card in chat.
+8. **Small bugs:**
    - Back after a new chat goes to the wrong screen.
    - ⌘J does nothing on the chat screen.
    - Search labels in the thinking timeline garble quoted text.
    - Decide whether to widen the chat history window beyond 8 messages.
    - Goals: avatars flash grey "removed" while the crew and teams lists load; the tracker add field keeps focus after "Add a step"; two fast assignee picks can drop one; a screen reader hears only "Assignees" on the compact picker; on a ticked tracker row the strike line runs across the step's avatars.
    - Try more ways: a sibling still going when the server stops is never settled on its goal (its item shows no result).
-8. **Tests that fail only on a Mac:** `test/triggers.test.ts` (2) and `test/triggers-api.test.ts` (1). macOS reports `/private/var` where the tests expect `/var`; fix with `realpathSync` in the tests. Under heavy load, `evolve.test.ts` and `team-cli.test.ts` time out; they pass when run alone and pass in CI.
+9. **Tests that fail only on a Mac:** `test/triggers.test.ts` (2) and `test/triggers-api.test.ts` (1). macOS reports `/private/var` where the tests expect `/var`; fix with `realpathSync` in the tests. Under heavy load, `evolve.test.ts` and `team-cli.test.ts` time out; they pass when run alone and pass in CI.
 
 ## Where the designs live
 
