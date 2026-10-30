@@ -58,13 +58,14 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - **Goals redesign (#25):** the palette, the hover arc (a second-row node's arc partly covers the strip above; widen the row gap if that bothers you), the 0.35 s hide delay, a tracker step's "+" picker, the fans on runs, triggers, All chats and Connectors.
    - **Teams Phase 1:** create a team, ping an agent, approve a ship (it opens a PR and merges only after approval).
    - **NVIDIA:** one real chat turn with an NVIDIA model.
-2. **Teams Phase 2: Telegram.** Decide first:
-   - how Telegram users map to teammates and approvers;
-   - whether loop ship approvals also land in the Inbox;
-   - which voice-note transcription endpoint to use;
-   - whether non-owners can start runs.
-
-   Then write the spec and plan, and build.
+2. **Teams Phase 2: Telegram** (branch `feature/teams-telegram`, spec and plan dated 2026-10-30): built and checked in tests only (fake Bot API, no network). Test with a real bot:
+   - @BotFather `/newbot`; Settings → Accounts → Telegram: paste the token; **Link my Telegram** and send `/iam <code>` to the bot in a private chat.
+   - New team → Telegram group; add the bot to a test group as an admin; send `/pair <code>`; check the pinned status appears.
+   - From your account: `@Bolt fix …` (run card edited in place, ship card with Approve / Reject / Diff), `/status`, `/runs`, `/new …`, `/mute 1h` then `/mute off`.
+   - From a second Telegram account in the group: an ask becomes a proposal card; its Approve is refused ("Only approvers can decide this"); switch it on in People and permissions and try again.
+   - Approve one ship from the Inbox and watch the Telegram card change to "Approved by …".
+   - A photo replying to an agent; a voice note before and after **Voice notes: download model** (~241 MB).
+   The plan's "My calls" list what to confirm (reply-to pings, the Diff reply, Edit by force-reply, /mute rules).
 3. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
 4. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
 5. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
