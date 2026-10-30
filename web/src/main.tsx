@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bridge } from './bridge';
 import './components/kept/foundation.css';
-import 'blobatar/motion.css';
 import './styles.css';
 import './studio.css';
 import './studio-arc.css';

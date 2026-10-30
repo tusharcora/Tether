@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BotDef } from '../crewStore';
 import { BotEditor } from './BotEditor';
@@ -14,8 +14,6 @@ describe('BotEditor', () => {
     render(<BotEditor bot={bolt} isNew={false} kinds={kinds} personaLoad="ok" {...h} />);
     expect(screen.getByRole('region', { name: 'Edit Bolt' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Bolt preview' })).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole('slider', { name: /Hue/ }), { key: 'ArrowRight' });
-    expect(h.onFace).toHaveBeenCalledWith({ hue: expect.any(Number) });
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'builder' } });
     expect(h.onPatch).toHaveBeenCalledWith({ title: 'builder' });
     expect((screen.getByRole('combobox', { name: /Kind/ }) as HTMLButtonElement).disabled).toBe(true);
@@ -24,6 +22,32 @@ describe('BotEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect([h.onSave, h.onCancel].map((f) => f.mock.calls.length)).toEqual([1, 1]);
+  });
+
+  it('picks a body and a colour from the rows, the current look pressed', () => {
+    const h = handlers();
+    const { rerender } = render(<BotEditor bot={bolt} isNew={false} kinds={kinds} personaLoad="ok" {...h} />);
+    const body = screen.getByRole('group', { name: 'Body' });
+    const colour = screen.getByRole('group', { name: 'Colour' });
+    expect(within(body).getAllByRole('button')).toHaveLength(8);
+    expect(within(colour).getAllByRole('button')).toHaveLength(10);
+    // Bolt is a black orb until something is picked
+    const pressed = () => screen.getAllByRole('button', { pressed: true }).map((b) => b.getAttribute('aria-label'));
+    expect(pressed()).toEqual(['orb', 'black']);
+    fireEvent.click(within(body).getByRole('button', { name: 'cloud' }));
+    fireEvent.click(within(colour).getByRole('button', { name: 'red' }));
+    expect(h.onFace.mock.calls).toEqual([[{ body: 'cloud' }], [{ color: '#E35A5A' }]]);
+    expect((screen.getByRole('button', { name: 'Reset to generated' }) as HTMLButtonElement).disabled).toBe(true);
+    rerender(<BotEditor bot={{ ...bolt, look: { ...look, face: { body: 'cloud', color: '#E35A5A' } } }} isNew={false} kinds={kinds} personaLoad="ok" {...h} />);
+    expect(pressed()).toEqual(['cloud', 'red']);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to generated' }));
+    expect(h.onResetFace).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no face picks for Tether, whose face is its eye tracker', () => {
+    render(<BotEditor bot={{ ...bolt, id: 'orchestrator', name: 'Tether' }} isNew={false} kinds={kinds} personaLoad="ok" {...handlers()} />);
+    expect(screen.queryByRole('group', { name: 'Body' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset to generated' })).toBeNull();
   });
 
   it('offers Reset to original for an edited built-in and Remove for your own bot', () => {

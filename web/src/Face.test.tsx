@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyCrew, getCrew, type CrewState } from './crewStore';
-import { Face, faceSvg, faceUri, MOOD_EXPRESSION, moodFor } from './Face';
+import { Face, MOOD_EXPRESSION, moodFor } from './Face';
+import { faceArt } from './faceArt';
 
 describe('faces', () => {
   let saved: CrewState | undefined;
@@ -19,34 +20,43 @@ describe('faces', () => {
     expect(moodFor(undefined)).toBe('idle');
   });
 
-  it('is deterministic per id and stable across releases', () => {
-    expect(faceSvg('coder')).toBe(faceSvg('coder'));
-    expect(faceSvg('coder')).not.toBe(faceSvg('planner'));
-    expect(faceSvg('coder', { mood: 'working' })).not.toBe(faceSvg('coder'));
-    expect({ orchestrator: faceSvg('orchestrator'), planner: faceSvg('planner'), coder: faceSvg('coder') }).toMatchSnapshot();
+  it('is stable across releases', () => {
+    expect({ planner: faceArt('planner'), coder: faceArt('coder'), quill: faceArt('quill', { mood: 'working' }) }).toMatchSnapshot();
   });
 
-  it('applies face overrides and renders an image with the bot name', () => {
-    expect(faceSvg('coder', { face: { hue: 10 } })).not.toBe(faceSvg('coder'));
+  it('renders a static image with the bot name, and takes the saved face pins', () => {
     saved = getCrew();
-    applyCrew([{ id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: '', look: { body: '', eyes: '', mouth: '', top: '', side: '', pattern: '', color: '#3fb97c', accent: 'auto' } }]);
+    applyCrew([{ id: 'coder', name: 'Bolt', title: 'coder', kind: 'agent', persona: '', look: { body: '', eyes: '', mouth: '', top: '', side: '', pattern: '', color: '#3fb97c', accent: 'auto', face: { body: 'cloud' } } }]);
     render(<Face id="coder" size={40} />);
     const img = screen.getByRole('img', { name: 'Bolt' }) as HTMLImageElement;
-    expect(img.src.startsWith('data:image/svg+xml')).toBe(true);
-    expect(faceUri('coder')).toContain(encodeURIComponent('<svg'));
+    expect(img.tagName).toBe('IMG');
+    expect(decodeURIComponent(img.src)).toBe(`data:image/svg+xml;utf8,${faceArt('coder', { body: 'cloud', size: 40 })}`);
+    expect(img.dataset.mood).toBe('idle');
   });
 
-  it('animates as inline SVG: always, or on hover', () => {
+  it('animates as inline SVG, marking how it animates and its mood', () => {
     const { container } = render(
       <>
         <Face id="coder" mood="working" animate="always" />
-        <Face id="planner" animate="hover" />
+        <Face id="planner" animate="hover" label="Scout" />
       </>,
     );
-    const [always, hover] = [...container.querySelectorAll('span.face[role="img"]')];
-    expect(always!.querySelector('svg > g.mo-root.mo-always')).toBeTruthy();
-    expect(hover!.querySelector('.mo-root')).toBeTruthy();
-    expect(hover!.querySelector('.mo-always')).toBeNull();
+    const [always, hover] = [...container.querySelectorAll('span.face[role="img"]')] as HTMLElement[];
+    expect(always!.dataset).toMatchObject({ animate: 'always', mood: 'working' });
+    expect(always!.querySelector('svg > .fa-eyes .fa-eye')).toBeTruthy();
+    expect(hover!.dataset.animate).toBe('hover');
+    expect(hover!.getAttribute('aria-label')).toBe('Scout');
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('marks a black body so the dark theme can outline it', () => {
+    const { container } = render(
+      <>
+        <Face id="coder" />
+        <Face id="planner" animate="always" />
+        <Face id="planner" face={{ color: '#0B0B0C' }} animate="always" />
+      </>,
+    );
+    expect([...container.querySelectorAll('.face')].map((f) => f.hasAttribute('data-dark-body'))).toEqual([true, false, true]);
   });
 });

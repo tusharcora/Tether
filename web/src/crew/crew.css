@@ -70,6 +70,11 @@
 .cw-editor-head { display: flex; align-items: center; gap: 14px; }
 .cw-editor-head h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
 .cw-editor-head .face { border-radius: 20px; }
+/* the Body and Colour picks: ghost icon buttons in a wrapping row, the picked one pressed */
+.cw-picks-label { margin-bottom: 8px; font-size: 14px; font-weight: 500; color: var(--ink); }
+.cw-picks { display: flex; flex-wrap: wrap; gap: 4px; }
+.cw-pick[aria-pressed="true"] { background: var(--s2); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.cw-swatch { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--line2); }
 /* positioned: the model picker's panel spans the pair, not just its own half of the narrow dock */
 .cw-pair { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cw-warn { color: var(--warn); }
