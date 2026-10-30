@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type RunView, type StoredEvent } from './api';
+import { api, type ProcMessage, type RunView, type StoredEvent } from './api';
 
 /** Union by seq, oldest first. */
 export function mergeEvents(a: StoredEvent[], b: StoredEvent[]): StoredEvent[] {
@@ -17,6 +17,8 @@ export function useRunStream(id: string | undefined) {
   // bumped by retry(): re-reads the snapshot and re-subscribes, keeping what is already shown
   const [attempt, setAttempt] = useState(0);
   const shown = useRef<string | undefined>(undefined);
+  /** The Terminal's listeners: its output rides the same stream as `proc` messages. */
+  const procs = useRef(new Set<(m: ProcMessage) => void>());
   const followed = useRef(id);
   followed.current = id;
   /** Adopt a view (e.g. an action's reply) only while its run is still the one followed. */
@@ -46,12 +48,19 @@ export function useRunStream(id: string | undefined) {
       if (se.event.type === 'node.chunk') return;
       setEvents((cur) => mergeEvents(cur, [se]));
     });
+    es.addEventListener('proc', (m) => {
+      if (closed) return;
+      const msg = JSON.parse((m as MessageEvent).data) as ProcMessage;
+      for (const fn of procs.current) fn(msg);
+    });
     return () => {
       closed = true;
       es.close();
     };
   }, [id, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  /** Follow the Terminal's output; returns the unsubscribe. */
+  const onProc = useCallback((fn: (m: ProcMessage) => void) => (procs.current.add(fn), () => void procs.current.delete(fn)), []);
 
-  return { run, setRun, events, error, retry };
+  return { run, setRun, events, error, retry, onProc };
 }

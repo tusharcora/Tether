@@ -23,7 +23,7 @@ export function goalTry(g: GoalView, runId: string): string {
  * The run's head (board 4): ← Runs / its team / its short id; the task as the title with its status and its goal ("Goal ·
  * try 1 of 3"); one mono line (time · cost of its cap); Open in # team for a team's run; Stop / Resume / Retry failed.
  */
-export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam }: { run: RunView; onAct: RunAct; onBack: () => void; goal?: GoalView; team?: string; onGoal?: () => void; onTeam?: () => void }) {
+export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, onTryMore, setSize, onCompare }: { run: RunView; onAct: RunAct; onBack: () => void; goal?: GoalView; team?: string; onGoal?: () => void; onTeam?: () => void; /** Try 2 more ways (board 6). */ onTryMore?: () => void; /** The run's attempt set: how many, and its Compare page. */ setSize?: number; onCompare?: () => void }) {
   const ticking = r.live && r.status === 'running';
   const now = useNow(ticking);
   const ms = (r.finishedAt ?? now) - r.startedAt;
@@ -62,8 +62,16 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam }:
         {goal ? (
           <button type="button" className="rp-chip" onClick={onGoal}>{`${TYPE_GLYPH[goal.type ?? 'feature']} Goal · ${goalTry(goal, r.id)}`}</button>
         ) : null}
+        {r.attemptLabel && onCompare ? (
+          <button type="button" className="rp-chip" onClick={onCompare}>{`Attempt ${r.attemptLabel}${setSize ? ` of ${setSize}` : ''} · Compare`}</button>
+        ) : null}
         <span className="rp-gap" />
         <span className="rp-head-line mono">{line}</span>
+        {onTryMore && r.kind !== 'team' && !r.probe && !r.attemptPicked ? (
+          <Button variant="secondary" size="sm" onClick={onTryMore}>
+            Try 2 more ways
+          </Button>
+        ) : null}
         {team && onTeam ? (
           <Button variant="secondary" size="sm" onClick={onTeam}>
             {`Open in # ${team}`}

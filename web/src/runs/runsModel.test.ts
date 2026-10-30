@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeRow } from '../test/fixtures';
-import { filterRows, groupRuns, needsYou, nowLine, spendByDay, startedFrom, weekStats } from './runsModel';
+import { collapseSets, filterRows, groupRuns, needsYou, nowLine, spendByDay, startedFrom, weekStats } from './runsModel';
 
 const NOW = new Date(2026, 9, 29, 15, 0).getTime();
 const H = 3_600_000;
@@ -69,5 +69,19 @@ describe('this week', () => {
   it('spends by day, today last; and counts where runs started from, old ones as other', () => {
     expect(spendByDay(rows, NOW)).toEqual([0.5, 0, 0, 0, 2, 0, 1]);
     expect(startedFrom(rows)).toEqual([{ key: 'chat', n: 1 }, { key: 'goal', n: 1 }, { key: 'other', n: 2 }]);
+  });
+});
+
+describe('attempt sets on the Runs page', () => {
+  it('collapse into their newest run, carrying every attempt A first; a run that needs you keeps its card', () => {
+    const t = Date.now();
+    const a = makeRow({ id: 'a', status: 'done', live: false, attemptSet: 's', attemptLabel: 'A', startedAt: t - 3 });
+    const b = makeRow({ id: 'b', status: 'done', live: false, attemptSet: 's', attemptLabel: 'B', startedAt: t - 1 });
+    const c = makeRow({ id: 'c', status: 'paused', live: false, attemptSet: 's', attemptLabel: 'C', startedAt: t - 2, steps: [{ id: 'ok', status: 'awaiting', bot: 'you', title: 'ok', kind: 'approval' }] });
+    const solo = makeRow({ id: 'x', startedAt: t - 9 });
+    const out = collapseSets([a, b, c, solo]);
+    expect(out.map((r) => r.id)).toEqual(['b', 'c', 'x']);
+    expect(out[0]!.set!.map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(out[1]!.set).toBeUndefined();
   });
 });

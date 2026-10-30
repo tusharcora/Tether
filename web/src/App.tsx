@@ -27,6 +27,7 @@ import { OpenFolderDialog } from './projects/OpenFolderDialog';
 import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
+import { Compare } from './runs/Compare';
 import { NewTeam } from './teams/NewTeam';
 import { TeamScreen } from './teams/TeamScreen';
 import { TEAMS_PATH, type TeamsReply } from './teams/teamsApi';
@@ -303,7 +304,7 @@ function Shell() {
         <div ref={shellRef} className={cn('shell', { phone })}>
           {phone ? null : (
             <Sidebar
-              active={screen.tab}
+              active={screen.tab === 'attempts' ? 'runs' : screen.tab}
               settingsOpen={settingsOpen}
               onGo={openScreen}
               onSearch={() => setPalette(true)}
@@ -364,6 +365,7 @@ function Shell() {
                 onGo={go}
               />
             ) : null}
+            {screen.tab === 'attempts' && screen.id ? <Compare key={screen.id} set={screen.id} onGo={go} /> : null}
             {screen.tab === 'api' ? (
               <ApiTab
                 workspace={projects.current?.id}
@@ -404,7 +406,7 @@ function Shell() {
             {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} teams={teams.data} /> : null}
           </main>
           {settingsPage}
-          {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
+          {phone ? <BottomBar active={screen.tab === 'attempts' ? 'runs' : screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
           <Assistant
             shell={shell}
             chat={chat}
