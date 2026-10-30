@@ -6,6 +6,7 @@ import { foldRun, type PipelineNode, type RunState, type StoredEvent } from '../
 import { briefing, buildPrompt } from '../src/prompt.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, PLAN_CAPS, type HandRequest, type PlanTask } from '../src/handoff.js';
+import { savePrefs } from '../src/prefs.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 import { refreshCrew, registerCrew } from '../src/bots.js';
 import { BUILTIN_BOTS, crewWarnings, loadCrew, sanitizeBot, saveBot } from '../src/crew.js';
@@ -253,8 +254,9 @@ const J = (x: unknown) => JSON.stringify(x);
 const ACCEPT = J({ decision: 'accept' });
 const plan = (...tasks: Record<string, unknown>[]) => J({ tasks });
 const lead = (mock: Record<string, unknown>, o: Partial<PipelineNode> = {}) => ({ id: 'lead', role: 'planner', readOnly: true, manager: true, roster: ['coder', 'reviewer'], mock, ...o }) as Partial<PipelineNode>;
-const startRun = async (p: ReturnType<typeof pipe>, o: { autoApprove?: boolean } = {}) => {
+const startRun = async (p: ReturnType<typeof pipe>, { caps, ...o }: { autoApprove?: boolean; caps?: boolean } = {}) => {
   const env = setup();
+  if (caps) savePrefs(env.home, { spendingCaps: true });
   const id = await env.engine.start({ pipeline: p, task: 'build the thing', repo: makeRepo(), workspace: false, ...o });
   return { ...env, id, s: await env.engine.wait(id) };
 };
@@ -376,7 +378,7 @@ describe('engine: manager steps', () => {
       [],
       { maxCostUsd: 0.01 },
     );
-    const { s, mock } = await startRun(p);
+    const { s, mock } = await startRun(p, { caps: true });
     expect(s.status).toBe('error');
     expect(s.error).toMatch(/budget exhausted/);
     expect(s.nodes['lead-b']!.status).toBe('skipped');
@@ -463,7 +465,7 @@ describe('engine: manager steps', () => {
 
   it('cost cap counts the manager\'s own spend', async () => {
     const p = pipe([lead({ costUsd: 0.02, replies: { plan: [plan({ id: 'a', to: 'coder', goal: 'g' })], review: [ACCEPT] } })], [], { maxCostUsd: 0.01 });
-    const { s, mock, store, id } = await startRun(p);
+    const { s, mock, store, id } = await startRun(p, { caps: true });
     expect(s.status).toBe('error');
     expect(s.error).toMatch(/budget exhausted/);
     expect(s.costUsd).toBeCloseTo(0.02);
@@ -1122,7 +1124,8 @@ describe('engine: worker @HAND handoffs', () => {
 
   it('the follow-up call after a hand-off gets the budget left after the child and the worker\'s own spend', async () => {
     const budgets: (number | undefined)[] = [];
-    const { engine, registry } = setup();
+    const { engine, registry, home } = setup();
+    savePrefs(home, { spendingCaps: true });
     registry.register({
       id: 'cap', reportsCost: true, supportsResume: false, detect: async () => ({ ok: true }),
       run: async (req) => {
@@ -1188,7 +1191,8 @@ describe('handoff display and defaults', () => {
 
   it('a hand-off chain cannot overshoot the cost cap by the delegators\' unrecorded spend', async () => {
     const budgets: Record<string, (number | undefined)[]> = {};
-    const { engine, registry, store } = setup();
+    const { engine, registry, store, home } = setup();
+    savePrefs(home, { spendingCaps: true });
     registry.register({
       id: 'cap', reportsCost: true, supportsResume: false, detect: async () => ({ ok: true }),
       run: async (req) => {

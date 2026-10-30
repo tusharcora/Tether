@@ -12,6 +12,7 @@ import { parsePlan, parseQuestions, TeamError } from '../src/team.js';
 import { progressLines, CardInput } from '../src/teamchat.js';
 import { briefing } from '../src/prompt.js';
 import { makeRepo, pipe, tmp } from './helpers.js';
+import { savePrefs } from '../src/prefs.js';
 
 const J = JSON.stringify;
 const ACCEPT = J({ decision: 'accept' });
@@ -24,7 +25,8 @@ const evs = (store: Store, id: string, type: string) => store.events(id).filter(
 
 function mk(adapter: MockAdapter = new MockAdapter()) {
   const store = Store.open(':memory:');
-  return { mock: adapter, store, engine: new Engine(store, { home: tmp('home-'), registry: new AdapterRegistry().register(adapter), bindings: BINDS }), repo: makeRepo() };
+  const home = tmp('home-');
+  return { mock: adapter, store, home, engine: new Engine(store, { home, registry: new AdapterRegistry().register(adapter), bindings: BINDS }), repo: makeRepo() };
 }
 type T = ReturnType<typeof mk>;
 /** A Boss script: plan the given tasks, review with the given replies; `spawned` scripts the workers. */
@@ -115,6 +117,7 @@ describe('#2 the cap covers planning', () => {
 
   it('approval of a plan whose cap planning already spent is refused with a clear message; the plan stays', async () => {
     const t = mk();
+    savePrefs(t.home, { spendingCaps: true });
     const id = await t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, roster: ['coder'], mock: { costUsd: 0.3, questions: [[card('q1')]], plan: { goal: 'g', assignments: [{ bot: 'coder', goal: 'c' }], limits: { maxCostUsd: 0.5 } } } as never });
     await t.engine.answerPlan(id, [{ question: 'q1', option: 'a', by: 'user' }]);
     let s = t.store.state(id)!;

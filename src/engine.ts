@@ -28,6 +28,7 @@ import { openStepCodeMode, type StepCodeMode } from './codemode/step.js';
 import { reflect } from './lessons.js';
 import { Vault } from './vault.js';
 import { resolveWorkspace, snapshot } from './workspace.js';
+import { capsOn } from './prefs.js';
 
 /** How long a finished run waits for its reflection before moving on. */
 const REFLECT_TIMEOUT_MS = 3000;
@@ -64,6 +65,8 @@ export interface StartInput {
   /** false: leave the saved API requests block out of this run's prompts. */
   endpoints?: boolean;
   origin?: RunOrigin;
+  /** true: the pipeline's maxCostUsd is an explicit cap (a goal's own $ limit, a probe) and holds with Spending caps off. Default: the setting. */
+  capsOn?: boolean;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -355,7 +358,7 @@ export class Engine {
     const run: ProbeRun = { tag: probe.tag, bot: probe.bot, harness: probe.harness, nodeEstimateUsd: Math.max(0, probe.nodeEstimateUsd ?? 0), maxSeen: 0 };
     try {
       return await this.startRun(
-        { pipeline, task: input.task, repo: dir, ...(input.ref ? { ref: input.ref } : {}), autoApprove: true, workspace: false, reflect: false },
+        { pipeline, task: input.task, repo: dir, ...(input.ref ? { ref: input.ref } : {}), autoApprove: true, workspace: false, reflect: false, capsOn: true },
         {
           probe: run,
           onId: (runId) => mark(runId),
@@ -380,6 +383,12 @@ export class Engine {
 
   private async startRun(rawInput: StartInput, extra: { probe?: ProbeRun; onId?: (runId: string) => void; after?: (runId: string) => Promise<void>; /** A fork: these steps are done already, in `from`. */ inherit?: { from: RunState; nodes: string[] } } = {}): Promise<string> {
     const input = { ...rawInput, pipeline: this.resolve(rawInput.pipeline) };
+    // caps off: the run's copy drops the cap (the saved workflow keeps it), so nothing below stops or caps a call on cost
+    const caps = rawInput.capsOn ?? capsOn(this.opts.home);
+    if (!caps && input.pipeline.settings.maxCostUsd !== undefined) {
+      const { maxCostUsd: _, ...settings } = input.pipeline.settings;
+      input.pipeline = { ...input.pipeline, settings };
+    }
     const ws = rawInput.workspace === false ? undefined : resolveWorkspace(this.opts.home, { workspace: rawInput.workspace, repo: input.repo });
     // the project's setup command is the run's default; a workflow that sets its own keeps it
     if (ws?.setup && !input.pipeline.settings.setup) input.pipeline = { ...input.pipeline, settings: { ...input.pipeline.settings, setup: ws.setup } };
@@ -417,6 +426,7 @@ export class Engine {
       ...(input.mode ? { mode: input.mode } : {}),
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
+      capsOn: caps,
     });
     for (const id of extra.inherit?.nodes ?? []) {
       const was = extra.inherit!.from.nodes[id];
@@ -605,6 +615,8 @@ export class Engine {
       yes: !!i.yes,
       ...(i.budgetUsd !== undefined && i.budgetUsd > 0 ? { budgetUsd: Math.min(TEAM_MAX_BUDGET_USD, i.budgetUsd) } : {}),
       ...(i.origin ? { origin: i.origin } : {}),
+      // an explicit --budget is a cap the person asked for: it holds with the setting off
+      capsOn: capsOn(this.opts.home) || (i.budgetUsd !== undefined && i.budgetUsd > 0),
     });
     if (i.background) this.continuePlanningInBackground(runId);
     else await this.planRound(runId, 1);
@@ -852,7 +864,7 @@ export class Engine {
     /** The cap covers planning: past it, planning ends here and the run says why. */
     const broke = (st: RunState): boolean => {
       const cap = planningCap(st);
-      if (st.costUsd < cap) return false;
+      if (!st.capsOn || st.costUsd < cap) return false;
       this.store.append(runId, { type: 'run.finished', status: 'error', error: `planning used up the budget ($${st.costUsd.toFixed(2)} of $${cap.toFixed(2)}); start again with a larger --budget` });
       return true;
     };
@@ -860,7 +872,7 @@ export class Engine {
       if (broke(this.state(runId))) return;
       const prompt = attempt === 1 ? base : `${base}\n\nYour previous reply was rejected: ${why || 'it was not valid JSON'}. Reply again with ONLY the JSON object.`;
       const before = this.state(runId);
-      const r = await this.askMaestro(runId, round, attempt, prompt, s.workdir, this.teams.get(runId)?.mock, signal, Math.max(0, planningCap(before) - before.costUsd));
+      const r = await this.askMaestro(runId, round, attempt, prompt, s.workdir, this.teams.get(runId)?.mock, signal, before.capsOn ? Math.max(0, planningCap(before) - before.costUsd) : undefined);
       raw = r.text;
       // the run may have been deleted, finished or moved on while the model thought
       const now = this.store.state(runId);
@@ -890,8 +902,10 @@ export class Engine {
     if (!now || now.status !== 'running' || !now.planning || signal.aborted || now.round >= round || now.pending.length) return;
     if (plan || final) {
       const ready = { ...(plan ?? defaultPlan(now.task, roster, now.answers)), roster };
-      const cap = now.team?.budgetUsd;
-      this.store.append(runId, { type: 'plan.ready', plan: cap !== undefined ? { ...ready, limits: { ...ready.limits, maxCostUsd: cap } } : ready });
+      const { maxCostUsd, ...rest } = ready.limits;
+      // caps off: the plan carries no cap, so its review shows none and the run gets none
+      const cap = now.capsOn ? (now.team?.budgetUsd ?? maxCostUsd) : undefined;
+      this.store.append(runId, { type: 'plan.ready', plan: { ...ready, limits: { ...rest, ...(cap !== undefined ? { maxCostUsd: cap } : {}) } } });
       return;
     }
     if (!questions.length) {
@@ -913,7 +927,7 @@ export class Engine {
   }
 
   /** One planning call to the Tether binding. Failures come back as empty text (and are logged) so the caller falls back. */
-  private async askMaestro(runId: string, round: number, attempt: number, prompt: string, cwd: string, mock: MockScript | undefined, signal: AbortSignal, budgetUsd: number): Promise<{ text: string; costUsd: number; error?: string }> {
+  private async askMaestro(runId: string, round: number, attempt: number, prompt: string, cwd: string, mock: MockScript | undefined, signal: AbortSignal, budgetUsd: number | undefined): Promise<{ text: string; costUsd: number; error?: string }> {
     const b = this.opts.bindings?.().orchestrator;
     const agent = b?.agent ?? 'claude';
     const fail = (error: string) => {
