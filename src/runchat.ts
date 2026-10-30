@@ -3,7 +3,9 @@
  * and carry out the one the person picks. A model only *proposes* options; every option is an action from a
  * fixed list, validated against the real run before it is shown, and only executed on a person's say-so.
  */
+import { existsSync } from 'node:fs';
 import type { AdapterRegistry } from './adapters/index.js';
+import { passOn } from './codemode/spill.js';
 import type { Bindings } from './bindings.js';
 import { extractJson } from './composer.js';
 import { culprit, DEFAULT_ESCALATION, failureBrief } from './supervisor.js';
@@ -137,6 +139,42 @@ In "reply", say in one to three plain sentences what went wrong and the most lik
     return { text: typeof raw.reply === 'string' && raw.reply.trim() ? clip(raw.reply.trim(), 700) : fallbackChoices(s, o.escalate).text, options, recommended: rec };
   } catch {
     return fallbackChoices(s, o.escalate);
+  }
+}
+
+/** What the failed steps said in full (findings, a check's output), each passed on whole up to the limit (spec §3.2). */
+function findings(s: RunState): string {
+  const out: string[] = [];
+  for (const [id, n] of Object.entries(s.nodes) as [string, NodeState][]) {
+    if (n.status !== 'error') continue;
+    const said = n.gate && !n.gate.ok ? n.gate.output : n.output;
+    if (said?.trim()) out.push(`## ${id}\n${passOn(said.trim(), s.workdir)}`);
+  }
+  return out.length ? `What the failed steps said:\n${out.join('\n\n')}` : '';
+}
+
+/**
+ * Auto-fix round 1 (spec 2026-10-30 §3.4): one read-only turn reads the failure and writes concrete guidance for the
+ * failed steps' retry, and says whether a read-only run needed edits. Never throws: no model, no guidance.
+ */
+export async function fixGuidance(s: RunState, o: RunChatOpts): Promise<{ guidance?: string; needsWrites?: boolean }> {
+  const prompt = `You are Tether, supervising a team of coding agents. This run failed and its failed steps will run again. Read what went wrong (the errors, failing verdicts and findings below; you may look at the worktree) and write concrete guidance for the retry: what to change, in order, specific enough to act on. Do NOT modify any files.
+
+${runDetail(s)}
+
+Short failure brief:
+${failureBrief(s)}
+
+${findings(s)}
+
+Reply with ONLY a JSON object, no prose: {"guidance":"numbered, specific instructions for the retry","needsWrites":false}
+Set "needsWrites" to true only when the steps were not allowed to change files and the task cannot be done without changing them.`;
+  try {
+    const raw = (await ask(prompt, { ...o, cwd: existsSync(s.workdir) ? s.workdir : s.repo })) as { guidance?: unknown; needsWrites?: unknown };
+    const guidance = typeof raw?.guidance === 'string' && raw.guidance.trim() ? raw.guidance.trim() : undefined;
+    return { ...(guidance ? { guidance } : {}), ...(raw?.needsWrites === true ? { needsWrites: true } : {}) };
+  } catch {
+    return {};
   }
 }
 

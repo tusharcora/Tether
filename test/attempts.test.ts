@@ -69,7 +69,7 @@ describe('try more ways', () => {
     await expect(full.attempts.start(full.id, { count: 1 })).rejects.toMatchObject({ status: 409, message: 'Today’s limit is reached' });
   });
 
-  it('default picks: the owner’s bindings then adapters, free first, never the original’s or a repeat', async () => {
+  it('default picks: the owner’s bindings then adapters, free last, never the original’s or a repeat', async () => {
     const r = await rig();
     for (const id of ['openrouter', 'claude']) {
       const a = new MockAdapter();
@@ -78,8 +78,8 @@ describe('try more ways', () => {
     }
     writeFileSync(join(r.home, 'bots.json'), JSON.stringify({ coder: { agent: 'claude', model: 'sonnet' }, scout: { agent: 'openrouter', model: 'kimi:free' }, gone: { agent: 'nope' } }));
     const pool = agentChoices(r.home, r.registry);
-    expect(pool).toEqual([{ agent: 'openrouter', model: 'kimi:free' }, { agent: 'openrouter' }, { agent: 'claude', model: 'sonnet' }, { agent: 'other' }, { agent: 'claude' }]);
-    expect(defaultPicks(pool, [{ agent: 'openrouter', model: 'kimi:free' }], 2)).toEqual([{ agent: 'openrouter' }, { agent: 'claude', model: 'sonnet' }]);
+    expect(pool).toEqual([{ agent: 'claude', model: 'sonnet' }, { agent: 'other' }, { agent: 'claude' }, { agent: 'openrouter', model: 'kimi:free' }, { agent: 'openrouter' }]);
+    expect(defaultPicks(pool, [{ agent: 'claude', model: 'sonnet' }], 2)).toEqual([{ agent: 'other' }, { agent: 'claude' }]);
     expect(defaultPicks([{ agent: 'other' }], [], 2)).toEqual([{ agent: 'other' }, undefined]);
     expect(r.attempts.picks(r.id, 2).original).toEqual({ agent: 'mock' });
   });

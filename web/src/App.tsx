@@ -106,9 +106,11 @@ function Shell() {
   const [removing, setRemoving] = useState<WorkspaceRow>();
   /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
   const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
-  const health = usePoll<{ ok: boolean; vault?: string; home?: string; spendingCaps?: boolean }>('/api/health', 5000);
+  const health = usePoll<{ ok: boolean; vault?: string; home?: string; spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number }>('/api/health', 5000);
   const caps = health.data?.spendingCaps === true;
-  const setCaps = (on: boolean) => void api('PUT', '/api/prefs', { spendingCaps: on }).then(() => health.refresh(), notify.fail);
+  const setPrefs = (b: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number }) => void api('PUT', '/api/prefs', b).then(() => health.refresh(), notify.fail);
+  const setCaps = (on: boolean) => setPrefs({ spendingCaps: on });
+  const autoFix = health.data ? { on: health.data.autoFix !== false, rounds: health.data.autoFixRounds ?? 3, onChange: (on: boolean) => setPrefs({ autoFix: on }), onRounds: (n: number) => setPrefs({ autoFixRounds: n }) } : undefined;
   const connection = useConnection(health);
   const phone = useMediaQuery(PHONE);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -288,7 +290,7 @@ function Shell() {
   const list = projects.list.data ?? [];
   /** Settings as a page over the content area (the screen under it stays mounted); over the Welcome screen it covers the window. */
   const settingsPage = settingsOpen ? (
-    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} caps={health.data ? { on: caps, onChange: setCaps } : undefined} returnFocus={settingsHome} />
+    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} caps={health.data ? { on: caps, onChange: setCaps } : undefined} autoFix={autoFix} returnFocus={settingsHome} />
   ) : null;
   /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
   const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);

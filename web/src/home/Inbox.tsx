@@ -30,7 +30,7 @@ const failedKind = (k: AttentionItem['kind']) => k === 'failed' || k === 'planni
 function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Route) => void; onChanged: () => Promise<unknown> }) {
   const notify = useNotify();
   const it = e.items[0]!;
-  const needsRun = e.kind === 'question' || e.kind === 'plan_ready';
+  const needsRun = e.kind === 'question' || e.kind === 'plan_ready' || e.kind === 'plan_conflict';
   const view = usePoll<RunView>(needsRun ? `/api/runs/${encodeURIComponent(e.runId)}` : null, INBOX_MS);
   const [busy, setBusy] = useState(false);
   const post = async (path: string, body: unknown): Promise<boolean> => {
@@ -90,6 +90,11 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
         <h2 className="inbox-title">{it.title}</h2>
         <p className="sl-meta">{it.meta}</p>
         <div className="inbox-acts">
+          {it.actions.includes('allow_edits') ? (
+            <Button variant="primary" size="sm" loading={busy} onClick={() => void post('allow-edits', {})}>
+              Allow edits and retry
+            </Button>
+          ) : null}
           {it.actions.includes('resume') || it.actions.includes('retry') ? (
             <Button variant="primary" size="sm" loading={busy} onClick={() => void post('resume', {})}>
               {it.actions.includes('retry') ? 'Retry' : 'Resume'}

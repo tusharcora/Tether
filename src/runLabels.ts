@@ -2,7 +2,25 @@
  * How every screen names and classifies a run: one copy, shared by the server and the web dashboard.
  * Pure on purpose (type imports only), so `web/` can import it without pulling in server code.
  */
-import type { RunState, RunStatus } from './types.js';
+import type { RunState, RunStatus, TeamPlan } from './types.js';
+
+/** A task that starts by changing something in the repo: "Update README.md …", "Fix the login bug". */
+const CHANGES = /^\W*(?:please\s+)?(update|fix|add|write|rewrite|refactor|implement|change|edit|create|rename|remove|delete|replace|bump|migrate|apply|port|upgrade)\b/i;
+/** A success criterion that needs a change: "README.md is updated". */
+const CHANGED = /\b(updated|changed|fixed|added|removed|renamed|created|edited|rewritten|refactored|implemented|replaced|migrated)\b/i;
+
+/**
+ * The plan check (spec 2026-10-30 §3.5): why a team plan cannot do its task, or undefined. The task (its first line), the
+ * plan's goal or a success criterion changes files, but writes are off or every step is read-only: it would run and fail.
+ * Shown before the run (Needs you, the plan review) with Allow edits as the fix; the person may still approve it as it is.
+ */
+export function planConflict(plan: Pick<TeamPlan, 'goal' | 'success' | 'assignments' | 'limits'>, task: string): string | undefined {
+  const changes = CHANGES.test(task.split('\n')[0] ?? '') || CHANGES.test(plan.goal) || plan.success.some((x) => CHANGED.test(x));
+  if (!changes) return undefined;
+  if (!plan.limits.allowWrites) return 'the plan is read-only, but the task changes files, so it would run and fail';
+  if (plan.assignments.every((a) => a.mode === 'read')) return 'no step in the plan may change files, but the task changes them';
+  return undefined;
+}
 
 /** Statuses a run ends in (it will not change again unless resumed or retried). */
 export const FINISHED: ReadonlySet<RunStatus> = new Set<RunStatus>(['done', 'error', 'stopped']);

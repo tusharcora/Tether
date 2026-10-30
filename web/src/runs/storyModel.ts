@@ -4,6 +4,7 @@
  */
 import { fmtDur, fmtUsd, type RunView } from '../api';
 import type { PipelineNode } from '../../../src/types';
+import { planConflict } from '../../../src/runLabels';
 import { stepOrder } from './graphModel';
 
 export type StoryState = 'done' | 'working' | 'waiting' | 'failed' | 'queued' | 'skipped';
@@ -22,6 +23,8 @@ export interface StoryRow {
 
 const STATE: Record<string, StoryState> = { done: 'done', running: 'working', awaiting: 'waiting', error: 'failed', queued: 'queued', skipped: 'skipped' };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+/** Why a step was skipped, on its row (spec 2026-10-30 §3.5: nothing is skipped without saying why). */
+const skippedWhy = (s: RunView['nodes'][string]) => (s.status === 'skipped' && s.error ? s.error : '');
 const took = (s: RunView['nodes'][string]) => (s.startedAt !== undefined && s.finishedAt !== undefined ? fmtDur(s.finishedAt - s.startedAt) : '');
 
 /** What an agent step did, said the way a person would: by what kind of step it is and where it stands. */
@@ -47,7 +50,7 @@ export function storyRows(r: RunView, botOf: (n: PipelineNode) => string, nameOf
     );
   }
   if (r.pending.length || (r.kind === 'team' && r.plan && !r.pipeline.nodes.length && r.status === 'running' && !r.planning)) {
-    rows.push(r.pending.length ? { id: 'questions', sentence: 'Tether asks you', line: plural(r.pending.length, 'question'), state: 'waiting', you: true } : { id: 'questions', sentence: 'You review the plan', line: 'the plan is ready', state: 'waiting', you: true });
+    rows.push(r.pending.length ? { id: 'questions', sentence: 'Tether asks you', line: plural(r.pending.length, 'question'), state: 'waiting', you: true } : { id: 'questions', sentence: 'You review the plan', line: r.plan && planConflict(r.plan, r.task) ? `check it: ${planConflict(r.plan, r.task)}` : 'the plan is ready', state: 'waiting', you: true });
   }
   const byId = new Map(r.pipeline.nodes.map((n) => [n.id, n]));
   for (const id of stepOrder(r.pipeline.nodes, r.pipeline.edges)) {
@@ -64,13 +67,42 @@ export function storyRows(r: RunView, botOf: (n: PipelineNode) => string, nameOf
     if (n.kind === 'gate') {
       const cmd = n.command ?? title;
       const result = s.gate ? (s.gate.ok ? 'passed' : `failed (exit ${s.gate.exitCode ?? '?'})`) : '';
-      rows.push({ id, node: id, bot, sentence: st === 'done' ? `${name} ran ${title}` : st === 'failed' ? `${title} failed` : st === 'working' ? `${name} is running ${title}` : `${name} runs ${title}`, line: [cmd !== title ? cmd : '', result, s.loops ? plural(s.loops, 'fix loop') : '', took(s)].filter(Boolean).join(' · '), state: st });
+      rows.push({ id, node: id, bot, sentence: st === 'done' ? `${name} ran ${title}` : st === 'failed' ? `${title} failed` : st === 'working' ? `${name} is running ${title}` : `${name} runs ${title}`, line: [cmd !== title ? cmd : '', result, s.loops ? plural(s.loops, 'fix loop') : '', took(s), skippedWhy(s)].filter(Boolean).join(' · '), state: st });
       continue;
     }
     const stat = s.stat ? `${plural(s.stat.files, 'file')} · +${s.stat.added} −${s.stat.deleted}` : '';
-    rows.push({ id, node: id, bot, sentence: agentSentence(name, n, st, s.verdict), line: [title !== n.role ? title : '', stat, s.verdict ? `verdict ${s.verdict}` : '', took(s), s.costUsd ? fmtUsd(s.costUsd) : ''].filter(Boolean).join(' · '), state: st });
+    rows.push({ id, node: id, bot, sentence: agentSentence(name, n, st, s.verdict), line: [title !== n.role ? title : '', stat, s.verdict ? `verdict ${s.verdict}` : '', took(s), s.costUsd ? fmtUsd(s.costUsd) : '', skippedWhy(s)].filter(Boolean).join(' · '), state: st });
+  }
+  // auto-fix's rounds after the steps they ran again (spec 2026-10-30 §3.4)
+  const a = r.autofix;
+  if (a) {
+    a.rounds.forEach((x, i) => rows.push({ id: `autofix-${x.round}`, bot: 'tether', sentence: `Tether auto-fixed: round ${x.round} of ${a.of}`, line: roundLine(r, x, botOf, nameOf), state: i === a.rounds.length - 1 && r.status === 'running' ? 'working' : 'done' }));
+    if (a.gaveUp) rows.push({ id: 'autofix-gave-up', bot: 'tether', sentence: a.round ? `Auto-fix gave up after ${plural(a.round, 'round')}` : 'Auto-fix could not help', line: a.gaveUp, state: 'failed' });
+    else if (a.needsWrites) rows.push({ id: 'autofix-writes', sentence: 'Tether asks: allow edits and retry?', line: a.needsWrites, state: 'waiting', you: true });
   }
   return rows;
+}
+
+type Round = NonNullable<RunView['autofix']>['rounds'][number];
+/** What one auto-fix round did, said plainly: "moved Lens to opus", "retried with the diagnosis attached". */
+function roundLine(r: RunView, x: Round, botOf: (n: PipelineNode) => string, nameOf: (bot: string) => string): string {
+  if (x.action === 'escalate') {
+    const n = r.pipeline.nodes.find((y) => y.id === x.node);
+    return `moved ${n ? nameOf(botOf(n)) : (x.node ?? 'the step')} to ${x.to?.model ?? x.to?.agent ?? 'a stronger model'}`;
+  }
+  return /diagnosis/.test(x.detail) ? 'retried with the diagnosis attached' : /edits allowed/.test(x.detail) ? 'retried with edits allowed' : 'retried the failed steps';
+}
+
+/** The run header's auto-fix line: "Auto-fixing · round 2 of 3 · moved Lens to opus", how it ended, or nothing. */
+export function autofixLine(r: RunView, nameOf: (bot: string) => string, botOf: (n: PipelineNode) => string): string | undefined {
+  const a = r.autofix;
+  if (!a) return undefined;
+  if (r.status === 'done') return a.round ? `Fixed by auto-fix in round ${a.round}` : undefined;
+  if (a.gaveUp) return a.round ? `Auto-fix gave up after ${plural(a.round, 'round')}` : 'Auto-fix could not help';
+  if (a.needsWrites) return 'Auto-fix waits on you: allow edits and retry?';
+  if (r.status !== 'running' && r.status !== 'error') return undefined;
+  const last = a.rounds.at(-1);
+  return a.round ? `Auto-fixing · round ${a.round} of ${a.of}${last ? ` · ${roundLine(r, last, botOf, nameOf)}` : ''}` : 'Auto-fixing · working out what went wrong';
 }
 
 /** The step the page opens on: the route's, the one working, the last one that changed files, else the first. */

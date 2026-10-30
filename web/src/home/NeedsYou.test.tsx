@@ -41,6 +41,15 @@ describe('Needs you', () => {
     expect(within(rows[0]!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Approve', 'Open']);
   });
 
+  it("Allow edits and retry posts the run's allow-edits", async () => {
+    routeApi({ 'POST /api/runs/r4/allow-edits': {} });
+    const ask: AttentionItem = { id: 'r4:autofix_writes', ts: now, runId: 'r4', kind: 'autofix_writes', title: 'Allow edits and retry? Auto-fix found this run is read-only', meta: 'Team run · r4 · aorch/r4', actions: ['allow_edits', 'open'] };
+    const { onChanged } = setup(poll({ items: [ask] }));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Allow edits and retry' })));
+    expect(calls('POST', '/api/runs/r4/allow-edits')).toHaveLength(1);
+    expect(onChanged).toHaveBeenCalled();
+  });
+
   it('approves from the row with one click and refetches', async () => {
     const { onChanged } = setup(poll({ items }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })));

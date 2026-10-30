@@ -2,7 +2,7 @@
  * What needs the person (Home's "Needs you"), computed from run states and a few event types. Read-only.
  * No free text beyond a question's `ask` (which the spec allows): never prompts, outputs, secrets or error messages.
  */
-import { isFinished, runMeta } from './runLabels.js';
+import { isFinished, planConflict, runMeta } from './runLabels.js';
 import { nodeTitle } from './runRows.js';
 import type { RunSummary, Store } from './store.js';
 import { planWaiting, type AttentionAction, type AttentionItem, type AttentionKind, type RunEvent, type RunState, type StoredEvent } from './types.js';
@@ -48,7 +48,13 @@ export function attentionFor(r: AttentionRun, now = Date.now()): AttentionItem[]
   };
   const active = !isFinished(s.status);
 
-  if (active && planWaiting(s)) add('plan_ready', last((e) => e.type === 'plan.ready')?.ts ?? r.lastTs, 'Plan ready for approval', ['review']);
+  if (active && planWaiting(s)) {
+    const ts = last((e) => e.type === 'plan.ready')?.ts ?? r.lastTs;
+    // a plan that cannot do its task says why before it runs, with the fix (spec 2026-10-30 §3.5)
+    const why = planConflict(s.plan!, s.task);
+    if (why) add('plan_conflict', ts, `Check the plan: ${why}`, ['allow_edits', 'review']);
+    else add('plan_ready', ts, 'Plan ready for approval', ['review']);
+  }
 
   if (active) {
     for (const q of s.pending) {
@@ -79,8 +85,18 @@ export function attentionFor(r: AttentionRun, now = Date.now()): AttentionItem[]
   }
   if (s.status === 'paused' && !out.some((i) => i.kind === 'approval' || i.kind === 'question' || i.kind === 'free_limit')) add('paused', r.lastTs, 'Paused', ['open']);
   if (s.status === 'running' && !r.live && !planningError) add('interrupted', r.lastTs, 'Interrupted: no process is driving it', ['resume', 'open']);
-  if (s.status === 'error' && s.finishedAt) add('failed', s.finishedAt, 'Failed', ['retry', 'open']);
+  if (s.status === 'error' && s.autofix?.needsWrites) add('autofix_writes', s.finishedAt ?? r.lastTs, `Allow edits and retry? Auto-fix found ${s.autofix.needsWrites}`.slice(0, ASK_MAX + 40), ['allow_edits', 'open']);
+  // while auto-fix works on it the run is live, not failed
+  else if (s.status === 'error' && s.finishedAt && !r.live) add('failed', s.finishedAt, failedTitle(s), ['retry', 'open']);
   return out;
+}
+
+/** "Failed", or why auto-fix stopped trying: "Auto-fix gave up after 3 rounds: <why>". */
+function failedTitle(s: RunState): string {
+  const a = s.autofix;
+  if (!a?.gaveUp) return 'Failed';
+  const why = a.gaveUp.slice(0, ASK_MAX);
+  return a.round ? `Auto-fix gave up after ${a.round} round${a.round === 1 ? '' : 's'}: ${why}` : `Auto-fix could not help: ${why}`;
 }
 
 /** Every run's items, newest first (ties by id, so the order is stable across polls). */

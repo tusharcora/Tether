@@ -338,6 +338,20 @@ export type RunEvent =
   | { type: 'attempt.set'; set: string; label: string }
   /** The person picked `run` from this run's attempt set to ship. */
   | { type: 'attempt.picked'; run: string }
+  /** Auto-fix (spec 2026-10-30 §3.4) took a failed run on: a cycle of at most `rounds` rounds. */
+  | { type: 'autofix.started'; rounds: number }
+  /** One auto-fix round: retry the failed steps with the diagnosis attached, or move the failing step to `to`; a resume follows. */
+  | { type: 'autofix.round'; round: number; of: number; action: 'retry' | 'escalate'; node?: string; to?: { agent: string; model?: string }; detail: string }
+  /** Auto-fix stopped trying after `rounds` rounds; the run stays failed and the person is told why. */
+  | { type: 'autofix.gave_up'; rounds: number; why: string }
+  /** The read-only run's failure needs edits: auto-fix asks the person once (Allow edits and retry?) instead of flipping it. */
+  | { type: 'autofix.needs_writes'; why: string; guidance?: string }
+  /** The person allowed edits on this team run (plan limits and the pipeline's write settings turn on). */
+  | { type: 'run.writes' }
+  /** The person allowed edits on a plan that waited for approval: planning opens again (with writes on) for a new plan. */
+  | { type: 'plan.reopened' }
+  /** Something was refused, skipped, cut or degraded: shown on the run page (spec §3.5), not only kept in the log. */
+  | { type: 'run.notice'; node?: string; text: string }
   | { type: 'run.finished'; status: RunStatus; error?: string; /** The run ended because its spend cap was reached. */ budget?: true };
 
 export interface StoredEvent {
@@ -444,6 +458,10 @@ export interface RunState {
   attemptSet?: string;
   attemptLabel?: string;
   attemptPicked?: { run: string; at: number };
+  /** Auto-fix's current cycle: the round reached of how many, what each round did, and how it ended (gave up, or waits on the person). */
+  autofix?: { round: number; of: number; rounds: { round: number; action: 'retry' | 'escalate'; node?: string; to?: { agent: string; model?: string }; detail: string; ts: number }[]; gaveUp?: string; needsWrites?: string; resuming?: boolean };
+  /** What was refused, skipped, cut or degraded, newest last (the last 50). */
+  notices?: { ts: number; node?: string; text: string }[];
 }
 
 /** A team run whose plan is finished and waits for the person's go-ahead. */
@@ -452,6 +470,14 @@ export function planWaiting(s: RunState): boolean {
 }
 
 const LIVE_TAIL = 4000;
+/** The most of one step's output, findings, guidance or answer handed to another inline; longer goes as a file (passOn). */
+export const PASS_ON_MAX = 16_000;
+
+/** Earlier guidance stays while the whole fits twice the pass-on limit; past that only the newest, always whole. */
+const joinGuidance = (was: string | undefined, add: string): string => {
+  const both = was ? `${was}\n${add}` : add;
+  return both.length > 2 * PASS_ON_MAX ? add : both;
+};
 
 /** Rebuild a run's state from its event log. Pure and deterministic. */
 export function foldRun(events: StoredEvent[]): RunState | undefined {
@@ -530,6 +556,11 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       s.plan = e.plan;
       continue;
     }
+    if (e.type === 'plan.reopened') {
+      s.planning = true;
+      s.plan = undefined;
+      continue;
+    }
     if (e.type === 'plan.edit') {
       // copy, never mutate: the plan object is the stored plan.ready event's
       const a = s.plan?.assignments[e.assignment];
@@ -565,6 +596,9 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
     switch (e.type) {
       case 'run.resumed':
         s.rewind = undefined;
+        // auto-fix's own resume keeps its cycle; a person's retry or resume ends it
+        if (s.autofix?.resuming) s.autofix.resuming = false;
+        else s.autofix = undefined;
         s.status = 'running';
         s.finishedAt = undefined;
         s.error = undefined;
@@ -660,7 +694,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         }
         break;
       case 'node.amended':
-        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: [x.guidance, e.guidance].filter(Boolean).join('\n').slice(-2000) } : {}) } : x)) };
+        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: joinGuidance(x.guidance, e.guidance) } : {}) } : x)) };
         break;
       case 'manager.cost':
         if (n) n.costUsd += e.costUsd;
@@ -687,6 +721,26 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'run.coach':
         s.coach = e.findings;
+        break;
+      case 'autofix.started':
+        s.autofix = { round: 0, of: e.rounds, rounds: [] };
+        break;
+      case 'autofix.round':
+        s.autofix = { ...(s.autofix ?? { rounds: [] }), round: e.round, of: e.of, rounds: [...(s.autofix?.rounds ?? []), { round: e.round, action: e.action, ...(e.node ? { node: e.node } : {}), ...(e.to ? { to: e.to } : {}), detail: e.detail, ts }], resuming: true, needsWrites: undefined };
+        s.actions.push({ round: e.round, action: e.action, node: e.node, detail: `auto-fix: ${e.detail}`, ts });
+        break;
+      case 'autofix.gave_up':
+        s.autofix = { ...(s.autofix ?? { round: e.rounds, of: e.rounds, rounds: [] }), gaveUp: e.why, needsWrites: undefined };
+        break;
+      case 'autofix.needs_writes':
+        if (s.autofix) s.autofix.needsWrites = e.why;
+        break;
+      case 'run.writes':
+        if (s.plan) s.plan = { ...s.plan, limits: { ...s.plan.limits, allowWrites: true } };
+        s.pipeline = { ...s.pipeline, settings: { ...s.pipeline.settings, allowWrites: true, ...(s.pipeline.settings.handoff ? { allowWorkerWrites: true } : {}) } };
+        break;
+      case 'run.notice':
+        s.notices = [...(s.notices ?? []), { ts, ...(e.node ? { node: e.node } : {}), text: e.text }].slice(-50);
         break;
       case 'run.shipped': {
         const { type: _, ...ship } = e;
@@ -886,8 +940,8 @@ export interface RunRowExtras {
   /** A step ran more than once (a retry, a fix loop, a send back): it did not pass first try. */
   retried?: true;
 }
-export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'free_limit' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
-export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open';
+export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'free_limit' | 'planning_error' | 'paused' | 'interrupted' | 'failed' | 'autofix_writes' | 'plan_conflict';
+export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open' | 'allow_edits';
 export interface AttentionItem {
   id: string;
   ts: number;

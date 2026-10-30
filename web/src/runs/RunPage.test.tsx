@@ -64,6 +64,14 @@ describe('run header, notices and approval bar', () => {
     expect(screen.queryByText('T1')).toBeNull();
     expect(screen.getByText('a2').closest('a')).toBeNull();
   });
+  it('shows what was refused, skipped or cut as lines, newest first, three before "and N more"', () => {
+    const notices = [1, 2, 3, 4].map((i) => ({ ts: i, node: 'w', text: `w could not hand work to ghost ${i}: unknown bot` }));
+    renderApp(<RunNotices run={makeRun({ notices })} onRetryStream={() => {}} />);
+    expect(screen.getByText('w could not hand work to ghost 4: unknown bot')).toBeTruthy();
+    expect(screen.queryByText('w could not hand work to ghost 1: unknown bot')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'and 1 more' }));
+    expect(screen.getByText('w could not hand work to ghost 1: unknown bot')).toBeTruthy();
+  });
   it('shows a run error as a red line and keeps the stream retry', () => {
     const retry = vi.fn();
     renderApp(<RunNotices run={makeRun({ error: 'budget exhausted ($6.41 of $4.50)\nstack' })} streamError="stream lost" onRetryStream={retry} />);

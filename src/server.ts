@@ -6,7 +6,8 @@ import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config }
 import type { Engine } from './engine.js';
 import { CREW, CREW_STYLES, lookPixels, refreshCrew } from './bots.js';
 import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
-import { capsOn, loadPrefs, savePrefs } from './prefs.js';
+import { autoFixOn, autoFixRounds, capsOn, loadPrefs, savePrefs } from './prefs.js';
+import { AutoFix } from './autofix.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, pipelineFor, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
@@ -271,15 +272,19 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
+  // auto-fix hears a failure before the goal loop does, so a goal waits for its rounds instead of settling on the failure
+  const autofix = new AutoFix({ home: cfg.home, store, engine, registry });
+  /** As every screen computes it, plus a failed run auto-fix is still working on (it shows under Live, not Needs you). */
+  const live = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }, lastTs: number) => rowLive(engine, { ...r, lastTs }) || autofix.pending(r.id);
   // a team's loop starts its runs through its team (made just below; the hooks are only called after both exist)
-  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) } });
+  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) }, autofixing: (id) => autofix.pending(id) });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
   const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
   /** What needs the person: every run's items, with the team named on a team's (and a loop's ship card from its team). */
-  const needs = () => teams.inbox(attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })));
+  const needs = () => teams.inbox(attention.items(live));
   /** Terminal and Preview processes; every one ends with the server (or, at the latest, with this process). */
   const procs = new RunProcs({ home: cfg.home, store });
   /** Try more ways: siblings count toward the original's goal and team. */
@@ -364,8 +369,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s), lastTs: store.lastTs(id) });
-    return { ...s, live };
+    return { ...s, live: live({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }, store.lastTs(id)) };
   };
 
 
@@ -460,13 +464,26 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
-      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home) }), true;
+      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home) }), true;
     }
     if (p === '/api/prefs' && m === 'PUT') {
       const b = await readJson(req);
-      if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
-      savePrefs(cfg.home, { spendingCaps: b.spendingCaps });
-      return send(res, 200, { spendingCaps: b.spendingCaps }), true;
+      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number } = {};
+      if (b.spendingCaps !== undefined) {
+        if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
+        patch.spendingCaps = b.spendingCaps;
+      }
+      if (b.autoFix !== undefined) {
+        if (typeof b.autoFix !== 'boolean') throw new HttpError(400, '"autoFix" must be true or false');
+        patch.autoFix = b.autoFix;
+      }
+      if (b.autoFixRounds !== undefined) {
+        if (!Number.isInteger(b.autoFixRounds) || b.autoFixRounds < 1 || b.autoFixRounds > 6) throw new HttpError(400, '"autoFixRounds" must be a whole number from 1 to 6');
+        patch.autoFixRounds = b.autoFixRounds;
+      }
+      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix" or "autoFixRounds"');
+      savePrefs(cfg.home, patch);
+      return send(res, 200, patch), true;
     }
     if (p === '/api/doctor' && m === 'GET') return send(res, 200, await doctor()), true;
     if (p === '/api/tools' && m === 'GET') {
@@ -904,7 +921,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const rows = store
         .listRows()
         .filter(({ summary: r }) => all || !r.probe)
-        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, { ...r, lastTs }) }));
+        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: live(r, lastTs) }));
       return send(res, 200, rows), true;
     }
     if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: needs() }), true;
@@ -1037,6 +1054,17 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       }
       return send(res, 200, runView(id)), true;
     }
+    // Allow edits: a plan that waits is planned again with writes on; a run auto-fix asked about retries with edits
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/allow-edits$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      try {
+        await autofix.allowEdits(id);
+      } catch (e) {
+        throw new HttpError(409, (e as Error).message);
+      }
+      return send(res, 200, runView(id)), true;
+    }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/(stop|resume|approve)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       const action = g[2]!;
@@ -1045,7 +1073,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const b = await readJson(req);
       try {
         if (action === 'stop') {
-          if (!engine.stop(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
+          // between auto-fix rounds the run is not live: Stop ends auto-fix instead
+          if (!engine.stop(id) && !autofix.cancel(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
         } else if (action === 'resume') {
           // Switch model… after the free limit: the waiting steps carry on on this agent/model (this run only)
           const model = reqString(b, 'model');

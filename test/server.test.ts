@@ -68,6 +68,17 @@ describe('http api', () => {
     expect((await api('PUT', '/api/prefs', { spendingCaps: false })).json).toEqual({ spendingCaps: false });
   });
 
+  it('Auto-fix failed runs: on with 3 rounds by default, set with PUT /api/prefs', async () => {
+    expect((await api('GET', '/api/health')).json).toMatchObject({ autoFix: true, autoFixRounds: 3 });
+    expect((await api('PUT', '/api/prefs', { autoFix: 'no' })).status).toBe(400);
+    expect((await api('PUT', '/api/prefs', { autoFixRounds: 9 })).status).toBe(400);
+    expect((await api('PUT', '/api/prefs', {})).status).toBe(400);
+    expect((await api('PUT', '/api/prefs', { autoFix: false, autoFixRounds: 2 })).json).toEqual({ autoFix: false, autoFixRounds: 2 });
+    expect((await api('GET', '/api/health')).json).toMatchObject({ autoFix: false, autoFixRounds: 2, spendingCaps: false });
+    expect((await api('PUT', '/api/prefs', { autoFix: true, autoFixRounds: 3 })).status).toBe(200);
+    expect((await api('POST', '/api/runs/rnope/allow-edits', {})).status).toBe(404);
+  });
+
   it('saves a pipeline, runs it, pauses at approval, approves over HTTP and finishes', async () => {
     expect((await api('GET', '/api/health')).json.ok).toBe(true);
     const put = await api('PUT', '/api/pipelines/demo-mock', demo);
