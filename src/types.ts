@@ -452,6 +452,14 @@ export function planWaiting(s: RunState): boolean {
 }
 
 const LIVE_TAIL = 4000;
+/** The most of one step's output, findings, guidance or answer handed to another inline; longer goes as a file (passOn). */
+export const PASS_ON_MAX = 16_000;
+
+/** Earlier guidance stays while the whole fits twice the pass-on limit; past that only the newest, always whole. */
+const joinGuidance = (was: string | undefined, add: string): string => {
+  const both = was ? `${was}\n${add}` : add;
+  return both.length > 2 * PASS_ON_MAX ? add : both;
+};
 
 /** Rebuild a run's state from its event log. Pure and deterministic. */
 export function foldRun(events: StoredEvent[]): RunState | undefined {
@@ -660,7 +668,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         }
         break;
       case 'node.amended':
-        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: [x.guidance, e.guidance].filter(Boolean).join('\n').slice(-2000) } : {}) } : x)) };
+        s.pipeline = { ...s.pipeline, nodes: s.pipeline.nodes.map((x) => (x.id === e.node ? { ...x, agent: e.agent ?? x.agent, model: e.agent || e.model ? e.model : x.model, ...(e.guidance ? { guidance: joinGuidance(x.guidance, e.guidance) } : {}) } : x)) };
         break;
       case 'manager.cost':
         if (n) n.costUsd += e.costUsd;

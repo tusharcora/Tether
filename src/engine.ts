@@ -29,6 +29,7 @@ import { reflect } from './lessons.js';
 import { Vault } from './vault.js';
 import { resolveWorkspace, snapshot } from './workspace.js';
 import { capsOn } from './prefs.js';
+import { passOn } from './codemode/spill.js';
 
 /** How long a finished run waits for its reflection before moving on. */
 const REFLECT_TIMEOUT_MS = 3000;
@@ -580,7 +581,7 @@ export class Engine {
     if (this.active.has(runId)) throw new Error('stop the run before amending it');
     const agent = patch.agent ?? n.agent ?? 'claude';
     if (!this.opts.registry.has(agent)) throw new Error(`unknown agent adapter "${agent}"`);
-    this.store.append(runId, { type: 'node.amended', node, agent: patch.agent ?? n.agent, model: patch.agent ? patch.model : n.model, guidance: patch.guidance?.slice(0, 1000), reason });
+    this.store.append(runId, { type: 'node.amended', node, agent: patch.agent ?? n.agent, model: patch.agent ? patch.model : n.model, guidance: patch.guidance === undefined ? undefined : passOn(patch.guidance, s.workdir), reason });
   }
 
   // ---------- team runs: planning dialogue ----------
@@ -1267,7 +1268,7 @@ export class Engine {
     const st = this.state(runId);
     const settings = st.pipeline.settings;
     const log = (to: string, answer: string, costUsd?: number) =>
-      this.store.append(runId, { type: 'handoff', from: delegator.id, to, goal: req.goal, answer: answer.slice(0, 8000), round, costUsd: costUsd || undefined });
+      this.store.append(runId, { type: 'handoff', from: delegator.id, to, goal: req.goal, answer: passOn(answer, st.workdir), round, costUsd: costUsd || undefined });
     const result = (answer: string, ok: boolean): HandResult => ({ to: req.to, goal: req.goal, answer, ok });
     const mine = st.pipeline.nodes.filter((n) => n.spawn?.kind === 'hand' && n.spawn.parent === delegator.id);
     const mode = req.write ? 'write' : 'read';
@@ -1630,7 +1631,7 @@ export class Engine {
           const brokeNow = limit();
           if (brokeNow) return halted(brokeNow);
           this.store.append(runId, { type: 'loop', check: node.id, fixNode: child.id, n: done + 1 });
-          this.store.append(runId, { type: 'node.amended', node: child.id, guidance: `Redo requested by ${node.id}: ${item.reason}`.slice(0, 1000), reason: `redo requested by ${node.id}` });
+          this.store.append(runId, { type: 'node.amended', node: child.id, guidance: passOn(`Redo requested by ${node.id}: ${item.reason}`, now.workdir), reason: `redo requested by ${node.id}` });
           const fresh = this.state(runId).pipeline.nodes.find((n) => n.id === child.id)!;
           const r = await this.runAgentOnce(runId, fresh, signal);
           if (r.aborted || signal.aborted) return { ok: false, aborted: true };
@@ -1743,7 +1744,7 @@ export class Engine {
     const target = resolveTarget(st, asker, ask.target);
     const tnsHarness = target ? st.nodes[target.id]?.harness : undefined;
     const done = (to: string, answer: string, cost = 0) => {
-      this.store.append(runId, { type: 'consult', from: asker.id, to, question: ask.question, answer: answer.slice(0, 8000), round, costUsd: cost || undefined, ...(tnsHarness ? { harness: tnsHarness } : {}) });
+      this.store.append(runId, { type: 'consult', from: asker.id, to, question: ask.question, answer: passOn(answer, st.workdir), round, costUsd: cost || undefined, ...(tnsHarness ? { harness: tnsHarness } : {}) });
       return { to, answer, cost };
     };
     if (!target) {
@@ -2079,7 +2080,7 @@ export class Engine {
       }
       const live = this.state(runId).nodes[node.id]!;
       const canResume = adapter.supportsResume && !!live.sessionId;
-      const follow = canResume ? answersBlock(answered) : `${prompt}\n\n# Your answer so far\n${stripAsks(res.output)}\n\n${answersBlock(answered)}`;
+      const follow = canResume ? answersBlock(answered, state.workdir) : `${prompt}\n\n# Your answer so far\n${stripAsks(res.output)}\n\n${answersBlock(answered, state.workdir)}`;
       const before = res;
       res = await call(canResume ? live.sessionId : undefined, follow);
       extraCost += before.costUsd ?? 0;
@@ -2108,7 +2109,7 @@ export class Engine {
       sig = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
       const live = this.state(runId);
       const canResume = adapter.supportsResume && !!live.nodes[node.id]!.sessionId;
-      const block = handoffBlock(results, round === handRounds);
+      const block = handoffBlock(results, live.workdir, round === handRounds);
       const follow = canResume ? block : `${prompt}\n\n# Your answer so far\n${stripHands(res.output)}\n\n${block}`;
       const before = res;
       handCost += before.costUsd ?? 0;
@@ -2211,10 +2212,10 @@ function managerSummary(s: RunState, node: PipelineNode, kids: PipelineNode[], n
     }
     lines.push(`- ${k.id} → ${k.role ?? 'agent'}: ${k.spawn?.contract.goal ?? ''} [${ns?.status ?? 'unknown'}]`);
     const body = ns?.error ? `error: ${ns.error}` : ns?.output;
-    if (body) lines.push(`  ${tail(body, 1500).replace(/\n/g, '\n  ')}`);
+    if (body) lines.push(`  ${passOn(body, s.workdir).replace(/\n/g, '\n  ')}`);
   }
   if (notes.length) lines.push('', 'Notes:', ...notes.map((n) => `- ${n}`));
-  if (lastReview) lines.push('', `Final review:\n${tail(lastReview, 2000)}`);
+  if (lastReview) lines.push('', `Final review:\n${passOn(lastReview, s.workdir)}`);
   return lines.join('\n');
 }
 
