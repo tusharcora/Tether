@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Catalog } from '../src/codemode/catalog.js';
 import { toolIdent } from '../src/codemode/connectors/mcp.js';
-import { checkMcpServer, loadMcpServers, publicMcp, putMcpServer, removeMcpServer } from '../src/codemode/mcpServers.js';
+import { checkMcpServer, loadMcpServers, MCP_PRESETS, publicMcp, putMcpServer, removeMcpServer } from '../src/codemode/mcpServers.js';
 import { execute, LIMITS, normalizeCode } from '../src/codemode/sandbox.js';
 import { jsonSchemaToTs, signature } from '../src/codemode/schema.js';
 import { approvalQuestion, CodeSession, grantsFrom, type SessionInfo } from '../src/codemode/session.js';
@@ -238,10 +238,10 @@ describe('the Code Mode session', () => {
     expect(grantsFrom(asks as never, 'code', 'Bolt')).toEqual(['merge o/r#7 (squash)']);
   });
 
-  it('cuts a big result to 16 KB with a note', async () => {
+  it('spills a result over 16 KB: head and tail inline, the rest in a file it names', async () => {
     const r = await session().runCode('return "x".repeat(40000)');
-    expect(r.text.length).toBeLessThan(16 * 1024 + 200);
-    expect(r.text).toMatch(/\[\.\.\. cut: \d+ more characters\. Return less/);
+    expect(r.text.length).toBeLessThanOrEqual(16 * 1024);
+    expect(r.text).toMatch(/\(Omitted \d+ bytes\. Full formatted result stored at: \.tether\/spill\/[0-9a-f]+\.txt\. Read it in line ranges with repo\.read/);
   });
 
   it('describes itself by connector names and the two discovery functions, not by every method', () => {
@@ -301,10 +301,18 @@ describe('MCP server settings (<home>/mcp.json)', () => {
     expect(() => checkMcpServer({ name: 'ok', url: 'file:///etc' })).toThrow(/http or https/);
   });
 
+  it('offers the two browser presets, pinned and valid, and adds none by itself', () => {
+    expect(MCP_PRESETS.map((x) => x.name)).toEqual(['playwright', 'chrome_devtools']);
+    expect(MCP_PRESETS[0]!.args).toContain('@playwright/mcp@0.0.80');
+    expect(MCP_PRESETS[1]!.args).toContain('chrome-devtools-mcp@1.9.0');
+    for (const x of MCP_PRESETS) expect(checkMcpServer(x)).toEqual({ name: x.name, command: 'npx', args: x.args });
+    expect(loadMcpServers(tmp('mcp-home-'))).toEqual([]);
+  });
+
   it('serves them on /api/codemode/mcp with names only for env and headers', async () => {
     const s = await startHttpTestServer();
     try {
-      expect((await s.api('GET', '/api/codemode/mcp')).json).toEqual({ servers: [] });
+      expect((await s.api('GET', '/api/codemode/mcp')).json).toEqual({ servers: [], presets: MCP_PRESETS });
       const put = await s.api('PUT', '/api/codemode/mcp/files', { command: 'node', args: ['server.js'], env: { API_KEY: 'sk-secret' } });
       expect(put.json).toEqual({ server: { name: 'files', kind: 'stdio', target: 'node server.js', envKeys: ['API_KEY'], headerKeys: [] } });
       const list = await s.api('GET', '/api/codemode/mcp');

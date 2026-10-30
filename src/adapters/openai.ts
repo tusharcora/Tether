@@ -16,6 +16,8 @@ import { accountKey } from '../accounts/keys.js';
 import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
 import { NV_LIMIT, chatModels, isNvidia } from '../nvidia.js';
 import { OR_HEADERS, isOpenRouter, limitKind, limitMessage, nextUtcMidnight } from '../openrouter.js';
+import { pruneToolResults } from './prune.js';
+import { RepeatGuard } from './repeatGuard.js';
 import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest } from '../types.js';
 
 export interface EndpointConfig {
@@ -223,6 +225,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
   }
 
   private async chat(messages: Msg[], model: string, tools: unknown[] | undefined, signal: AbortSignal): Promise<{ message: Msg; status: number; errorText?: string; reset?: number; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
+    pruneToolResults(messages);
     const res = await fetch(this.url('/chat/completions'), {
       method: 'POST',
       headers: await this.headers(),
@@ -259,6 +262,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
       let last = '';
       const usage: { inputTokens: number; outputTokens: number; toolCalls: number; turns: number; promptTokens?: number } = { inputTokens: 0, outputTokens: 0, toolCalls: 0, turns: 0 };
       const done = (r: AgentResult): AgentResult => ({ ...r, usage });
+      const guard = new RepeatGuard();
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (req.signal.aborted) return fail('aborted', last);
         let r = await this.chat(messages, model, tools, req.signal);
@@ -298,8 +302,11 @@ export class OpenAICompatAdapter implements AgentAdapter {
         messages.push({ role: 'assistant', content: m.content ?? '', tool_calls: calls });
         for (const c of calls) {
           let result: string;
+          // malformed argument JSON still counts as a call, keyed on its raw text
+          let seenArgs: unknown = c.function.arguments;
           try {
             const args = JSON.parse(c.function.arguments || '{}') as Record<string, unknown>;
+            seenArgs = args;
             req.onChunk(toolChunk(c.function.name, args));
             if (cm && c.function.name === 'run_code') result = (await cm.runner.runCode(String(args.code ?? ''))).text;
             else if (cm) throw new Error(`unknown tool "${c.function.name}": the only tool is run_code`);
@@ -307,7 +314,8 @@ export class OpenAICompatAdapter implements AgentAdapter {
           } catch (e) {
             result = `error: ${(e as Error).message}`;
           }
-          messages.push({ role: 'tool', tool_call_id: c.id, content: result });
+          const nudge = guard.observe(c.function.name, seenArgs);
+          messages.push({ role: 'tool', tool_call_id: c.id, content: nudge ? `${result}\n\n${nudge}` : result });
         }
       }
       return fail(`${this.id}: stopped after ${MAX_TURNS} tool turns without a final answer`, last);

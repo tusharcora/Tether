@@ -1,9 +1,9 @@
-import { GitPullRequest } from 'lucide-react';
+import { CircleDot, GitPullRequest, MessageSquare } from 'lucide-react';
 import { ago } from '../api';
 import { Switch } from '../components/beui/kit/fields';
 import { cn } from '../ui/cn';
 import { StatusBadge } from '../ui/studio/StatusBadge';
-import { DEFAULT_EVENTS, OUTCOME, statusTip, who, type Trigger } from './types';
+import { OUTCOME, firesOn, statusTip, who, type Trigger } from './types';
 import './triggers.css';
 
 /**
@@ -18,7 +18,7 @@ export function TriggerCard(p: { t: Trigger; selected: boolean; onOpen: () => vo
     <li className={cn('tg-card', { paused: t.enabled === false, on: p.selected })}>
       <button type="button" className="tg-card-main" aria-label={`Open ${t.id}`} aria-pressed={p.selected} onClick={p.onOpen}>
         <span className="tg-ic" aria-hidden="true">
-          <GitPullRequest size={18} />
+          {t.on === 'issue' ? <CircleDot size={18} /> : t.on === 'comment' ? <MessageSquare size={18} /> : <GitPullRequest size={18} />}
         </span>
         <span className="tg-card-text">
           <span className="tg-line">
@@ -28,7 +28,7 @@ export function TriggerCard(p: { t: Trigger; selected: boolean; onOpen: () => vo
           </span>
           <span className="tg-src">{t.repo === '*' ? 'GitHub · any mapped repo' : `GitHub · ${t.repo}`}</span>
           <span className="tg-flow">
-            <span className="tg-chip">{(t.events ?? DEFAULT_EVENTS).join(', ')}</span>
+            <span className="tg-chip">{firesOn(t)}</span>
             <span aria-hidden="true">→</span>
             <span className="tg-chip">{`runs ${t.workflow}`}</span>
             {t.comment ? (

@@ -319,6 +319,19 @@ export class Goals {
     return started;
   }
 
+  /**
+   * A schedule's turn: check again and propose the next run, resuming a paused loop. A run in flight, or one waiting for
+   * the person, is left alone.
+   */
+  kick(id: string): Goal {
+    const g = this.db.must(id);
+    if (g.kind !== 'loop' || g.status === 'met' || g.status === 'stopped') throw new HttpError(409, `"${g.title}" is not an open goal with a finish check`);
+    if (g.status === 'needs_you' || [...this.watched.values()].includes(id)) return g;
+    const r = this.save({ ...g, status: 'active', reason: undefined, startedAt: g.startedAt ?? Date.now() });
+    this.job(this.checkAndAdvance(id));
+    return r;
+  }
+
   /** The person's answer to a proposed run. */
   async next(id: string, action: 'start' | 'skip', plan?: string): Promise<Goal> {
     const g = this.db.must(id);

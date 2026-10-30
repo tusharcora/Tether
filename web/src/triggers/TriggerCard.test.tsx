@@ -17,6 +17,16 @@ describe('TriggerCard', () => {
     expect(screen.getByText('no deliveries')).toBeTruthy();
   });
 
+  it('names what fires an issue or comment trigger', () => {
+    const { container } = render(
+      <ul>
+        <TriggerCard t={t({ id: 'i', on: 'issue', label: 'tether' })} selected={false} onOpen={() => {}} onToggle={() => {}} />
+        <TriggerCard t={t({ id: 'c', on: 'comment' })} selected={false} onOpen={() => {}} onToggle={() => {}} />
+      </ul>,
+    );
+    expect([...container.querySelectorAll('.tg-flow .tg-chip:first-child')].map((c) => c.textContent)).toEqual(['issue labeled tether', 'comment with @tether']);
+  });
+
   it('says when it last fired, with the outcome', () => {
     card(t({ status: 'active', last: { at: new Date().toISOString(), source: 'webhook', repo: 'acme/api', pr: 12, outcome: 'started', runId: 'r9' } }));
     expect(screen.getByText('run started').closest('[data-status]')!.getAttribute('data-status')).toBe('success');

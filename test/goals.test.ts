@@ -173,6 +173,23 @@ describe('the loop', () => {
     expect(r.goals.db.must(g.id)).toMatchObject({ status: 'needs_you' });
     expect(r.goals.setStatus(g.id, 'stopped')).toMatchObject({ status: 'stopped', reason: 'Stopped by you' });
   });
+
+  it("a schedule's kick resumes a paused loop and proposes again, leaves a waiting one alone, and refuses closed goals", async () => {
+    const r = rig();
+    const g = r.goals.create(r.goal());
+    await r.goals.idle();
+    const waiting = r.goals.db.must(g.id);
+    expect(r.goals.kick(g.id)).toEqual(waiting);
+    r.goals.setStatus(g.id, 'paused');
+    expect(r.goals.kick(g.id).status).toBe('active');
+    await r.goals.idle();
+    expect(r.goals.db.must(g.id)).toMatchObject({ status: 'needs_you' });
+    expect(r.store.listRows()).toHaveLength(0);
+    r.goals.setStatus(g.id, 'stopped');
+    expect(() => r.goals.kick(g.id)).toThrow(/not an open goal/);
+    const t = r.goals.create(r.goal({ kind: 'tracker', check: undefined }));
+    expect(() => r.goals.kick(t.id)).toThrow(/not an open goal/);
+  });
 });
 
 describe('optional limits', () => {

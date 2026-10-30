@@ -18,6 +18,7 @@ import { repoConnector } from './connectors/repo.js';
 import { tetherConnector, type Ask } from './connectors/tether.js';
 import type { McpServer } from './mcpServers.js';
 import { execute, LIMITS, type Limits } from './sandbox.js';
+import { spillText, sweepSpills } from './spill.js';
 import type { Connector, RunCodeOutput } from './types.js';
 
 export interface SessionInfo {
@@ -132,7 +133,7 @@ export class CodeSession {
     return m.run(args);
   }
 
-  /** Run one script; the result (return value, then logs) is cut to the result limit with a note. */
+  /** Run one script; a result (return value, then logs) over the limit is spilled to a file the model can read, else cut with a note. */
   async runCode(code: string): Promise<RunCodeOutput> {
     if (typeof code !== 'string' || !code.trim()) return { text: 'run_code needs a script in "code".', isError: true };
     this.metrics.runCode++;
@@ -145,7 +146,7 @@ export class CodeSession {
     if (this.asks.length || this.approvals.length) parts.push('(The person has been asked: end your answer now; this step runs again with their decision.)');
     let text = parts.join('\n\n');
     const max = this.limits.maxResultBytes;
-    if (text.length > max) text = `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
+    if (text.length > max) text = (await spillText(this.info.workdir, text, max)) ?? `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
     return { text, isError: !!r.error };
   }
 
@@ -159,5 +160,6 @@ export class CodeSession {
 
   async close(): Promise<void> {
     await this.catalog.close();
+    await sweepSpills(this.info.workdir);
   }
 }

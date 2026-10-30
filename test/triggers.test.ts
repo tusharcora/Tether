@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readdirSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { request } from 'node:http';
@@ -90,9 +90,10 @@ describe('startPrRun wiring', () => {
     const { writePipeline } = await import('../src/config.js');
     writePipeline(home, pipe([{ id: 'a', agent: 'claude' }, { id: 'g', kind: 'gate', command: 'true' }], [['a', 'g']]));
     const r = await startPrRun({ home, engine, exec: fakeExec }, parsePr('acme/api#1'), { workflow: 'test', workspace: 'proj', agent: 'codex', model: 'm9' });
-    expect(r.repoDir).toBe(dir);
+    // macOS: the temp dir is a symlink (/var -> /private/var) and workspaces store the real path
+    expect(r.repoDir).toBe(realpathSync(dir));
     expect(seen[0].workspace).toBe('proj');
-    expect(seen[0].repo).toBe(dir);
+    expect(seen[0].repo).toBe(realpathSync(dir));
     expect(seen[0].pipeline.nodes.find((n: any) => n.id === 'a')).toMatchObject({ agent: 'codex', model: 'm9' });
     expect(seen[0].pipeline.nodes.find((n: any) => n.id === 'g').model).toBeUndefined();
   });
@@ -122,7 +123,7 @@ describe('startPrRun workspace folder', () => {
   });
   it('uses it when the workspace lists the repo, ignoring case', async () => {
     const x = await run(['ACME/api'], 'acme/api');
-    expect(x.repoDir).toBe(x.dir);
+    expect(x.repoDir).toBe(realpathSync(x.dir));
   });
 });
 

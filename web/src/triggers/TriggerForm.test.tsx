@@ -22,6 +22,22 @@ describe('TriggerForm', () => {
     expect(f.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the label field for issue triggers and the mention field for comment triggers, without the PR filters', () => {
+    const f = fns();
+    const { rerender } = render(<TriggerForm form={{ ...blank(), on: 'issue' }} editing={false} workspaces={[]} agents={agents} workflows={[]} {...f} />);
+    expect(screen.getByRole('combobox', { name: /Fires on/ })).toBeTruthy();
+    expect(screen.queryByLabelText('Events')).toBeNull();
+    expect(screen.queryByText('include forks')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'tether' } });
+    expect(f.onChange).toHaveBeenCalledWith({ label: 'tether' });
+    expect(screen.getByText(/owners, members and collaborators/)).toBeTruthy();
+    rerender(<TriggerForm form={{ ...blank(), on: 'comment' }} editing={false} workspaces={[]} agents={agents} workflows={[]} {...f} />);
+    expect(screen.getByPlaceholderText('@tether')).toBeTruthy();
+    rerender(<TriggerForm form={blank()} editing={false} workspaces={[]} agents={agents} workflows={[]} {...f} />);
+    expect(screen.getByLabelText('Events')).toBeTruthy();
+    expect(screen.queryByLabelText('Label')).toBeNull();
+  });
+
   it('locks the id while editing and offers the workspace picker when workspaces exist', () => {
     const ws = [{ id: 'api', name: 'API', path: '/code/api', isDefault: true, exists: true, repos: [] }];
     render(<TriggerForm form={{ ...blank(), id: 'acme-full-review', repo: 'acme/api' }} editing workspaces={ws} agents={agents} workflows={[]} {...fns()} />);
