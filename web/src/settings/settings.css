@@ -17,6 +17,7 @@
 .mcp-panel { display: flex; flex-direction: column; gap: 10px; }
 .mcp-panel > p { margin: 0; }
 .mcp-target { overflow-wrap: anywhere; font-size: 12px; }
+.mcp-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mcp-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .mcp-form > * { width: 100%; }
 .mcp-form > button { width: auto; }

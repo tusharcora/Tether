@@ -18,6 +18,13 @@ export interface PublicMcpServer {
 }
 
 export const MCP_NAME_RE = /^[a-z][a-z0-9_]{0,31}$/;
+
+// Ported from deepseek-harness experimental/browser-use-playwright-mcp and browser-use-chrome-devtools-mcp (MIT, © 2026 DeepSeek).
+/** Browser servers the owner adds with one click in Settings (none is on until added): dsh's pinned versions, an isolated headless Chromium. */
+export const MCP_PRESETS: { name: string; label: string; command: string; args: string[] }[] = [
+  { name: 'playwright', label: 'Playwright browser', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80', '--browser', 'chromium', '--isolated', '--headless'] },
+  { name: 'chrome_devtools', label: 'Chrome DevTools', command: 'npx', args: ['-y', 'chrome-devtools-mcp@1.9.0', '--no-usage-statistics', '--isolated', '--headless=true'] },
+];
 const MAX_SERVERS = 30;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
 const file = (home: string) => join(home, 'mcp.json');

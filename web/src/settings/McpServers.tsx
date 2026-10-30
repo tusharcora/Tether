@@ -18,6 +18,13 @@ export interface McpServerView {
   envKeys: string[];
   headerKeys: string[];
 }
+/** A server Tether offers to add with one click (the browser presets). */
+export interface McpPreset {
+  name: string;
+  label: string;
+  command: string;
+  args: string[];
+}
 export const MCP_PATH = '/api/codemode/mcp';
 
 /**
@@ -66,7 +73,7 @@ export function serverBody(target: string, pairs: string): Record<string, unknow
  * Settings → Tools: MCP servers for Code Mode. Each becomes an `mcp.<name>` connector agents find and call from run_code,
  * instead of loading every tool definition. Env and header values are sent once and never shown again.
  */
-export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
+export function McpServers(p: { poll: Poll<{ servers: McpServerView[]; presets?: McpPreset[] }> }) {
   const notify = useNotify();
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
@@ -75,15 +82,18 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
   const { data, error, refresh } = p.poll;
   const tests = useServerTests((data?.servers ?? []).map((s) => s.name));
   const [expanded, setExpanded] = useState<string>();
-  const add = async () => {
+  const presets = (data?.presets ?? []).filter((x) => !data?.servers.some((s) => s.name === x.name));
+  const add = async (as: string, body: Record<string, unknown>, clear: boolean) => {
     setBusy(true);
     try {
-      await api('PUT', `${MCP_PATH}/${encodeURIComponent(name.trim())}`, serverBody(target, pairs));
-      setName('');
-      setTarget('');
-      setPairs('');
+      await api('PUT', `${MCP_PATH}/${encodeURIComponent(as)}`, body);
+      if (clear) {
+        setName('');
+        setTarget('');
+        setPairs('');
+      }
       await refresh();
-      notify.ok('MCP server added', `Agents reach it as mcp.${name.trim()} in Code Mode`);
+      notify.ok('MCP server added', `Agents reach it as mcp.${as} in Code Mode`);
     } catch (e) {
       notify.fail(e);
     } finally {
@@ -131,11 +141,21 @@ export function McpServers(p: { poll: Poll<{ servers: McpServerView[] }> }) {
           <p className="acc-note">No MCP servers yet.</p>
         )}
       </Loading>
+      {presets.length ? (
+        <div className="mcp-presets">
+          <span className="acc-note">Browser presets (off until you add one):</span>
+          {presets.map((x) => (
+            <Button key={x.name} variant="secondary" size="sm" disabled={busy} title={[x.command, ...x.args].join(' ')} onClick={() => void add(x.name, { command: x.command, args: x.args }, false)}>
+              Add {x.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       <div className="mcp-form">
         <Input label="Name" value={name} placeholder="files" spellCheck={false} onChange={(e) => setName(e.target.value)} />
         <Input label="Command or URL" value={target} placeholder="npx -y @modelcontextprotocol/server-filesystem ." spellCheck={false} onChange={(e) => setTarget(e.target.value)} />
         <Textarea label="Env (KEY=value) or headers (Name: value), one per line" rows={2} value={pairs} spellCheck={false} onChange={(e) => setPairs(e.target.value)} />
-        <Button variant="secondary" size="sm" disabled={busy || !name.trim() || !target.trim()} onClick={() => void add()}>
+        <Button variant="secondary" size="sm" disabled={busy || !name.trim() || !target.trim()} onClick={() => void add(name.trim(), serverBody(target, pairs), true)}>
           Add server
         </Button>
       </div>

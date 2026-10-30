@@ -7,6 +7,7 @@ Parts of Tether are ported from deepseek-harness (re-implemented against Tether'
 - `compaction/compaction-tool-result-pruner` → `src/adapters/prune.ts`
 - `guard/repeat-tool-reminder` → `src/adapters/repeatGuard.ts`
 - `spill/spill-policy`, `spill/spill-local` → `src/codemode/spill.ts`
+- `experimental/browser-use-playwright-mcp`, `experimental/browser-use-chrome-devtools-mcp` → `MCP_PRESETS` in `src/codemode/mcpServers.ts`
 
 ```
 MIT License

@@ -48,6 +48,21 @@ describe('Settings → MCP servers', () => {
     expect(panel.textContent).toContain('HTTP');
   });
 
+  it('offers the browser presets not yet added and adds one with a click', async () => {
+    let put: unknown;
+    routeApi({ 'PUT /api/codemode/mcp/playwright': (b: unknown) => ((put = b), { server: {} }), 'POST /api/codemode/connectors/mcp.chrome_devtools/test': { ok: true, tools: [] } });
+    const presets = [
+      { name: 'playwright', label: 'Playwright browser', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80'] },
+      { name: 'chrome_devtools', label: 'Chrome DevTools', command: 'npx', args: ['-y', 'chrome-devtools-mcp@1.9.0'] },
+    ];
+    const p: Poll<{ servers: McpServerView[]; presets: typeof presets }> = { data: { servers: [{ name: 'chrome_devtools', kind: 'stdio', target: 'npx', envKeys: [], headerKeys: [] }], presets }, error: undefined, fails: 0, refresh: vi.fn(async () => {}) };
+    renderApp(<McpServers poll={p} />);
+    expect(screen.queryByRole('button', { name: 'Add Chrome DevTools' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Playwright browser' }));
+    await waitFor(() => expect(put).toEqual({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.80'] }));
+    expect(p.refresh).toHaveBeenCalled();
+  });
+
   it('turns a URL into an HTTP server with headers, and a command line into command, args and env', () => {
     expect(serverBody('https://x.dev/mcp', 'Authorization: Bearer t')).toEqual({ url: 'https://x.dev/mcp', headers: { Authorization: 'Bearer t' } });
     expect(serverBody('node s.js', '')).toEqual({ command: 'node', args: ['s.js'] });

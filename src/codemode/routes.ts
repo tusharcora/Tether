@@ -13,12 +13,12 @@ const defaultSecrets = (home: string): Map<string, string> => {
     return new Map();
   }
 };
-import { loadMcpServers, MCP_NAME_RE, publicMcp, putMcpServer, removeMcpServer } from './mcpServers.js';
+import { loadMcpServers, MCP_NAME_RE, MCP_PRESETS, publicMcp, putMcpServer, removeMcpServer } from './mcpServers.js';
 
 export async function codemodeRoute(home: string, req: IncomingMessage, res: ServerResponse, url: URL, github?: GithubAccount): Promise<boolean> {
   const p = url.pathname;
   const m = req.method ?? 'GET';
-  if (p === '/api/codemode/mcp' && m === 'GET') return send(res, 200, { servers: loadMcpServers(home).map(publicMcp) }), true;
+  if (p === '/api/codemode/mcp' && m === 'GET') return send(res, 200, { servers: loadMcpServers(home).map(publicMcp), presets: MCP_PRESETS }), true;
   if (github && p === '/api/codemode/connectors' && m === 'GET') return send(res, 200, { connectors: await connectorsView(home, github, defaultSecrets(home)) }), true;
   const t = github ? /^\/api\/codemode\/connectors\/([^/]+)\/test$/.exec(p) : null;
   if (t && m === 'POST') {
