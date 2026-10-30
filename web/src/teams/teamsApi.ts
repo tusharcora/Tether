@@ -1,7 +1,7 @@
-import type { AgentState, AgentView, Card, Level, Place, Team, TeamMessage, TeamSummary, TeamView, WorkItem } from '../../../src/teams/types.js';
+import type { AgentState, AgentView, Card, Level, Person, Place, Team, TeamMessage, TeamSummary, TeamView, WorkItem } from '../../../src/teams/types.js';
 import { api } from '../api';
 
-export type { AgentState, AgentView, Card, Level, Place, Team, TeamMessage, TeamSummary, TeamView, WorkItem };
+export type { AgentState, AgentView, Card, Level, Person, Place, Team, TeamMessage, TeamSummary, TeamView, WorkItem };
 
 export const TEAMS_PATH = '/api/teams';
 /** GET /api/teams: every team, and the crew bots that can join one. */
@@ -32,4 +32,11 @@ export const teamsApi = {
   agent: (bot: string) => api<AgentView>('GET', `/api/agents/${bot}`),
   saveAgent: (bot: string, body: { specialty?: string; personality?: string }) => api<AgentView>('PUT', `/api/agents/${bot}`, body),
   forget: (bot: string, lesson?: string) => api<AgentView>('DELETE', `/api/agents/${bot}/lessons${lesson ? `/${encodeURIComponent(lesson)}` : ''}`),
+  /** A one-time `/pair` code for a Telegram team (and the bot to add to the group). */
+  pair: (id: string) => api<{ code: string; exp: number; bot?: string }>('POST', `${TEAMS_PATH}/${id}/pair`),
+  /** Board 7's switches for one person. */
+  person: (id: string, person: string, body: { approver?: boolean; canStartRuns?: boolean }) => api<Team>('PATCH', `${TEAMS_PATH}/${id}/people/${person}`, body),
+  removePerson: (id: string, person: string) => api<Team>('DELETE', `${TEAMS_PATH}/${id}/people/${person}`),
 };
+/** May this person approve? Any person when the team says "any", else the chosen ones. */
+export const isApprover = (t: Team, id: string) => t.approvers === 'any' || t.approvers.includes(id);

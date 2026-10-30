@@ -12,6 +12,7 @@ import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
 import { ApproveButton } from '../goals/Goals';
+import { teamsApi } from '../teams/teamsApi';
 import { goalMeta, goalsApi, type GoalView } from '../goals/goalsApi';
 import { waitingGoals } from '../goals/GoalsNeedYou';
 import { QuietLine } from '../ui/studio/Section';
@@ -46,6 +47,18 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
     }
   };
   const send: TeamSend = (path, body) => post(path, body);
+  /** A team's own card (a loop's ship): decided through its team, which settles the card in Tether and Telegram alike. */
+  const decide = async (team: { id: string; msg?: string }, action: 'approve' | 'reject') => {
+    setBusy(true);
+    try {
+      await teamsApi.decide(team.id, team.msg!, { action });
+      await onChanged();
+    } catch (err) {
+      notify.fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   let body;
   if (needsRun)
@@ -66,7 +79,10 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
           ) : null}
         </Loading>
       );
-  else if (e.kind === 'approval')
+  else if (e.kind === 'approval' && it.team?.msg) {
+    const team = it.team;
+    body = <ApprovalCard title={it.title} description={it.meta} status={busy ? 'submitting' : 'pending'} onApprove={() => void decide(team, 'approve')} onReject={() => void decide(team, 'reject')} />;
+  } else if (e.kind === 'approval')
     body = <ApprovalCard title={it.title} description={it.meta} status={busy ? 'submitting' : 'pending'} onApprove={() => void post('approve', { node: it.node, approved: true })} onReject={() => void post('approve', { node: it.node, approved: false })} />;
   else
     body = (

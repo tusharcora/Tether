@@ -101,7 +101,7 @@ export function parseHash(h: string): Route {
   if (t === 'code') return codeRoute(path.slice('code'.length + 1));
   const r: Route = { tab: t as Tab };
   if (id) r.id = safeDecode(id);
-  if (id && node && (r.tab === 'runs' || r.tab === 'chats')) r.node = safeDecode(node);
+  if (id && node && (r.tab === 'runs' || r.tab === 'chats' || r.tab === 'teams')) r.node = safeDecode(node);
   if (id && r.tab === 'runs' && new URLSearchParams(query).get('pane') === 'timeline') r.pane = 'timeline';
   return r;
 }
