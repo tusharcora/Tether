@@ -13,6 +13,8 @@ import { NAME_RE } from '../pipeline.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import type { Store } from '../store.js';
 import { getWorkspace } from '../workspace.js';
+import { draftContext, goalFromDraft } from '../assistant/goalDraft.js';
+import { listChats, readChat, saveChat } from '../assistant/history.js';
 import type { Goals } from './loop.js';
 import { criteriaOf, keyOf, prefixFrom, PREFIX_RE, stageOf } from './tickets.js';
 import { GOAL_TYPES, LABELS_MAX, LIMITS, PRIORITIES, STAGES, type Assignee, type Goal, type GoalCheck, type GoalItem, type GoalView, type LimitKey, type Member } from './types.js';
@@ -135,6 +137,13 @@ export interface TicketHooks {
   /** Send back: the waiting run is rejected with the reason (its agent reworks it once). */
   sendBack?(g: Goal, reason?: string): Promise<void>;
 }
+const IDEAS_MAX = 20;
+/** Asks that did not become tickets: dismissed goal cards of the project's chats whose goal is gone, newest first. */
+export function ideasOf(home: string, ws: string, goals: Goals): { chat: string; proposal: string; title: string; type?: string; at: number }[] {
+  return listChats(home, ws)
+    .flatMap((ch) => ch.messages.flatMap((m) => (m.proposals ?? []).filter((x) => x.kind === 'goal' && x.status === 'dismissed' && x.draft && !(x.goalId && goals.db.get(x.goalId))).map((x) => ({ chat: ch.id, proposal: x.id, title: x.draft!.title, type: x.draft!.type, at: m.at }))))
+    .sort((a, b) => b.at - a.at);
+}
 /** Manual criteria of a new ticket: at most 20 lines. */
 function criteriaIn(v: unknown): string[] {
   if (v === undefined) return [];
@@ -159,6 +168,29 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals; 
     if (!pre || !PREFIX_RE.test(pre)) throw new HttpError(400, '"prefix" must be 1 to 6 letters or digits, starting with a letter');
     goals.db.setPrefix(ws!, pre);
     return send(res, 200, { workspace: ws, prefix: pre }), true;
+  }
+
+  // board 10's "Ideas from your chats": goal cards a chat drafted that were answered "Just answer, no goal"
+  if (p === '/api/tickets/ideas' && m === 'GET') {
+    const ws = url.searchParams.get('ws') ?? undefined;
+    projectRoot(c.home, ws);
+    return send(res, 200, ideasOf(c.home, ws!, goals).slice(0, IDEAS_MAX)), true;
+  }
+  // "+": the idea becomes a Backlog ticket, made from its chat; it leaves the list
+  if (p === '/api/tickets/ideas' && m === 'POST') {
+    const b = reqObject(await readJson(req));
+    const ws = text(b, 'workspace', 100);
+    projectRoot(c.home, ws);
+    const chat = text(b, 'chat', 40);
+    const pid = text(b, 'proposal', 40);
+    const found = chat ? readChat(c.home, ws, chat) : undefined;
+    const msg = found?.messages.find((x) => x.proposals?.some((y) => y.id === pid));
+    const prop = msg?.proposals?.find((y) => y.id === pid);
+    if (!found || !msg || !prop?.draft || prop.kind !== 'goal' || prop.status !== 'dismissed' || (prop.goalId && goals.db.get(prop.goalId))) throw new HttpError(404, 'no such idea (it may already be a ticket)');
+    const g = goals.create({ ...goalFromDraft(prop.draft, { workspace: ws!, origin: { kind: 'chat', chat: found.id, message: msg.id }, ctx: draftContext(c.home, ws!) }), stage: 'backlog', activity: [{ at: Date.now(), who: { kind: 'person', id: 'owner', name: 'You' }, text: 'made this from an idea in a chat' }] });
+    prop.goalId = g.id;
+    saveChat(c.home, ws, found);
+    return send(res, 201, view(g)), true;
   }
 
   if (p === '/api/tickets' && m === 'GET') {

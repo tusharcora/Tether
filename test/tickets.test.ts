@@ -2,6 +2,7 @@ import { request } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
+import { saveChat } from '../src/assistant/history.js';
 import { Engine } from '../src/engine.js';
 import { Goals } from '../src/goals/loop.js';
 import { GoalStore, migrateTickets } from '../src/goals/store.js';
@@ -205,6 +206,26 @@ describe('/api/tickets (and /api/goals, its alias)', () => {
       expect(hand.status).toBe(409);
       expect(hand.json.error).toMatch(/Bolt isn't in a squad for this project yet/);
       expect((await call('POST', `/api/tickets/${t.id}/ship`)).json.error).toMatch(/no run yet/);
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+describe('ideas from your chats (board 10, Backlog)', () => {
+  it('lists asks a chat answered "no goal" for, and "+" makes each a Backlog ticket once', async () => {
+    const r = rig();
+    const draft = { title: 'Add a loading state to search', type: 'feature', agents: [], workflow: 'team', approval: 'ask' };
+    const prop = (id: string, status: string, goalId?: string) => ({ id, kind: 'goal', task: 'add a loading state', status, draft, ...(goalId ? { goalId } : {}) });
+    saveChat(r.home, r.ws.id, { id: 'c1', title: 'Search', created: 1, updated: 2, once: [], messages: [{ id: 'm1', role: 'tether', text: 'Made it a ticket.', at: 5, proposals: [prop('p1', 'dismissed', 'ggone'), prop('p2', 'proposed'), prop('p3', 'started', 'gx')] }] } as never);
+    const { s, call } = await serve(r);
+    try {
+      expect((await call('GET', `/api/tickets/ideas?ws=${r.ws.id}`)).json).toEqual([{ chat: 'c1', proposal: 'p1', title: 'Add a loading state to search', type: 'feature', at: 5 }]);
+      const made = await call('POST', '/api/tickets/ideas', { workspace: r.ws.id, chat: 'c1', proposal: 'p1' });
+      expect(made.status).toBe(201);
+      expect(made.json).toMatchObject({ title: 'Add a loading state to search', stage: 'backlog', status: 'paused', origin: { kind: 'chat', chat: 'c1', message: 'm1' } });
+      expect((await call('GET', `/api/tickets/ideas?ws=${r.ws.id}`)).json).toEqual([]);
+      expect((await call('POST', '/api/tickets/ideas', { workspace: r.ws.id, chat: 'c1', proposal: 'p1' })).status).toBe(404);
     } finally {
       await s.close();
     }

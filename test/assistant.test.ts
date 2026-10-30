@@ -352,7 +352,7 @@ describe('asks become goals', () => {
     const team = (await t.call('POST', '/api/teams', { name: 'web', place: 'tether', project: 'api', agents: ['coder', 'reviewer'] })).json.team?.id ?? (await t.call('GET', '/api/teams')).json.teams[0].id;
     t.agent.reply = card(team);
     const { done, chat } = await t.turn({ message: 'After sign-in people land on /home. Fix it.' });
-    expect(t.agent.prompts[0]).toContain('Asks become goals');
+    expect(t.agent.prompts[0]).toContain('Asks become tickets');
     expect(t.agent.prompts[0]).toContain(team);
     const prop = done!.message.proposals![0]!;
     expect(prop).toMatchObject({ kind: 'goal', status: 'proposed', task: 'Fix the sign-in redirect', draft: { team, agents: [{ id: 'coder', role: 'fixes it' }], workflow: 'team', limits: { budgetUsd: 1000 } } });
@@ -402,7 +402,7 @@ describe('asks become goals', () => {
     expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(false);
     t.agent.reply = card('');
     const { done } = await t.turn({ message: 'fix it' });
-    expect(t.agent.prompts[0]).not.toContain('Asks become goals');
+    expect(t.agent.prompts[0]).not.toContain('Asks become tickets');
     expect(done!.message.proposals).toBeUndefined();
     expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
   });
