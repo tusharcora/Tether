@@ -6,6 +6,7 @@ import { CREW } from './bots.js';
 import { STEP_BLURB, STEP_TYPES, blurbFor, extractJson, makeStep, type StepType } from './composer.js';
 import { ancestorsOf, parentsOf } from './pipeline.js';
 import { DEFAULT_ROLE_PROMPTS, planText } from './prompt.js';
+import { liveLines } from './protocolLines.js';
 import type { Contract, Pipeline, PipelineNode, RunState } from './types.js';
 
 export interface PlanTask extends Contract {
@@ -286,17 +287,9 @@ export function stripHands(output: string): string {
   return scanHands(output).filter((l) => !l.hand).map((l) => l.raw).join('\n').trimEnd();
 }
 
-/** Lines of the output, flagged when they are a real @HAND line: at column 0 and outside ``` fences. CRLF tolerated. */
+/** Lines of the output, flagged when they are a real @HAND line: at column 0, outside fences, quotes and indented code. */
 function scanHands(output: string): { raw: string; line: string; hand: boolean }[] {
-  let fenced = false;
-  return output.split('\n').map((raw) => {
-    const line = raw.replace(/\r$/, '');
-    if (/^\s*```/.test(line)) {
-      fenced = !fenced;
-      return { raw, line, hand: false };
-    }
-    return { raw, line, hand: !fenced && HAND_LINE.test(line) };
-  });
+  return liveLines(output).map(({ raw, line, live }) => ({ raw, line, hand: live && HAND_LINE.test(line) }));
 }
 
 /** Why this hand-off cannot be run, or undefined when it can. `used` is the spawn budget already spent. */
