@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import { toolChunk } from '../activity.js';
 import { claudeCodeModeArgs } from '../codemode/delivery.js';
 import { runProcess } from '../proc.js';
@@ -109,13 +110,17 @@ export class ClaudeAdapter implements AgentAdapter {
       ...(req.onDelta ? ['--include-partial-messages'] : []),
       ...(req.lean ? ['--setting-sources', 'project', '--disable-slash-commands'] : []),
       ...(req.codeMode ? claudeCodeModeArgs(req.codeMode) : []),
+      // a teammate's photo: Claude Code reads images with its Read tool, from a folder it may read
+      ...[...new Set((req.images ?? []).map((f) => dirname(f)))].flatMap((d) => ['--add-dir', d]),
     ];
+    const images = req.images ?? [];
+    const prompt = images.length ? `${req.prompt}\n\nThe person attached ${images.length === 1 ? 'an image' : `${images.length} images`}. Look at ${images.length === 1 ? 'it' : 'them'} with your Read tool before you answer:\n${images.map((f) => `- ${f}`).join('\n')}` : req.prompt;
     const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
     const r = await runProcess({
       cmd: 'claude',
       args,
       cwd: req.cwd,
-      stdin: req.prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
+      stdin: prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
       onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool, req.onToolResult),
     });
