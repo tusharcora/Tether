@@ -34,7 +34,7 @@
 - **Loops from a person without the permission** become a proposal card too; Start creates the loop.
 - **Hand-offs** inherit the person who started the chain; a run's result hand-off inherits whoever started (or approved the proposal for) that run.
 - **Reject from Telegram** has no reason field (buttons only); the agent's one rework runs without a reason.
-- **Diff button** replies with the diff stat and the first ~3 500 characters in a code block (no file upload).
+- **Diff button** replies with the first ~3 500 characters of the diff in a code block (no file upload; the full diff is in Tether).
 - **Edit button** sends a force-reply prompt; the reply becomes the task (Start is still permission-checked). Prompts live in memory (lost on restart; the card's Start still works).
 - **`/runs`** shows run id, title, status and cost, plus the PR link when there is one (Tether's own pages are on localhost and would not open on a phone).
 - **`/mute`** takes `1h`, `30m`, up to 24 h, or `off`; anyone in the team may mute; approval and proposal cards still post.
@@ -43,3 +43,6 @@
 - **Decoder:** macOS `afconvert` reads Ogg/Opus (checked on macOS 26), so no ffmpeg is needed on a Mac; ffmpeg is the fallback elsewhere.
 - **Images in runs:** only answers (pings) get the photo; a task started from a photo's caption runs on the text.
 - **Tether room for a Telegram team** is read-only for messages, but its cards keep their buttons (the same decisions as the Inbox).
+- **Inbox labels:** every team run's Inbox item now starts with "<team> · <place>", Tether teams included (one rule for all places).
+- **Packaging:** no Electron rebuild: `sherpa-onnx-node` is a Node-API module with prebuilt macOS binaries, `asar` is off, so `npm run app` bundles it as it is. Checked by running the packaged binary as Node (how the worker runs): the module loads and the bundled worker reaches the native model loader.
+- **Typing:** an answer being written shows Telegram's "typing…" instead of a "…" message that is then edited.
