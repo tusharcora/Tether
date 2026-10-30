@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BODIES, COLORS, DARK_BODY, faceArt, faceLook, type Mood } from './faceArt';
+import { BODIES, COLORS, DARK_BODY, faceArt, faceLook, TETHER_GREY, type Mood } from './faceArt';
 
 const MOODS: Mood[] = ['idle', 'working', 'done', 'failed', 'waiting', 'asleep', 'stopped'];
 const parse = (svg: string) => new DOMParser().parseFromString(svg, 'image/svg+xml');
@@ -58,5 +58,15 @@ describe('faceArt', () => {
 
   it('gives each mood its own eyes', () => {
     expect(new Set(MOODS.map((mood) => faceArt('coder', { mood }))).size).toBe(MOODS.length);
+  });
+
+  it("draws Tether as a grey orb in its theme's tokens, set through style (a var() is not valid in fill=)", () => {
+    expect(faceLook('orchestrator')).toEqual({ body: 'orb', color: TETHER_GREY });
+    for (const mood of MOODS) {
+      const svg = faceArt('orchestrator', { mood });
+      expect(svg).toContain('style="fill:var(--tf-slab, var(--s3))"');
+      expect(svg).toMatch(/style="(fill|stroke):var\(--tf-eye, var\(--ink\)\)"/);
+      expect(svg).not.toMatch(/(fill|stroke)="var\(/);
+    }
   });
 });

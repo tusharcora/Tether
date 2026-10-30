@@ -6,7 +6,7 @@
 .chat-new form textarea:focus, .chat-new form textarea:focus-visible, .chat-screen form textarea:focus, .chat-screen form textarea:focus-visible { outline: none; box-shadow: none; }
 
 /* New chat (board 1): everything centred, a 720 px column */
-.chat-new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; min-height: 100%; box-sizing: border-box; padding: 32px 24px 80px; --tf-slab: var(--ink); --tf-eye: var(--bg); }
+.chat-new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; min-height: 100%; box-sizing: border-box; padding: 32px 24px 80px; }
 .chat-new-hero { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
 .chat-new-hero h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
 .chat-new-box { width: 100%; max-width: 720px; }

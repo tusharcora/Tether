@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { TetherFace } from './components/faces/TetherFace';
 import { useCrew, type FaceLook } from './crewStore';
 import { DARK_BODY, faceArt, faceLook, type Mood } from './faceArt';
 import './Face.css';
@@ -27,12 +26,13 @@ export function moodFor(status?: string): Mood {
 
 export type Animate = 'hover' | 'always';
 
-/** Tether (the orchestrator bot) has the eye-tracker for a face, not a bot face (spec §4). */
+/** Tether, the orchestrator bot: a grey orb in its theme's tokens, so always drawn inline. */
 export const TETHER_ID = 'orchestrator';
 
 /**
  * A bot's face, drawn on this machine from its id and pins (faceArt). Static faces are an <img>, cheap in lists; animated
- * ones are inline SVG so Face.css can bob, blink and glance them. Transparent either way.
+ * ones, and Tether's (its colours are CSS tokens), are inline SVG so Face.css can bob, blink and glance them. Transparent
+ * either way. An empty label marks the face as decoration: the name sits next to it.
  */
 export function Face(props: { id: string; mood?: Mood; size?: number; label?: string; face?: FaceLook; animate?: Animate }) {
   const { crew } = useCrew();
@@ -42,19 +42,17 @@ export function Face(props: { id: string; mood?: Mood; size?: number; label?: st
   const label = props.label ?? c?.name ?? props.id;
   const mood = props.mood ?? 'idle';
   const { body, color } = faceLook(props.id, face);
-  const tether = props.id === TETHER_ID;
-  // building the SVG is the costly part; skip it for Tether's and when nothing changed
-  const svg = useMemo(() => (tether ? '' : faceArt(props.id, { mood, body, color, size })), [tether, props.id, mood, body, color, size]);
-  // still where faces are static, following the pointer where they come alive
-  if (tether) return <TetherFace size={size} idle={props.animate !== 'always'} label={label} className="face" />;
+  // building the SVG is the costly part; skip it when nothing changed
+  const svg = useMemo(() => faceArt(props.id, { mood, body, color, size }), [props.id, mood, body, color, size]);
   // a black body gets a hairline on the dark theme (Face.css)
   const dark = color === DARK_BODY || undefined;
-  if (props.animate)
+  if (props.animate || props.id === TETHER_ID)
     return (
       <span
         className="face"
-        role="img"
-        aria-label={label}
+        role={label ? 'img' : undefined}
+        aria-label={label || undefined}
+        aria-hidden={label ? undefined : true}
         data-mood={mood}
         data-animate={props.animate}
         data-dark-body={dark}

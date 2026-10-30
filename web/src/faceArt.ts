@@ -34,12 +34,16 @@ export const COLORS = [
 ] as const;
 /** The black body: the dark theme gives it a hairline (Face.css) so it does not vanish. */
 export const DARK_BODY = '#0B0B0C';
+/** Tether's own grey, a Studio token (and the spots that recolour it), so its face only works inline, never as an <img>. */
+export const TETHER_GREY = 'var(--tf-slab, var(--s3))';
 /** Eye ink: near-black, except where that would not read. */
-const INK: Record<string, string> = { [DARK_BODY]: '#FFFFFF', '#FBC3E6': '#3D4A63' };
+const INK: Record<string, string> = { [DARK_BODY]: '#FFFFFF', '#FBC3E6': '#3D4A63', [TETHER_GREY]: 'var(--tf-eye, var(--ink))' };
+// a var() is not allowed in a presentation attribute, only in style
+const paint = (prop: 'fill' | 'stroke', c: string) => (c.startsWith('var(') ? `style="${prop}:${c}"` : `${prop}="${c}"`);
 
 /** The built-in bots' hand-set looks (the approved board); every other bot's comes from its id. */
 const BUILTIN: Record<string, [Body, string]> = {
-  planner: ['orb', '#5E7FE6'], architect: ['block', '#E8835F'], coder: ['orb', DARK_BODY], tester: ['bean', '#58B6C4'],
+  orchestrator: ['orb', TETHER_GREY], planner: ['orb', '#5E7FE6'], architect: ['block', '#E8835F'], coder: ['orb', DARK_BODY], tester: ['bean', '#58B6C4'],
   reviewer: ['drop', '#F7D02C'], manager: ['tile', '#E35A5A'], approval: ['cloud', '#C9CACD'],
 };
 
@@ -71,9 +75,9 @@ export function faceLook(id: string, pins: FacePins = {}): { body: Body; color: 
 function eyes([cx, cy, r]: Circle, mood: Mood, ink: string): string {
   // a pill's ends are fully round; its group lets CSS blink it without losing the tilt
   const pill = (x: number, y: number, w: number, h: number, rot: number) =>
-    `<g class="fa-eye"><rect x="${r2(x - w / 2)}" y="${r2(y - h / 2)}" width="${r2(w)}" height="${r2(h)}" rx="${r2(Math.min(w, h) / 2)}" fill="${ink}" transform="rotate(${rot} ${r2(x)} ${r2(y)})"/></g>`;
+    `<g class="fa-eye"><rect x="${r2(x - w / 2)}" y="${r2(y - h / 2)}" width="${r2(w)}" height="${r2(h)}" rx="${r2(Math.min(w, h) / 2)}" ${paint('fill', ink)} transform="rotate(${rot} ${r2(x)} ${r2(y)})"/></g>`;
   const arc = (x: number, y: number, w: number, up: boolean, rot: number) =>
-    `<path d="M${r2(x - w)} ${r2(y)}q${r2(w)} ${r2(up ? -w * 1.1 : w * 0.9)} ${r2(2 * w)} 0" fill="none" stroke="${ink}" stroke-width="${r2(r * 0.13)}" stroke-linecap="round" transform="rotate(${rot} ${r2(x)} ${r2(y)})"/>`;
+    `<path d="M${r2(x - w)} ${r2(y)}q${r2(w)} ${r2(up ? -w * 1.1 : w * 0.9)} ${r2(2 * w)} 0" fill="none" ${paint('stroke', ink)} stroke-width="${r2(r * 0.13)}" stroke-linecap="round" transform="rotate(${rot} ${r2(x)} ${r2(y)})"/>`;
   const x1 = cx + 0.2 * r, y1 = cy - 0.36 * r, x2 = cx + 0.6 * r, y2 = cy - 0.47 * r;
   const W = 0.29 * r, H = 0.52 * r;
   switch (mood) {
@@ -102,5 +106,5 @@ export function faceArt(id: string, o: FacePins & { mood?: Mood; size?: number }
   const { body, color } = faceLook(id, o);
   const b = BODY[body];
   const size = o.size ?? 48;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}"><g fill="${color}">${b.svg}</g><g class="fa-eyes">${eyes(b.face, o.mood ?? 'idle', INK[color] ?? '#17181A')}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}"><g ${paint('fill', color)}>${b.svg}</g><g class="fa-eyes">${eyes(b.face, o.mood ?? 'idle', INK[color] ?? '#17181A')}</g></svg>`;
 }

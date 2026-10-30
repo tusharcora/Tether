@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyCrew, getCrew, type CrewState } from './crewStore';
-import { Face, MOOD_EXPRESSION, moodFor } from './Face';
+import { Face, MOOD_EXPRESSION, moodFor, TETHER_ID } from './Face';
 import { faceArt } from './faceArt';
 
 describe('faces', () => {
@@ -21,6 +21,15 @@ describe('faces', () => {
     expect(moodFor('awaiting')).toBe('waiting');
     expect(moodFor('error')).toBe('failed');
     expect(moodFor(undefined)).toBe('idle');
+  });
+
+  it("draws Tether's face inline (its colours are tokens), hidden from assistive tech when unlabelled", () => {
+    const { container } = render(<Face id={TETHER_ID} size={30} label="" />);
+    const face = container.querySelector('span.face')!;
+    expect(face.getAttribute('aria-hidden')).toBe('true');
+    expect(face.querySelector('svg g')!.getAttribute('style')).toBe('fill:var(--tf-slab, var(--s3))');
+    render(<Face id={TETHER_ID} label="Tether" />);
+    expect(screen.getByRole('img', { name: 'Tether' }).tagName).toBe('SPAN');
   });
 
   it('is stable across releases', () => {

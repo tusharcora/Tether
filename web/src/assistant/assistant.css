@@ -1,6 +1,6 @@
 /* The Tether assistant's shell (spec §4, mockup AppAssistant): the launcher at the bottom right of every screen, the
    floating panel that springs from it, and the docked panel beside the screen (the shell grid's third column). */
-.tether-launcher { position: fixed; right: 20px; bottom: 20px; z-index: 41; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 26px; background: var(--ink); color: var(--bg); cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); transition: transform var(--t-fast) var(--ease); --tf-slab: transparent; --tf-eye: var(--bg); }
+.tether-launcher { position: fixed; right: 20px; bottom: 20px; z-index: 41; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 26px; background: var(--ink); color: var(--bg); cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); transition: transform var(--t-fast) var(--ease); }
 .tether-launcher:hover { transform: translateY(-2px) scale(1.04); }
 .tether-launcher:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
 /* above the phone's bottom bar */
@@ -14,7 +14,7 @@
 .tether-panel.float { position: fixed; right: 20px; bottom: 88px; z-index: 40; width: 380px; height: 520px; max-height: calc(100vh - 108px); border-radius: 16px; overflow: hidden; box-shadow: 0 0 0 1px var(--line2), 0 18px 50px rgba(0, 0, 0, .18); transform-origin: bottom right; }
 .shell.phone .tether-panel.float { right: 8px; left: 8px; width: auto; bottom: calc(128px + env(safe-area-inset-bottom)); height: min(520px, calc(100vh - 150px)); }
 .tether-panel.docked { width: 420px; height: 100%; border-left: 1px solid var(--line); }
-.tether-head { position: relative; display: flex; flex: none; align-items: center; gap: 4px; height: 44px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); --tf-slab: var(--ink); --tf-eye: var(--bg); }
+.tether-head { position: relative; display: flex; flex: none; align-items: center; gap: 4px; height: 44px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); }
 .tether-sees { flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); color: var(--mut); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the title is the chat switcher (mockup board 5): a popover under the header */
 .tether-switch { flex: 1; min-width: 0; }

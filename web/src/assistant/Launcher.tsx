@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import { forwardRef } from 'react';
-import { TetherFace } from '../components/faces/TetherFace';
+import { Face, TETHER_ID } from '../Face';
 import { cn } from '../ui/cn';
 import { isApple } from '../ui/studio/Kbd';
 
@@ -14,7 +14,7 @@ export const Launcher = forwardRef<HTMLButtonElement, { open: boolean; unseen: n
   const label = p.open ? `Close Tether (${key})` : `Ask Tether (${key})${p.unseen ? ` — ${p.unseen} need${p.unseen === 1 ? 's' : ''} you` : ''}`;
   return (
     <button ref={ref} type="button" className={cn('tether-launcher', { needs: p.unseen > 0 })} aria-label={label} title={p.open ? undefined : `Ask Tether  ${key}`} aria-expanded={p.open} onClick={p.onClick}>
-      {p.open ? <ChevronDown size={20} strokeWidth={2} aria-hidden="true" /> : <TetherFace size={30} eyeScale={1.15} />}
+      {p.open ? <ChevronDown size={20} strokeWidth={2} aria-hidden="true" /> : <Face id={TETHER_ID} size={30} label="" animate="hover" />}
       {p.unseen > 0 ? (
         <span className="tether-badge" aria-hidden="true">
           {p.unseen > 9 ? '9+' : p.unseen}

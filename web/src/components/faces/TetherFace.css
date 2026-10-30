@@ -1,7 +1,0 @@
-/* From bencho.dev "Eye tracker" (Watcher.css), MIT License, Copyright (c) 2026 Lorenzo Cabra; the full notice is in
-   ./LICENSE. Adapted: classes renamed (.tf*), sized to the ball, colours from Studio tokens through --tf-slab and --tf-eye
-   (a soft slab with ink eyes; the launcher sets its own), the poke bubble and the demo-page rules dropped. */
-.tf { position: relative; display: inline-grid; flex: none; place-items: center; width: var(--tf-size, 32px); height: var(--tf-size, 32px); line-height: 0; }
-.tf-ball { width: 100%; height: 100%; overflow: visible; }
-.tf-body { fill: var(--tf-slab, var(--s3)); }
-.tf-eye { fill: var(--tf-eye, var(--ink)); }

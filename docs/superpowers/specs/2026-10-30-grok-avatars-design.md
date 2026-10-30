@@ -18,7 +18,7 @@ Why in-house: the Bible Strong renderer is AGPL-3.0-only and Tether is MIT. **Do
 
 ## 3. Non-goals
 
-- Tether's own face (`TetherFace`, the eye tracker for `orchestrator`) stays as it is; only check it paints no background behind the ball.
+- (Changed by the owner after review: Tether's own face is now the same style, a grey orb in its `--s3`/`--ink` tokens, and the eye-tracker `TetherFace` is gone.)
 - Team avatars (initial in a rounded square) stay.
 - Steering teammates in one team apart in colour (later, if wanted).
 - The terminal (TUI) look.
@@ -100,7 +100,7 @@ An agent assignee becomes a `Face` (size 22/26) instead of a plain colour dot; r
 
 ## 8. My calls (owner: check)
 
-- Tether's own eye-tracker face stays; only the bots change.
+- ~~Tether's own eye-tracker face stays~~ Owner: Tether is the same character in its grey (done).
 - Built-in bots get the mockup's hand-set looks; every other bot's look comes from its id.
 - Old hue/tone face pins are dropped, not converted.
 - Goal assignee dots become real faces.
