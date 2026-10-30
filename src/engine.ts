@@ -17,7 +17,7 @@ import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } fr
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
-import { planWaiting, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
+import { planWaiting, type StoredEvent, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
 import { CREW, crewFor } from './bots.js';
@@ -717,6 +717,26 @@ export class Engine {
     this.teams.delete(runId);
     this.store.append(runId, { type: 'team.pipeline', pipeline });
     this.launch(runId);
+  }
+
+  /**
+   * The person allows edits on a read-only team run (Allow edits). A plan still waiting for approval is planned again with
+   * writes on, since its steps were planned read-only; a run that already ran gets the write settings for its next retry.
+   */
+  async allowEdits(runId: string, o: { background?: boolean } = {}): Promise<void> {
+    const s = this.store.state(runId);
+    if (!s) throw new TeamError('unknown_run', `unknown run ${runId}`);
+    if (s.kind !== 'team') throw new TeamError('not_team', 'a workflow sets edits per step: change the step in the builder');
+    if (planWaiting(s)) {
+      this.store.append(runId, { type: 'plan.answer', answers: [{ question: WRITES_QUESTION, option: 'yes', by: 'user' }] });
+      this.store.append(runId, { type: 'plan.reopened' });
+      if (o.background) this.continuePlanningInBackground(runId);
+      else await this.continuePlanning(runId);
+      return;
+    }
+    if (this.active.has(runId)) throw new TeamError('conflict', 'the run is still going: stop it first');
+    if (s.planning) throw new TeamError('conflict', 'the run is still planning: answer the writes card instead');
+    if (!s.pipeline.settings.allowWrites) this.store.append(runId, { type: 'run.writes' });
   }
 
   /** Before approval, the person may give an assignment to another bot from the planning roster. */
@@ -1616,7 +1636,7 @@ export class Engine {
             notes.push(`redo of "${item.id}" ignored: not a step ${node.id} spawned`);
             continue;
           }
-          const done = this.store.eventsNoChunks(runId).filter((e) => e.event.type === 'loop' && e.event.check === node.id && e.event.fixNode === child.id).length;
+          const done = this.sinceRetry(runId).filter((e) => e.event.type === 'loop' && e.event.check === node.id && e.event.fixNode === child.id).length;
           if (done >= MAX_REDOS) {
             notes.push(`redo of ${child.id} ignored: it was already sent back ${MAX_REDOS} times`);
             continue;
@@ -1660,11 +1680,18 @@ export class Engine {
     return finish('done');
   }
 
-  /** Spawn budget used so far in this run: spawned work steps plus every redo a manager asked for. */
+  /** Spawn budget used so far in this run: spawned work steps plus every redo a manager asked for since the last retry. */
   private spawnUsed(s: RunState): number {
     const managers = new Set(s.pipeline.nodes.filter((n) => n.manager).map((n) => n.id));
-    const redos = this.store.eventsNoChunks(s.id).filter((e) => e.event.type === 'loop' && managers.has(e.event.check)).length;
+    const redos = this.sinceRetry(s.id).filter((e) => e.event.type === 'loop' && managers.has(e.event.check)).length;
     return s.spawned + redos;
+  }
+
+  /** The run's events since its last retry: a retry (the person's or auto-fix's) gives a manager's review loops a fresh budget, as the fold does for checks. */
+  private sinceRetry(runId: string): StoredEvent[] {
+    const ev = this.store.eventsNoChunks(runId);
+    const at = ev.findLastIndex((e) => e.event.type === 'run.resumed' && !!e.event.retryFailed);
+    return ev.slice(at + 1);
   }
 
   /** After a redo succeeded: queue again the manager's steps that were skipped below it. */

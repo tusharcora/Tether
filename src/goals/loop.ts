@@ -72,6 +72,8 @@ export interface GoalsDeps {
   registry: AdapterRegistry;
   /** For goals with a `team`. */
   hooks?: GoalHooks;
+  /** Auto-fix is still on this failed run: it is not over, so its rounds stay one run item (spec 2026-10-30 §3.4). */
+  autofixing?: (runId: string) => boolean;
 }
 
 export class Goals {
@@ -129,7 +131,7 @@ export class Goals {
   }
   private runDone(runId: string): boolean {
     const s = this.d.store.state(runId);
-    return !s || isFinished(s.status);
+    return !s || (isFinished(s.status) && !this.d.autofixing?.(runId));
   }
   private stop(g: Goal, reason: string): void {
     this.save({ ...g, status: 'stopped', reason, pending: undefined });
