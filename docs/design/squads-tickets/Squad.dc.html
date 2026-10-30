@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Squad channel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;font:500 12.5px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.12);background:#2a2a2a;color:#f4f4f5;cursor:pointer}
+.btn:hover{background:#333}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.btn.ghost:hover{background:#262626;color:#f4f4f5}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#262626;border:1px solid rgba(255,255,255,.08);color:#d4d4d8;font-size:12px;white-space:nowrap;cursor:pointer;font-family:'Geist',sans-serif}
+.chip:hover{border-color:rgba(255,255,255,.2)}
+.side a{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;color:#a1a1aa;font-size:13px}
+.side a:hover{background:#262626;color:#f4f4f5}
+.at{color:#93c5fd;background:rgba(59,130,246,.14);border-radius:5px;padding:0 4px;font-weight:500}
+.msg{position:relative;display:flex;gap:12px;padding:8px 10px;margin:0 -10px;border-radius:12px}
+.msg:hover{background:#1f1f1f}
+.msg:hover .hover{opacity:1}
+.hover{position:absolute;right:10px;top:-12px;display:flex;gap:2px;padding:3px;border-radius:9px;background:#262626;border:1px solid rgba(255,255,255,.1);opacity:0;transition:opacity .15s}
+.hover button{width:28px;height:26px;border:0;border-radius:6px;background:transparent;color:#a1a1aa;cursor:pointer;display:grid;place-items:center}
+.hover button:hover{background:#333;color:#f4f4f5}
+.who{display:flex;align-items:baseline;gap:8px;font-size:13.5px}
+.who b{font-weight:600}
+.who span{color:#71717a;font-size:11.5px}
+.msg p{margin:3px 0 0;line-height:1.55;color:#e4e4e7;font-size:14.5px}
+.react{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:999px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);color:#bfdbfe;font-size:12px;cursor:pointer}
+.handoff{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 10px 4px 4px;border-radius:999px;background:#212121;border:1px solid rgba(255,255,255,.08);font-size:12px;color:#d4d4d8}
+.work{margin-top:8px;max-width:560px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:#1e1e1e;overflow:hidden}
+.bar{height:4px;border-radius:2px;background:#2f2f2f;overflow:hidden;position:relative}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:2px}
+.shimmer{background:linear-gradient(90deg,#2b6cf0 0%,#93c5fd 50%,#2b6cf0 100%);background-size:200% 100%;animation:sh 1.6s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.bob{animation:bob 1.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-3px)}}
+.dots span{display:inline-block;width:6px;height:6px;margin-right:3px;border-radius:50%;background:#a1a1aa;animation:dt 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes dt{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.pulse{animation:pl 1.8s ease-out infinite}
+@keyframes pl{0%{box-shadow:0 0 0 0 rgba(43,108,240,.55)}100%{box-shadow:0 0 0 8px rgba(43,108,240,0)}}
+.card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px 12px;border-radius:14px;background:#212121;border:1px solid rgba(255,255,255,.07);cursor:pointer;text-align:left;font-family:'Geist',sans-serif;color:#f4f4f5;transition:border-color .15s,transform .15s}
+.card:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18)}
+@media (prefers-reduced-motion: reduce){.bob,.shimmer,.dots span,.pulse{animation:none}}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-wrap:wrap;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif">
+
+  <nav class="side" aria-label="Squads" style="flex:1 1 220px;max-width:236px;box-sizing:border-box;background:#1d1d1d;border-right:1px solid rgba(255,255,255,.06);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 10px 10px"><span style="font-size:11px;letter-spacing:.07em;color:#71717a">SQUADS</span><button class="btn ghost" type="button" aria-label="New squad" style="height:24px;width:24px;padding:0">+</button></div>
+    <a href="#" style="background:#2a2a2a;color:#f4f4f5"><span style="color:#71717a">#</span>web<span style="margin-left:auto;display:flex;align-items:center;gap:6px"><span class="pulse" style="width:8px;height:8px;border-radius:50%;background:#2b6cf0"></span></span></a>
+    <a href="#"><span style="color:#71717a">#</span>docs<span style="margin-left:auto;font-size:11px;color:#a1a1aa">idle</span></a>
+    <a href="#"><span style="color:#71717a">#</span>infra<span style="margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:#fbbf24;color:#111;font-size:11px;font-weight:600;display:grid;place-items:center">1</span></a>
+    <a href="#"><span style="color:#71717a">T</span>ops-telegram<span style="margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:#383838;color:#f4f4f5;font-size:11px;display:grid;place-items:center">4</span></a>
+    <div style="padding:16px 10px 8px;font-size:11px;letter-spacing:.07em;color:#71717a">AGENTS</div>
+    <a href="#"><svg class="bob" width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><span style="display:flex;flex-direction:column;line-height:1.2"><span style="color:#f4f4f5">Bolt</span><span style="font-size:11px;color:#93c5fd">coding · 1:12</span></span></a>
+    <a href="#"><svg class="bob" width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><span style="display:flex;flex-direction:column;line-height:1.2"><span style="color:#f4f4f5">Lens</span><span style="font-size:11px;color:#93c5fd">reviewing</span></span></a>
+    <a href="#"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="display:flex;flex-direction:column;line-height:1.2"><span>Probe</span><span style="font-size:11px">free</span></span></a>
+    <a href="#"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="5" width="30" height="30" rx="9" transform="rotate(-8 20 20)" fill="#e35d5b"/><rect x="18" y="11" width="5.5" height="11" rx="2.75" transform="rotate(-18 20.7 16.5)" fill="#171717"/><rect x="26" y="10" width="4.5" height="9" rx="2.25" transform="rotate(-18 28.2 14.5)" fill="#171717"/></svg><span style="display:flex;flex-direction:column;line-height:1.2"><span>Boss</span><span style="font-size:11px">free</span></span></a>
+  </nav>
+
+  <main style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <h1 style="margin:0;font-size:17px;font-weight:600"><span style="color:#71717a">#</span> web</h1>
+        <span style="font-size:12px;color:#a1a1aa">acme-web · 2 working · <span style="color:#fbbf24">1 needs you</span> · on your subscription</span>
+      </div>
+      <span style="flex:1"></span>
+      <div role="tablist" aria-label="View" style="display:flex;gap:2px;background:#222;border-radius:10px;padding:3px">
+        <button type="button" role="tab" aria-selected="{{ isChat }}" onClick="{{ showChat }}" style="height:28px;padding:0 12px;border:0;border-radius:8px;font:500 12.5px 'Geist',sans-serif;cursor:pointer;background:{{ chatBg }};color:{{ chatFg }}">Chat</button>
+        <button type="button" role="tab" aria-selected="{{ isMap }}" onClick="{{ showMap }}" style="height:28px;padding:0 12px;border:0;border-radius:8px;font:500 12.5px 'Geist',sans-serif;cursor:pointer;background:{{ mapBg }};color:{{ mapFg }}">Map</button>
+      </div>
+      <button class="btn" type="button">Add agent</button>
+    </header>
+
+    <section aria-label="Right now" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;padding:14px 22px 6px">
+      <button class="card" type="button" onClick="{{ pickBolt }}" aria-pressed="{{ boltOn }}" style="border-color:{{ boltRing }}">
+        <span style="display:flex;align-items:center;gap:10px"><svg class="bob" width="30" height="30" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><span style="display:flex;flex-direction:column;min-width:0"><b style="font-weight:600;font-size:13px">Bolt</b><span style="font-size:11.5px;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">editing Tabs.tsx</span></span><span class="mono" style="margin-left:auto;font-size:11px;color:#a1a1aa">1:12</span></span>
+        <span class="bar"><i class="shimmer" style="width:58%"></i></span>
+        <span style="font-size:11.5px;color:#a1a1aa">"Remember last tab" for Maya · step 2 of 4</span>
+      </button>
+      <button class="card" type="button" onClick="{{ pickLens }}" aria-pressed="{{ lensOn }}" style="border-color:{{ lensRing }}">
+        <span style="display:flex;align-items:center;gap:10px"><svg class="bob" width="30" height="30" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><span style="display:flex;flex-direction:column"><b style="font-weight:600;font-size:13px">Lens</b><span style="font-size:11.5px;color:#93c5fd">reviewing the fix</span></span><span class="mono" style="margin-left:auto;font-size:11px;color:#a1a1aa">0:40</span></span>
+        <span class="bar"><i class="shimmer" style="width:80%"></i></span>
+        <span style="font-size:11.5px;color:#a1a1aa">Sign-in redirect · for you</span>
+      </button>
+      <button class="card" type="button" onClick="{{ pickYou }}" aria-pressed="{{ youOn }}" style="border-color:{{ youRing }};background:rgba(251,191,36,.06)">
+        <span style="display:flex;align-items:center;gap:10px"><span style="width:30px;height:30px;border-radius:50%;background:#e4e4e7;color:#111;display:grid;place-items:center;font-size:12px;font-weight:600">TU</span><span style="display:flex;flex-direction:column"><b style="font-weight:600;font-size:13px">You</b><span style="font-size:11.5px;color:#fbbf24">1 thing to decide</span></span></span>
+        <span class="bar"><i style="width:100%;background:#fbbf24"></i></span>
+        <span style="font-size:11.5px;color:#a1a1aa">Ship the sign-in fix?</span>
+      </button>
+      <button class="card" type="button" onClick="{{ pickAll }}" aria-pressed="{{ allOn }}" style="border-color:{{ allRing }};justify-content:center;align-items:flex-start">
+        <span style="display:flex;align-items:center"><svg width="26" height="26" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><svg width="26" height="26" viewBox="0 0 40 40" aria-hidden="true" style="margin-left:-6px"><rect x="5" y="5" width="30" height="30" rx="9" transform="rotate(-8 20 20)" fill="#e35d5b"/><rect x="18" y="11" width="5.5" height="11" rx="2.75" transform="rotate(-18 20.7 16.5)" fill="#171717"/><rect x="26" y="10" width="4.5" height="9" rx="2.25" transform="rotate(-18 28.2 14.5)" fill="#171717"/></svg></span>
+        <span style="font-size:12.5px"><b style="font-weight:600">Probe, Boss</b> <span style="color:#a1a1aa">free</span></span>
+        <span style="font-size:11.5px;color:#93c5fd">{{ allLabel }}</span>
+      </button>
+    </section>
+
+    <sc-if value="{{ isChat }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;display:flex;min-height:0">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <sc-if value="{{ filtered }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:6px 22px 0;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:#212121;font-size:12.5px;color:#a1a1aa">Showing {{ filterName }} only<button class="btn ghost" type="button" onClick="{{ pickAll }}" style="height:24px;margin-left:auto">Show everyone</button></div>
+        </sc-if>
+        <div style="flex:1;padding:8px 22px;display:flex;flex-direction:column;gap:2px;max-width:880px">
+          <div style="display:flex;align-items:center;gap:10px;margin:8px 0;font-size:11.5px;color:#71717a"><span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span>Today<span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span></div>
+
+          <sc-if value="{{ show.you }}" hint-placeholder-val="{{ true }}">
+          <div class="msg"><span style="width:34px;height:34px;border-radius:50%;background:#e4e4e7;color:#111;display:grid;place-items:center;font-size:12px;font-weight:600;flex:none">TU</span><div><div class="who"><b>You</b><span>14:02</span></div><p><span class="at">@Bolt</span> people land on /home after sign-in instead of where they came from. can you fix it?</p></div>
+            <div class="hover"><button type="button" aria-label="React">+</button><button type="button" aria-label="Reply in thread">↩</button></div></div>
+          </sc-if>
+
+          <sc-if value="{{ show.bolt }}" hint-placeholder-val="{{ true }}">
+          <div class="msg"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><div style="flex:1;min-width:0"><div class="who"><b>Bolt</b><span>14:02</span></div><p>On it. The callback drops <span class="mono">?next=</span> before redirecting, so I'll keep it and only allow same-site paths.</p>
+            <p>Fixed. 3 files, tests pass.</p>
+            <div class="work">
+              <button type="button" onClick="{{ toggleWork }}" aria-expanded="{{ workOpen }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;background:transparent;color:#d4d4d8;font:12.5px 'Geist',sans-serif;cursor:pointer;text-align:left"><span style="width:8px;height:8px;border-radius:50%;background:#34d399"></span>What I did<span class="mono" style="color:#a1a1aa;font-size:11.5px">3 files · <span style="color:#34d399">+42</span> <span style="color:#f87171">−9</span> · 3m 40s</span><span style="margin-left:auto;color:#71717a">{{ workArrow }}</span></button>
+              <sc-if value="{{ workOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:6px;padding:0 12px 12px">
+                <div style="display:flex;gap:10px;font-size:12.5px;padding:7px 10px;border-radius:8px;background:#262626"><span>Read</span><span class="mono" style="color:#a1a1aa;font-size:12px">auth/callback.ts +3</span></div>
+                <div style="display:flex;gap:10px;font-size:12.5px;padding:7px 10px;border-radius:8px;background:#262626"><span>Edited</span><span class="mono" style="color:#a1a1aa;font-size:12px">callback.ts · sameSite.ts · callback.test.ts</span></div>
+                <div style="display:flex;gap:10px;font-size:12.5px;padding:7px 10px;border-radius:8px;background:#262626"><span>Ran</span><span class="mono" style="color:#a1a1aa;font-size:12px">npm test -- auth</span><span style="margin-left:auto;color:#34d399">24 passed</span></div>
+                <div style="display:flex;gap:14px;font-size:12px"><a href="Message.dc.html">Full report</a><a href="#">Diff</a><a href="RunDetail.dc.html">Open the run</a></div>
+              </div>
+              </sc-if>
+            </div>
+            <span class="handoff"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg>Handed to <b style="font-weight:600">Lens</b> for a review</span>
+            <div style="display:flex;gap:6px;margin-top:8px"><button class="react" type="button" onClick="{{ toggleNice }}" aria-pressed="{{ niceOn }}">Nice · {{ niceCount }}</button></div>
+          </div>
+            <div class="hover"><button type="button" aria-label="React">+</button><button type="button" aria-label="Reply in thread">↩</button><button type="button" aria-label="Open the run">↗</button></div></div>
+          </sc-if>
+
+          <sc-if value="{{ show.lens }}" hint-placeholder-val="{{ true }}">
+          <div class="msg"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><div style="flex:1"><div class="who"><b>Lens</b><span>14:08</span></div><p>Mostly good. One thing: <span class="mono">//evil.com</span> still counts as same-site. <span class="at">@Bolt</span> can you reject those too?</p>
+            <button class="btn ghost" type="button" onClick="{{ openThread }}" style="height:26px;padding:0 6px;margin-top:4px;color:#93c5fd;font-size:12px"><span style="display:flex"><svg width="16" height="16" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg></span>2 replies · Bolt fixed it</button></div>
+            <div class="hover"><button type="button" aria-label="React">+</button><button type="button" aria-label="Reply in thread" onClick="{{ openThread }}">↩</button></div></div>
+          </sc-if>
+
+          <sc-if value="{{ show.you }}" hint-placeholder-val="{{ true }}">
+          <div class="msg"><svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><div style="flex:1"><div class="who"><b>Bolt</b><span>14:10</span></div><p><span class="at">@you</span> ready when you are.</p>
+            <sc-if value="{{ notShipped }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:8px;max-width:560px;border-radius:14px;border:1px solid rgba(251,191,36,.45);background:linear-gradient(180deg,rgba(251,191,36,.07),rgba(251,191,36,.02));padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px"><b style="font-weight:600;font-size:14px">Ship the sign-in fix to main?</b><span class="mono" style="margin-left:auto;font-size:12px;color:#a1a1aa">3 files</span></div>
+              <div style="display:flex;height:6px;border-radius:3px;overflow:hidden"><span style="width:83%;background:#34d399"></span><span style="width:17%;background:#f87171"></span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px"><span class="chip" style="cursor:default;color:#34d399">Tests 24 passed</span><span class="chip" style="cursor:default;color:#34d399">Lens approved</span><span class="chip" style="cursor:default">+44 −9</span></div>
+              <div style="display:flex;gap:6px"><button class="btn pri" type="button" onClick="{{ ship }}">Ship it</button><button class="btn" type="button">See the diff</button><button class="btn ghost" type="button">Not yet</button></div>
+            </div>
+            </sc-if>
+            <sc-if value="{{ shipped }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:8px;display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);color:#6ee7b7;font-size:13px">Shipped by you · PR #142 merged · just now<button class="btn ghost" type="button" onClick="{{ undoShip }}" style="height:24px;color:#a1a1aa">Undo</button></div>
+            </sc-if>
+          </div></div>
+          </sc-if>
+
+          <sc-if value="{{ show.lens }}" hint-placeholder-val="{{ true }}">
+          <div class="msg" style="align-items:center"><svg class="bob" width="34" height="34" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><span style="font-size:13px;color:#a1a1aa"><b style="color:#f4f4f5;font-weight:500">Lens</b> is reading Bolt's change</span><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span></div>
+          </sc-if>
+        </div>
+
+        <form aria-label="Message # web" style="padding:4px 22px 18px;max-width:880px">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <button class="chip" type="button" onClick="{{ sug1 }}">Ask Bolt to…</button>
+            <button class="chip" type="button" onClick="{{ sug2 }}">Have Lens review a PR</button>
+            <button class="chip" type="button" onClick="{{ sug3 }}">What's everyone doing?</button>
+          </div>
+          <div style="position:relative;border:1px solid rgba(255,255,255,.14);border-radius:14px;background:#232323;padding:10px 12px;display:flex;align-items:center;gap:8px">
+            <sc-if value="{{ mentioning }}" hint-placeholder-val="{{ false }}">
+            <div role="listbox" aria-label="Mention" style="position:absolute;left:10px;bottom:52px;width:260px;padding:4px;border-radius:12px;background:#262626;border:1px solid rgba(255,255,255,.14);display:flex;flex-direction:column">
+              <div role="option" aria-selected="true" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:#333;font-size:13px"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg>Bolt<span style="margin-left:auto;font-size:11px;color:#93c5fd">busy · will queue</span></div>
+              <div role="option" aria-selected="false" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:13px"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg>Probe<span style="margin-left:auto;font-size:11px;color:#34d399">free now</span></div>
+            </div>
+            </sc-if>
+            <label for="m" style="position:absolute;left:-9999px">Message # web</label>
+            <input id="m" value="{{ draft }}" placeholder="Message # web — @ someone to hand them work" style="flex:1;background:transparent;border:0;outline:0;color:#f4f4f5;font:14px 'Geist',sans-serif">
+            <button class="btn ghost" type="button" aria-label="Mention someone" onClick="{{ toggleMention }}" style="width:30px;padding:0">@</button>
+            <button class="btn pri" type="button" aria-label="Send" style="width:32px;padding:0">↑</button>
+          </div>
+        </form>
+      </div>
+
+      <sc-if value="{{ threadOpen }}" hint-placeholder-val="{{ false }}">
+      <aside aria-label="Thread" style="flex:0 0 340px;border-left:1px solid rgba(255,255,255,.06);background:#1c1c1c;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06)"><b style="font-weight:600;font-size:14px">Thread</b><span style="font-size:12px;color:#a1a1aa">Lens · same-site check</span><button class="btn ghost" type="button" aria-label="Close thread" onClick="{{ closeThread }}" style="margin-left:auto;width:28px;padding:0">×</button></div>
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.5">
+          <div style="display:flex;gap:10px"><svg width="26" height="26" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><div><b style="font-weight:600">Bolt</b> <span style="font-size:11.5px;color:#71717a">14:09</span><div>Good catch. Now rejecting anything starting with <span class="mono">//</span>, plus a test.</div></div></div>
+          <div style="display:flex;gap:10px"><svg width="26" height="26" viewBox="0 0 40 40" aria-hidden="true" style="flex:none"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><div><b style="font-weight:600">Lens</b> <span style="font-size:11.5px;color:#71717a">14:10</span><div>Checked it. Good to go from me.</div></div></div>
+        </div>
+        <div style="margin-top:auto;padding:12px 16px"><div style="border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#232323;padding:9px 12px;font-size:13px;color:#71717a">Reply…</div></div>
+      </aside>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isMap }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;margin:10px 22px 22px;border-radius:16px;background:#1c1c1c;border:1px solid rgba(255,255,255,.06);position:relative;min-height:520px;background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:18px 18px">
+      <svg aria-hidden="true" viewBox="0 0 900 520" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="M180 260 C300 260 300 150 420 150" stroke="#34d399" stroke-width="2.5" fill="none"/><path d="M480 150 C600 150 600 260 700 260" stroke="#2b6cf0" stroke-width="2.5" fill="none" stroke-dasharray="8 6"><animate attributeName="stroke-dashoffset" from="28" to="0" dur="1s" repeatCount="indefinite"/></path><path d="M180 260 C300 260 300 380 420 380" stroke="#747478" stroke-width="2" fill="none" stroke-dasharray="4 6"/></svg>
+      <div style="position:absolute;left:12%;top:44%;display:flex;flex-direction:column;align-items:center;gap:6px"><span style="width:52px;height:52px;border-radius:50%;background:#e4e4e7;color:#111;display:grid;place-items:center;font-weight:600">TU</span><span style="font-size:12px">You</span></div>
+      <div style="position:absolute;left:46%;top:20%;display:flex;flex-direction:column;align-items:center;gap:6px"><svg class="bob" width="56" height="56" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#0b0b0b" stroke="rgba(255,255,255,.22)"/><rect x="19" y="9" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 14.5)" fill="#fff"/><rect x="27" y="8" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 12.5)" fill="#fff"/></svg><span style="font-size:12px">Bolt · coding</span></div>
+      <div style="position:absolute;left:76%;top:44%;display:flex;flex-direction:column;align-items:center;gap:6px"><svg class="bob" width="52" height="52" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="21" r="17" fill="#f6cf2e"/><rect x="19" y="10" width="5.5" height="11" rx="2.75" transform="rotate(-18 21.7 15.5)" fill="#171717"/><rect x="27" y="9" width="4.5" height="9" rx="2.25" transform="rotate(-18 29.2 13.5)" fill="#171717"/></svg><span style="font-size:12px">Lens · reviewing</span></div>
+      <div style="position:absolute;left:46%;top:66%;display:flex;flex-direction:column;align-items:center;gap:6px;opacity:.7"><svg width="48" height="48" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="font-size:12px">Probe · free</span></div>
+      <div style="position:absolute;left:16px;bottom:14px;font-size:12px;color:#a1a1aa">Lines show who handed work to whom today · moving lines are live</div>
+    </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { view: 'chat', filter: 'all', work: false, thread: true, shipped: false, nice: false, mention: false, draft: '' }; }
+  renderVals() {
+    const s = this.state;
+    const on = (k) => s.filter === 'all' || s.filter === k;
+    const ring = (k) => (s.filter === k ? '#2b6cf0' : 'rgba(255,255,255,.07)');
+    const names = { bolt: 'Bolt', lens: 'Lens', you: 'you' };
+    const set = (o) => () => this.setState(o);
+    return {
+      isChat: s.view === 'chat', isMap: s.view === 'map',
+      chatBg: s.view === 'chat' ? '#383838' : 'transparent', chatFg: s.view === 'chat' ? '#f4f4f5' : '#a1a1aa',
+      mapBg: s.view === 'map' ? '#383838' : 'transparent', mapFg: s.view === 'map' ? '#f4f4f5' : '#a1a1aa',
+      showChat: set({ view: 'chat' }), showMap: set({ view: 'map' }),
+      show: { bolt: on('bolt'), lens: on('lens'), you: on('you') || on('bolt') },
+      filtered: s.filter !== 'all', filterName: names[s.filter] || '',
+      pickBolt: set({ filter: s.filter === 'bolt' ? 'all' : 'bolt' }), pickLens: set({ filter: s.filter === 'lens' ? 'all' : 'lens' }), pickYou: set({ filter: s.filter === 'you' ? 'all' : 'you' }), pickAll: set({ filter: 'all' }),
+      boltOn: s.filter === 'bolt', lensOn: s.filter === 'lens', youOn: s.filter === 'you', allOn: s.filter === 'all',
+      boltRing: ring('bolt'), lensRing: ring('lens'), youRing: s.filter === 'you' ? '#2b6cf0' : 'rgba(251,191,36,.4)', allRing: ring('all'),
+      allLabel: s.filter === 'all' ? 'Showing everyone' : 'Show everyone',
+      workOpen: s.work, workArrow: s.work ? 'Hide' : 'Show', toggleWork: set({ work: !s.work }),
+      threadOpen: s.thread, openThread: set({ thread: true }), closeThread: set({ thread: false }),
+      shipped: s.shipped, notShipped: !s.shipped, ship: set({ shipped: true }), undoShip: set({ shipped: false }),
+      niceOn: s.nice, niceCount: s.nice ? 2 : 1, toggleNice: set({ nice: !s.nice }),
+      mentioning: s.mention, toggleMention: set({ mention: !s.mention, draft: s.mention ? s.draft : '@' }),
+      draft: s.draft,
+      sug1: set({ draft: '@Bolt ', mention: false }), sug2: set({ draft: '@Lens review PR #', mention: false }), sug3: set({ draft: "What's everyone working on?", mention: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>
