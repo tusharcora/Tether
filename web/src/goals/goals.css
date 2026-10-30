@@ -49,13 +49,14 @@
 .gn-strip-text { flex: 1; min-width: 0; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .gn-strip .goal-approve { align-self: center; }
 
-/* avatars: 26 px (22 in rows), overlapping by 8 px; an agent is a round face in its colour, a team a rounded square */
+/* avatars: 26 px (22 in rows), overlapping by 8 px; an agent is its bot face (nothing behind it), a team a rounded square */
 .gav { display: inline-flex; align-items: center; min-width: 0; }
-.gav-face { box-sizing: border-box; display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--s1); border-radius: 50%; background: var(--hue, var(--s3)); box-shadow: inset 3px 3px 5px -1px rgb(255 255 255 / .4); color: var(--ink); font-size: 11px; font-weight: 600; }
+.gav-face { box-sizing: border-box; display: grid; place-items: center; width: 26px; height: 26px; color: var(--ink); font-size: 11px; font-weight: 600; }
 .gav-face + .gav-face { margin-left: -8px; }
 .gav.s22 .gav-face { width: 22px; height: 22px; font-size: 10px; }
-.gav-face.team { border-radius: 7px; background: var(--s3); box-shadow: none; }
-.gav-face.removed { background: var(--s2); box-shadow: none; color: var(--mut); }
+.gav-face.team { border: 2px solid var(--s1); border-radius: 7px; background: var(--s3); }
+.gav-face.team.removed { background: var(--s2); color: var(--mut); }
+.gav-face.agent.removed .face { opacity: .45; filter: grayscale(1); }
 .gav-more { margin-left: 4px; font-size: 12px; color: var(--mut); }
 /* a step's compact picker: its faces and a "+" circle */
 .ap-plus { box-sizing: border-box; display: grid; place-items: center; width: 22px; height: 22px; border: 1px dashed var(--edge); border-radius: 50%; color: var(--mut); }
