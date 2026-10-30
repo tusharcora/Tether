@@ -34,3 +34,8 @@
 .rg-node { position: absolute; }
 .rg-node > .rg-card { position: relative; width: 100%; height: 100%; box-sizing: border-box; }
 .rg-node:hover, .rg-node:focus-within, .rg-node[data-fan-open] { z-index: 5; }
+/* the team room: the graph scales from its top left (− / + / Fit), and the person who asked leads in as a "You" card */
+.rg-scale { position: relative; transform-origin: 0 0; }
+.rg-you { cursor: default; }
+.rg-you:hover { transform: none; }
+.rg-you-mark { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--s3); color: var(--ink); font-size: 12px; }

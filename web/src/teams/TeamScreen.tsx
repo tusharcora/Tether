@@ -1,6 +1,7 @@
 import { ArrowUp, Settings } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { fmtUsd } from '../api';
+import { api, fmtUsd, type RunView } from '../api';
 import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
 import { SpeakerIdentity } from '../components/assistant-ui/elements/speaker-identity';
 import { TeamRunCard } from '../assistant/taskCards';
@@ -9,18 +10,21 @@ import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Loading } from '../components/Loading';
 import { Face } from '../Face';
 import { GoalScore } from '../goals/Goals';
-import { noLimits, type GoalView } from '../goals/goalsApi';
+import { goalLine, noLimits, type GoalView } from '../goals/goalsApi';
 import type { WorkspaceRow } from '../home/workspaces';
 import { usePoll, type Route } from '../hooks';
+import { RunGraph } from '../runs/RunGraph';
+import { StepInspector } from '../runs/StepInspector';
+import { useRunStream } from '../runStream';
 import { cn } from '../ui/cn';
 import { useNotify } from '../ui/notify';
 import { RunDiff } from '../ui/RunDiff';
 import { FaceStack } from '../ui/studio/FaceStack';
 import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
-import { StepTrack } from '../ui/studio/StepTrack';
 import { TeamForm } from './NewTeam';
-import { approversLine, LEVELS, PLACE, STATE_LABEL, teamsApi, type Card, type TeamMessage, type TeamsReply, type TeamView } from './teamsApi';
+import { focusOn, handoffEdges, roomCounts, runOf, stripItems, type Who } from './roomModel';
+import { approversLine, PLACE, teamsApi, type Card, type TeamMessage, type TeamsReply, type TeamView } from './teamsApi';
 import './teams.css';
 
 const VIEW_MS = 1500;
@@ -35,19 +39,65 @@ function withMentions(text: string, names: string[]): ReactNode[] {
   return text.split(re).map((part, i) => (i % 2 ? <span key={i} className="tm-mention">{part}</span> : part));
 }
 
+/** People and agents as nodes in a ring, hand-offs of the last week as lines (thicker for more); a node focuses the chat on them. */
+function WholeTeam({ who, edges, focus, onFocus }: { who: Who[]; edges: { from: string; to: string; n: number }[]; focus?: string; onFocus: (w: Who) => void }) {
+  const W = 820;
+  const H = 460;
+  const R = Math.min(W, H) / 2 - 70;
+  const at = new Map(who.map((w, i) => [w.id, { x: W / 2 + R * Math.cos((2 * Math.PI * i) / who.length - Math.PI / 2), y: H / 2 + R * Math.sin((2 * Math.PI * i) / who.length - Math.PI / 2) }]));
+  const count = (id: string) => edges.filter((e) => e.from === id || e.to === id).reduce((a, e) => a + e.n, 0);
+  return (
+    <div className="tr-whole">
+      <svg aria-hidden="true" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        {edges.map((e) => {
+          const a = at.get(e.from)!;
+          const b = at.get(e.to)!;
+          return <line key={`${e.from}>${e.to}`} className="tr-edge" x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={1 + Math.min(e.n, 6)} />;
+        })}
+      </svg>
+      {who.map((w) => {
+        const pos = at.get(w.id)!;
+        const n = count(w.id);
+        return (
+          <button key={w.id} type="button" className="tr-who" style={{ left: `${(pos.x / W) * 100}%`, top: `${(pos.y / H) * 100}%` }} aria-pressed={focus === w.id} aria-label={`${w.name}: focus the chat on them`} onClick={() => onFocus(w)}>
+            {w.kind === 'agent' ? <Face id={w.id} size={24} /> : <span className="tm-avatar small">{w.name.charAt(0).toUpperCase()}</span>}
+            <span>
+              {w.name}
+              <small>{n ? `${n} hand-off${n === 1 ? '' : 's'} this week` : 'no hand-offs this week'}</small>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const SEG: Record<string, string> = { done: 'done', running: 'working', awaiting: 'waiting', error: 'failed' };
+
 /**
- * A team (board 1): the header (name, place, faces, Add member, settings), the channel (messages, @mentions, agent pills,
- * run, loop, approval, proposal and PR cards) with its @-autocomplete composer, and the right panel (Working now, Members,
- * Rules). Polled: cards are edited in place on the server, so a poll shows progress and decisions as they happen.
+ * A team's room (board 2): the header with its live runs, what needs you and today's spend; the map (This run: the picked
+ * run's steps from you to your approval, a step opening in the inspector; Whole team: who hands work to whom, a member
+ * focusing the chat) with zoom, the runs strip under it (team runs and loops; the live one by default), and the channel.
+ * Polled: cards are edited in place on the server, so a poll shows progress and decisions as they happen.
  */
 export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsReply['agents']; projects: WorkspaceRow[]; onGo: (r: Route) => void; onChanged: () => void; onNewAgent: () => void }) {
   const notify = useNotify();
   const view = usePoll<TeamView>(`/api/teams/${encodeURIComponent(p.id)}`, VIEW_MS);
   const [settings, setSettings] = useState(false);
   const [diff, setDiff] = useState<{ title: string; text?: string }>();
+  const [mapView, setMapView] = useState<'run' | 'team'>('run');
+  const [pick, setPick] = useState<string>();
+  const [pickRun, setPickRun] = useState<string>();
+  const [focus, setFocus] = useState<Who>();
+  const [step, setStep] = useState<string>();
+  const [zoom, setZoom] = useState(1);
   const end = useRef<HTMLLIElement>(null);
   const v = view.data;
   const count = v?.messages.length ?? 0;
+  const items = stripItems({ messages: v?.messages ?? [] }, p.goals);
+  const item = items.find((x) => x.id === pick) ?? items[0];
+  const runId = pickRun ?? runOf(item);
+  const stream = useRunStream(mapView === 'run' ? runId : undefined);
   // a block body: newer Chrome's scrollIntoView returns a promise, which React would take for a cleanup
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' });
@@ -67,6 +117,24 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
     setDiff({ title });
     teamsApi.diff(t.id, msg.id).then((d) => setDiff({ title, text: d.diff }), (e: unknown) => (setDiff(undefined), notify.fail(e)));
   };
+  /** A team run opens here, in the room: the map follows it. */
+  const openRun = (id: string) => (setPickRun(id), setMapView('run'), setStep(undefined));
+  const runAct = async (path: string, body: unknown = {}) => {
+    try {
+      stream.setRun(await api<RunView>('POST', `/api/runs/${runId}/${path}`, body));
+      refresh();
+      return true;
+    } catch (e) {
+      notify.fail(e);
+      return false;
+    }
+  };
+  const who: Who[] = [...t.people.map((x) => ({ id: x.id, name: x.name, kind: 'person' as const })), ...v.members.map((m) => ({ id: m.id, name: m.name, kind: 'agent' as const }))];
+  const counts = roomCounts(v, p.goals);
+  const run = stream.run;
+  const done = run ? run.pipeline.nodes.filter((n) => run.nodes[n.id]?.status === 'done').length : 0;
+  const shown = focus ? focusOn(v.messages, focus) : v.messages;
+  const itemAt = item?.at ?? Date.now();
 
   return (
     <div className="tm">
@@ -76,6 +144,9 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
         </h1>
         <span className="tm-sub">{`${PLACE[t.place]} team · you + ${t.agents.length} agent${t.agents.length === 1 ? '' : 's'}`}</span>
         <span className="tm-gap" />
+        {counts.live ? <span className="tr-chip live">{`${counts.live} live run${counts.live === 1 ? '' : 's'}`}</span> : null}
+        {counts.needs ? <span className="tr-chip needs">{`${counts.needs} needs you`}</span> : null}
+        <span className="tm-sub">{`${fmtUsd(v.spend.usd)} of ${fmtUsd(t.limits.usdPerDay)} today`}</span>
         <FaceStack bots={t.agents} size={22} />
         <Button variant="secondary" size="sm" onClick={() => setSettings(true)}>
           Add member
@@ -84,11 +155,89 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
           <Settings size={15} aria-hidden="true" />
         </Button>
       </header>
-      <div className="tm-body">
-        <section className="tm-channel" aria-label="Channel">
+      <div className="tm-body tr">
+        <section className="tr-map" aria-label="Team map">
+          <div className="tr-bar">
+            <div className="tr-tabs" role="tablist" aria-label="Map view">
+              <button type="button" role="tab" aria-selected={mapView === 'run'} onClick={() => setMapView('run')}>
+                This run
+              </button>
+              <button type="button" role="tab" aria-selected={mapView === 'team'} onClick={() => setMapView('team')}>
+                Whole team
+              </button>
+            </div>
+            {mapView === 'run' && run ? <span className="tm-sub">{`${run.task.split('\n')[0]!.slice(0, 80)}${run.pipeline.nodes.length ? ` · step ${Math.min(done + 1, run.pipeline.nodes.length)} of ${run.pipeline.nodes.length}` : ''}`}</span> : null}
+            <span className="tr-hint">{mapView === 'team' ? 'Click someone to focus the chat on them' : 'Click a step to see what it did'}</span>
+          </div>
+          <div className="tr-canvas">
+            {mapView === 'team' ? (
+              <WholeTeam who={who} edges={handoffEdges(v.messages, who)} focus={focus?.id} onFocus={setFocus} />
+            ) : run && run.pipeline.nodes.length ? (
+              <RunGraph run={run} you={`asked ${time(itemAt)}`} zoom={zoom} selected={step} onSelect={setStep} />
+            ) : (
+              <p className="tm-muted tr-empty">{runId ? (run ? 'Tether is planning this run…' : 'Loading the run…') : 'No runs yet. @mention an agent in the chat to hand it work.'}</p>
+            )}
+            {mapView === 'run' && run?.pipeline.nodes.length ? (
+              <div className="tr-zoom" role="group" aria-label="Zoom">
+                <Button variant="ghost" size="sm" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
+                  −
+                </Button>
+                <Button variant="ghost" size="sm" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(2, z + 0.25))}>
+                  +
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>
+                  Fit
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          <div className="tr-strip">
+            <div className="tr-strip-head">
+              <b>{`Runs in # ${t.name}`}</b>
+              <span>switch the map between them</span>
+              <button type="button" className="tm-link" onClick={() => p.onGo({ tab: 'runs' })}>
+                All runs
+              </button>
+            </div>
+            <div className="tr-cards">
+              {items.length ? null : <span className="tm-muted">None yet.</span>}
+              {items.map((x) => (
+                <button key={x.id} type="button" className="tr-card" aria-pressed={!pickRun && item?.id === x.id} onClick={() => (setPick(x.id), setPickRun(undefined), setMapView('run'), setStep(undefined))}>
+                  <span className="tr-card-top">
+                    <span className={cn('tm-dot', { live: x.kind === 'run' ? x.card.status === 'running' : x.goal?.status === 'active' })} aria-hidden="true" />
+                    <b>{x.title}</b>
+                    {x.kind === 'loop' ? <span className="tm-muted">loop</span> : x.pr ? <span className="tm-muted">{`PR #${x.pr.number}`}</span> : null}
+                  </span>
+                  {x.kind === 'run' ? (
+                    x.card.steps.length ? (
+                      <span className="rl-track" aria-label={`${x.card.steps.filter((s) => s.status === 'done').length} of ${x.card.steps.length} steps done`} role="img">
+                        {x.card.steps.map((s) => (
+                          <span key={s.id} className={cn('rl-seg', `s-${SEG[s.status] ?? 'queued'}`)} />
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="tm-muted">{x.pr ? (x.pr.merged ? `merged · ${fmtUsd(x.card.costUsd)}` : `PR open · ${fmtUsd(x.card.costUsd)}`) : x.card.status}</span>
+                    )
+                  ) : (
+                    <span className="tm-muted">{x.goal ? goalLine(x.goal) : 'starting'}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+        <section className="tm-channel" aria-label="Team chat">
+          {focus ? (
+            <div className="tr-focus" role="status">
+              {`Showing ${focus.name}`} ·{' '}
+              <button type="button" className="tm-link" onClick={() => setFocus(undefined)}>
+                Show all
+              </button>
+            </div>
+          ) : null}
           <ol className="tm-msgs" aria-label="Messages" aria-live="polite">
-            {v.messages.length ? null : <li className="tm-empty">Say hello, or @mention an agent to hand it a question, a task or a loop.</li>}
-            {v.messages.map((m) => (
+            {shown.length ? null : <li className="tm-empty">{focus ? `Nothing from or to ${focus.name} yet.` : 'Say hello, or @mention an agent to hand it a question, a task or a loop.'}</li>}
+            {shown.map((m) => (
               <li key={m.id} className="tm-msg who">
                 {/* who spoke, from the element; the body below keeps its mentions and cards (the element's text is plain) */}
                 <SpeakerIdentity turns={[{ id: m.id, kind: SPEAKER[m.from.kind], name: m.from.name, detail: [m.from.kind === 'agent' ? `agent${specialty(m.from.id) ? ` · ${specialty(m.from.id)}` : ''}` : '', time(m.at)].filter(Boolean).join(' · '), text: '' }]} />
@@ -96,7 +245,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
                   <p className={cn('tm-text', { pending: !!m.pending })} aria-busy={m.pending || undefined}>
                     {withMentions(m.text, names)}
                   </p>
-                  {m.card ? <CardView msg={m} card={m.card} team={v} goals={p.goals} onGo={p.onGo} onAct={act} onDiff={showDiff} /> : null}
+                  {m.card ? <CardView msg={m} card={m.card} team={v} goals={p.goals} onGo={p.onGo} onAct={act} onDiff={showDiff} onRun={openRun} /> : null}
                 </div>
               </li>
             ))}
@@ -104,58 +253,9 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
           </ol>
           <Composer name={t.name} options={v.members.map((m) => ({ id: m.id, name: m.name, hint: m.specialty }))} onSend={(text) => teamsApi.post(t.id, text).then(refresh)} />
         </section>
-        <aside className="tm-panel" aria-label="About this team">
-          <section aria-labelledby={`${t.id}-work`}>
-            <h2 id={`${t.id}-work`}>Working now</h2>
-            {v.working.length ? null : <p className="tm-muted">Nothing running.</p>}
-            {v.working.map((w) => (
-              <button key={w.goalId ?? w.runId} type="button" className={cn('tm-work', { needs: w.needs })} onClick={() => p.onGo(w.goalId ? { tab: 'goals', id: w.goalId } : { tab: 'runs', id: w.runId })}>
-                <span className="tm-work-top">
-                  <Face id={w.agent} size={16} />
-                  <b>{w.title}</b>
-                  <span className={cn('tm-tag', { needs: w.needs, live: !w.needs })}>{w.needs ? 'needs you' : w.kind}</span>
-                </span>
-                {w.progress !== undefined ? (
-                  <span className="tm-bar" role="progressbar" aria-label={`${w.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(w.progress * 100)}>
-                    <span style={{ width: `${Math.round(w.progress * 100)}%` }} />
-                  </span>
-                ) : null}
-                <span className="tm-mono">{w.line}</span>
-              </button>
-            ))}
-          </section>
-          <section aria-labelledby={`${t.id}-members`}>
-            <h2 id={`${t.id}-members`}>Members</h2>
-            <ul className="tm-members">
-              {t.people.map((x) => (
-                <li key={x.id}>
-                  <span className="tm-avatar small">{x.name.charAt(0).toUpperCase()}</span>
-                  <span className="tm-grow">{x.name}</span>
-                  <span className="tm-muted">{x.id === 'owner' ? 'owner' : ''}</span>
-                </li>
-              ))}
-              {v.members.map((m) => (
-                <li key={m.id}>
-                  <Face id={m.id} size={22} />
-                  <span className="tm-grow">
-                    {m.name} <span className="tm-muted">· {m.specialty}</span>
-                  </span>
-                  <span className={cn('tm-state', m.state)}>{STATE_LABEL[m.state]}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section aria-labelledby={`${t.id}-rules`} className="tm-rules">
-            <h2 id={`${t.id}-rules`}>Rules</h2>
-            <span>{`Approvals: ${approversLine(t)} · ${LEVELS.find((l) => l.id === t.level)!.label}`}</span>
-            <span>{`Limit: ${fmtUsd(t.limits.usdPerDay)} a day · ${t.limits.runsPerDay} runs a day`}</span>
-            <span>{`Today: ${fmtUsd(v.spend.usd)} · ${v.spend.runs} run${v.spend.runs === 1 ? '' : 's'}`}</span>
-            <span>{`Lives in: ${PLACE[t.place]}`}</span>
-            {t.learn ? null : <span>Agents do not learn from this team</span>}
-          </section>
-        </aside>
       </div>
 
+      <AnimatePresence>{step && run ? <StepInspector key="insp" run={run} events={stream.events} target={{ mode: 'step', node: step }} onTarget={(x) => x.mode === 'step' && setStep(x.node)} onClose={() => setStep(undefined)} onAct={runAct} /> : null}</AnimatePresence>
       <Dialog open={settings} onOpenChange={setSettings}>
         <DialogContent title={`${t.name} settings`} className="tm-dialog">
           {settings ? (
@@ -182,18 +282,18 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
 
 type Act = (m: TeamMessage, body: { action: string; reason?: string; task?: string }) => Promise<void>;
 
-function CardView(p: { msg: TeamMessage; card: Card; team: TeamView; goals?: GoalView[]; onGo: (r: Route) => void; onAct: Act; onDiff: (m: TeamMessage, title: string) => void }) {
+function CardView(p: { msg: TeamMessage; card: Card; team: TeamView; goals?: GoalView[]; onGo: (r: Route) => void; onAct: Act; onDiff: (m: TeamMessage, title: string) => void; onRun: (runId: string) => void }) {
   const c = p.card;
-  if (c.kind === 'run') return <TeamRunCard card={c} onOpen={() => p.onGo({ tab: 'runs', id: c.runId })} />;
-  if (c.kind === 'loop') return <LoopCard goal={p.goals?.find((g) => g.id === c.goalId)} onGo={p.onGo} />;
+  if (c.kind === 'run') return <TeamRunCard card={c} onOpen={() => p.onRun(c.runId)} />;
+  if (c.kind === 'loop') return <LoopCard goal={p.goals?.find((g) => g.id === c.goalId)} onRun={p.onRun} />;
   if (c.kind === 'approval') return <AskCard msg={p.msg} card={c} team={p.team} onAct={p.onAct} onDiff={p.onDiff} />;
-  if (c.kind === 'proposal') return <ProposalCard msg={p.msg} card={c} onAct={p.onAct} onGo={p.onGo} />;
+  if (c.kind === 'proposal') return <ProposalCard msg={p.msg} card={c} onAct={p.onAct} onRun={p.onRun} />;
   // no unfurl: the link and what the PR card already knows
   return <LinkPreview layout="compact" href={c.url} title={`PR #${c.number} · ${c.title}`} description={c.merged ? 'merged' : 'open'} />;
 }
 
 /** A loop: its live state, spend against its limits, and the chain of runs leading to its check. */
-function LoopCard({ goal: g, onGo }: { goal?: GoalView; onGo: (r: Route) => void }) {
+function LoopCard({ goal: g, onRun }: { goal?: GoalView; onRun: (runId: string) => void }) {
   if (!g) return <div className="tm-card loop">Loop · starting…</div>;
   const runs = g.items.filter((i) => i.kind === 'run');
   const live = g.status === 'active' || g.status === 'needs_you';
@@ -207,7 +307,7 @@ function LoopCard({ goal: g, onGo }: { goal?: GoalView; onGo: (r: Route) => void
       <ol className="tm-chain" aria-label="Runs so far">
         {runs.map((i) => (
           <li key={i.id}>
-            <button type="button" className={cn('tm-chip', i.attempt?.after ? (i.attempt.after.ok ? 'done' : 'idle') : 'live')} onClick={() => i.runId && onGo({ tab: 'runs', id: i.runId })}>
+            <button type="button" className={cn('tm-chip', i.attempt?.after ? (i.attempt.after.ok ? 'done' : 'idle') : 'live')} onClick={() => i.runId && onRun(i.runId)}>
               {`${i.runId ? shortRunId(i.runId) : 'run'} · ${i.attempt?.after ? (i.attempt.after.summary ?? (i.attempt.after.ok ? 'passing' : 'failing')) : 'working'}`}
             </button>
           </li>
@@ -273,7 +373,7 @@ function AskCard({ msg, card: c, team, onAct, onDiff }: { msg: TeamMessage; card
 }
 
 /** A run the agent suggests in an answer: Start run, Edit (the task) or Dismiss. */
-function ProposalCard({ msg, card: c, onAct, onGo }: { msg: TeamMessage; card: Extract<Card, { kind: 'proposal' }>; onAct: Act; onGo: (r: Route) => void }) {
+function ProposalCard({ msg, card: c, onAct, onRun }: { msg: TeamMessage; card: Extract<Card, { kind: 'proposal' }>; onAct: Act; onRun: (runId: string) => void }) {
   const [edit, setEdit] = useState<string>();
   const [busy, setBusy] = useState(false);
   const go = (body: { action: string; task?: string }) => {
@@ -298,7 +398,7 @@ function ProposalCard({ msg, card: c, onAct, onGo }: { msg: TeamMessage; card: E
           </Button>
         </span>
       ) : c.status === 'started' && c.runId ? (
-        <button type="button" className="tm-link" onClick={() => onGo({ tab: 'runs', id: c.runId })}>
+        <button type="button" className="tm-link" onClick={() => onRun(c.runId!)}>
           {`Started ${shortRunId(c.runId)}`}
         </button>
       ) : (
