@@ -57,9 +57,9 @@ button.sl-row-title:hover { text-decoration: underline; text-underline-offset: 2
 .sl-dot.pulse { animation: sl-pulse 1.4s var(--ease) infinite; }
 @keyframes sl-pulse { 50% { opacity: .35; } }
 
-/* FaceStack: faces on their squircle, ringed with the 3:1 --edge (a meaningful edge, not the decorative --line2) and an --s1 gap */
+/* FaceStack: faces overlapping, each transparent, so a body sits straight on the one behind it */
 .sl-facestack { display: inline-flex; align-items: center; }
-.sl-facestack > .face { margin-left: calc(var(--face) * -0.3); border-radius: 30%; box-shadow: 0 0 0 1px var(--edge), 0 0 0 3px var(--s1); }
+.sl-facestack > .face { margin-left: calc(var(--face) * -0.3); }
 .sl-facestack > .face:first-child { margin-left: 0; }
 .sl-facestack-more { margin-left: 6px; font-family: var(--font-code); font-size: 11px; color: var(--mut); }
 

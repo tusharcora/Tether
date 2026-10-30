@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyCrew, getCrew, type CrewState } from './crewStore';
@@ -58,5 +61,18 @@ describe('faces', () => {
       </>,
     );
     expect([...container.querySelectorAll('.face')].map((f) => f.hasAttribute('data-dark-body'))).toEqual([true, false, true]);
+  });
+
+  it('paints nothing behind a face in any stylesheet: no fill, rounding or ring', () => {
+    // read from disk (vitest blanks CSS imports); the base goes through a variable so Vite leaves the URL alone
+    const here = import.meta.url;
+    const walk = (d: string): string[] => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
+    const css = walk(fileURLToPath(new URL('./', here))).filter((p) => p.endsWith('.css'));
+    const painted = css.flatMap((p) =>
+      [...readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter(([, sel, body]) => sel!.split(',').some((s) => /\.face(?![\w-])[^\s>+~]*$/.test(s.trim())) && /background|border-radius|box-shadow/.test(body!))
+        .map(([, sel]) => sel!.trim()),
+    );
+    expect(painted).toEqual([]);
   });
 });

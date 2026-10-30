@@ -45,7 +45,6 @@ span.bl-name { width: auto; overflow: hidden; text-overflow: ellipsis; white-spa
 .bl-blk[aria-pressed="true"] .bl-blk-n { border-color: var(--ink); color: var(--ink); }
 .bl-blk-t { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .bl-blk-t b { font-size: 14px; font-weight: 600; }
-.bl-blk-t .face { border-radius: 8px; }
 .bl-blk-who { font-size: 13px; color: var(--mut); }
 .bl-blk-p { font-size: 13px; color: var(--mut); overflow-wrap: anywhere; }
 .bl-blk-loop { font-size: 12.5px; color: var(--warn); }
@@ -56,7 +55,6 @@ span.bl-name { width: auto; overflow: hidden; text-overflow: ellipsis; white-spa
 /* the docked editor */
 .bl-form { display: flex; flex-direction: column; gap: 12px; }
 .bl-step-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.bl-step-head .face { border-radius: 10px; }
 .bl-step-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
 .bl-step-kind { margin: 1px 0 0; font-size: 11.5px; color: var(--mut); }
 .bl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

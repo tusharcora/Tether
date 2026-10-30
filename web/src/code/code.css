@@ -61,7 +61,7 @@
 .code-strip { display: flex; flex: none; align-items: center; gap: 10px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 10px; color: var(--ink); font-size: 12.5px; line-height: 1.45; }
 .code-strip-text { flex: 1; min-width: 0; }
 .code-lock { background: var(--accBg); }
-.code-lock .face { flex: none; border-radius: 50%; }
+.code-lock .face { flex: none; }
 .code-banner { background: var(--s2); }
 .code-editor-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* pinned to the pane, so CodeMirror's own scroller is height-bounded and scrolls the file */
