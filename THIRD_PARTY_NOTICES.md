@@ -8,6 +8,7 @@ Parts of Tether are ported from deepseek-harness (re-implemented against Tether'
 - `guard/repeat-tool-reminder` → `src/adapters/repeatGuard.ts`
 - `spill/spill-policy`, `spill/spill-local` → `src/codemode/spill.ts`
 - `experimental/browser-use-playwright-mcp`, `experimental/browser-use-chrome-devtools-mcp` → `MCP_PRESETS` in `src/codemode/mcpServers.ts`
+- `webhook/webhook-github` → issue and comment events in `src/pr.ts` (`parseIssue`, `parseComment`) and the webhook checks in `src/server.ts`
 
 ```
 MIT License

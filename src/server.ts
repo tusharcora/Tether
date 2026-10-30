@@ -9,7 +9,7 @@ import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
 import { loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
-import { alreadyRan, fetchPr, loadSettings, matchRule, parseWebhook, saveSettings, startPrRun, verifySignature, type Exec } from './pr.js';
+import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
 import { GithubAccount, ghExec } from './accounts/github.js';
 import { NvidiaAccount, type NvidiaDeps } from './accounts/nvidia.js';
 import { OpenRouterAccount, type OpenRouterDeps } from './accounts/openrouter.js';
@@ -24,7 +24,7 @@ import { goalsRoute } from './goals/routes.js';
 import { teamsRoute } from './teams/routes.js';
 import { OWNER } from './teams/store.js';
 import { Teams } from './teams/teams.js';
-import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, lastDelivery, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
+import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, issueRefusal, lastDelivery, matchIssueRule, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
 import { checkPins, loadPins, savePins } from './pins.js';
 import { rgVersion } from './tools.js';
@@ -308,13 +308,17 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   };
 
 
-  /** GitHub pull_request webhook. Reachable through a tunnel, so it skips the loopback Host/Origin checks and is authenticated by the HMAC signature instead. */
+  /**
+   * GitHub webhook: pull_request, issues and issue_comment. Reachable through a tunnel, so it skips the loopback
+   * Host/Origin checks and is authenticated by the HMAC signature instead.
+   */
   async function githubWebhook(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const secret = process.env.AORCH_WEBHOOK_SECRET || loadSettings(cfg.home).webhookSecret || '';
     if (!secret) throw new HttpError(503, 'no webhook secret set. Run: aorch pr secret');
     const raw = await readRaw(req);
     if (!verifySignature(secret, raw, req.headers['x-hub-signature-256'] as string | undefined)) throw new HttpError(401, 'bad signature');
-    const event = req.headers['x-github-event'] as string | undefined;
+    const event = req.headers['x-github-event'];
+    if (typeof event !== 'string' || !event.trim()) throw new HttpError(400, 'missing x-github-event header');
     if (event === 'ping') return send(res, 200, { ok: true, pong: true });
     let body: unknown;
     try {
@@ -322,10 +326,13 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     } catch {
       throw new HttpError(400, 'not JSON');
     }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'the payload must be a JSON object');
     const at = () => new Date().toISOString();
     const pr = parseWebhook(event, body);
     if (!pr) {
-      return send(res, 202, { ignored: 'not a pull_request event' });
+      const ev = parseIssue(event, body) ?? parseComment(event, body);
+      if (ev) return issueWebhook(ev, res);
+      return send(res, 202, { ignored: 'not a pull_request, issues or issue_comment event' });
     }
     const rules = loadSettings(cfg.home).rules ?? [];
     const rule = matchRule(rules, pr);
@@ -346,6 +353,29 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       .catch((e: Error) => {
         recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: classifyFailure(e.message), reason: e.message.slice(0, 300) });
         console.error(`[aorch] PR ${pr.repo}#${pr.number} skipped: ${e.message}`);
+      });
+    return send(res, 202, { accepted: true, workflow: rule.workflow });
+  }
+
+  /** An issue or comment trigger: like a PR, it answers GitHub at once and records what became of the delivery. */
+  function issueWebhook(ev: WebhookIssue, res: ServerResponse): void {
+    const at = () => new Date().toISOString();
+    const rules = loadSettings(cfg.home).rules ?? [];
+    const rule = matchIssueRule(rules, ev);
+    if (!rule) {
+      const no = issueRefusal(rules, ev);
+      if (no) recordDelivery(cfg.home, { at: at(), trigger: no.rule.id, source: 'webhook', repo: ev.repo, pr: ev.number, outcome: 'ignored', reason: no.why });
+      return send(res, 202, { ignored: 'no rule matches' });
+    }
+    refreshCrew(cfg.home);
+    startIssueRun({ home: cfg.home, engine, exec }, ev, { workflow: rule.workflow, workspace: rule.workspace, agent: rule.agent, model: rule.model })
+      .then((r) => {
+        recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: ev.repo, pr: ev.number, outcome: 'started', runId: r.runId });
+        console.error(`[aorch] ${ev.kind} ${ev.repo}#${ev.number} -> run ${r.runId} (${rule.workflow})`);
+      })
+      .catch((e: Error) => {
+        recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: ev.repo, pr: ev.number, outcome: classifyFailure(e.message), reason: e.message.slice(0, 300) });
+        console.error(`[aorch] ${ev.kind} ${ev.repo}#${ev.number} skipped: ${e.message}`);
       });
     return send(res, 202, { accepted: true, workflow: rule.workflow });
   }
@@ -674,7 +704,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       try {
         out = upsertRule(
           settings.rules ?? [],
-          { repo, workflow: reqString(b, 'workflow', 64), workspace: str('workspace'), agent: str('agent'), model: str('model'), events: reqList(b, 'events'), labels: reqList(b, 'labels'), comment: reqBool(b, 'comment') ?? false, drafts: reqBool(b, 'drafts') ?? false, forks: reqBool(b, 'forks') ?? false, id: reqString(b, 'id', 63), enabled: reqBool(b, 'enabled') },
+          { repo, workflow: reqString(b, 'workflow', 64), workspace: str('workspace'), agent: str('agent'), model: str('model'), events: reqList(b, 'events'), labels: reqList(b, 'labels'), comment: reqBool(b, 'comment') ?? false, drafts: reqBool(b, 'drafts') ?? false, forks: reqBool(b, 'forks') ?? false, id: reqString(b, 'id', 63), enabled: reqBool(b, 'enabled'), on: reqString(b, 'on', 10), label: reqString(b, 'label', 50), mention: reqString(b, 'mention', 40) },
           { hasWorkspace: (id) => !!getWorkspace(cfg.home, id), workspaceRepos: (id) => getWorkspace(cfg.home, id)?.repos, hasAgent: (id) => registry.has(id), checkWorkflow: (r) => checkWorkflow(cfg.home, r) },
         );
       } catch (e) {
@@ -705,6 +735,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       } catch (e) {
         throw new HttpError(404, (e as Error).message);
       }
+      if (ruleKind(r) !== 'pr') throw new HttpError(400, `${r.id} fires on ${ruleKind(r)}s: only pull request triggers can be tested with a PR`);
       const b = reqObject(await readJson(req));
       const prText = reqString(b, 'pr', 300);
       if (!prText) throw new HttpError(400, '"pr" is required (a PR link, owner/repo#number, or a number)');

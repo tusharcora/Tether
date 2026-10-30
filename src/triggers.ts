@@ -1,16 +1,16 @@
-// Triggers: PR rules with a stable id, an on/off switch, per-trigger agent/model, and a log of what arrived.
+// Triggers: PR, issue and comment rules with a stable id, an on/off switch, per-trigger agent/model, and a log of what arrived.
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_EVENTS, loadSettings, parsePr, pipelineFor, saveSettings, type PrRef, type Rule } from './pr.js';
+import { DEFAULT_EVENTS, DEFAULT_MENTION, RULE_KINDS, loadSettings, parsePr, pipelineFor, ruleKind, saveSettings, type PrRef, type Rule, type RuleKind, type WebhookIssue } from './pr.js';
 import { getWorkspace } from './workspace.js';
 import type { Pipeline } from './types.js';
 
 export const idSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'any';
 
-/** Give every rule a stable id: `<repo-slug>-<workflow>`, de-duplicated with -2, -3... Existing ids are kept. Returns new objects. */
+/** Give every rule a stable id: `<repo-slug>-<workflow>` (plus `-issue` or `-comment`), de-duplicated with -2, -3... Existing ids are kept. Returns new objects. */
 export function ensureIds(rules: Rule[]): Rule[] {
   const used = new Set<string>();
   const out = rules.map((r) => ({ ...r }));
@@ -21,7 +21,7 @@ export function ensureIds(rules: Rule[]): Rule[] {
     return id;
   };
   for (const r of out) if (r.id) r.id = unique(r.id);
-  for (const r of out) if (!r.id) r.id = unique(`${r.repo === '*' ? 'any' : idSlug(r.repo)}-${r.workflow}`);
+  for (const r of out) if (!r.id) r.id = unique(`${r.repo === '*' ? 'any' : idSlug(r.repo)}-${r.workflow}${ruleKind(r) === 'pr' ? '' : `-${r.on}`}`);
   return out;
 }
 
@@ -99,7 +99,7 @@ export function readDeliveries(home: string, o: { trigger?: string; limit?: numb
 }
 
 /** A failure from startPrRun that is a normal refusal (seen already, fork guard) rather than something broken. */
-export const classifyFailure = (msg: string): 'skipped' | 'error' => (/^already reviewed|comes from a fork/.test(msg) ? 'skipped' : 'error');
+export const classifyFailure = (msg: string): 'skipped' | 'error' => (/^already (reviewed|started)|comes from a fork/.test(msg) ? 'skipped' : 'error');
 
 export const lastDelivery = (home: string, triggerId: string): Delivery | undefined => readDeliveries(home, { trigger: triggerId, limit: 1 })[0];
 
@@ -131,7 +131,15 @@ export const statusText = (s: TriggerStatus): string => ({ paused: 'paused', err
 export function formatTriggerLine(r: Rule, status: TriggerStatus, last: Delivery | undefined, now = Date.now()): string {
   const who = r.agent ? `${r.agent}${r.model ? '/' + r.model : ''}` : r.model ? `default agent/${r.model}` : 'default agent';
   const lastText = last ? `${ago(last.at, now)} ${last.outcome}${last.pr ? ' #' + last.pr : ''}` : 'no deliveries';
-  return [r.id ?? '?', statusText(status), r.repo, `→ ${r.workflow}`, r.workspace ?? 'no workspace', who, (r.events ?? DEFAULT_EVENTS).join(','), lastText].join('  ');
+  return [r.id ?? '?', statusText(status), r.repo, `→ ${r.workflow}`, r.workspace ?? 'no workspace', who, firesOn(r), lastText].join('  ');
+}
+
+/** What fires a rule, in a few words: its PR actions, `issue` (with its label) or `comment <mention>`. */
+export function firesOn(r: Rule): string {
+  const k = ruleKind(r);
+  if (k === 'issue') return r.label ? `issue labeled ${r.label}` : 'issue opened';
+  if (k === 'comment') return `comment ${r.mention ?? DEFAULT_MENTION}`;
+  return (r.events ?? DEFAULT_EVENTS).join(',');
 }
 
 /** The same decision as matchRule, with the reason. Without an `action` the event filter is not checked (a PR fetched by hand has none). */
@@ -150,7 +158,7 @@ export function explainMatch(r: Rule, p: { repo: string; labels: string[]; draft
 /** Ids that would collide with fixed API paths (/api/triggers/setup, /deliveries, /setup/secret). */
 export const RESERVED_IDS = ['setup', 'deliveries', 'secret'];
 
-export interface RuleFlags { workflow?: string; workspace?: string; agent?: string; model?: string; events?: string; labels?: string; comment?: boolean; drafts?: boolean; forks?: boolean; id?: string }
+export interface RuleFlags { workflow?: string; workspace?: string; agent?: string; model?: string; events?: string; labels?: string; comment?: boolean; drafts?: boolean; forks?: boolean; id?: string; on?: string; label?: string; mention?: string }
 const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
 /** Turn `add` arguments into a Rule, or throw a message that says what to fix. Existence of the workspace/workflow/agent is checked by checkRuleRefs. */
 export function parseRuleArgs(repo: string, f: RuleFlags): Rule {
@@ -164,14 +172,25 @@ export function parseRuleArgs(repo: string, f: RuleFlags): Rule {
   if (bad) throw new Error(`event "${bad}" is not a GitHub pull_request action (e.g. opened, synchronize, reopened, ready_for_review, labeled)`);
   const labels = f.labels ? list(f.labels) : undefined;
   if (f.model && !f.agent) throw new Error('--model needs --agent: a model name only makes sense for a named agent (e.g. --agent codex --model gpt-5)');
+  const on = (f.on || 'pr') as RuleKind;
+  if (!RULE_KINDS.includes(on)) throw new Error(`"${String(f.on).slice(0, 20)}" is not a trigger kind (pr, issue or comment)`);
+  const label = on === 'issue' ? f.label?.trim() : undefined;
+  if (label && !/^[^,\n]{1,50}$/.test(label)) throw new Error('the label must be one GitHub label name (at most 50 characters, no commas)');
+  const mention = on === 'comment' ? f.mention?.trim() : undefined;
+  if (mention && !/^@[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(mention)) throw new Error('the mention must look like @name (a GitHub user or bot name)');
+  // the pull-request filters mean nothing to an issue or comment trigger
+  const pr = on === 'pr';
   return {
     repo,
     workflow,
-    ...(f.comment ? { comment: true } : {}),
-    ...(f.drafts ? { drafts: true } : {}),
-    ...(f.forks ? { forks: true } : {}),
-    ...(labels?.length ? { labels } : {}),
-    ...(events?.length ? { events } : {}),
+    ...(on !== 'pr' ? { on } : {}),
+    ...(label ? { label } : {}),
+    ...(mention ? { mention } : {}),
+    ...(pr && f.comment ? { comment: true } : {}),
+    ...(pr && f.drafts ? { drafts: true } : {}),
+    ...(pr && f.forks ? { forks: true } : {}),
+    ...(pr && labels?.length ? { labels } : {}),
+    ...(pr && events?.length ? { events } : {}),
     ...(f.workspace ? { workspace: f.workspace } : {}),
     ...(f.agent ? { agent: f.agent } : {}),
     ...(f.model ? { model: f.model } : {}),
@@ -221,9 +240,12 @@ export function checkRuleRefs(r: Rule, refs: { hasWorkspace(id: string): boolean
   return { errors, warnings };
 }
 
-/** Adding a rule: the same repo (any case) + workflow replaces the earlier one, keeping its id (unless --id) and paused state. A new id may not belong to another trigger. */
+/** One trigger per repo (any case), workflow and kind. */
+const sameSlot = (a: Rule, b: Rule) => a.repo.toLowerCase() === b.repo.toLowerCase() && a.workflow === b.workflow && ruleKind(a) === ruleKind(b);
+
+/** Adding a rule: the same repo (any case) + workflow + kind replaces the earlier one, keeping its id (unless --id) and paused state. A new id may not belong to another trigger. */
 export function planRuleAdd(rules: Rule[], rule: Rule): { next: Rule[]; prev?: Rule } {
-  const prev = rules.find((r) => r.repo.toLowerCase() === rule.repo.toLowerCase() && r.workflow === rule.workflow);
+  const prev = rules.find((r) => sameSlot(r, rule));
   if (rule.id && rules.some((r) => r.id === rule.id && r !== prev)) throw new Error(`a trigger called "${rule.id}" already exists (aorch triggers remove ${rule.id})`);
   const merged: Rule = { ...rule, ...(prev && !rule.id && prev.id ? { id: prev.id } : {}), ...(prev?.enabled === false ? { enabled: false } : {}) };
   return { next: [...rules.filter((r) => r !== prev), merged], prev };
@@ -246,11 +268,48 @@ export function reportOnce(seen: Map<string, string>, key: string, sig: string):
 /** When a trigger covers this repo and listens for this action but declined the PR (draft, fork, labels): which one and why. Undefined when nothing was in play, so nothing needs logging. */
 export function refusal(rules: Rule[], p: { repo: string; labels: string[]; draft: boolean; fork: boolean; action: string }): { rule: Rule; why: string } | undefined {
   for (const r of rules) {
-    if (r.enabled === false) continue;
+    if (r.enabled === false || ruleKind(r) !== 'pr') continue;
     if (r.repo !== '*' && r.repo.toLowerCase() !== p.repo.toLowerCase()) continue;
     if (!(r.events ?? DEFAULT_EVENTS).includes(p.action)) continue;
     const m = explainMatch(r, p);
     if (!m.matches) return { rule: r, why: m.why };
+  }
+  return undefined;
+}
+
+/**
+ * Whether an issue or comment trigger fires for this event, and why not. `listens` is false when the event is simply
+ * not for it (another repo, kind or action, another label, no mention): not worth a log line.
+ */
+export function explainIssue(r: Rule, ev: WebhookIssue): { matches: boolean; listens: boolean; why: string } {
+  const quiet = (why: string) => ({ matches: false, listens: false, why });
+  const no = (why: string) => ({ matches: false, listens: true, why });
+  if (r.enabled === false) return quiet('the trigger is disabled (paused)');
+  if (ruleKind(r) !== ev.kind) return quiet(`the trigger fires on ${ruleKind(r)}s, not ${ev.kind}s`);
+  if (r.repo !== '*' && r.repo.toLowerCase() !== ev.repo.toLowerCase()) return quiet(`the trigger is for ${r.repo}, not ${ev.repo}`);
+  if (ev.kind === 'issue') {
+    const fresh = r.label ? (ev.action === 'opened' && ev.labels.includes(r.label)) || (ev.action === 'labeled' && ev.added === r.label) : ev.action === 'opened';
+    if (!fresh) return quiet(r.label ? `the issue did not open with or just get the label "${r.label}"` : `the trigger fires on new issues, not "${ev.action}"`);
+  } else {
+    if (ev.action !== 'created') return quiet(`the trigger fires on new comments, not "${ev.action}"`);
+    if (!mentions(ev.text, r.mention ?? DEFAULT_MENTION)) return quiet(`the comment does not mention ${r.mention ?? DEFAULT_MENTION}`);
+  }
+  if (ev.bot) return no(`the ${ev.kind} comes from a bot`);
+  // anyone can open an issue or comment on a public repo, and the run works on this machine
+  if (!ev.trusted) return no(`${ev.author || 'the author'} is not an owner, member or collaborator of ${ev.repo}`);
+  return { matches: true, listens: true, why: `${ev.kind} matches` };
+}
+
+/** `@name` as a word: not part of a longer name or address. */
+export const mentions = (text: string, mention: string): boolean => new RegExp(`(^|[^\\w@.-])${mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'i').test(text);
+
+export const matchIssueRule = (rules: Rule[], ev: WebhookIssue): Rule | undefined => rules.find((r) => explainIssue(r, ev).matches);
+
+/** The trigger that listened for this issue or comment but declined it (a bot, an outside author), and why. */
+export function issueRefusal(rules: Rule[], ev: WebhookIssue): { rule: Rule; why: string } | undefined {
+  for (const r of rules) {
+    const m = explainIssue(r, ev);
+    if (m.listens && !m.matches) return { rule: r, why: m.why };
   }
   return undefined;
 }
@@ -273,7 +332,7 @@ export function parsePrTarget(input: string, r: Rule): PrRef {
 export function webhookSetupInfo(home: string): { payloadPath: string; contentType: string; eventsToSelect: string[]; hasSecret: boolean; secretHint: string | null; secretSource: 'env' | 'file' | null } {
   const env = !!process.env.AORCH_WEBHOOK_SECRET;
   const have = process.env.AORCH_WEBHOOK_SECRET || loadSettings(home).webhookSecret || '';
-  return { payloadPath: '/api/webhooks/github', contentType: 'application/json', eventsToSelect: ['Pull requests'], hasSecret: !!have, secretHint: have.length >= 16 ? have.slice(-4) : null, secretSource: have ? (env ? 'env' : 'file') : null };
+  return { payloadPath: '/api/webhooks/github', contentType: 'application/json', eventsToSelect: ['Pull requests', 'Issues', 'Issue comments'], hasSecret: !!have, secretHint: have.length >= 16 ? have.slice(-4) : null, secretSource: have ? (env ? 'env' : 'file') : null };
 }
 
 /** The webhook secret: env, then pr.json; generated and saved when absent (or `regenerate`). Returns whether it was just made. */
@@ -304,8 +363,8 @@ export function upsertRule(
   let next: Rule[];
   let replaced: boolean;
   if (old) {
-    const clash = rules.find((r) => r !== old && r.repo.toLowerCase() === rule.repo.toLowerCase() && r.workflow === rule.workflow);
-    if (clash) throw new Error(`another trigger (${clash.id}) already runs ${rule.workflow} on ${rule.repo}`);
+    const clash = rules.find((r) => r !== old && sameSlot(r, rule));
+    if (clash) throw new Error(`another trigger (${clash.id}) already runs ${rule.workflow} on ${rule.repo}${ruleKind(rule) === 'pr' ? '' : ` for ${ruleKind(rule)}s`}`);
     const merged: Rule = { ...rule, ...(input.enabled === false || (input.enabled === undefined && old.enabled === false) ? { enabled: false } : {}) };
     next = rules.map((r) => (r === old ? merged : r));
     replaced = true;
@@ -313,9 +372,9 @@ export function upsertRule(
     const plan = planRuleAdd(rules, rule);
     next = plan.next;
     replaced = !!plan.prev;
-    if (input.enabled === false) next = next.map((r) => (r.repo.toLowerCase() === rule.repo.toLowerCase() && r.workflow === rule.workflow ? { ...r, enabled: false } : r));
+    if (input.enabled === false) next = next.map((r) => (sameSlot(r, rule) ? { ...r, enabled: false } : r));
   }
   const saved = ensureIds(next);
-  const out = saved.find((r) => r.repo.toLowerCase() === rule.repo.toLowerCase() && r.workflow === rule.workflow)!;
+  const out = saved.find((r) => sameSlot(r, rule))!;
   return { rule: out, next: saved, warnings: checked.warnings, replaced };
 }

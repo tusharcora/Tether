@@ -5,7 +5,7 @@ import { ActionNode } from '../components/bencho/ActionNode';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { useNotify } from '../ui/notify';
-import { DEFAULT_EVENTS, statusTip, who, type Trigger, type Workspace } from './types';
+import { KIND_LABEL, firesOn, statusTip, who, type Trigger, type Workspace } from './types';
 import './triggers.css';
 
 /** What the Filter node says: the labels, drafts and forks the trigger cares about, or "All events" when it has none. */
@@ -37,12 +37,12 @@ export function TriggerFlow(p: { t: Trigger; workspace?: Workspace; onTestFire: 
             tabbable
             label="Event actions"
             mark={<Zap aria-hidden="true" />}
-            title="Pull request event"
-            line={(t.events ?? DEFAULT_EVENTS).join(', ')}
+            title={`${KIND_LABEL[t.on ?? 'pr']} event`}
+            line={firesOn(t)}
             tone={t.status === 'error' ? 'failed' : t.status === 'active' ? 'done' : 'idle'}
             toneLabel={statusTip[t.status]}
             actions={[
-              { id: 'test', label: 'Test fire', icon: <FlaskConical />, onSelect: p.onTestFire },
+              { id: 'test', label: 'Test fire', icon: <FlaskConical />, onSelect: p.onTestFire, disabled: (t.on ?? 'pr') !== 'pr' },
               { id: 'pause', label: paused ? 'Resume trigger' : 'Pause trigger', icon: paused ? <Play /> : <Pause />, onSelect: p.onToggle },
               { id: 'copy', label: 'Copy URL', icon: <Link2 />, onSelect: () => void navigator.clipboard?.writeText(url).then(() => notify.ok('Webhook URL copied'), notify.fail) },
               { id: 'settings', label: 'Settings', icon: <Settings />, onSelect: p.onSettings },

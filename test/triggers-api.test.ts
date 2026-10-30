@@ -1,4 +1,4 @@
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { delimiter, join } from 'node:path';
@@ -109,7 +109,8 @@ describe('triggers api', () => {
     initWorkspace(home, dir, { name: 'API', id: 'api' });
     const w = await api('GET', '/api/workspaces');
     expect(w.status).toBe(200);
-    expect(w.json.find((x: { id: string }) => x.id === 'api')).toMatchObject({ id: 'api', name: 'API', exists: true, path: dir, repos: [] });
+    // macOS: the temp dir is a symlink (/var -> /private/var) and workspaces store the real path
+    expect(w.json.find((x: { id: string }) => x.id === 'api')).toMatchObject({ id: 'api', name: 'API', exists: true, path: realpathSync(dir), repos: [] });
     expect(Object.keys(w.json[0]).sort()).toEqual(['exists', 'id', 'isDefault', 'name', 'path', 'repos']);
     reset();
     expect((await api('POST', '/api/triggers', form({ workspace: 'api' }))).json.workspace).toBe('api');
@@ -276,7 +277,7 @@ describe('webhook setup', () => {
   it('reports a hint, never the secret, and shows a new one once', async () => {
     reset();
     const s = await api('GET', '/api/triggers/setup');
-    expect(s.json).toMatchObject({ payloadPath: '/api/webhooks/github', hasSecret: true, secretHint: SECRET.slice(-4), eventsToSelect: ['Pull requests'] });
+    expect(s.json).toMatchObject({ payloadPath: '/api/webhooks/github', hasSecret: true, secretHint: SECRET.slice(-4), eventsToSelect: ['Pull requests', 'Issues', 'Issue comments'] });
     noSecret(s, await api('GET', '/api/triggers'), await api('GET', '/api/triggers/deliveries'), await api('GET', '/api/workspaces'), await api('GET', '/api/health'));
 
     const r = await api('POST', '/api/triggers/setup/secret');

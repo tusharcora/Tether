@@ -33,7 +33,7 @@ export function TriggerTest(p: { triggers: Trigger[]; testId: string; onTestId: 
       {p.triggers.length ? (
         <>
           <div className="tg-test-fields">
-            <Select label="Trigger to test" value={p.testId} onValueChange={p.onTestId} options={p.triggers.map((t) => ({ value: t.id, label: t.id }))} />
+            <Select label="Trigger to test" value={p.testId} onValueChange={p.onTestId} options={p.triggers.filter((t) => (t.on ?? 'pr') === 'pr').map((t) => ({ value: t.id, label: t.id }))} />
             <Input id="tg-pr" label="Pull request" placeholder="https://github.com/owner/repo/pull/12" value={pr} spellCheck={false} onChange={(e) => setPr(e.target.value)} />
           </div>
           <div className="tg-actions">

@@ -1,7 +1,7 @@
 import { Button } from '../components/beui/kit/Button';
 import { Checkbox, Input, Select } from '../components/beui/kit/fields';
 import { NONE, fromNone } from '../ui/cn';
-import { EVENTS, type Form, type Workspace } from './types';
+import { EVENTS, KIND_LABEL, type Form, type Kind, type Workspace } from './types';
 import './triggers.css';
 
 /** The trigger form, in the Triggers dock. Every field of today's form; the id is locked while editing. */
@@ -26,6 +26,7 @@ export function TriggerForm(p: {
               p.onSave();
             }}
           >
+            <Select label="Fires on" value={f.on} onValueChange={(v) => p.onChange({ on: v as Kind })} options={(Object.keys(KIND_LABEL) as Kind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
             <Input label="Repo" required value={f.repo} placeholder="owner/repo, or * for any mapped repo" spellCheck={false} onChange={(e) => p.onChange({ repo: e.target.value })} />
             <Input label="Workflow" required list="trig-workflows" value={f.workflow} spellCheck={false} onChange={(e) => p.onChange({ workflow: e.target.value })} />
             <datalist id="trig-workflows">
@@ -65,19 +66,30 @@ export function TriggerForm(p: {
                 <option key={m} value={m} />
               ))}
             </datalist>
-            <Input label="Events" list="trig-events" value={f.events} placeholder="default: opened, synchronize, reopened, ready_for_review" spellCheck={false} onChange={(e) => p.onChange({ events: e.target.value })} />
-            <datalist id="trig-events">
-              {EVENTS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-            <Input label="Only with labels" value={f.labels} placeholder="comma separated; empty = any PR" spellCheck={false} onChange={(e) => p.onChange({ labels: e.target.value })} />
+            {f.on === 'pr' ? (
+              <>
+                <Input label="Events" list="trig-events" value={f.events} placeholder="default: opened, synchronize, reopened, ready_for_review" spellCheck={false} onChange={(e) => p.onChange({ events: e.target.value })} />
+                <datalist id="trig-events">
+                  {EVENTS.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <Input label="Only with labels" value={f.labels} placeholder="comma separated; empty = any PR" spellCheck={false} onChange={(e) => p.onChange({ labels: e.target.value })} />
+              </>
+            ) : f.on === 'issue' ? (
+              <Input label="Label" value={f.label} placeholder="empty = every new issue; else when this label is added" spellCheck={false} onChange={(e) => p.onChange({ label: e.target.value })} />
+            ) : (
+              <Input label="Mention" value={f.mention} placeholder="@tether" spellCheck={false} onChange={(e) => p.onChange({ mention: e.target.value })} />
+            )}
+            {f.on !== 'pr' ? <p className="tg-note">Only the repo's owners, members and collaborators can start a run this way; bots never do.</p> : null}
             <Input label="Id" value={f.id} disabled={p.editing} placeholder="auto: repo-workflow" spellCheck={false} onChange={(e) => p.onChange({ id: e.target.value })} />
-            <div className="tg-checks">
-              <Checkbox label="post the result as a PR comment" checked={f.comment} onCheckedChange={(c) => p.onChange({ comment: c === true })} />
-              <Checkbox label="include drafts" checked={f.drafts} onCheckedChange={(c) => p.onChange({ drafts: c === true })} />
-              <Checkbox label="include forks" checked={f.forks} onCheckedChange={(c) => p.onChange({ forks: c === true })} />
-            </div>
+            {f.on === 'pr' ? (
+              <div className="tg-checks">
+                <Checkbox label="post the result as a PR comment" checked={f.comment} onCheckedChange={(c) => p.onChange({ comment: c === true })} />
+                <Checkbox label="include drafts" checked={f.drafts} onCheckedChange={(c) => p.onChange({ drafts: c === true })} />
+                <Checkbox label="include forks" checked={f.forks} onCheckedChange={(c) => p.onChange({ forks: c === true })} />
+              </div>
+            ) : null}
             <div className="tg-actions">
               <Button variant="primary" type="submit" disabled={!f.repo.trim() || !f.workflow.trim()}>
                 Save
