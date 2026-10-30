@@ -12,7 +12,7 @@
 .rg-edge.e-done { stroke: var(--ok); }
 .rg-edge.e-live { stroke: var(--acc); }
 .rg-edge.e-failed { stroke: var(--bad); }
-.rg-edge.e-idle { stroke: var(--line2); }
+.rg-edge.e-idle { stroke: var(--edge); stroke-dasharray: 4 5; } /* next: dashed, as the team room draws it */
 .rg-dot { fill: var(--acc); }
 .rg-card {
   position: absolute; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 10px;

@@ -142,7 +142,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
         <h1>
           <span aria-hidden="true">#</span> {t.name}
         </h1>
-        <span className="tm-sub">{`${PLACE[t.place]} team · you + ${t.agents.length} agent${t.agents.length === 1 ? '' : 's'}`}</span>
+        <span className="tm-sub">{`${PLACE[t.place]} team · you + ${t.agents.length} agent${t.agents.length === 1 ? '' : 's'} · ${p.projects.find((w) => w.id === t.project)?.name ?? t.project} · ${t.approvers === 'any' ? 'any of you can approve' : `${approversLine(t)} can approve`}`}</span>
         <span className="tm-gap" />
         {counts.live ? <span className="tr-chip live">{`${counts.live} live run${counts.live === 1 ? '' : 's'}`}</span> : null}
         {counts.needs ? <span className="tr-chip needs">{`${counts.needs} needs you`}</span> : null}

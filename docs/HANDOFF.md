@@ -41,6 +41,14 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 ## Next steps (in order)
 
+0. **Asks become goals, team room, runs remade** (branch `feature/asks-goals-runs`, spec and plan dated 2026-10-29): built and checked in tests only. Check in the app:
+   - A chat ask to fix something gives a goal card; Start runs it; "Just answer, no goal" deletes the goal.
+   - A goal with no limits, and "+ Add limits" on New goal, Settings and the card.
+   - The sidebar chat ⋯ (Rename, Delete chat).
+   - Runs: Needs you cards, Approve & open PR; the week rail.
+   - A run's page: comment a diff line, Send back; Merge to main on a repo with a GitHub remote (a repo without one shows the push error: there is no local merge path).
+   - A team room: This run / Whole team, the strip, Open run from a card.
+   The plan's "My calls" list what to confirm.
 1. **Check the merged work in the app.** These were built but only checked in tests and a browser:
    - **Goals:**
      - The new palette on Home, Chats, Teams and Goals.

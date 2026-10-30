@@ -50,7 +50,7 @@ describe('the team screen (board 1)', () => {
   it('heads the room with its live runs, what needs you and today’s spend; the channel keeps its messages and cards', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Tether core' });
-    expect(screen.getByText('Tether team · you + 2 agents')).toBeTruthy();
+    expect(screen.getByText('Tether team · you + 2 agents · app · any of you can approve')).toBeTruthy();
     expect(screen.getByText('1 live run')).toBeTruthy();
     expect(screen.getByText('1 needs you')).toBeTruthy();
     expect(screen.getByText('$1.80 of $10.00 today')).toBeTruthy();
