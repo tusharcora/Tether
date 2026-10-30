@@ -29,6 +29,8 @@ export interface Prefs {
   commands?: 'ask' | 'always' | 'off';
   /** API client: the active environment per workspace id (not in the repo, so teammates don't fight over it). */
   httpActiveEnv?: Record<string, string>;
+  /** Tether turns asks to build, fix or do something into goal cards. Default on. */
+  asksToGoals?: boolean;
 }
 
 export function loadPrefs(home: string): Prefs {
@@ -45,6 +47,7 @@ export function loadPrefs(home: string): Prefs {
     if (j.split === 'auto' || j.split === 'off' || j.split === 'diff' || j.split === 'events') out.split = j.split;
     if (typeof j.graphics === 'boolean') out.graphics = j.graphics;
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
+    if (typeof j.asksToGoals === 'boolean') out.asksToGoals = j.asksToGoals;
     if (j.commands === 'ask' || j.commands === 'always' || j.commands === 'off') out.commands = j.commands;
     if (j.themes && typeof j.themes === 'object' && !Array.isArray(j.themes)) out.themes = j.themes as Record<string, unknown>;
     if (j.httpActiveEnv && typeof j.httpActiveEnv === 'object' && !Array.isArray(j.httpActiveEnv))

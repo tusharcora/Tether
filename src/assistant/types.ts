@@ -3,6 +3,7 @@
  * imports src/types.ts. Chats are per project; each Tether message may carry citations, proposed runs (which start only on
  * the person's click), questions, blocked outside-world calls waiting for a decision, Code Mode runs and a comparison.
  */
+import type { GoalCheck, GoalType } from '../goals/types.js';
 import type { TeamMode } from '../types.js';
 import type { ArtifactKind } from './artifactBlocks.js';
 
@@ -11,10 +12,29 @@ export type { ArtifactKind };
 /** A source behind a claim: `file:line` opens Code, a run opens its page, a note opens the Graph. */
 export type Cite = { n: number; label: string } & ({ kind: 'file'; path: string; line?: number } | { kind: 'run'; id: string } | { kind: 'note'; path: string });
 
-/** A run Tether proposes. Nothing starts until the person clicks Start (POST /api/assistant/proposals/:id). */
+/**
+ * A goal Tether drafts from an ask to build, fix or do something: what it is, who works on it and how. Every id is one that
+ * exists (unknown ones are dropped when the reply is checked); limits only when the person adds them.
+ */
+export interface GoalDraft {
+  title: string;
+  type: GoalType;
+  description?: string;
+  check?: GoalCheck;
+  /** A Teams team in the project: its runs go through the team (its daily limits hold). */
+  team?: string;
+  /** Crew agents, each with its role on this goal and a line on why it was picked. */
+  agents: { id: string; role: string; why?: string }[];
+  /** A saved workflow's name, or 'team'. */
+  workflow: string;
+  limits?: { budgetUsd?: number; maxRuns?: number; maxMinutes?: number };
+  approval: 'ask' | 'auto';
+}
+
+/** A run Tether proposes, or a goal (kind goal). Nothing starts until the person clicks Start (POST /api/assistant/proposals/:id). */
 export interface Proposal {
   id: string;
-  kind: 'workflow' | 'team';
+  kind: 'workflow' | 'team' | 'goal';
   /** A saved workflow (kind workflow). */
   workflow?: string;
   task: string;
@@ -25,6 +45,9 @@ export interface Proposal {
   runId?: string;
   /** What went wrong when it could not start. */
   note?: string;
+  /** kind goal: the draft, and the goal it made (paused, "not started", until Start). */
+  draft?: GoalDraft;
+  goalId?: string;
 }
 
 /** Questions before Tether goes on: one card, several steps; a single choice moves on by itself. */
@@ -226,6 +249,8 @@ export interface ChatView {
   openrouter?: boolean;
   /** NVIDIA is set up but Tether runs on another agent: the picker also offers NVIDIA's free models. */
   nvidia?: boolean;
+  /** Asks to build, fix or do something come back as a goal card (the composer's switch; default on). */
+  asksToGoals: boolean;
 }
 
 /** One step of what a chat led to: the question, a proposal, the run it started. Tones match the action nodes'. */

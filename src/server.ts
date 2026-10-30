@@ -354,7 +354,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
-      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo }, req, res, url);
+      return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);

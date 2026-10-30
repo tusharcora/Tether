@@ -74,6 +74,10 @@ export interface Goal {
   /** Where it was made: a chat's goal card. */
   origin?: GoalOrigin;
 }
+/** A goal's optional caps and their ranges: [lowest, highest, whole numbers only]. */
+export type LimitKey = 'budgetUsd' | 'maxRuns' | 'maxMinutes';
+export const LIMITS: Record<LimitKey, readonly [lo: number, hi: number, whole: boolean]> = { budgetUsd: [0.01, 1000, false], maxRuns: [1, 50, true], maxMinutes: [1, 1440, true] };
+export const GOAL_TYPES: readonly GoalType[] = ['feature', 'bugfix', 'refactor', 'chore'];
 export interface GoalOrigin {
   kind: 'chat';
   chat: string;

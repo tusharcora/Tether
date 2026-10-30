@@ -25,6 +25,8 @@ export interface PromptInput {
   /** The artifacts this chat made, each at its latest version, and the newest one's content (cut to ARTIFACT_PROMPT_MAX). */
   artifacts?: ArtifactRef[];
   artifact?: { ref: ArtifactRef; content: string };
+  /** Asks become goals: the instruction and what a goal card may name (goalDraft.ts). */
+  goals?: string;
 }
 
 const SEL = { run: 'the run', file: 'the file', note: 'the note', request: 'the saved API request', workflow: 'the workflow', bot: 'the crew bot' } as const;
@@ -58,7 +60,7 @@ export function messagesPart(i: Pick<PromptInput, 'history' | 'message' | 'attac
 /** What `text` (built from `i`) is made of, in characters; Tether's own instructions are the rest. Tools are measured by the turn. */
 export function promptParts(i: PromptInput, text: string): Omit<ContextUse['parts'], 'tools'> {
   const p = pieces(i);
-  const project = (i.project ? i.project.name.length + (i.project.blurb?.length ?? 0) : 0) + p.needs.length + i.runs.join('\n').length + i.workflows.join(', ').length;
+  const project = (i.project ? i.project.name.length + (i.project.blurb?.length ?? 0) : 0) + p.needs.length + i.runs.join('\n').length + i.workflows.join(', ').length + (i.goals?.length ?? 0);
   const memory = i.notes?.length ?? 0;
   // a team agent's context (team messages, its lessons) counts as memory
   const team = i.extra?.length ?? 0;
@@ -100,5 +102,5 @@ When you finish, you MAY end your answer with ONE fenced block, language "tether
  "report":{"title":"…","sections":[{"heading":"…","summary":"…","cites":[1]}]},"timeline":[{"time":"10:42","title":"…","when":"past|now|future"}],
  "diagram":{"title":"…","nodes":[{"id":"a","label":"…"}],"edges":[{"from":"a","to":"b","label":"…"}]}}
 \`\`\`
-"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. "proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. "questions": only when you cannot go on without an answer. "choice", "spec", "report", "timeline" and "diagram" are cards: add one only when it shows the answer better than prose. Do not mention this block in your prose.`;
+${i.goals ?? ''}"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. "proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. "questions": only when you cannot go on without an answer. "choice", "spec", "report", "timeline" and "diagram" are cards: add one only when it shows the answer better than prose. Do not mention this block in your prose.`;
 }
