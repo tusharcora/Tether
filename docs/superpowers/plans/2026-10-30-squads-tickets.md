@@ -19,6 +19,14 @@ Spec: `docs/superpowers/specs/2026-10-30-squads-tickets-design.md`. Boards: `doc
 - **Board view** shows Backlog, Todo, In progress, In review, Done; Canceled is in the List view and its own filter. List columns: key, type, title, status, priority, assignee, squad, updated.
 - **Recurring tickets** are loop goals (a check and a loop/schedule); the UI says Recurring; schedules keep targeting them.
 
+## Added 2026-10-30 (boards 8 and 10 updated: fill blank space with real data)
+
+- **Squad pulse** (right rail when no thread is open; the thread panel replaces it): the squad's tickets per status (Todo, Doing, Review, Done; each opens the board filtered to the squad and that status), Shipped today (key, title, PR) with a 5-day shipped bar chart, Coming up (queued pickups and the squad's recurring tickets with their next scheduled time), Pinned (any message pinned from its hover menu; a message with a link reads "Link", else "Decision").
+- **Queue** (my call, it is what "busy · will queue" and "picks up next" need): a task for an agent that already has a live run in the squad waits in the squad's queue and starts when that run ends; "Start now" starts it at once. No ETA is shown ("queued", "next"): Tether cannot know how long the current run takes.
+- **This week** strip on Tickets: shipped this week with a per-day chart, in flight with who, average Todo → Done (created to done, tickets done this week), the oldest ticket waiting on you (amber, opens it).
+- **Ideas from your chats** (Backlog): goal cards a chat drafted and someone answered "Just answer, no goal"; "+" makes a Backlog ticket from the draft (and it leaves the list). **Ready for an agent** (Todo): a free squad agent suggested for each unassigned Todo ticket of its squad (Assign), and each queued pickup (Start now). Each box is hidden when it has nothing real.
+- Tickets get a done time: `endedAt` is set when a ticket reaches Done or Canceled (by its loop or by its PR), cleared when it opens again.
+
 ## Tasks (in order)
 
 1. **Tickets migration** (`src/goals/store.ts`, `src/goals/tickets.ts`, `test/tickets.test.ts`): columns and `ticket_keys`; `migrateTickets` numbers unnumbered goals per project in creation order, maps status → stage (paused not started → Todo, paused → Backlog, active → In progress, needs_you → In review, met → Done, stopped → Canceled), assignees → assignee/reviewer (the loop's agent first), a team assignee → squad. Round trip test, run twice, keys in creation order, nothing else changed.
