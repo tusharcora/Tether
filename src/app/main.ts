@@ -125,7 +125,8 @@ function createWindow(url: string, home: string): void {
  * injected sheets), images, fonts and API, plus models.dev's maker logos in the model selector. Not set for the Vite
  * dev server, whose hot reload needs more.
  */
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://models.dev; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+// frame-src: a run's Preview shows its dev server, and only a loopback one
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://models.dev; font-src 'self' data:; connect-src 'self'; frame-src 'self' http://localhost:* http://127.0.0.1:* http://[::1]:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 function enforceCsp(): void {
   if (process.env.TETHER_DEV_URL) return;
   session.defaultSession.webRequest.onHeadersReceived((details, done) => {

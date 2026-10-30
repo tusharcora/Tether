@@ -111,6 +111,10 @@ const killGroup = (pid: number, sig: NodeJS.Signals) => {
   }
 };
 
+/** Every RunProcs not yet stopped: one exit hook kills all their groups (a test may open many servers). */
+const OPEN = new Set<RunProcs>();
+let exitHooked = false;
+
 interface Live {
   ac: AbortController;
   pid?: number;
@@ -130,6 +134,11 @@ export class RunProcs {
   constructor(private o: { home: string; store: Store }) {
     this.file = join(o.home, 'procs.json');
     this.reap();
+    OPEN.add(this);
+    if (!exitHooked) {
+      exitHooked = true;
+      process.on('exit', () => OPEN.forEach((p) => p.killAllNow()));
+    }
   }
 
   /** End the groups a crashed Tether left behind: those whose leader still runs and started when it was recorded. */
@@ -305,6 +314,7 @@ export class RunProcs {
 
   /** End every run's processes (the server closes). */
   async stopAll(): Promise<void> {
+    OPEN.delete(this);
     await Promise.all([...new Set([...this.running.keys(), ...this.previews.keys()])].map((id) => this.stopRun(id)));
   }
 

@@ -41,6 +41,9 @@ import { rowLive } from './runLabels.js';
 import { VAULT_ACTIVITY_LIMIT, VAULT_ACTIVITY_MAX, vaultActivity } from './vaultActivity.js';
 import { rowExtras } from './runRows.js';
 import { RunShip } from './runShip.js';
+import { Attempts } from './attempts.js';
+import { RunProcs } from './runProcs.js';
+import { runToolsRoute } from './runToolsRoutes.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
@@ -268,6 +271,24 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
   const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  /** Terminal and Preview processes; every one ends with the server (or, at the latest, with this process). */
+  const procs = new RunProcs({ home: cfg.home, store });
+  /** Try more ways: siblings count toward the original's goal and team. */
+  const goalOf = (s: RunState) => (s.origin?.kind === 'goal' ? s.origin.id : undefined);
+  const attempts = new Attempts({
+    home: cfg.home,
+    store,
+    engine,
+    registry,
+    ship: runShip,
+    refusal: (s, n) => (goalOf(s) ? goals.refusal(goalOf(s)!, n) : undefined) ?? teams.siblingRefusal(s.id, n),
+    adopt: (s, id) => (goalOf(s) && goals.adoptSibling(goalOf(s)!, id, s.task), teams.adopt(s.id, id)),
+    metric: (s) => (goalOf(s) ? goals.metricFor(goalOf(s)!, s.id) : undefined),
+  });
+  const sweep = () => void attempts.sweep().catch((e: unknown) => console.error(`[attempts] sweep: ${(e as Error).message}`));
+  sweep();
+  const sweeping = setInterval(sweep, 6 * 3_600_000);
+  sweeping.unref();
   /** Schedules start a workflow in their workspace, or give a goal its next turn. */
   const scheduler = new Scheduler(cfg.home, async (s) => {
     if (s.target.kind === 'goal') return void goals.kick(s.target.goalId);
@@ -412,6 +433,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
     if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
     if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
+    if (p.startsWith('/api/attempts/') || /^\/api\/runs\/[^/]+\/(rewind|fork|attempts|exec|preview)(\/|$)/.test(p))
+      return runToolsRoute({ store, engine, attempts, procs, runView, mayApprove: (id) => teams.mayApproveRun(id, OWNER.id) }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
@@ -908,6 +931,9 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'GET') return send(res, 200, runView(idParam(g[1]!))), true;
     if ((g = p.match(/^\/api\/runs\/([^/]+)$/)) && m === 'DELETE') {
       if (!store.state(idParam(g[1]!))) throw new HttpError(404, 'unknown run');
+      if (engine.isLive(idParam(g[1]!))) throw new HttpError(409, 'that run is still live: stop it first');
+      // its Terminal command and Preview end before its worktree goes
+      await procs.stopRun(idParam(g[1]!));
       try {
         await engine.deleteRun(idParam(g[1]!), { keepWork: url.searchParams.get('keepWork') === '1' });
       } catch (e) {
@@ -928,7 +954,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       let last = Number(req.headers['last-event-id'] ?? url.searchParams.get('after') ?? store.events(id).at(-1)?.seq ?? 0);
       const write = (event: string, data: unknown, idv?: number) => res.write(`${idv !== undefined ? `id: ${idv}\n` : ''}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       write('state', runView(id));
-      // Polling the log (rather than in-process listeners) also surfaces runs driven from the CLI.
+      // the Terminal's output: from this process only (commands run where the server runs), never in the run's log
+      const unproc = procs.on(id, (msg) => write('proc', msg));
       const tick = setInterval(() => {
         try {
           const fresh = store.events(id, last);
@@ -941,7 +968,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         }
       }, 500);
       const beat = setInterval(() => res.write(': hb\n\n'), 15_000);
-      req.on('close', () => (clearInterval(tick), clearInterval(beat)));
+      req.on('close', () => (clearInterval(tick), clearInterval(beat), unproc()));
       return true;
     }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/(answers|plan|mode|swap)$/)) && m === 'POST') {
@@ -1133,7 +1160,12 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       resolveP({
         server,
         url: `http://${host === '::1' ? '[::1]' : host}:${port}`,
-        close: () => new Promise((r) => (scheduler.stop(), server.closeAllConnections?.(), server.close(() => r()))),
+        close: async () => {
+          scheduler.stop();
+          clearInterval(sweeping);
+          await procs.stopAll();
+          await new Promise<void>((r) => (server.closeAllConnections?.(), server.close(() => r())));
+        },
       });
     });
   });
