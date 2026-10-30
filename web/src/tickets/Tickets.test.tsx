@@ -206,6 +206,18 @@ describe('the Backlog and Todo helpers (board 10)', () => {
   });
 });
 
+describe('ticket keys', () => {
+  it('the project’s key prefix is editable; every key follows it', async () => {
+    const p = setup();
+    routeApi({ 'PUT /api/tickets/prefix': { workspace: 'web', prefix: 'ACME' }, 'GET /api/tickets': [{ ...review, key: 'ACME-142' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Ticket keys start with WEB: change' }));
+    fireEvent.change(screen.getByLabelText('Key prefix'), { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls('PUT', '/api/tickets/prefix')[0]![2]).toEqual({ workspace: 'web', prefix: 'ACME' }));
+    await waitFor(() => expect(p.onTicket).toHaveBeenCalledWith(expect.objectContaining({ key: 'ACME-142' })));
+  });
+});
+
 describe('New ticket', () => {
   it('makes a ticket from its fields', async () => {
     const p = setup();

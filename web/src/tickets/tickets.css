@@ -28,6 +28,7 @@
 .tk-chip:hover { border-color: var(--edge); }
 .tk-chip.on, .tk-chip[aria-pressed='true'] { border-color: var(--acc, #2b6cf0); }
 .tk-pick select { height: 24px; padding: 0 8px; border: 1px solid var(--line2); border-radius: 999px; background: var(--s1); color: var(--ink); font: 12px var(--sans, inherit); }
+.tk-prefix { width: 72px; height: 26px; padding: 0 8px; border: 1px solid var(--line2); border-radius: 7px; background: var(--s1); color: var(--ink); font: 12px var(--mono); }
 .tk-tip { margin-left: auto; color: var(--mut2, var(--mut)); font-size: 12px; }
 
 .tk-body { display: flex; flex: 1; min-height: 0; }

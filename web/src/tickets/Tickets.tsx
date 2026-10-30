@@ -90,6 +90,7 @@ export function Tickets(p: { tickets: GoalView[] | undefined; error?: string; on
         <h1>Tickets</h1>
         <span className="tk-sub">{`${p.project?.name ?? 'All projects'} · ${all.filter((t) => t.stage === 'in_progress').length} in progress${inReview ? ` · ${inReview} waiting on you` : ''}`}</span>
         <span className="tk-gap" />
+        {ws ? <PrefixField ws={ws} prefix={all.find((t) => t.key)?.key.split('-')[0]} onSaved={(list) => list.forEach((t) => p.onTicket(t))} /> : null}
         <div className="tk-tabs" role="tablist" aria-label="View">
           {(['board', 'list'] as const).map((v) => (
             <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}>
@@ -242,6 +243,42 @@ export function Tickets(p: { tickets: GoalView[] | undefined; error?: string; on
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** The project's key prefix (`WEB` in WEB-142), editable; every key of the project follows it. */
+function PrefixField({ ws, prefix, onSaved }: { ws: string; prefix?: string; onSaved: (tickets: GoalView[]) => void }) {
+  const notify = useNotify();
+  const [edit, setEdit] = useState<string>();
+  const id = useId();
+  if (edit === undefined)
+    return (
+      <button type="button" className="tk-chip" aria-label={`Ticket keys start with ${prefix ?? 'the project name'}: change`} onClick={() => setEdit(prefix ?? '')}>
+        {`${prefix ?? 'KEY'}-n`}
+      </button>
+    );
+  const save = async () => {
+    try {
+      await goalsApi.prefix(ws, edit.trim());
+      onSaved(await api<GoalView[]>('GET', `/api/tickets?ws=${encodeURIComponent(ws)}`));
+      setEdit(undefined);
+    } catch (e) {
+      notify.fail(e);
+    }
+  };
+  return (
+    <form className="tk-row" onSubmit={(e) => (e.preventDefault(), void save())}>
+      <label htmlFor={id} className="tk-mut">
+        Key prefix
+      </label>
+      <input id={id} className="tk-prefix" value={edit} maxLength={6} onChange={(e) => setEdit(e.target.value.toUpperCase())} autoFocus />
+      <Button type="submit" size="sm" variant="secondary" disabled={!edit.trim()}>
+        Save
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setEdit(undefined)}>
+        Cancel
+      </Button>
+    </form>
   );
 }
 
