@@ -257,7 +257,9 @@ export class Goals {
     }
     this.db.addItem({ goalId: g.id, kind: 'run', text: plan.task, runId, attempt: { ...(g.lastCheck ? { before: g.lastCheck } : {}) } });
     this.watched.set(runId, g.id);
-    this.save({ ...g, status: g.status === 'paused' ? 'paused' : 'active', pending: undefined });
+    // re-read: a pause or stop that landed while the run was starting must stick
+    const now = this.db.must(g.id);
+    this.save({ ...now, status: now.status === 'paused' || now.status === 'stopped' ? now.status : 'active', pending: undefined });
     if (this.runDone(runId)) this.job(this.afterRun(g.id, runId));
   }
 
