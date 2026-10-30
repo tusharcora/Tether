@@ -50,7 +50,7 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, o
           </>
         ) : (
           <>
-            <span>{r.kind === 'team' ? 'Team run' : r.pipeline.name}</span>
+            <span>{r.kind === 'team' ? 'Squad run' : r.pipeline.name}</span>
             <span aria-hidden="true">/</span>
           </>
         )}
@@ -60,7 +60,7 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, o
         <h1>{taskTitle({ task: r.task, kind: r.kind, pipeline: r.pipeline.name })}</h1>
         <StatusBadge desc={viewDesc(r)} />
         {goal ? (
-          <button type="button" className="rp-chip" onClick={onGoal}>{`${TYPE_GLYPH[goal.type ?? 'feature']} Goal · ${goalTry(goal, r.id)}`}</button>
+          <button type="button" className="rp-chip" onClick={onGoal}>{`${TYPE_GLYPH[goal.type ?? 'feature']} ${goal.key} · ${goalTry(goal, r.id)}`}</button>
         ) : null}
         {r.attemptLabel && onCompare ? (
           <button type="button" className="rp-chip" onClick={onCompare}>{`Attempt ${r.attemptLabel}${setSize ? ` of ${setSize}` : ''} · Compare`}</button>

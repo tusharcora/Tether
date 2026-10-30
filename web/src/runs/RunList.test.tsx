@@ -19,7 +19,7 @@ const rows = [
 ];
 const setup = (o: { data?: RunRow[]; schedules?: boolean; onShip?: (id: string) => Promise<void> } = {}) => {
   routeApi({
-    'GET /api/teams': { teams: [{ id: 'web', name: 'web', place: 'tether', project: 'w', agents: [], status: 'idle' }], agents: [] },
+    'GET /api/squads': { squads: [{ id: 'web', name: 'web', place: 'tether', project: 'w', agents: [], status: 'idle', needs: 0, recent: [], queue: [] }], agents: [] },
     'GET /api/schedules': o.schedules ? { schedules: [{ id: 's1', name: 'Triage failing tests', when: 'every night 02:00', bot: 'tester' }] } : new ApiError('not found', 404),
   });
   const p = { onSelect: vi.fn(), onProbes: vi.fn(), onStart: vi.fn() };
@@ -37,7 +37,7 @@ describe('Runs, remade', () => {
     const p = setup({ onShip });
     const needs = screen.getByRole('region', { name: 'Needs you' });
     const card = within(needs).getByRole('group', { name: 'Sign-in returns people to where they were' });
-    expect(await within(card).findByText('You approve waits on you · +42 −9 · # web · goal')).toBeTruthy();
+    expect(await within(card).findByText('You approve waits on you · +42 −9 · # web · ticket')).toBeTruthy();
     fireEvent.click(within(card).getByRole('button', { name: 'Approve & open PR' }));
     await waitFor(() => expect(onShip).toHaveBeenCalledWith('r1'));
     fireEvent.click(within(card).getByRole('button', { name: 'Review diff' }));
@@ -61,9 +61,9 @@ describe('Runs, remade', () => {
     expect(screen.queryByText('Upgrade vite')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
     await screen.findByRole('option', { name: '# web' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Team' }), { target: { value: 'web' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Squad' }), { target: { value: 'web' } });
     expect(screen.queryByText('Upgrade vite')).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Team' }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Squad' }), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Search runs'), { target: { value: 'nothing like this' } });
     expect(screen.getByText('No runs match.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
@@ -76,7 +76,7 @@ describe('Runs, remade', () => {
     expect(within(rail).getByText('PRs merged').previousElementSibling!.textContent).toBe('1');
     expect(within(rail).getByText('runs').previousElementSibling!.textContent).toBe('4');
     expect(within(rail).getByRole('img', { name: /Spend per day, last 7 days/ })).toBeTruthy();
-    expect(within(rail).getByText('Goals 1')).toBeTruthy();
+    expect(within(rail).getByText('Tickets 1')).toBeTruthy();
     expect(within(rail).getByText('Other 3')).toBeTruthy();
     expect(within(rail).queryByText('Chats 0')).toBeNull();
   });
@@ -105,7 +105,7 @@ describe('Runs, remade', () => {
   });
 
   it('keeps the list and offers a compact retry when a later poll fails', () => {
-    routeApi({ 'GET /api/teams': { teams: [], agents: [] }, 'GET /api/schedules': new ApiError('nf', 404) });
+    routeApi({ 'GET /api/squads': { squads: [], agents: [] }, 'GET /api/schedules': new ApiError('nf', 404) });
     const pl = poll(rows, 'down');
     renderApp(<RunList poll={pl} probes={false} onProbes={() => {}} onSelect={() => {}} />);
     expect(screen.getByText('Upgrade vite')).toBeTruthy();

@@ -92,7 +92,7 @@ describe('Builder', () => {
 
     // the closing dialog stays mounted (hiding the page from role queries) until its exit animation ends
     fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Squad' }));
     fireEvent.change(screen.getByLabelText('Task'), { target: { value: 'Add caching' } });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start run' })));
     expect(calls('POST', '/api/runs')[1]![2]).toEqual({ kind: 'team', mode: 'live', task: 'Add caching', repo: '/code/app' });

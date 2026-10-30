@@ -11,7 +11,7 @@ import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
-import { ApproveButton } from '../goals/Goals';
+import { ApproveButton } from '../goals/GoalNode';
 import { teamsApi } from '../teams/teamsApi';
 import { goalMeta, goalsApi, type GoalView } from '../goals/goalsApi';
 import { waitingGoals } from '../goals/GoalsNeedYou';
@@ -129,7 +129,7 @@ function GoalDetail({ goal: g, onGo, onDone }: { goal: GoalView; onGo: (r: Route
         <Button variant="secondary" size="sm" onClick={() => void goalsApi.next(g.id, 'skip').then(onDone, notify.fail)}>
           Skip
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'goals', id: g.id })}>
+        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'tickets', id: g.id })}>
           Open goal
         </Button>
       </div>
@@ -179,7 +179,7 @@ export function Inbox(props: { onGo: (r: Route) => void; goals?: GoalView[]; onG
                       <span className="sl-dot pulse inbox-dot" aria-hidden="true" />
                       <span className="inbox-row-main">
                         <span className="sl-row-title">{g.title}</span>
-                        <span className="sl-row-meta">Goal · next run</span>
+                        <span className="sl-row-meta">Ticket · next run</span>
                       </span>
                       <StatusBadge tone="needs" label="approve run" />
                     </button>

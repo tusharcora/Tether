@@ -54,7 +54,7 @@ interface Draft {
 const blankDraft = (): Draft => ({ name: '', cron: PRESETS[0]!.cron, kind: 'workflow', workspace: '', workflow: '', task: '', goalId: '' });
 
 /**
- * Schedules on the Triggers screen: each starts a workflow in a workspace, or gives a goal its next turn, on a cron rule in
+ * Schedules on the Triggers screen: each starts a workflow in a workspace, or gives a recurring ticket its next turn, on a cron rule in
  * this machine's time. A list with the next fire, an on/off switch, Run now and Delete, and a form with presets.
  */
 export function Schedules(p: { workspaces: Workspace[]; workflows: string[] }) {
@@ -64,11 +64,11 @@ export function Schedules(p: { workspaces: Workspace[]; workflows: string[] }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    void api<GoalLite[]>('GET', '/api/goals').then(setGoals).catch(() => undefined);
+    void api<GoalLite[]>('GET', '/api/tickets').then(setGoals).catch(() => undefined);
   }, []);
   const set = (d: Partial<Draft>) => setDraft((x) => (x ? { ...x, ...d } : x));
   const openGoals = goals.filter((g) => g.kind === 'loop' && g.status !== 'met' && g.status !== 'stopped');
-  const what = (s: Schedule) => (s.target.kind === 'goal' ? `goal ${goals.find((g) => g.id === (s.target as { goalId: string }).goalId)?.title ?? s.target.goalId}` : `runs ${s.target.workflow} in ${s.workspace}`);
+  const what = (s: Schedule) => (s.target.kind === 'goal' ? `ticket ${goals.find((g) => g.id === (s.target as { goalId: string }).goalId)?.title ?? s.target.goalId}` : `runs ${s.target.workflow} in ${s.workspace}`);
 
   async function act(fn: () => Promise<unknown>) {
     try {
@@ -157,7 +157,7 @@ export function Schedules(p: { workspaces: Workspace[]; workflows: string[] }) {
           ))}
         </ul>
       ) : draft || !list.data ? null : (
-        <p className="tg-note">No schedules yet. A schedule starts a workflow or works on a goal at set times, in this computer's time zone.</p>
+        <p className="tg-note">No schedules yet. A schedule starts a workflow or works on a recurring ticket at set times, in this computer's time zone.</p>
       )}
       {draft ? (
         <form
@@ -177,7 +177,7 @@ export function Schedules(p: { workspaces: Workspace[]; workflows: string[] }) {
               </Button>
             ))}
           </div>
-          <Select label="Does" value={draft.kind} onValueChange={(v) => set({ kind: v as Draft['kind'] })} options={[{ value: 'workflow', label: 'Run a workflow' }, { value: 'goal', label: "Work on a goal" }]} />
+          <Select label="Does" value={draft.kind} onValueChange={(v) => set({ kind: v as Draft['kind'] })} options={[{ value: 'workflow', label: 'Run a workflow' }, { value: 'goal', label: 'Work on a recurring ticket' }]} />
           {draft.kind === 'workflow' ? (
             <>
               <Select label="Workspace" value={draft.workspace} onValueChange={(v) => set({ workspace: v })} options={p.workspaces.map((w) => ({ value: w.id, label: `${w.name || w.id}${w.exists ? '' : ' (folder missing)'}` }))} />
@@ -190,9 +190,9 @@ export function Schedules(p: { workspaces: Workspace[]; workflows: string[] }) {
               <Textarea label="Task" rows={3} value={draft.task} placeholder="What the run should do each time" onChange={(e) => set({ task: e.target.value })} />
             </>
           ) : openGoals.length ? (
-            <Select label="Goal" value={draft.goalId} onValueChange={(v) => set({ goalId: v })} options={openGoals.map((g) => ({ value: g.id, label: g.title }))} />
+            <Select label="Ticket" value={draft.goalId} onValueChange={(v) => set({ goalId: v })} options={openGoals.map((g) => ({ value: g.id, label: g.title }))} />
           ) : (
-            <p className="tg-note">No open goal with a finish check yet.</p>
+            <p className="tg-note">No open recurring ticket yet (one with an auto-checked criterion).</p>
           )}
           <div className="tg-actions">
             <Button variant="primary" type="submit" disabled={!ready || busy}>

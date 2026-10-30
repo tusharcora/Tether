@@ -446,7 +446,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       </Dialog>
 
       <Dialog open={runOpen} onOpenChange={setRunOpen}>
-        <DialogContent title={teamRun ? 'Start a team run' : fromStep ? `Run “${pl.name}” from ${fromStep}` : `Run “${pl.name}”`}>
+        <DialogContent title={teamRun ? 'Start a squad run' : fromStep ? `Run “${pl.name}” from ${fromStep}` : `Run “${pl.name}”`}>
           <form
             className="bl-form"
             onSubmit={(e) => {
@@ -459,7 +459,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
               label="Run type"
               options={[
                 { value: 'workflow', label: 'Workflow' },
-                { value: 'team', label: 'Team' },
+                { value: 'team', label: 'Squad' },
               ]}
               value={teamRun ? 'team' : 'workflow'}
               onValueChange={(v) => (setTeamRun(v === 'team'), v === 'team' && setFromStep(undefined))}

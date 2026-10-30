@@ -30,19 +30,19 @@ const who = (g: GoalView): Assignee[] => g.assignees ?? (g.team ? [{ kind: 'team
  */
 export function GoalsPanel({ goals, project, chatId, onGo, teamName = (id) => id }: { goals: GoalView[]; project?: string; chatId?: string; onGo: (r: Route) => void; teamName?: (id: string) => string }) {
   const open = inProject(goals, project).filter(isOpen);
-  const mine = (g: GoalView) => !!chatId && g.origin?.chat === chatId;
+  const mine = (g: GoalView) => !!chatId && g.origin?.kind === 'chat' && g.origin.chat === chatId;
   const shown = [...open.filter(mine), ...open.filter((g) => !mine(g))].slice(0, 8);
   return (
-    <aside className="cg" aria-label="Goals next">
+    <aside className="cg" aria-label="Tickets next">
       <div className="cg-head">
-        <b>Goals · next</b>
-        <button type="button" className="cg-all" onClick={() => onGo({ tab: 'goals' })}>
+        <b>Tickets · next</b>
+        <button type="button" className="cg-all" onClick={() => onGo({ tab: 'tickets' })}>
           All goals
         </button>
       </div>
-      {shown.length ? null : <p className="cg-none">No open goals in this project. Ask Tether to build, fix or do something and it becomes one.</p>}
+      {shown.length ? null : <p className="cg-none">No open tickets in this project. Ask Tether to build, fix or do something and it becomes one.</p>}
       {shown.map((g) => (
-        <button key={g.id} type="button" className={cn('cg-goal', mine(g) && 'mine')} aria-current={mine(g) ? 'true' : undefined} onClick={() => onGo({ tab: 'goals', id: g.id })}>
+        <button key={g.id} type="button" className={cn('cg-goal', mine(g) && 'mine')} aria-current={mine(g) ? 'true' : undefined} onClick={() => onGo({ tab: 'tickets', id: g.id })}>
           <span className="cg-title">
             <span className={cn('cg-glyph', g.type ?? 'feature')} aria-hidden="true">
               {TYPE_GLYPH[g.type ?? 'feature']}

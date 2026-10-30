@@ -18,7 +18,7 @@ describe('Schedules', () => {
   it('lists each schedule with its next fire and target, switches it off and runs it now', async () => {
     routeApi({
       'GET /api/schedules': [nightly, { ...nightly, id: 's-00000002', name: 'Goal turn', target: { kind: 'goal', goalId: 'g1' }, workspace: undefined, enabled: false, nextAt: undefined, lastRunId: undefined, lastError: 'workspace "proj" is missing' }],
-      'GET /api/goals': [{ id: 'g1', title: 'Green tests', kind: 'loop', status: 'active' }],
+      'GET /api/tickets': [{ id: 'g1', title: 'Green tests', kind: 'loop', status: 'active' }],
       'PATCH /api/schedules/s-00000001': { ...nightly, enabled: false },
       'POST /api/schedules/s-00000001/run': nightly,
     });
@@ -26,7 +26,7 @@ describe('Schedules', () => {
     expect(await screen.findByText(`next ${when(nightly.nextAt!)}`)).toBeTruthy();
     expect(screen.getByText('runs tidy in proj')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'last run' }).getAttribute('href')).toBe('#/runs/r7');
-    expect(await screen.findByText('goal Green tests')).toBeTruthy();
+    expect(await screen.findByText('ticket Green tests')).toBeTruthy();
     expect(screen.getByText('off')).toBeTruthy();
     expect(screen.getByText('workspace "proj" is missing')).toBeTruthy();
     fireEvent.click(screen.getByRole('switch', { name: 'Turn off Nightly tidy' }));
@@ -37,7 +37,7 @@ describe('Schedules', () => {
 
   it('creates a workflow schedule from a preset', async () => {
     let body: unknown;
-    routeApi({ 'GET /api/schedules': [], 'GET /api/goals': [], 'POST /api/schedules': (b: unknown) => ((body = b), nightly) });
+    routeApi({ 'GET /api/schedules': [], 'GET /api/tickets': [], 'POST /api/schedules': (b: unknown) => ((body = b), nightly) });
     renderApp(<Schedules workspaces={ws} workflows={['tidy']} />);
     expect(await screen.findByText(/No schedules yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '+ New schedule' }));

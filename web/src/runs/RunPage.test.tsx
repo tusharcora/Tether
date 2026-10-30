@@ -26,12 +26,12 @@ describe('run header, notices and approval bar', () => {
     expect(screen.getByText(/^\d+:\d{2} · \$0\.12 of \$5\.00$/)).toBeTruthy();
     expect(document.querySelector('[data-status="loading"]')!.textContent).toContain('running');
   });
-  it('a goal’s run says which try it is and opens the goal; a team’s run opens in its room', () => {
+  it('a ticket’s run says its key and which try it is and opens the ticket; a squad’s run opens in its room', () => {
     const onGoal = vi.fn();
     const onTeam = vi.fn();
-    const goal = { id: 'g1', type: 'bugfix', maxRuns: 3, items: [{ id: 1, kind: 'run', runId: 'r1' }] } as never;
+    const goal = { id: 'g1', key: 'WEB-142', type: 'bugfix', maxRuns: 3, items: [{ id: 1, kind: 'run', runId: 'r1' }] } as never;
     renderApp(<RunHeader run={makeRun()} onAct={act0} onBack={() => {}} goal={goal} team="web" onGoal={onGoal} onTeam={onTeam} />);
-    fireEvent.click(screen.getByRole('button', { name: '! Goal · try 1 of 3' }));
+    fireEvent.click(screen.getByRole('button', { name: '! WEB-142 · try 1 of 3' }));
     expect(onGoal).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Open in # web' }));
     fireEvent.click(screen.getByRole('button', { name: '# web' }));
