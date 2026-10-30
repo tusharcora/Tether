@@ -238,10 +238,10 @@ describe('the Code Mode session', () => {
     expect(grantsFrom(asks as never, 'code', 'Bolt')).toEqual(['merge o/r#7 (squash)']);
   });
 
-  it('cuts a big result to 16 KB with a note', async () => {
+  it('spills a result over 16 KB: head and tail inline, the rest in a file it names', async () => {
     const r = await session().runCode('return "x".repeat(40000)');
-    expect(r.text.length).toBeLessThan(16 * 1024 + 200);
-    expect(r.text).toMatch(/\[\.\.\. cut: \d+ more characters\. Return less/);
+    expect(r.text.length).toBeLessThanOrEqual(16 * 1024);
+    expect(r.text).toMatch(/\(Omitted \d+ bytes\. Full formatted result stored at: \.tether\/spill\/[0-9a-f]+\.txt\. Read it in line ranges with repo\.read/);
   });
 
   it('describes itself by connector names and the two discovery functions, not by every method', () => {

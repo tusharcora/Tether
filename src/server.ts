@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
@@ -18,6 +18,7 @@ import { knownSize } from './assistant/context.js';
 import { assistantRoute } from './assistant/routes.js';
 import { isOpenRouter } from './openrouter.js';
 import { codemodeRoute } from './codemode/routes.js';
+import { sweepSpills } from './codemode/spill.js';
 import { Goals } from './goals/loop.js';
 import { goalsRoute } from './goals/routes.js';
 import { teamsRoute } from './teams/routes.js';
@@ -264,6 +265,9 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  // run_code spills older than a day go on start: in run worktrees and in workspace folders (where the assistant's land)
+  const worktrees = join(cfg.home, 'worktrees');
+  for (const dir of [...(existsSync(worktrees) ? readdirSync(worktrees).map((n) => join(worktrees, n)) : []), ...listWorkspaces(cfg.home).map((w) => w.path)]) void sweepSpills(dir);
   type Detected = { ok: boolean; version?: string; detail?: string; reportsCost: boolean; supportsResume: boolean };
   let doctorCache: { at: number; data: Record<string, Detected> } | undefined;
   /** Each adapter's detect() result (installed, version), kept for 30 s. */
