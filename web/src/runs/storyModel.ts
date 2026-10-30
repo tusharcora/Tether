@@ -70,7 +70,36 @@ export function storyRows(r: RunView, botOf: (n: PipelineNode) => string, nameOf
     const stat = s.stat ? `${plural(s.stat.files, 'file')} · +${s.stat.added} −${s.stat.deleted}` : '';
     rows.push({ id, node: id, bot, sentence: agentSentence(name, n, st, s.verdict), line: [title !== n.role ? title : '', stat, s.verdict ? `verdict ${s.verdict}` : '', took(s), s.costUsd ? fmtUsd(s.costUsd) : ''].filter(Boolean).join(' · '), state: st });
   }
+  // auto-fix's rounds after the steps they ran again (spec 2026-10-30 §3.4)
+  const a = r.autofix;
+  if (a) {
+    a.rounds.forEach((x, i) => rows.push({ id: `autofix-${x.round}`, bot: 'tether', sentence: `Tether auto-fixed: round ${x.round} of ${a.of}`, line: roundLine(r, x, botOf, nameOf), state: i === a.rounds.length - 1 && r.status === 'running' ? 'working' : 'done' }));
+    if (a.gaveUp) rows.push({ id: 'autofix-gave-up', bot: 'tether', sentence: a.round ? `Auto-fix gave up after ${plural(a.round, 'round')}` : 'Auto-fix could not help', line: a.gaveUp, state: 'failed' });
+    else if (a.needsWrites) rows.push({ id: 'autofix-writes', sentence: 'Tether asks: allow edits and retry?', line: a.needsWrites, state: 'waiting', you: true });
+  }
   return rows;
+}
+
+type Round = NonNullable<RunView['autofix']>['rounds'][number];
+/** What one auto-fix round did, said plainly: "moved Lens to opus", "retried with the diagnosis attached". */
+function roundLine(r: RunView, x: Round, botOf: (n: PipelineNode) => string, nameOf: (bot: string) => string): string {
+  if (x.action === 'escalate') {
+    const n = r.pipeline.nodes.find((y) => y.id === x.node);
+    return `moved ${n ? nameOf(botOf(n)) : (x.node ?? 'the step')} to ${x.to?.model ?? x.to?.agent ?? 'a stronger model'}`;
+  }
+  return /diagnosis/.test(x.detail) ? 'retried with the diagnosis attached' : /edits allowed/.test(x.detail) ? 'retried with edits allowed' : 'retried the failed steps';
+}
+
+/** The run header's auto-fix line: "Auto-fixing · round 2 of 3 · moved Lens to opus", how it ended, or nothing. */
+export function autofixLine(r: RunView, nameOf: (bot: string) => string, botOf: (n: PipelineNode) => string): string | undefined {
+  const a = r.autofix;
+  if (!a) return undefined;
+  if (r.status === 'done') return a.round ? `Fixed by auto-fix in round ${a.round}` : undefined;
+  if (a.gaveUp) return a.round ? `Auto-fix gave up after ${plural(a.round, 'round')}` : 'Auto-fix could not help';
+  if (a.needsWrites) return 'Auto-fix waits on you: allow edits and retry?';
+  if (r.status !== 'running' && r.status !== 'error') return undefined;
+  const last = a.rounds.at(-1);
+  return a.round ? `Auto-fixing · round ${a.round} of ${a.of}${last ? ` · ${roundLine(r, last, botOf, nameOf)}` : ''}` : 'Auto-fixing · working out what went wrong';
 }
 
 /** The step the page opens on: the route's, the one working, the last one that changed files, else the first. */

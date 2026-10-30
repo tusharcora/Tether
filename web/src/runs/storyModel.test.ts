@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { PipelineNode } from '../../../src/types';
 import { makeRun } from '../test/fixtures';
 import { loadComments, sendBackNote, sendBackTarget, type LineComment } from './comments';
-import { costParts, decisionLine, decisionOf, defaultStep, storyRows } from './storyModel';
+import { autofixLine, costParts, decisionLine, decisionOf, defaultStep, storyRows } from './storyModel';
 
 const NAMES: Record<string, string> = { coder: 'Bolt', reviewer: 'Lens', tester: 'Probe', planner: 'Sage', tether: 'Tether' };
 const botOf = (n: Pick<PipelineNode, 'kind' | 'role'>) => (n.kind === 'gate' ? 'tester' : (n.role ?? 'coder'));
@@ -31,6 +31,28 @@ const shipRun = () =>
       ok: { status: 'awaiting', attempts: 0, costUsd: 0, loops: 0 },
     },
   });
+
+describe('auto-fix in the story', () => {
+  it('a row per round, saying what it did; a gave-up row says why; Allow edits waits on you', () => {
+    const base = shipRun();
+    const r = { ...base, status: 'running' as const, autofix: { round: 2, of: 3, rounds: [{ round: 1, action: 'retry' as const, detail: 'retrying fix with the diagnosis attached', ts: 1 }, { round: 2, action: 'escalate' as const, node: 'review', to: { agent: 'claude', model: 'opus' }, detail: 'moving review to claude · opus', ts: 2 }] } };
+    const rows = storyRows(r, botOf, nameOf).filter((x) => x.id.startsWith('autofix'));
+    expect(rows.map((x) => [x.sentence, x.line, x.state])).toEqual([
+      ['Tether auto-fixed: round 1 of 3', 'retried with the diagnosis attached', 'done'],
+      ['Tether auto-fixed: round 2 of 3', 'moved Lens to opus', 'working'],
+    ]);
+    const gave = storyRows({ ...r, status: 'error', autofix: { ...r.autofix, gaveUp: 'still failing' } }, botOf, nameOf).at(-1)!;
+    expect([gave.sentence, gave.line, gave.state]).toEqual(['Auto-fix gave up after 2 rounds', 'still failing', 'failed']);
+    const ask = storyRows({ ...r, status: 'error', autofix: { ...r.autofix, needsWrites: 'this run is read-only' } }, botOf, nameOf).at(-1)!;
+    expect(ask).toMatchObject({ sentence: 'Tether asks: allow edits and retry?', state: 'waiting', you: true });
+  });
+  it('the header line: Auto-fixing · round 2 of 3 · moved Lens to opus', () => {
+    const r = { ...shipRun(), status: 'running' as const, autofix: { round: 2, of: 3, rounds: [{ round: 2, action: 'escalate' as const, node: 'review', to: { agent: 'claude', model: 'opus' }, detail: 'x', ts: 2 }] } };
+    expect(autofixLine(r, nameOf, botOf)).toBe('Auto-fixing · round 2 of 3 · moved Lens to opus');
+    expect(autofixLine({ ...r, status: 'done' }, nameOf, botOf)).toBe('Fixed by auto-fix in round 2');
+    expect(autofixLine({ ...r, autofix: undefined }, nameOf, botOf)).toBeUndefined();
+  });
+});
 
 describe('a run told as a story', () => {
   it('one row per step in order: who did what, the files and ±, the result, and you approve last', () => {

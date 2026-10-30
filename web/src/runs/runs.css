@@ -125,6 +125,7 @@
 .rp-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 .rp-head h1 { min-width: 0; max-width: 100%; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 19px; font-weight: 600; color: var(--ink); }
 .rp-head-line { font-size: 12px; color: var(--mut); }
+.rp-head-note { margin: 4px 0 0; font-size: 12px; color: var(--mut); }
 .rp-gap { flex: 1; }
 .rp-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--s2); color: var(--ink); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .rp-chip:focus-visible, .rp-link:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
