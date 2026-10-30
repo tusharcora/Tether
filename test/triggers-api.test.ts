@@ -176,6 +176,22 @@ describe('triggers api: input checks', () => {
     expect((await api('POST', '/api/triggers/acme-api-test/test', { pr: '7', fire: false })).json).toMatchObject({ matches: true, fired: false });
     expect((await api('GET', '/api/triggers/deliveries')).json.filter((d: { source: string }) => d.source === 'test')).toEqual([]);
   });
+  it('creates issue and comment triggers beside a PR trigger, and only tests PR triggers', async () => {
+    reset();
+    expect((await api('POST', '/api/triggers', form())).json.id).toBe('acme-api-test');
+    const i = await api('POST', '/api/triggers', form({ on: 'issue', label: 'tether', events: ['opened'] }));
+    expect(i.status).toBe(200);
+    expect(i.json).toMatchObject({ id: 'acme-api-test-issue', on: 'issue', label: 'tether', status: 'idle' });
+    expect(i.json.events).toBeUndefined();
+    expect((await api('POST', '/api/triggers', form({ on: 'comment', mention: '@bolt' }))).json).toMatchObject({ id: 'acme-api-test-comment', mention: '@bolt' });
+    expect((await api('GET', '/api/triggers')).json).toHaveLength(3);
+    expect((await api('POST', '/api/triggers', form({ on: 'push' }))).status).toBe(400);
+    expect((await api('POST', '/api/triggers', form({ on: 'comment', mention: 'no-at' }))).status).toBe(400);
+    const t = await api('POST', '/api/triggers/acme-api-test-issue/test', { pr: 'acme/api#1' });
+    expect(t.status).toBe(400);
+    expect(t.json.error).toMatch(/only pull request triggers can be tested/);
+  });
+
   it('reserves ids that clash with fixed paths', async () => {
     reset();
     for (const id of ['setup', 'deliveries', 'secret']) expect((await api('POST', '/api/triggers', form({ id }))).json.error).toMatch(/reserved/);

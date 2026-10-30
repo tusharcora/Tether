@@ -169,9 +169,11 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
           />
           {editing ? (
             <div className="tg-actions tg-row-actions">
-              <Button variant="ghost" size="sm" onClick={() => toTest(form.id)}>
-                Test
-              </Button>
+              {form.on === 'pr' ? (
+                <Button variant="ghost" size="sm" onClick={() => toTest(form.id)}>
+                  Test
+                </Button>
+              ) : null}
               <Button variant="ghost" size="sm" onClick={() => setLogFor(form.id)}>
                 Log
               </Button>
