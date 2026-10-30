@@ -51,7 +51,7 @@ export function TelegramAccount({ p, onChanged }: { p: ProviderView; onChanged: 
     setError(undefined);
     try {
       await api('POST', '/api/accounts/telegram', { token: input.current?.value ?? '' });
-      notify.ok('Telegram connected', 'Make a Telegram team: New team → Telegram group');
+      notify.ok('Telegram connected', 'Make a Telegram squad: New squad → Telegram group');
       await onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -71,7 +71,7 @@ export function TelegramAccount({ p, onChanged }: { p: ProviderView; onChanged: 
           <StatusBadge tone="neutral" label="not connected" />
         </div>
         <div className="acc-body">
-          <p className="acc-note">Teams that live in a Telegram group, and a phone remote for Tether. Make a bot with @BotFather (/newbot) and paste its token once; it goes to your Keychain. Tether listens while it runs, on this Mac: no server, no public URL.</p>
+          <p className="acc-note">Squads that live in a Telegram group, and a phone remote for Tether. Make a bot with @BotFather (/newbot) and paste its token once; it goes to your Keychain. Tether listens while it runs, on this Mac: no server, no public URL.</p>
           <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">
             Open @BotFather ↗
           </a>
@@ -108,7 +108,7 @@ export function TelegramAccount({ p, onChanged }: { p: ProviderView; onChanged: 
         <div className="acc-option" aria-label="You on Telegram">
           {v?.owner ? (
             <p>
-              You are <b>{v.owner.name}</b> on Telegram: you approve and start runs in every Telegram team.
+              You are <b>{v.owner.name}</b> on Telegram: you approve and start runs in every Telegram squad.
             </p>
           ) : iam ? (
             <>
@@ -129,7 +129,7 @@ export function TelegramAccount({ p, onChanged }: { p: ProviderView; onChanged: 
         </div>
         {v ? <VoiceNotes v={v.voice} onDownload={() => void download()} /> : null}
         <div className="acc-actions">
-          <ConfirmButton label="Disconnect" prompt="Stop listening and remove the bot token from the Keychain? Telegram teams keep their group and work again once you connect." confirmLabel="Disconnect" onConfirm={disconnect} />
+          <ConfirmButton label="Disconnect" prompt="Stop listening and remove the bot token from the Keychain? Telegram squads keep their group and work again once you connect." confirmLabel="Disconnect" onConfirm={disconnect} />
         </div>
       </div>
     </>

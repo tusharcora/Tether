@@ -45,7 +45,7 @@ describe('Recent', () => {
 describe('runText', () => {
   it('titles a run by the first non-empty line of its task', () => {
     expect(taskTitle({ task: '\n  Fix the login\nmore', kind: 'workflow', pipeline: 'p' })).toBe('Fix the login');
-    expect(taskTitle({ task: '   \n ', kind: 'team', pipeline: 'p' })).toBe('Team run');
+    expect(taskTitle({ task: '   \n ', kind: 'team', pipeline: 'p' })).toBe('Squad run');
     expect(taskTitle({ task: '', kind: 'workflow', pipeline: 'plan-code' })).toBe('plan-code');
   });
   it('counts the step a run is on', () => {
