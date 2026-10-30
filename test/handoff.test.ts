@@ -592,7 +592,8 @@ describe('manager: approvals resolved while the run is live', () => {
       { allowWrites: true },
     );
   const untilAwaiting = async (store: ReturnType<typeof setup>['store'], id: string) => {
-    for (let i = 0; i < 200 && store.state(id)?.nodes['lead-approve']?.status !== 'awaiting'; i++) await new Promise((r) => setTimeout(r, 10));
+    // x starts a moment after the approval is asked for (its step records the worktree's HEAD first)
+    for (let i = 0; i < 200 && (store.state(id)?.nodes['lead-approve']?.status !== 'awaiting' || store.state(id)?.nodes.x?.status !== 'running'); i++) await new Promise((r) => setTimeout(r, 10));
     expect(store.state(id)!.nodes['lead-approve']!.status).toBe('awaiting');
     expect(store.state(id)!.nodes.x!.status).toBe('running'); // the run is still live
   };

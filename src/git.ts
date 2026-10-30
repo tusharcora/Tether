@@ -148,3 +148,24 @@ export async function changedFiles(workdir: string, from: string, to: string): P
   const r = await git(workdir, ['diff', '--name-only', from, to]);
   return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 }
+
+/** Put the worktree back at `sha`: tracked files reset and untracked ones removed, except `keep` (ignored files stay too). */
+export async function resetTo(workdir: string, sha: string, keep: string[] = []): Promise<void> {
+  await must(workdir, ['reset', '-q', '--hard', sha]);
+  await must(workdir, ['clean', '-fdq', ...specs(keep)]);
+}
+
+/** Point `ref` (refs/...) at `sha`, or delete it when `sha` is undefined. */
+export async function setRef(workdir: string, ref: string, sha?: string): Promise<void> {
+  await must(workdir, sha ? ['update-ref', ref, sha] : ['update-ref', '-d', ref]);
+}
+
+/** The refs under `prefix` (e.g. refs/tether/rewind/<run>/). */
+export async function refsUnder(workdir: string, prefix: string): Promise<string[]> {
+  return (await git(workdir, ['for-each-ref', '--format=%(refname)', prefix])).stdout.split('\n').filter(Boolean);
+}
+
+/** `a` is `b` or an ancestor of it (false for an unknown commit). */
+export async function isAncestor(workdir: string, a: string, b: string): Promise<boolean> {
+  return (await git(workdir, ['merge-base', '--is-ancestor', a, b])).code === 0;
+}
