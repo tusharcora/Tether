@@ -36,7 +36,7 @@ describe('ECC import', () => {
     const home = tmp('home-');
     await importEcc(home, { fetch: copyFetch });
     const go = loadCrew(home).find((b) => b.id === 'go-reviewer')!;
-    const face = { hue: 120, tone: 0.4, traits: { round: 0.7 } };
+    const face = { body: 'cloud', color: '#E35A5A' };
     saveBot(home, { ...go, name: 'Gopher', look: { ...go.look, color: '#123456', face } });
     const again = await importEcc(home, { fetch: copyFetch });
     expect(again.updated).toContain('go-reviewer');

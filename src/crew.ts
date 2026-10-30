@@ -42,18 +42,19 @@ export interface Look {
   accent: string;
   /** Pull the body colour into the crew's soft mid-light range. Default on. */
   guard?: boolean;
-  /** Blobatar face overrides; unset fields come from the bot id. */
+  /** Face pins set in the Crew tab; unset fields come from the bot id. */
   face?: FaceLook;
 }
 
 export interface FaceLook {
-  /** Degrees, 0–359. */
-  hue?: number;
-  /** 0–1. */
-  tone?: number;
-  /** Blobatar trait pins, 0–1 each. */
-  traits?: Record<string, number>;
+  /** One of FACE_BODIES. */
+  body?: string;
+  /** One of FACE_COLORS, upper-case. */
+  color?: string;
 }
+/** The bodies and colours the web draws faces with (web/src/faceArt.ts, the same lists in the same order). */
+export const FACE_BODIES: readonly string[] = ['orb', 'tile', 'bean', 'drop', 'nub', 'cloud', 'flower', 'block'];
+export const FACE_COLORS: readonly string[] = ['#5E7FE6', '#E8835F', '#F7D02C', '#58B6C4', '#0B0B0C', '#E5935A', '#FBC3E6', '#C9CACD', '#E35A5A', '#DCE3F5'];
 
 export interface BotDef {
   id: string;
@@ -103,19 +104,14 @@ export const IMPORTED_PERSONA_MAX = 24_000;
 export const SOURCE_RE = /^[a-z][a-z0-9-]{0,15}@[A-Za-z0-9._-]{1,40}$/;
 export const isImported = (b: BotDef): boolean => !!b.source;
 
-const TRAIT_KEY = /^[a-z][a-zA-Z0-9.]{0,31}$/;
+/** Keeps a known body and a palette colour; anything else (old hue / tone / traits pins included) is dropped. */
 function cleanFace(v: unknown): FaceLook | undefined {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
   const f = v as Record<string, unknown>;
   const out: FaceLook = {};
-  if (typeof f.hue === 'number' && Number.isFinite(f.hue)) out.hue = ((Math.round(f.hue) % 360) + 360) % 360;
-  if (typeof f.tone === 'number' && Number.isFinite(f.tone)) out.tone = Math.min(1, Math.max(0, f.tone));
-  if (f.traits && typeof f.traits === 'object' && !Array.isArray(f.traits)) {
-    const t: Record<string, number> = {};
-    for (const [k, n] of Object.entries(f.traits as Record<string, unknown>).slice(0, 12))
-      if (TRAIT_KEY.test(k) && typeof n === 'number' && Number.isFinite(n)) t[k] = Math.min(1, Math.max(0, n));
-    if (Object.keys(t).length) out.traits = t;
-  }
+  if (typeof f.body === 'string' && FACE_BODIES.includes(f.body)) out.body = f.body;
+  const color = typeof f.color === 'string' ? f.color.toUpperCase() : '';
+  if (FACE_COLORS.includes(color)) out.color = color;
   return Object.keys(out).length ? out : undefined;
 }
 
