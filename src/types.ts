@@ -1014,3 +1014,76 @@ export interface TetherBridge {
   /** The page listens now: folders handed over before this are delivered. */
   ready(): void;
 }
+
+// ---------- run tools (spec 2026-10-30): try more ways, Terminal, Preview ----------
+
+export interface AgentPick {
+  agent: string;
+  model?: string;
+}
+
+/** One attempt as the Compare page shows it. */
+export interface AttemptView {
+  id: string;
+  label: string;
+  status: RunState['status'];
+  live: boolean;
+  bot: string;
+  agent: string;
+  model?: string;
+  free: boolean;
+  /** The run's checks (its gate steps): passed, failing tests where the output says so. None when it has no gate or none ran. */
+  check?: { ok: boolean; failing?: number; passing?: number };
+  files: number;
+  added: number;
+  deleted: number;
+  costUsd: number;
+  durationMs: number;
+  /** The last reviewer's first line, and its bot. */
+  review?: { bot: string; line: string };
+  /** The first changed file and a few of its lines. */
+  excerpt?: { file: string; lines: string[] };
+  error?: string;
+  ship?: RunState['ship'];
+  /** The goal's number check after this run, and before it (when the goal has one and it was measured). */
+  metric?: { before?: number; after?: number };
+}
+
+/** GET /api/attempts/:set: the set's attempts, Tether's pick (never shipped on its own) and the person's, once made. */
+export interface AttemptsReply {
+  set: string;
+  task: string;
+  runs: AttemptView[];
+  pick?: string;
+  picked?: RunState['attemptPicked'];
+}
+
+/** What the run's stream carries for the Terminal: a command began, some of its output, its end. */
+export type ProcMessage =
+  | { type: 'exec.start'; id: number; command: string; at: number }
+  | { type: 'exec.output'; id: number; text: string }
+  | { type: 'exec.end'; id: number; code: number | null; signal?: string; durationMs: number; spill?: string };
+
+export interface ExecEntry {
+  id: number;
+  command: string;
+  at: number;
+  output: string;
+  running: boolean;
+  code?: number | null;
+  signal?: string;
+  durationMs?: number;
+  /** Where the full output was saved (relative to the worktree), when it was longer than what is shown. */
+  spill?: string;
+}
+
+export interface PreviewView {
+  status: 'starting' | 'running' | 'exited' | 'stopped';
+  command: string;
+  port: number;
+  url?: string;
+  /** The tail of its output. */
+  output: string;
+  code?: number | null;
+}
+

@@ -17,7 +17,9 @@ import type { RunShip } from './runShip.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import { applyOverrides } from './triggers.js';
-import type { RunState } from './types.js';
+import type { AgentPick, AttemptsReply, AttemptView, RunState } from './types.js';
+
+export type { AgentPick, AttemptView };
 
 /** Attempts one request may add, and a set's size. */
 export const MAX_MORE = 4;
@@ -26,10 +28,6 @@ export const MAX_SET = 8;
 export const KEEP_MS = 7 * 86_400_000;
 const LETTERS = 'ABCDEFGH';
 
-export interface AgentPick {
-  agent: string;
-  model?: string;
-}
 const same = (a: AgentPick, b: AgentPick) => a.agent === b.agent && (a.model ?? '') === (b.model ?? '');
 export const isFree = (b: AgentPick) => b.agent === 'openrouter' || b.agent === 'nvidia' || !!b.model?.endsWith(':free');
 
@@ -52,33 +50,6 @@ export function defaultPicks(pool: AgentPick[], used: AgentPick[], count: number
 export function agentOf(s: Pick<RunState, 'pipeline'>): AgentPick & { bot: string } {
   const n = s.pipeline.nodes.find((x) => x.kind === 'agent' && !x.spawn);
   return { agent: n?.agent ?? 'claude', ...(n?.model ? { model: n.model } : {}), bot: n ? crewFor(n) : 'coder' };
-}
-
-/** One attempt as the Compare page shows it. */
-export interface AttemptView {
-  id: string;
-  label: string;
-  status: RunState['status'];
-  live: boolean;
-  bot: string;
-  agent: string;
-  model?: string;
-  free: boolean;
-  /** The run's checks (its gate steps): passed, failing tests where the output says so. None when it has no gate or none ran. */
-  check?: { ok: boolean; failing?: number; passing?: number };
-  files: number;
-  added: number;
-  deleted: number;
-  costUsd: number;
-  durationMs: number;
-  /** The last reviewer's first line, and its bot. */
-  review?: { bot: string; line: string };
-  /** The first changed file and a few of its lines. */
-  excerpt?: { file: string; lines: string[] };
-  error?: string;
-  ship?: RunState['ship'];
-  /** The goal's number check after this run, and before it (when the goal has one and it was measured). */
-  metric?: { before?: number; after?: number };
 }
 
 /**
@@ -215,7 +186,7 @@ export class Attempts {
   }
 
   /** The Compare page: every attempt with its check, changes, cost, time and review, and Tether's pick. */
-  async view(set: string): Promise<{ set: string; task: string; runs: AttemptView[]; pick?: string; picked?: RunState['attemptPicked'] }> {
+  async view(set: string): Promise<AttemptsReply> {
     const members = this.members(set);
     if (!members.length) throw new HttpError(404, `unknown attempt set ${set}`);
     const runs: AttemptView[] = [];

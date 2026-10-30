@@ -111,7 +111,7 @@ export function spendByDay(rows: RunRow[], now = Date.now()): number[] {
   return days;
 }
 
-export const ORIGIN_LABEL = { chat: 'Chats', goal: 'Goals', team: 'Teams', trigger: 'Triggers', schedule: 'Schedule', other: 'Other' } as const;
+export const ORIGIN_LABEL = { chat: 'Chats', goal: 'Goals', team: 'Teams', trigger: 'Triggers', schedule: 'Schedule', fork: 'Forks', other: 'Other' } as const;
 export type OriginKey = keyof typeof ORIGIN_LABEL;
 
 /** Where the runs were started from, counted; a run from before origins counts as other. Zero counts are left out. */

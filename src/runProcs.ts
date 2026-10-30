@@ -14,6 +14,9 @@ import { saveSpill } from './codemode/spill.js';
 import { runProcess } from './proc.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
+import type { ExecEntry, PreviewView, ProcMessage } from './types.js';
+
+export type { ExecEntry, PreviewView, ProcMessage };
 
 /** Characters of one command's output shown and kept; the rest (up to KEEP_MAX) is saved to a spill file when it ends. */
 export const STREAM_CAP = 100_000;
@@ -22,35 +25,6 @@ export const HISTORY = 50;
 /** With no URL in its output after this long, a preview is shown on the port it was given. */
 export const URL_WAIT_MS = 20_000;
 const PREVIEW_TAIL = 8_000;
-
-/** What the run's stream carries for the Terminal: a command began, some of its output, its end. */
-export type ProcMessage =
-  | { type: 'exec.start'; id: number; command: string; at: number }
-  | { type: 'exec.output'; id: number; text: string }
-  | { type: 'exec.end'; id: number; code: number | null; signal?: string; durationMs: number; spill?: string };
-
-export interface ExecEntry {
-  id: number;
-  command: string;
-  at: number;
-  output: string;
-  running: boolean;
-  code?: number | null;
-  signal?: string;
-  durationMs?: number;
-  /** Where the full output was saved (relative to the worktree), when it was longer than what is shown. */
-  spill?: string;
-}
-
-export interface PreviewView {
-  status: 'starting' | 'running' | 'exited' | 'stopped';
-  command: string;
-  port: number;
-  url?: string;
-  /** The tail of its output. */
-  output: string;
-  code?: number | null;
-}
 
 /** The environment a command gets: the user's PATH and a few basics. Nothing else of Tether's (keys, tokens, settings). */
 const KEEP_ENV = new Set(['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'TERM', 'TMPDIR', 'TZ']);
