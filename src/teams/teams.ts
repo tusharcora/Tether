@@ -209,6 +209,10 @@ export class Teams {
   private limit(team: Team): string | undefined {
     return limitReason(team, this.spend(team));
   }
+  /** A team agent started this run: its team ships it. */
+  owns(runId: string): boolean {
+    return this.runs.has(runId);
+  }
   /** For the run page and the Inbox: may this person approve this run? Runs no team started: yes. */
   mayApproveRun(runId: string, personId: string): boolean {
     const tid = this.runs.get(runId);
@@ -422,6 +426,8 @@ export class Teams {
         const k = st.tasks.find((x) => x.runId === task.runId);
         if (k) k.pr = r;
       });
+      // the run keeps its PR too (Runs counts merged PRs; the run page links it)
+      this.d.store.append(task.runId, { type: 'run.shipped', url: r.url, number: r.number });
       this.say(team.id, from, `Shipped. Opened PR #${r.number}.`, { run: task.runId, card: { kind: 'pr', url: r.url, number: r.number, title } });
     } finally {
       this.shipping.delete(task.runId);
@@ -461,6 +467,8 @@ export class Teams {
     this.edit(teamId, (s) => {
       for (const m of s.messages) if (m.card?.kind === 'pr' && m.card.number === pr.number) m.card.merged = true;
     });
+    const merged = readState(this.d.home, teamId).tasks.find((k) => k.pr?.number === pr.number);
+    if (merged) this.d.store.append(merged.runId, { type: 'run.shipped', merged: true });
     this.say(teamId, from, `Merged PR #${pr.number}.`);
   }
 

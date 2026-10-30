@@ -39,6 +39,7 @@ import { PREVIEW_TASK_MAX, rosterPreview } from './rosterPreview.js';
 import { rowLive } from './runLabels.js';
 import { VAULT_ACTIVITY_LIMIT, VAULT_ACTIVITY_MAX, vaultActivity } from './vaultActivity.js';
 import { rowExtras } from './runRows.js';
+import { RunShip } from './runShip.js';
 import { planWaiting, type Answer, type RunState } from './types.js';
 import { MAX_ANSWER_TEXT, TEAM_MAX_BUDGET_USD, TeamError, cleanAnswerText } from './team.js';
 import type { Vault } from './vault.js';
@@ -264,6 +265,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
   type Detected = { ok: boolean; version?: string; detail?: string; reportsCost: boolean; supportsResume: boolean };
   let doctorCache: { at: number; data: Record<string, Detected> } | undefined;
   /** Each adapter's detect() result (installed, version), kept for 30 s. */
@@ -952,6 +954,28 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       } catch (e) {
         if (e instanceof HttpError) throw e;
         throw new HttpError(409, (e as Error).message);
+      }
+      return send(res, 200, runView(id)), true;
+    }
+    // the run page's decision banner: Merge to main / Open PR instead, and Send back with comments
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback)$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      const b = reqObject(await readJson(req));
+      if (g[2] === 'ship') {
+        if (typeof b.merge !== 'boolean') throw new HttpError(400, '"merge" must be true or false');
+        if (!teams.mayApproveRun(id, OWNER.id)) throw new HttpError(403, 'Only the team’s chosen approvers can decide this run');
+        await runShip.decide(id, b.merge);
+      } else {
+        const node = typeof b.node === 'string' ? b.node : '';
+        const note = typeof b.note === 'string' ? b.note.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim() : '';
+        if (!store.state(id)!.pipeline.nodes.some((n) => n.id === node && n.kind === 'agent')) throw new HttpError(400, '"node" must be an agent step of this run');
+        if (!note || note.length > 1000) throw new HttpError(400, '"note" is 1 to 1000 characters');
+        try {
+          await engine.sendBack(id, node, note);
+        } catch (e) {
+          throw new HttpError(409, (e as Error).message);
+        }
       }
       return send(res, 200, runView(id)), true;
     }

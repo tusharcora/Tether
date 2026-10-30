@@ -263,6 +263,8 @@ export type RunEvent =
       probe?: ProbeTag;
       origin?: RunOrigin;
     }
+  /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
+  | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string }
   | { type: 'plan.question'; round: number; questions: Question[] }
   | { type: 'plan.answer'; answers: Answer[] }
   | { type: 'plan.ready'; plan: TeamPlan }
@@ -416,6 +418,8 @@ export interface RunState {
   /** The spend cap stopped the run or one of its steps (run.finished.budget / node.finished.budget). */
   budgetStop?: true;
   origin?: RunOrigin;
+  /** Its PR, once shipped (merged when merged), or why shipping failed. */
+  ship?: { url?: string; number?: number; merged?: boolean; error?: string };
 }
 
 /** A team run whose plan is finished and waits for the person's go-ahead. */
@@ -655,6 +659,12 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       case 'run.coach':
         s.coach = e.findings;
         break;
+      case 'run.shipped': {
+        const { type: _, ...ship } = e;
+        // an error clears once a later ship goes through, and a merge keeps the PR it merged
+        s.ship = ship.error ? { ...s.ship, error: ship.error } : { ...s.ship, ...ship, error: undefined };
+        break;
+      }
       case 'vault.note':
         if (!s.notes.includes(e.path)) s.notes.push(e.path);
         break;

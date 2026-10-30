@@ -452,6 +452,28 @@ export class Engine {
     this.launch(runId);
   }
 
+  /**
+   * The person sends a step back (the run page's comments): it runs again with `note` as guidance, and so does every step
+   * after it (its gates and approvals ask again). Refused while the run is going or once it is done.
+   */
+  async sendBack(runId: string, node: string, note: string): Promise<void> {
+    const s = this.store.state(runId);
+    if (!s) throw new Error(`unknown run ${runId}`);
+    if (this.active.has(runId)) throw new Error('the run is still going: stop it first, or wait for it to need you');
+    if (s.status === 'done') throw new Error('the run has finished: start a new run for more changes');
+    this.amend(runId, node, { guidance: `Sent back by the person: ${note}` }, 'sent back with comments');
+    const again = new Set<string>();
+    const stack = [node];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (again.has(id)) continue;
+      again.add(id);
+      stack.push(...childrenOf(s.pipeline, id));
+    }
+    for (const id of again) if (s.nodes[id] && s.nodes[id]!.status !== 'queued') this.store.append(runId, { type: 'node.requeued', node: id, reason: 'sent back with comments' });
+    await this.resume(runId);
+  }
+
   /** Re-point one agent step at another agent/model before a resume. Recorded in the log. */
   amend(runId: string, node: string, patch: { agent?: string; model?: string; guidance?: string }, reason: string): void {
     const s = this.store.state(runId);
