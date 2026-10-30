@@ -7,6 +7,9 @@ The full manual: every command, setting and limit. New here? Start with the [REA
 - [Terminal UI tips](#terminal-ui-tips)
 - [Pull requests as triggers](#pull-requests-as-triggers)
 - [Triggers](#triggers)
+  - [Issue and comment triggers](#issue-and-comment-triggers)
+- [Schedules](#schedules)
+- [Code Mode: long results and browser tools](#code-mode-long-results-and-browser-tools)
 - [Bots asking each other](#bots-asking-each-other)
 - [Teams: a manager hands out work](#teams-a-manager-hands-out-work)
   - [Worker handoffs: `@HAND`](#worker-handoffs-hand)
@@ -102,6 +105,44 @@ tether triggers setup                   # webhook payload URL, secret and tunnel
 **Where to manage them.** The web dashboard has a Triggers screen (list, add and edit form, pause, delete, test, deliveries, webhook setup). The terminal UI has a **Triggers** tab (key `5`, or `/triggers`): `↑↓` select, `space` pause or enable, `t` dry-run test against a PR link or `owner/repo#n`, `d` delete (asks first), `l` recent deliveries for the selected trigger, `s` webhook setup. The tab is empty until you add one; it shows the command to run.
 
 **The webhook secret** is generated and saved in `<home>/pr.json` (mode 600) the first time you run `tether triggers setup`, or comes from `AORCH_WEBHOOK_SECRET` if set (the variable wins). `tether triggers setup --generate` replaces it. It is shown only by that command and when you generate it from the dashboard. Lists, the TUI, the delivery log and API responses never contain it; setup views show only its last four characters.
+
+### Issue and comment triggers
+
+A trigger can also fire on GitHub issues and comments (set **Fires on** in the dashboard's trigger form, or `"on"` in `pr.json`):
+
+| `on` | fires when | option |
+|---|---|---|
+| `pr` (default) | a pull request event, as above | `events`, `labels`, `drafts`, `forks`, `comment` |
+| `issue` | an issue is opened; with `label`, when that label is added or an issue opens with it | `label` |
+| `comment` | a new comment on an issue or PR mentions `@tether` (as a word, any case) | `mention`, e.g. `@bolt` |
+
+The run's task is the issue's title and text (or the comment's text) with a link, fenced as data. It starts on the repo's checkout like a PR run (a mapped folder, the trigger's workspace if it lists the repo, else a clone) and is logged in the deliveries log the same way. Rules:
+
+- Only authors GitHub marks as the repo's **owner, member or collaborator** start a run; bots never do. Anyone else is logged as `ignored` with the reason (anyone can open an issue on a public repo, and the run works on your machine).
+- The same issue opening, label or comment starts once, even when GitHub redelivers it.
+- Nothing is posted back to the issue. The dry-run test works for PR triggers only.
+- In the GitHub webhook settings, also tick **Issues** and **Issue comments**. Requests without an `X-GitHub-Event` header, or whose body is not a JSON object, are refused with 400 after the signature check.
+
+## Schedules
+
+A **schedule** starts a workflow in a workspace, or gives a goal its next turn, at set times. Manage them in the **Schedules** section of the web dashboard's Triggers screen: each shows its next fire, an on/off switch, **Run now** and **Delete**; the form takes a cron rule or a preset (every night 02:00, weekdays 09:00, Mondays 09:00, hourly).
+
+- **Cron**: five fields, `minute hour day-of-month month day-of-week`, each `*`, a value, `a-b`, `*/n`, `a-b/n` or a comma list; Sunday is 0 or 7. No names, `@daily` macros or `L`/`W`/`#`. When either day field starts with `*`, a date must match both; otherwise either one (Vixie cron).
+- **Time**: this computer's time zone. A time in a skipped DST hour fires at the first minute after it; a repeated hour fires once.
+- **Targets**: a workflow (with a workspace and a task) starts a normal run. A goal (an open loop goal) checks again and proposes its next run, the way resuming it does; one already waiting for you or running is left alone.
+- **When the app is closed**: nothing runs. On the next start, a schedule that missed its time runs **once**, then waits for its next fire. Turning a schedule back on, or changing its rule, counts from now.
+- While the server runs it checks every 30 seconds. The last run (or why it could not start) shows on the schedule.
+- Stored in `<home>/schedules.json` (mode 600). API: `GET/POST /api/schedules`, `PATCH /api/schedules/:id` (`enabled`, `name`, `cron`), `DELETE /api/schedules/:id`, `POST /api/schedules/:id/run`.
+
+## Code Mode: long results and browser tools
+
+**Long `run_code` results.** A script whose result (return value and logs) is over 16 KB no longer loses the rest: the full text is saved to `.tether/spill/<id>.txt` in the run's worktree (or the assistant's workspace folder), and the agent gets the start, the end and a note naming the file, to read in line ranges with `repo.read(path, { from, to })`. `.tether/` ignores itself in git, so spills never show in a diff, a commit or a search. Files are owner-only and are deleted after 24 hours (checked when the server starts and when each step ends). This works for every agent, since claude, codex and the OpenAI-compatible loop all use `run_code`.
+
+**The OpenAI-compatible loop** (OpenRouter, NVIDIA, local models) also trims old tool results: before each model call, a result from an earlier turn that is over 8,192 characters keeps its first 4,096 and last 1,024 around a note saying how much was cut (the latest turn stays whole). When the model calls the same tool with the same arguments 3, 5 or 8 times in a row, a reminder is added to that result asking it to change course. Neither blocks anything.
+
+**Browser presets.** Settings → Agents & tools → MCP servers offers two browser servers, off until you add one: **Playwright browser** (`npx -y @playwright/mcp@0.0.80 --browser chromium --isolated --headless`) and **Chrome DevTools** (`npx -y chrome-devtools-mcp@1.9.0 --no-usage-statistics --isolated --headless=true`). Once added, every agent reaches them in Code Mode as `mcp.playwright` and `mcp.chrome_devtools`. The first use downloads the package (and Playwright may need `npx playwright install chromium`).
+
+These parts are ported from deepseek-harness (MIT); see `THIRD_PARTY_NOTICES.md`.
 
 ## Bots asking each other
 
