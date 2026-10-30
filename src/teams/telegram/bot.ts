@@ -501,9 +501,9 @@ export class Telegram {
     const t = tg.teams[teamId];
     const tgId = t?.msgs[msgId];
     if (tgId === undefined) {
+      if (t?.mute && t.mute > Date.now() && !isAsk(m)) return;
       // an answer being written shows as "typing…"; it is posted once written
       if (m.pending) return void (await this.api.call('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {}));
-      if (t?.mute && t.mute > Date.now() && !isAsk(m)) return;
     }
     const r = renderMessage(m, tg.owner?.name);
     const shown = JSON.stringify(r);
