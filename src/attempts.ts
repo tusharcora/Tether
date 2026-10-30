@@ -161,7 +161,6 @@ export class Attempts {
     this.starting.add(original.id);
     const ids: string[] = [];
     try {
-      if (!s.attemptSet) this.d.store.append(s.id, { type: 'attempt.set', set, label: 'A' });
       for (const [i, pick] of picks.entries()) {
         const id = await this.d.engine.start({
           pipeline: pick ? applyOverrides(pipeline, pick) : pipeline,
@@ -172,6 +171,8 @@ export class Attempts {
           workspace: original.workspace?.id ?? false,
           ...(original.origin ? { origin: original.origin } : {}),
         });
+        // the run becomes A once a sibling exists (a start that fails leaves it as it was)
+        if (!ids.length && !s.attemptSet) this.d.store.append(s.id, { type: 'attempt.set', set, label: 'A' });
         this.d.store.append(id, { type: 'attempt.set', set, label: LETTERS[members.length + i]! });
         this.d.adopt?.(original, id);
         ids.push(id);

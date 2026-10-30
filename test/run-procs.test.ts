@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkCommand, cleanEnv, detectUrl, devCommand, RunProcs, STREAM_CAP, type ProcMessage } from '../src/runProcs.js';
@@ -150,9 +150,10 @@ describe('Preview', () => {
     expect(r.procs.preview('r1')!.url).toBe(`http://localhost:${v.port}/`);
     // asking again returns the one going
     expect((await r.procs.startPreview('r1', 'other')).command).toBe(v.command);
-    expect(existsSync(join(r.home, 'procs.json'))).toBe(true);
+    const mine = join(r.home, 'procs', `${process.pid}.json`);
+    expect(existsSync(mine)).toBe(true);
     expect(r.procs.stopPreview('r1')).toBe(true);
-    await until(() => !existsSync(join(r.home, 'procs.json')));
+    await until(() => !existsSync(mine));
     expect(r.procs.preview('r1')!.status).toBe('stopped');
   });
 
@@ -164,22 +165,29 @@ describe('Preview', () => {
     expect(r.procs.history('r1')).toEqual([]);
     expect(r.procs.preview('r1')).toBeUndefined();
     expect(r.ended(e.id)).toBeDefined();
-    expect(existsSync(join(r.home, 'procs.json'))).toBe(false);
+    expect(existsSync(join(r.home, 'procs', `${process.pid}.json`))).toBe(false);
   });
 
   it('on start, ends the process groups a crashed Tether left (and only those)', async () => {
     const home = tmp('home-');
+    mkdirSync(join(home, 'procs'));
+    // a Tether that is gone (no such pid) and one that still runs (this one's parent stands in for it)
+    const gone = join(home, 'procs', '99999999.json');
+    const running = join(home, 'procs', `${process.ppid}.json`);
     const left = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' });
     const other = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' });
     left.unref();
     other.unref();
     await new Promise((r) => setTimeout(r, 100));
     try {
-      writeFileSync(join(home, 'procs.json'), JSON.stringify({ [left.pid!]: { run: 'r1', at: Date.now() }, [other.pid!]: { run: 'r1', at: Date.now() - 3_600_000 } }));
+      writeFileSync(gone, JSON.stringify({ [left.pid!]: { run: 'r1', at: Date.now() }, [other.pid!]: { run: 'r1', at: Date.now() - 3_600_000 } }));
+      writeFileSync(running, JSON.stringify({ [other.pid!]: { run: 'r1', at: Date.now() } }));
       new RunProcs({ home, store: Store.open(':memory:') });
       await until(() => !alive(left.pid!));
+      await new Promise((r) => setTimeout(r, 100));
       expect(alive(other.pid!)).toBe(true);
-      expect(existsSync(join(home, 'procs.json'))).toBe(false);
+      expect(existsSync(gone)).toBe(false);
+      expect(existsSync(running)).toBe(true);
     } finally {
       for (const c of [left, other]) if (alive(c.pid!)) process.kill(-c.pid!, 'SIGKILL');
     }

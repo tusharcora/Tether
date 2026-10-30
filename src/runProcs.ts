@@ -3,11 +3,12 @@
  * runs as `sh -lc <command>` in its own process group with a clean environment (the user's PATH and a few basics, none
  * of Tether's keys or tokens). One command at a time per run, its output handed to listeners as it comes (the run's
  * stream forwards it) and kept for the last 50 commands; one preview per run, its URL read from its output. Every
- * group's pid is recorded in `<home>/procs.json`, so a later start can end groups a crash left behind; Stop, a run's
- * delete, the server's close and the process's exit end them.
+ * group's pid is recorded in `<home>/procs/<tether pid>.json`, so a later start can end the groups a crashed Tether left
+ * behind (never those of another Tether still running on the same home); Stop, a run's delete, the server's close and
+ * the process's exit end them.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { saveSpill } from './codemode/spill.js';
@@ -77,6 +78,15 @@ function startedAt(pid: number): number {
   }
 }
 
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+};
+
 const killGroup = (pid: number, sig: NodeJS.Signals) => {
   try {
     process.kill(-pid, sig);
@@ -101,12 +111,12 @@ export class RunProcs {
   private previews = new Map<string, { view: PreviewView; live?: Live; timer?: NodeJS.Timeout }>();
   private listeners = new Map<string, Set<(m: ProcMessage) => void>>();
   private seq = 0;
-  /** pid -> the run and when it started: what procs.json holds. */
+  /** pid -> the run and when it started: what this process's procs file holds. */
   private pids = new Map<number, { run: string; at: number }>();
   private readonly file: string;
 
   constructor(private o: { home: string; store: Store }) {
-    this.file = join(o.home, 'procs.json');
+    this.file = join(o.home, 'procs', `${process.pid}.json`);
     this.reap();
     OPEN.add(this);
     if (!exitHooked) {
@@ -115,24 +125,34 @@ export class RunProcs {
     }
   }
 
-  /** End the groups a crashed Tether left behind: those whose leader still runs and started when it was recorded. */
+  /** End the groups a crashed Tether left behind: in files of processes that are gone, those whose leader still runs and started when recorded. */
   private reap(): void {
-    let old: Record<string, { at?: unknown }> = {};
+    const dir = join(this.o.home, 'procs');
+    let names: string[] = [];
     try {
-      old = JSON.parse(readFileSync(this.file, 'utf8'));
+      names = readdirSync(dir);
     } catch {
       return;
     }
-    for (const [k, r] of Object.entries(old)) {
-      const pid = Number(k);
-      if (Number.isInteger(pid) && pid > 1 && typeof r?.at === 'number' && Math.abs(startedAt(pid) - r.at) < 2000) killGroup(pid, 'SIGKILL');
+    for (const name of names) {
+      const owner = Number(/^(\d+)\.json$/.exec(name)?.[1]);
+      if (!owner || owner === process.pid || alive(owner)) continue;
+      try {
+        const old = JSON.parse(readFileSync(join(dir, name), 'utf8')) as Record<string, { at?: unknown }>;
+        for (const [k, r] of Object.entries(old)) {
+          const pid = Number(k);
+          if (Number.isInteger(pid) && pid > 1 && typeof r?.at === 'number' && Math.abs(startedAt(pid) - r.at) < 2000) killGroup(pid, 'SIGKILL');
+        }
+      } catch {
+        /* unreadable: nothing to end */
+      }
+      rmSync(join(dir, name), { force: true });
     }
-    rmSync(this.file, { force: true });
   }
   private saveFile(): void {
     try {
       if (!this.pids.size) return void rmSync(this.file, { force: true });
-      mkdirSync(this.o.home, { recursive: true });
+      mkdirSync(join(this.o.home, 'procs'), { recursive: true });
       writeFileSync(this.file, JSON.stringify(Object.fromEntries(this.pids)), { mode: 0o600 });
     } catch {
       /* best effort: the process is still tracked in memory */
