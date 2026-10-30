@@ -49,6 +49,12 @@ a{color:#93c5fd;text-decoration:none}
     </div>
     <button class="btn pri" type="button">New ticket</button>
   </header>
+  <section aria-label="This week" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:14px 22px 0">
+    <div style="padding:10px 12px;border-radius:12px;background:#212121;display:flex;align-items:center;gap:12px"><div><div style="font-size:20px;font-weight:600;color:#34d399">9</div><div style="font-size:11.5px;color:#a1a1aa">shipped this week</div></div><div style="margin-left:auto;display:flex;align-items:flex-end;gap:3px;height:30px" role="img" aria-label="Shipped per day: 1, 2, 0, 3, 3"><span style="width:6px;height:30%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:60%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:8%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:90%;background:#2f2f2f;border-radius:2px"></span><span style="width:6px;height:90%;background:#34d399;border-radius:2px"></span></div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:#212121"><div style="font-size:20px;font-weight:600;color:#93c5fd">2</div><div style="font-size:11.5px;color:#a1a1aa">in flight · Bolt, Lens</div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:#212121"><div style="font-size:20px;font-weight:600">38m</div><div style="font-size:11.5px;color:#a1a1aa">avg. Todo → Done</div></div>
+    <div style="padding:10px 12px;border-radius:12px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25)"><div style="font-size:20px;font-weight:600;color:#fbbf24">12m</div><div style="font-size:11.5px;color:#a1a1aa">oldest waiting on you · WEB-142</div></div>
+  </section>
   <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 22px">
     <button class="chip" type="button" onClick="{{ fAll }}" style="border-color:{{ allRing }}">All</button>
     <button class="chip" type="button" onClick="{{ fMine }}" style="border-color:{{ mineRing }}">Needs me</button>
@@ -64,10 +70,21 @@ a{color:#93c5fd;text-decoration:none}
         <button class="tk" type="button" onClick="{{ open144 }}"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(147,197,253,.14);color:#93c5fd">+</span><span class="tid">WEB-144</span><span class="pri" style="margin-left:auto" aria-label="Low priority"><i style="height:5px;background:#a1a1aa"></i><i style="height:8px"></i><i style="height:11px"></i></span></span><span style="font-size:13.5px;line-height:1.35">Keyboard shortcuts for the settings tabs</span><span style="display:flex;gap:6px"><span class="chip" style="height:20px;font-size:11px;cursor:default">settings</span></span></button>
         <button class="tk" type="button"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(161,161,170,.14);color:#a1a1aa">·</span><span class="tid">WEB-139</span></span><span style="font-size:13.5px;line-height:1.35">Bump vite to 7</span></button>
         </sc-if>
+        <div style="margin-top:4px;padding:12px;border-radius:12px;border:1px dashed rgba(255,255,255,.12);display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:#a1a1aa">
+          <span>Ideas from your chats</span>
+          <button class="chip" type="button" style="justify-content:flex-start">+ "Add a loading state to search"</button>
+          <button class="chip" type="button" style="justify-content:flex-start">+ "Billing email typo"</button>
+          <span style="font-size:11.5px;color:#71717a">Or type in any chat: "make a ticket to…"</span>
+        </div>
       </div>
 
       <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;border:2px solid #a1a1aa"></span><b>Todo</b>2</div>
         <button class="tk" type="button"><span style="display:flex;align-items:center;gap:6px"><span class="ty" style="background:rgba(248,113,113,.14);color:#f87171">!</span><span class="tid">WEB-143</span><span class="pri" style="margin-left:auto" aria-label="Urgent"><i style="height:5px;background:#f87171"></i><i style="height:8px;background:#f87171"></i><i style="height:11px;background:#f87171"></i></span></span><span style="font-size:13.5px;line-height:1.35">Billing page crashes with an empty cart</span><span style="display:flex;align-items:center;gap:6px"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="font-size:11.5px;color:#a1a1aa">Probe picks it up next</span></span></button>
+        <div style="margin-top:4px;padding:12px;border-radius:12px;background:#1e1e1e;border:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:10px">
+          <span style="font-size:12px;color:#a1a1aa">Ready for an agent</span>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="5" y="5" width="30" height="30" rx="9" transform="rotate(-8 20 20)" fill="#e35d5b"/><rect x="18" y="11" width="5.5" height="11" rx="2.75" transform="rotate(-18 20.7 16.5)" fill="#171717"/><rect x="26" y="10" width="4.5" height="9" rx="2.25" transform="rotate(-18 28.2 14.5)" fill="#171717"/></svg><span style="flex:1"><b style="font-weight:500">Boss</b> is free · could take WEB-144</span><button class="btn" type="button" style="height:26px;padding:0 9px;font-size:12px">Assign</button></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="flex:1"><b style="font-weight:500">Probe</b> · starts WEB-143 in ~2m</span><button class="btn ghost" type="button" style="height:26px;padding:0 9px;font-size:12px">Start now</button></div>
+        </div>
       </div>
 
       <div class="col"><div class="colh"><span style="width:10px;height:10px;border-radius:50%;border:2px solid #2b6cf0;border-right-color:transparent"></span><b>In progress</b>2</div>

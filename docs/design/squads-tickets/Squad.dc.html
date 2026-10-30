@@ -197,6 +197,35 @@ a{color:#93c5fd;text-decoration:none}
         <div style="margin-top:auto;padding:12px 16px"><div style="border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#232323;padding:9px 12px;font-size:13px;color:#71717a">Reply…</div></div>
       </aside>
       </sc-if>
+      <sc-if value="{{ noThread }}" hint-placeholder-val="{{ true }}">
+      <aside aria-label="Squad pulse" style="flex:0 0 330px;border-left:1px solid rgba(255,255,255,.06);background:#1c1c1c;display:flex;flex-direction:column;gap:18px;padding:16px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center"><b style="font-weight:600;font-size:13px">Squad tickets</b><a href="Tickets.dc.html" style="margin-left:auto;font-size:12px">Open board</a></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center">
+            <a href="Tickets.dc.html" style="padding:8px 4px;border-radius:10px;background:#232323;color:#f4f4f5"><div style="font-size:18px;font-weight:600">2</div><div style="font-size:11px;color:#a1a1aa">Todo</div></a>
+            <a href="Tickets.dc.html" style="padding:8px 4px;border-radius:10px;background:rgba(59,130,246,.10);color:#f4f4f5"><div style="font-size:18px;font-weight:600;color:#93c5fd">2</div><div style="font-size:11px;color:#a1a1aa">Doing</div></a>
+            <a href="Tickets.dc.html" style="padding:8px 4px;border-radius:10px;background:rgba(251,191,36,.08);color:#f4f4f5"><div style="font-size:18px;font-weight:600;color:#fbbf24">1</div><div style="font-size:11px;color:#a1a1aa">Review</div></a>
+            <a href="Tickets.dc.html" style="padding:8px 4px;border-radius:10px;background:rgba(52,211,153,.08);color:#f4f4f5"><div style="font-size:18px;font-weight:600;color:#34d399">4</div><div style="font-size:11px;color:#a1a1aa">Done</div></a>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font-weight:600;font-size:13px">Shipped today</b>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="width:7px;height:7px;border-radius:50%;background:#34d399;flex:none"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">WEB-141 Dark mode for settings</span><span class="mono" style="font-size:11px;color:#71717a">#141</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="width:7px;height:7px;border-radius:50%;background:#34d399;flex:none"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">WEB-140 Empty state on billing</span><span class="mono" style="font-size:11px;color:#71717a">#140</span></div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:34px;margin-top:2px" role="img" aria-label="Tickets shipped per day this week: 1, 2, 0, 3, 2"><span style="flex:1;height:30%;background:#2f2f2f;border-radius:3px"></span><span style="flex:1;height:60%;background:#2f2f2f;border-radius:3px"></span><span style="flex:1;height:8%;background:#2f2f2f;border-radius:3px"></span><span style="flex:1;height:90%;background:#2f2f2f;border-radius:3px"></span><span style="flex:1;height:60%;background:#34d399;border-radius:3px"></span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font-weight:600;font-size:13px">Coming up</b>
+          <div style="display:flex;gap:8px;font-size:12.5px;align-items:center"><svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><rect x="9" y="3" width="22" height="34" rx="11" transform="rotate(-14 20 20)" fill="#5bb6c4"/><rect x="19" y="10" width="5" height="10" rx="2.5" transform="rotate(-18 21.5 15)" fill="#171717"/><rect x="26" y="9" width="4" height="8" rx="2" transform="rotate(-18 28 13)" fill="#171717"/></svg><span style="flex:1">Probe picks up WEB-143 next</span><span style="font-size:11px;color:#71717a">queued</span></div>
+          <div style="display:flex;gap:8px;font-size:12.5px;align-items:center"><span style="width:20px;height:20px;border-radius:6px;background:#262626;display:grid;place-items:center;font-size:11px;color:#a1a1aa">↻</span><span style="flex:1">Nightly test triage</span><span style="font-size:11px;color:#71717a">02:00</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font-weight:600;font-size:13px">Pinned</b>
+          <div style="padding:8px 10px;border-radius:10px;background:#232323;font-size:12.5px;line-height:1.45"><span style="color:#a1a1aa">Decision ·</span> redirects only follow same-site paths, never <span class="mono">//</span></div>
+          <div style="padding:8px 10px;border-radius:10px;background:#232323;font-size:12.5px"><span style="color:#a1a1aa">Link ·</span> <a href="#">Staging: acme-web.dev</a></div>
+        </div>
+      </aside>
+      </sc-if>
     </div>
     </sc-if>
 
@@ -215,7 +244,7 @@ a{color:#93c5fd;text-decoration:none}
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
 class Component extends DCLogic {
-  constructor(p) { super(p); this.state = { view: 'chat', filter: 'all', work: false, thread: true, shipped: false, nice: false, mention: false, draft: '' }; }
+  constructor(p) { super(p); this.state = { view: 'chat', filter: 'all', work: false, thread: false, shipped: false, nice: false, mention: false, draft: '' }; }
   renderVals() {
     const s = this.state;
     const on = (k) => s.filter === 'all' || s.filter === k;
@@ -234,7 +263,7 @@ class Component extends DCLogic {
       boltRing: ring('bolt'), lensRing: ring('lens'), youRing: s.filter === 'you' ? '#2b6cf0' : 'rgba(251,191,36,.4)', allRing: ring('all'),
       allLabel: s.filter === 'all' ? 'Showing everyone' : 'Show everyone',
       workOpen: s.work, workArrow: s.work ? 'Hide' : 'Show', toggleWork: set({ work: !s.work }),
-      threadOpen: s.thread, openThread: set({ thread: true }), closeThread: set({ thread: false }),
+      threadOpen: s.thread, noThread: !s.thread, openThread: set({ thread: true }), closeThread: set({ thread: false }),
       shipped: s.shipped, notShipped: !s.shipped, ship: set({ shipped: true }), undoShip: set({ shipped: false }),
       niceOn: s.nice, niceCount: s.nice ? 2 : 1, toggleNice: set({ nice: !s.nice }),
       mentioning: s.mention, toggleMention: set({ mention: !s.mention, draft: s.mention ? s.draft : '@' }),
