@@ -226,11 +226,13 @@ export interface HarnessRef {
 
 /** Where a run was started from (Runs' "Started from"; a team's runs open in its room). Runs before 2026-10-29 have none. */
 export interface RunOrigin {
-  kind: 'chat' | 'goal' | 'team' | 'trigger' | 'schedule';
-  /** The chat, goal, team, trigger or schedule's id. */
+  kind: 'chat' | 'goal' | 'team' | 'trigger' | 'schedule' | 'fork';
+  /** The chat, goal, team, trigger or schedule's id; a fork's parent run. */
   id: string;
   /** The team whose run it is (a team's task, or a team goal's run). */
   team?: string;
+  /** A fork: the parent's step it starts after. */
+  node?: string;
 }
 /** What one step's commit changed. */
 export interface DiffStat {
@@ -282,7 +284,7 @@ export type RunEvent =
   | { type: 'node.spawned'; node: PipelineNode; parent: string; depth: number; after: string[] }
   | { type: 'run.resumed'; retryFailed?: boolean }
   | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
-  | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef }
+  | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef; /** The worktree's HEAD when it started (runs before 2026-10-30: none). */ base?: string }
   | { type: 'node.session'; node: string; sessionId: string }
   | { type: 'node.chunk'; node: string; text: string }
   /** What a step's agent calls took (spec §4.2 metrics): Code Mode or direct, round-trips, run_code executions, connector calls, tokens. */
@@ -326,6 +328,14 @@ export type RunEvent =
   | { type: 'vault.note'; path: string }
   /** An API exchange (a history row) was handed to this run from the API client. */
   | { type: 'http.attached'; historyId: number }
+  /** The run went back to before `node`: the worktree was reset to `base`, the old HEAD kept at `ref`, and `nodes` queued again. */
+  | { type: 'run.rewound'; node: string; base: string; ref: string; nodes: string[] }
+  /** The last rewind was undone: the worktree is back at its `ref` and the steps it queued are as they were. */
+  | { type: 'run.unrewound'; ref: string }
+  /** The run is attempt `label` of a set of runs trying the same task (Try more ways). */
+  | { type: 'attempt.set'; set: string; label: string }
+  /** The person picked `run` from this run's attempt set to ship. */
+  | { type: 'attempt.picked'; run: string }
   | { type: 'run.finished'; status: RunStatus; error?: string; /** The run ended because its spend cap was reached. */ budget?: true };
 
 export interface StoredEvent {
@@ -364,6 +374,8 @@ export interface NodeState {
   limit?: { resetsAt: number };
   /** What its commits changed, summed over its attempts. */
   stat?: DiffStat;
+  /** The worktree's HEAD when it first started (since its last rewind): a rewind to before it resets to this. */
+  base?: string;
 }
 
 export interface RunState {
@@ -420,6 +432,14 @@ export interface RunState {
   origin?: RunOrigin;
   /** Its PR, once shipped (merged when merged), or why shipping failed. */
   ship?: { url?: string; number?: number; merged?: boolean; error?: string };
+  /** The last rewind, while it can still be undone (nothing has run since): what to put back. */
+  rewind?: { node: string; ref: string; base: string; status: RunStatus; finishedAt?: number; error?: string; nodes: Record<string, NodeState> };
+  /** Rewinds made so far (names the next rewind ref). */
+  rewinds?: number;
+  /** Try more ways: the set of runs trying the same task, this run's letter in it, and the one picked to ship. */
+  attemptSet?: string;
+  attemptLabel?: string;
+  attemptPicked?: { run: string; at: number };
 }
 
 /** A team run whose plan is finished and waits for the person's go-ahead. */
@@ -539,6 +559,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
     const n = 'node' in e && e.node && Object.hasOwn(s.nodes, e.node) ? s.nodes[e.node] : undefined;
     switch (e.type) {
       case 'run.resumed':
+        s.rewind = undefined;
         s.status = 'running';
         s.finishedAt = undefined;
         s.error = undefined;
@@ -558,7 +579,9 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         s.setupArtifacts = e.artifacts ?? [];
         break;
       case 'node.started':
+        s.rewind = undefined;
         if (n) {
+          n.base ??= e.base;
           n.resumedWithAnswer = n.answeredWhileWaiting || undefined;
           n.answeredWhileWaiting = undefined;
           n.status = 'running';
@@ -617,6 +640,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       }
       case 'approval.requested':
+        s.rewind = undefined;
         if (n) {
           n.status = 'awaiting';
           n.startedAt = ts;
@@ -667,6 +691,38 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
       }
       case 'vault.note':
         if (!s.notes.includes(e.path)) s.notes.push(e.path);
+        break;
+      case 'run.rewound': {
+        // the steps start afresh (attempts and spend stay counted); a copy of each is kept so an undo can put it back
+        const saved: Record<string, NodeState> = {};
+        for (const id of e.nodes) {
+          const ns = Object.hasOwn(s.nodes, id) ? s.nodes[id] : undefined;
+          if (!ns) continue;
+          saved[id] = { ...ns };
+          s.nodes[id] = { status: 'queued', attempts: ns.attempts, costUsd: ns.costUsd, loops: 0 };
+        }
+        s.rewind = { node: e.node, ref: e.ref, base: e.base, status: s.status, ...(s.finishedAt !== undefined ? { finishedAt: s.finishedAt } : {}), ...(s.error ? { error: s.error } : {}), nodes: saved };
+        s.rewinds = (s.rewinds ?? 0) + 1;
+        s.status = 'stopped';
+        s.error = undefined;
+        s.finishedAt = ts;
+        break;
+      }
+      case 'run.unrewound':
+        if (s.rewind) {
+          Object.assign(s.nodes, s.rewind.nodes);
+          s.status = s.rewind.status;
+          s.finishedAt = s.rewind.finishedAt;
+          s.error = s.rewind.error;
+          s.rewind = undefined;
+        }
+        break;
+      case 'attempt.set':
+        s.attemptSet = e.set;
+        s.attemptLabel = e.label;
+        break;
+      case 'attempt.picked':
+        s.attemptPicked = { run: e.run, at: ts };
         break;
       case 'run.finished':
         if (e.budget) s.budgetStop = true;
@@ -958,3 +1014,76 @@ export interface TetherBridge {
   /** The page listens now: folders handed over before this are delivered. */
   ready(): void;
 }
+
+// ---------- run tools (spec 2026-10-30): try more ways, Terminal, Preview ----------
+
+export interface AgentPick {
+  agent: string;
+  model?: string;
+}
+
+/** One attempt as the Compare page shows it. */
+export interface AttemptView {
+  id: string;
+  label: string;
+  status: RunState['status'];
+  live: boolean;
+  bot: string;
+  agent: string;
+  model?: string;
+  free: boolean;
+  /** The run's checks (its gate steps): passed, failing tests where the output says so. None when it has no gate or none ran. */
+  check?: { ok: boolean; failing?: number; passing?: number };
+  files: number;
+  added: number;
+  deleted: number;
+  costUsd: number;
+  durationMs: number;
+  /** The last reviewer's first line, and its bot. */
+  review?: { bot: string; line: string };
+  /** The first changed file and a few of its lines. */
+  excerpt?: { file: string; lines: string[] };
+  error?: string;
+  ship?: RunState['ship'];
+  /** The goal's number check after this run, and before it (when the goal has one and it was measured). */
+  metric?: { before?: number; after?: number };
+}
+
+/** GET /api/attempts/:set: the set's attempts, Tether's pick (never shipped on its own) and the person's, once made. */
+export interface AttemptsReply {
+  set: string;
+  task: string;
+  runs: AttemptView[];
+  pick?: string;
+  picked?: RunState['attemptPicked'];
+}
+
+/** What the run's stream carries for the Terminal: a command began, some of its output, its end. */
+export type ProcMessage =
+  | { type: 'exec.start'; id: number; command: string; at: number }
+  | { type: 'exec.output'; id: number; text: string }
+  | { type: 'exec.end'; id: number; code: number | null; signal?: string; durationMs: number; spill?: string };
+
+export interface ExecEntry {
+  id: number;
+  command: string;
+  at: number;
+  output: string;
+  running: boolean;
+  code?: number | null;
+  signal?: string;
+  durationMs?: number;
+  /** Where the full output was saved (relative to the worktree), when it was longer than what is shown. */
+  spill?: string;
+}
+
+export interface PreviewView {
+  status: 'starting' | 'running' | 'exited' | 'stopped';
+  command: string;
+  port: number;
+  url?: string;
+  /** The tail of its output. */
+  output: string;
+  code?: number | null;
+}
+

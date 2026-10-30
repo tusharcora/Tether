@@ -7,22 +7,29 @@ import type { Assistant } from '../assistant/useAssistant';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import type { Route } from '../hooks';
+import type { GoalView } from '../goals/goalsApi';
 import { useNotify } from '../ui/notify';
 import { MenuButton } from '../ui/studio/ToolFrame';
+import { useMediaQuery } from '../ui/studio/useMediaQuery';
+import { GoalsPanel, goalsPanelOpen, rememberGoalsPanel } from './GoalsPanel';
 import './chats.css';
 
 /**
  * A chat full screen (mockup board 2): the title (its menu renames or deletes), the project, Pop out to the mini chat and
  * the same menu under ⋯; the thread in a centred 760 px column with the composer pinned under it. A pressed artifact card
- * opens the artifact in a panel beside the thread.
+ * opens the artifact in a panel beside the thread. On a wide screen the project's open goals sit beside it (Goals · next),
+ * shown or hidden with Goals and remembered per window.
  */
-export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void>; onNewChat?: () => void }) {
+export function Conversation(p: { chat: Assistant; project?: { id: string; name: string }; context: AssistantContext; onGo: (r: Route) => void; onPopOut: () => void; onRenamed: () => void; onDelete: () => Promise<void>; onNewChat?: () => void; goals?: GoalView[]; teamName?: (id: string) => string }) {
   const notify = useNotify();
   const [renaming, setRenaming] = useState<string>();
   /** Escape leaves the title as it was (the field's blur would save it). */
   const cancelled = useRef(false);
   const [confirm, setConfirm] = useState(false);
   const [artifact, setArtifact] = useState<ArtifactRef>();
+  const wide = useMediaQuery('(min-width: 1200px)');
+  const [goalsOn, setGoalsOn] = useState(goalsPanelOpen);
+  const toggleGoals = () => (rememberGoalsPanel(!goalsOn), setGoalsOn(!goalsOn));
   const title = p.chat.title ?? 'New chat';
   const items = [
     { label: 'Rename', onSelect: () => ((cancelled.current = false), setRenaming(title)), disabled: !p.chat.chatId },
@@ -55,6 +62,11 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
         )}
         {p.project ? <span className="chat-chip">{p.project.name}</span> : null}
         <span className="chat-head-gap" />
+        {p.goals && wide ? (
+          <Button variant={goalsOn ? 'secondary' : 'ghost'} size="sm" aria-pressed={goalsOn} onClick={toggleGoals}>
+            Goals
+          </Button>
+        ) : null}
         <Button variant="secondary" size="sm" onClick={p.onPopOut}>
           Pop out <span aria-hidden="true">↘</span>
         </Button>
@@ -68,6 +80,8 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
           <aside className="chat-artifact">
             <ArtifactViewer ws={p.project?.id} id={artifact.id} version={artifact.version} project={p.project?.name} onClose={() => setArtifact(undefined)} />
           </aside>
+        ) : p.goals && wide && goalsOn ? (
+          <GoalsPanel goals={p.goals} project={p.project?.id} chatId={p.chat.chatId} onGo={p.onGo} teamName={p.teamName} />
         ) : null}
       </div>
       <Dialog open={confirm} onOpenChange={setConfirm}>

@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve as resolvePath, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
-import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
+import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, headSha, isAncestor, refsUnder, removeBranch, removeWorktree, resetTo, diffAgainst, entryPaths, revertEntries, setRef, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
-import { childrenOf, normalizePipeline, parentsOf, preflight } from './pipeline.js';
+import { ancestorsOf, childrenOf, normalizePipeline, parentsOf, preflight, topoLayers } from './pipeline.js';
 import { baseStep, handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
 import { getVersion, harnessForRun, NON_EVOLVABLE, type Harness } from './harness.js';
 import { runHttpGate } from './http/gate.js';
@@ -201,6 +201,8 @@ export class Engine {
   /** The planning round in flight for a run, and the way to cancel it. */
   private planning = new Map<string, Promise<void>>();
   private planAbort = new Map<string, AbortController>();
+  /** Runs a rewind or its undo is moving right now (nothing else may start them). */
+  private moving = new Set<string>();
 
   constructor(
     readonly store: Store,
@@ -277,6 +279,7 @@ export class Engine {
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
     if (!o.keepWork) {
+      for (const ref of await refsUnder(s.repo, `refs/tether/rewind/${runId}/`).catch(() => [])) await setRef(s.repo, ref).catch(() => {});
       await removeWorktree(s.repo, s.workdir).catch(() => {});
       if (existsSync(s.workdir)) rmSync(s.workdir, { recursive: true, force: true });
       if (s.branch) await removeBranch(s.repo, s.branch).catch(() => {});
@@ -375,7 +378,7 @@ export class Engine {
     }
   }
 
-  private async startRun(rawInput: StartInput, extra: { probe?: ProbeRun; onId?: (runId: string) => void; after?: (runId: string) => Promise<void> } = {}): Promise<string> {
+  private async startRun(rawInput: StartInput, extra: { probe?: ProbeRun; onId?: (runId: string) => void; after?: (runId: string) => Promise<void>; /** A fork: these steps are done already, in `from`. */ inherit?: { from: RunState; nodes: string[] } } = {}): Promise<string> {
     const input = { ...rawInput, pipeline: this.resolve(rawInput.pipeline) };
     const ws = rawInput.workspace === false ? undefined : resolveWorkspace(this.opts.home, { workspace: rawInput.workspace, repo: input.repo });
     // the project's setup command is the run's default; a workflow that sets its own keeps it
@@ -415,6 +418,10 @@ export class Engine {
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
     });
+    for (const id of extra.inherit?.nodes ?? []) {
+      const was = extra.inherit!.from.nodes[id];
+      this.store.append(runId, { type: 'node.finished', node: id, status: 'done', output: `From run ${extra.inherit!.from.id}.`, durationMs: 0, attempt: 0, ...(was?.commit ? { commit: was.commit } : {}), ...(was?.stat ? { stat: was.stat } : {}) });
+    }
     this.launch(runId, extra.after);
     return runId;
   }
@@ -428,7 +435,7 @@ export class Engine {
       /** Steps paused on the free limit carry on on this agent/model (this run only; bindings are untouched). */ switchTo?: { agent: string; model?: string };
     } = {},
   ): Promise<void> {
-    if (this.active.has(runId)) throw new Error('run is already live');
+    if (this.active.has(runId) || this.moving.has(runId)) throw new Error('run is already live');
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
     // a probe replay only means something inside its probe (harness override, spend guard, cleanup): never run it again
@@ -462,16 +469,96 @@ export class Engine {
     if (this.active.has(runId)) throw new Error('the run is still going: stop it first, or wait for it to need you');
     if (s.status === 'done') throw new Error('the run has finished: start a new run for more changes');
     this.amend(runId, node, { guidance: `Sent back by the person: ${note}` }, 'sent back with comments');
-    const again = new Set<string>();
-    const stack = [node];
-    while (stack.length) {
-      const id = stack.pop()!;
-      if (again.has(id)) continue;
-      again.add(id);
-      stack.push(...childrenOf(s.pipeline, id));
-    }
+    const again = downstream(s.pipeline, node);
     for (const id of again) if (s.nodes[id] && s.nodes[id]!.status !== 'queued') this.store.append(runId, { type: 'node.requeued', node: id, reason: 'sent back with comments' });
     await this.resume(runId);
+  }
+
+  /**
+   * Rewind (spec 2026-10-30 §6.1): put the run back to before `node`. The worktree's HEAD, with any uncommitted work
+   * committed on top, is kept at `refs/tether/rewind/<run>/<n>` so the rewind can be undone; the worktree is reset to the
+   * step's base and its untracked files removed; the step, the steps after it, the manager that handed it out, and any step
+   * whose commit is no longer on the branch are queued again. The run is left stopped: Resume carries on from there.
+   */
+  async rewind(runId: string, node: string): Promise<RunState> {
+    const s = this.rewindable(runId, node, 'rewind');
+    if (s.ship?.url) throw new Error(`already shipped as PR #${s.ship.number}: fork from a step instead`);
+    this.moving.add(runId);
+    try {
+      const base = rewindBase(s, node);
+      await commitAll(s.workdir, 'aorch: uncommitted work before rewind', s.setupArtifacts);
+      const ref = `refs/tether/rewind/${runId}/${(s.rewinds ?? 0) + 1}`;
+      await setRef(s.workdir, ref, await headSha(s.workdir));
+      await resetTo(s.workdir, base, s.setupArtifacts);
+      const again = downstream(s.pipeline, node);
+      // a step a manager handed out runs only inside its manager: the manager (and what follows it) goes again too
+      const parentOf = (id?: string) => s.pipeline.nodes.find((x) => x.id === id)?.spawn?.parent;
+      for (let m = parentOf(node); m; m = parentOf(m)) for (const id of downstream(s.pipeline, m)) again.add(id);
+      for (const [id, ns] of Object.entries(s.nodes)) if (ns.commit && !again.has(id) && !(await isAncestor(s.workdir, ns.commit, base))) again.add(id);
+      this.store.append(runId, { type: 'run.rewound', node, base, ref, nodes: topoLayers(s.pipeline).flat().filter((id) => again.has(id)) });
+    } finally {
+      this.moving.delete(runId);
+    }
+    return this.state(runId);
+  }
+
+  /** Undo the last rewind while nothing has run since and the worktree is where the rewind left it. */
+  async undoRewind(runId: string): Promise<RunState> {
+    const s = this.store.state(runId);
+    if (!s) throw new Error(`unknown run ${runId}`);
+    if (this.active.has(runId) || this.moving.has(runId)) throw new Error('the run is still going: stop it first');
+    const rw = s.rewind;
+    if (!rw) throw new Error('nothing to undo: the run has moved on since its last rewind');
+    if (!existsSync(s.workdir)) throw new Error(`worktree is gone (${s.workdir})`);
+    this.moving.add(runId);
+    try {
+      const dirty = entryPaths(await statusEntries(s.workdir)).filter((p) => !s.setupArtifacts.includes(p));
+      if ((await headSha(s.workdir)) !== rw.base || dirty.length) throw new Error('the worktree has moved on since the rewind, so it cannot be undone');
+      await resetTo(s.workdir, rw.ref, s.setupArtifacts);
+      await setRef(s.workdir, rw.ref);
+      this.store.append(runId, { type: 'run.unrewound', ref: rw.ref });
+    } finally {
+      this.moving.delete(runId);
+    }
+    return this.state(runId);
+  }
+
+  /**
+   * Fork (spec 2026-10-30 §6.1): a new run with the same task, the pipeline the parent started with and its workspace,
+   * starting from the code after `node`. The step and the steps before it are recorded done "from the parent run".
+   */
+  async fork(runId: string, node: string): Promise<string> {
+    const s = this.rewindable(runId, node, 'fork');
+    const start = this.startedWith(runId);
+    if (!start.nodes.some((n) => n.id === node)) throw new Error(`"${node}" was handed out by a manager: fork from one of the run's own steps`);
+    const inherit = [...ancestorsOf(start, node), node];
+    return this.startRun(
+      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node } },
+      { inherit: { from: s, nodes: inherit } },
+    );
+  }
+
+  /** The pipeline a run started with (before amendments and spawned steps). */
+  startedWith(runId: string): Pipeline {
+    const e = this.store.eventsNoChunks(runId).find((x) => x.event.type === 'run.started')?.event;
+    if (e?.type !== 'run.started') throw new Error(`unknown run ${runId}`);
+    return e.pipeline;
+  }
+
+  /** A step a rewind (not live, finished) or a fork (done) may name. */
+  private rewindable(runId: string, node: string, what: 'rewind' | 'fork'): RunState {
+    const s = this.store.state(runId);
+    if (!s) throw new Error(`unknown run ${runId}`);
+    if (what === 'rewind' && (this.active.has(runId) || this.moving.has(runId))) throw new Error('the run is still going: stop it first');
+    if (s.probe) throw new Error(`a probe replay cannot be ${what === 'rewind' ? 'rewound' : 'forked'}`);
+    if (s.kind === 'team' && (what === 'fork' || s.planning || !s.pipeline.nodes.length)) throw new Error(what === 'fork' ? 'a team run cannot be forked: start the task again instead' : 'a team run that is still planning has no steps to rewind');
+    const n = s.pipeline.nodes.find((x) => x.id === node);
+    if (!n) throw new Error(`no step "${node}" in run ${runId}`);
+    if (n.manager) throw new Error(`"${node}" hands out work: ${what} from one of the steps it handed out instead`);
+    const st = s.nodes[node]?.status;
+    if (what === 'fork' ? st !== 'done' : st !== 'done' && st !== 'error') throw new Error(`"${node}" has not finished: only a ${what === 'fork' ? 'step that is done' : 'finished step'} can be ${what === 'rewind' ? 'rewound to' : 'forked from'}`);
+    if (!existsSync(s.workdir)) throw new Error(`worktree is gone (${s.workdir})`);
+    return s;
   }
 
   /** Re-point one agent step at another agent/model before a resume. Recorded in the log. */
@@ -1234,7 +1321,8 @@ export class Engine {
     const t0 = Date.now();
     if (isGate) {
       const attempt = this.state(runId).nodes[node.id]!.attempts + 1;
-      this.store.append(runId, { type: 'node.started', node: node.id, attempt });
+      const base = await headSha(this.state(runId).workdir).catch(() => undefined);
+      this.store.append(runId, { type: 'node.started', node: node.id, attempt, ...(base ? { base } : {}) });
     }
     const finishGate = (ok: boolean, output: string, error?: string) => {
       const attempt = this.state(runId).nodes[node.id]!.attempts;
@@ -1830,7 +1918,9 @@ export class Engine {
         console.error(`[harness] could not read or write the harness store (${(err as Error).message}); runs continue without harness data`);
       }
     }
-    this.store.append(runId, { type: 'node.started', node: node.id, attempt, ...(harness ? { harness } : {}) });
+    // a read-only step never moves HEAD (rewindBase finds the same commit without it) and a probe is never rewound: spare them the git call
+    const base = node.readOnly || probe ? undefined : await headSha(state.workdir).catch(() => undefined);
+    this.store.append(runId, { type: 'node.started', node: node.id, attempt, ...(harness ? { harness } : {}), ...(base ? { base } : {}) });
 
     let vaultContext: string | undefined;
     if (this.opts.vault && node.vault !== false) {
@@ -2112,6 +2202,31 @@ function managerSummary(s: RunState, node: PipelineNode, kids: PipelineNode[], n
   if (notes.length) lines.push('', 'Notes:', ...notes.map((n) => `- ${n}`));
   if (lastReview) lines.push('', `Final review:\n${tail(lastReview, 2000)}`);
   return lines.join('\n');
+}
+
+/** `id` and every step after it in the graph. */
+function downstream(p: Pipeline, id: string): Set<string> {
+  const out = new Set<string>();
+  const stack = [id];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (out.has(x)) continue;
+    out.add(x);
+    stack.push(...childrenOf(p, x));
+  }
+  return out;
+}
+
+/** Where a rewind to before `node` goes: its recorded base; a run from before bases, the previous commit in step order, else its start. */
+export function rewindBase(s: Pick<RunState, 'baseSha' | 'pipeline' | 'nodes'>, node: string): string {
+  const own = s.nodes[node]?.base;
+  if (own) return own;
+  const order = topoLayers(s.pipeline).flat();
+  for (let i = order.indexOf(node) - 1; i >= 0; i--) {
+    const c = s.nodes[order[i]!]?.commit;
+    if (c) return c;
+  }
+  return s.baseSha;
 }
 
 async function pool<T>(items: T[], limit: number, fn: (x: T) => Promise<unknown>): Promise<void> {

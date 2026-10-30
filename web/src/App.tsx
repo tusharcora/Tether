@@ -27,6 +27,7 @@ import { OpenFolderDialog } from './projects/OpenFolderDialog';
 import { liveProjects, projectOf, runProject, samePin, usePins, useProjects } from './projects/projects';
 import { RemoveProjectDialog } from './projects/RemoveProjectDialog';
 import { Runs } from './Runs';
+import { Compare } from './runs/Compare';
 import { NewTeam } from './teams/NewTeam';
 import { TeamScreen } from './teams/TeamScreen';
 import { TEAMS_PATH, type TeamsReply } from './teams/teamsApi';
@@ -303,7 +304,7 @@ function Shell() {
         <div ref={shellRef} className={cn('shell', { phone })}>
           {phone ? null : (
             <Sidebar
-              active={screen.tab}
+              active={screen.tab === 'attempts' ? 'runs' : screen.tab}
               settingsOpen={settingsOpen}
               onGo={openScreen}
               onSearch={() => setPalette(true)}
@@ -364,6 +365,7 @@ function Shell() {
                 onGo={go}
               />
             ) : null}
+            {screen.tab === 'attempts' && screen.id ? <Compare key={screen.id} set={screen.id} onGo={go} /> : null}
             {screen.tab === 'api' ? (
               <ApiTab
                 workspace={projects.current?.id}
@@ -394,7 +396,7 @@ function Shell() {
               />
             ) : null}
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat key={screen.node ?? ''} chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} starter={screen.node === 'run' || screen.node === 'file' ? screen.node : undefined} /> : null}
-            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} /> : null}
+            {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} goals={goals.goals} teamName={(id) => teams.data?.teams.find((t) => t.id === id)?.name ?? id} /> : null}
             {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
               <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
             ) : null}
@@ -404,7 +406,7 @@ function Shell() {
             {screen.tab === 'goals' ? <Goals goals={goals} projects={list} project={projects.current} selected={screen.id} onSelect={(id) => go(id ? { tab: 'goals', id } : { tab: 'goals' })} onGo={go} create={create?.what === 'goal' ? create.n : undefined} teams={teams.data} /> : null}
           </main>
           {settingsPage}
-          {phone ? <BottomBar active={screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
+          {phone ? <BottomBar active={screen.tab === 'attempts' ? 'runs' : screen.tab} settingsOpen={settingsOpen} onGo={openScreen} onSettings={openSettings} /> : null}
           <Assistant
             shell={shell}
             chat={chat}

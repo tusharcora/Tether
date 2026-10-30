@@ -4,6 +4,8 @@ import type { AgentAdapter, AgentRequest, AgentResult } from '../types.js';
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((res) => {
+    // a signal aborted before the call began never fires 'abort' again
+    if (signal.aborted) return res();
     const t = setTimeout(res, ms);
     signal.addEventListener('abort', () => (clearTimeout(t), res()), { once: true });
   });

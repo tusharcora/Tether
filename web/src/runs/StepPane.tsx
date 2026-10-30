@@ -19,6 +19,10 @@ import { Rating } from './Rating';
 import { commitsKey } from './RunFiles';
 import type { StoryRow } from './storyModel';
 import { useDiff } from './useDiff';
+import { Preview } from './Preview';
+import { Terminal, type ProcSubscribe } from './Terminal';
+
+export type StepTab = 'transcript' | 'changes' | 'terminal' | 'preview';
 
 type Comments = ReturnType<typeof useComments>;
 const VERB: Partial<Record<Verb, string>> = { read: 'Read', edit: 'Edited', run: 'Ran', search: 'Searched', fetch: 'Fetched', think: 'Planned', tool: 'Used' };
@@ -121,15 +125,19 @@ export function CommentDiff({ text, node, comments }: { text: string; node: stri
 /**
  * The step in the middle of a run's page (board 4): who and what it ran on, then Transcript (its tool calls as compact
  * rows, then what it said) and Changes (its diff, commentable line by line). An approval shows the run's whole diff.
+ * Terminal and Preview (board 6) are the run's, not the step's: commands and the dev server in its worktree. On a wide
+ * screen Preview opens as a pane beside this one (`onPreview` toggles it) instead of a tab.
  */
-export function StepPane({ run: r, row, comments, onAct, onOpenFile }: { run: RunView; row?: StoryRow; comments: Comments; onAct: RunAct; onOpenFile?: (file: string) => void }) {
+export function StepPane({ run: r, row, comments, onAct, onOpenFile, tab: shown, onTab, onProc, previewPane, onPreview }: { run: RunView; row?: StoryRow; comments: Comments; onAct: RunAct; onOpenFile?: (file: string) => void; tab?: StepTab; onTab?: (t: StepTab) => void; onProc?: ProcSubscribe; /** Preview is open in the side pane. */ previewPane?: boolean; /** Wide screens: toggle the Preview pane (no Preview tab). */ onPreview?: () => void }) {
   const { crew } = useCrew();
-  const [tab, setTab] = useState<'transcript' | 'changes'>('transcript');
+  const [own, setOwn] = useState<StepTab>('transcript');
+  const tab = shown ?? own;
+  const setTab = onTab ?? setOwn;
   const pnode = row?.node ? r.pipeline.nodes.find((n) => n.id === row.node) : undefined;
   const node = pnode ? r.nodes[pnode.id] : undefined;
-  const own = pnode?.kind === 'agent';
-  const diff = useDiff(own ? (node?.commit ? `/api/runs/${r.id}/diff?node=${encodeURIComponent(pnode!.id)}` : undefined) : `/api/runs/${r.id}/diff`, own ? (node?.commit ?? '') : commitsKey(r));
-  const tools = useToolRows(r.id, own && tab === 'transcript' ? pnode!.id : undefined, `${node?.status}:${node?.attempts}`);
+  const agentStep = pnode?.kind === 'agent';
+  const diff = useDiff(agentStep ? (node?.commit ? `/api/runs/${r.id}/diff?node=${encodeURIComponent(pnode!.id)}` : undefined) : `/api/runs/${r.id}/diff`, agentStep ? (node?.commit ?? '') : commitsKey(r));
+  const tools = useToolRows(r.id, agentStep && tab === 'transcript' ? pnode!.id : undefined, `${node?.status}:${node?.attempts}`);
   const files = node?.stat?.files ?? (diff.text ? parseDiff(diff.text).files.length : undefined);
   if (!row || (row.node && !pnode))
     return (
@@ -154,13 +162,23 @@ export function StepPane({ run: r, row, comments, onAct, onOpenFile }: { run: Ru
           {node.error}
         </p>
       ) : null}
-      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="rp-tabs">
-        <TabsList aria-label="Step view">
-          <TabsTrigger value="transcript">Transcript</TabsTrigger>
-          <TabsTrigger value="changes">{files !== undefined ? `Changes ${files}` : 'Changes'}</TabsTrigger>
-        </TabsList>
+      <Tabs value={tab === 'preview' && onPreview ? 'transcript' : tab} onValueChange={(v) => setTab(v as StepTab)} className="rp-tabs">
+        <div className="rp-tabrow">
+          <TabsList aria-label="Step view">
+            <TabsTrigger value="transcript">Transcript</TabsTrigger>
+            <TabsTrigger value="changes">{files !== undefined ? `Changes ${files}` : 'Changes'}</TabsTrigger>
+            <TabsTrigger value="terminal">Terminal</TabsTrigger>
+            {onPreview ? null : <TabsTrigger value="preview">Preview</TabsTrigger>}
+          </TabsList>
+          {onPreview ? (
+            <Button size="sm" variant={previewPane ? 'secondary' : 'ghost'} aria-pressed={!!previewPane} onClick={onPreview}>
+              Preview
+            </Button>
+          ) : null}
+          {tab === 'terminal' ? <span className="rp-where mono" title={r.workdir}>{`${r.workdir.replace(/^\/Users\/[^/]+/, '~')} · ${r.branch}`}</span> : null}
+        </div>
         <TabsContent value="transcript" className="rp-body">
-          {own ? (
+          {agentStep ? (
             <>
               {tools.error ? <p className="sl-meta">{`Could not read its tool calls: ${tools.error}`}</p> : null}
               {tools.rows.length ? (
@@ -187,10 +205,18 @@ export function StepPane({ run: r, row, comments, onAct, onOpenFile }: { run: Ru
           )}
           {pnode?.kind === 'gate' && !node?.gate ? <QuietLine>Not run yet.</QuietLine> : null}
         </TabsContent>
+        <TabsContent value="terminal" className="rp-body">
+          {tab === 'terminal' ? <Terminal run={r} onProc={onProc} /> : null}
+        </TabsContent>
+        {onPreview ? null : (
+          <TabsContent value="preview" className="rp-body">
+            {tab === 'preview' ? <Preview run={r} /> : null}
+          </TabsContent>
+        )}
         <TabsContent value="changes" className="rp-body">
           {diff.error ? (
             <InlineError message={diff.error} onRetry={diff.retry} />
-          ) : own && !node?.commit ? (
+          ) : agentStep && !node?.commit ? (
             <QuietLine>{node?.status === 'done' && !pnode!.readOnly ? 'This step finished without changing any files.' : 'No changes yet.'}</QuietLine>
           ) : (
             <Loading loading={diff.loading} lines={6} label="Loading the diff">
@@ -206,7 +232,7 @@ export function StepPane({ run: r, row, comments, onAct, onOpenFile }: { run: Ru
           )}
         </TabsContent>
       </Tabs>
-      {own && (node?.status === 'done' || node?.status === 'error') && !r.probe ? <Rating key={pnode!.id} botName={name} current={node.feedback} onRate={(rating, note) => onAct('feedback', { node: pnode!.id, rating, ...(note ? { note } : {}) })} /> : null}
+      {agentStep && (node?.status === 'done' || node?.status === 'error') && !r.probe ? <Rating key={pnode!.id} botName={name} current={node.feedback} onRate={(rating, note) => onAct('feedback', { node: pnode!.id, rating, ...(note ? { note } : {}) })} /> : null}
     </section>
   );
 }
