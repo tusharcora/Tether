@@ -8,6 +8,7 @@ import { Textarea } from '../components/kept/textarea/textarea';
 import { crewFor, useCrew } from '../crewStore';
 import { Face } from '../Face';
 import { RequestGateFields } from '../RequestGateFields';
+import { CAPS_HINT, useCaps } from '../caps';
 import { NONE, fromNone } from '../ui/cn';
 import { stepTitle } from './stepText';
 
@@ -20,6 +21,7 @@ const KIND_LINE: Record<string, string> = {
 };
 
 export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline) => void) => void }) {
+  const caps = useCaps();
   return (
     <div className="bl-form">
       <Select
@@ -36,6 +38,7 @@ export function SettingsForm({ pl, mut }: { pl: Pipeline; mut: (fn: (p: Pipeline
       <Input label="Step timeout (minutes)" type="number" min="1" value={Math.round(pl.settings.nodeTimeoutMs / 60000)} onChange={(e) => mut((p) => (p.settings.nodeTimeoutMs = (Number(e.target.value) || 1) * 60000))} />
       <Input
         label="Spend cap (USD, optional)"
+        description={caps ? undefined : CAPS_HINT}
         type="number"
         min="0"
         step="0.5"
