@@ -26,7 +26,7 @@ describe('a ping', () => {
     await r.idle();
     expect(r.msgs()).toHaveLength(1);
     expect(r.store.listRows()).toHaveLength(0);
-    expect(() => r.post('hi', { id: 'stranger', name: 'S' })).toThrow(/only people in this team/);
+    expect(() => r.post('hi', { id: 'stranger', name: 'S' })).toThrow(/only people in this squad/);
   });
 
   it('a proposal in the answer becomes a card that starts a run on that agent', async () => {
@@ -43,24 +43,31 @@ describe('a ping', () => {
 });
 
 describe('a task', () => {
-  it('balanced: runs on the agent’s binding, then the gates, then a ship card; approving opens a PR', async () => {
+  it('balanced: runs on the agent’s binding, then the gates; its done message, then a ship card; Ship it opens the PR and merges it', async () => {
     const r = rig();
     const runId = await r.runTask('@Bolt fix the thing');
     const s = r.store.state(runId)!;
     expect(s.pipeline.nodes.map((n) => n.id)).toEqual(['work', 'tests', 'ship']);
     expect(r.writer.prompts.length).toBeGreaterThan(0);
-    expect(r.msgs()[1]).toMatchObject({ from: { name: 'Bolt' }, text: expect.stringMatching(/^On it\. Started R-/), card: { kind: 'run', runId } });
+    expect(r.msgs()[1]).toMatchObject({ from: { name: 'Bolt' }, text: 'On it.', card: { kind: 'run', runId } });
+    // the work is done at the approval: Bolt says so in its voice (asking the squad's reviewer), with What I did behind it
+    const done = r.msgs().find((m) => m.work)!;
+    expect(done).toMatchObject({ from: { name: 'Bolt' }, text: 'Done, 1 file changed, tests pass. @Lens mind reviewing it?', work: { files: ['fix.txt'], plus: 1, minus: 0, ran: [{ command: 'test -f fix.txt', ok: true }] }, handoff: { to: 'reviewer', name: 'Lens', review: true } });
+    expect(done.report).toBe('Fixed it.');
     const ship = r.card('approval')!;
-    expect(ship.card).toMatchObject({ what: 'ship', status: 'pending', node: 'ship', detail: expect.stringContaining('test -f fix.txt passed') });
+    expect(ship).toMatchObject({ text: '@you ready when you are.' });
+    expect(ship.card).toMatchObject({ what: 'ship', status: 'pending', node: 'ship', title: 'Ship “Fix the thing”?', files: 1, plus: 1, minus: 0, tests: { ok: true, line: 'Tests pass' }, review: { by: 'Lens' }, detail: expect.stringContaining('test -f fix.txt passed') });
     expect(r.teams.view(r.team.id).status).toBe('needs');
-    // paused at the approval is not the end of the run: nothing is reported as failed or done yet
-    expect(r.msgs().filter((m) => /failed|^Done/.test(m.text))).toEqual([]);
+    // paused at the approval is not the end of the run: nothing is reported as failed
+    expect(r.msgs().filter((m) => /couldn't|failed/.test(m.text))).toEqual([]);
     await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
     await r.engine.wait(runId);
     await r.idle();
     expect(r.calls.find((c) => c[1] === 'create')).toEqual(['pr', 'create', '--head', s.branch, '--title', 'fix the thing', '--body', expect.stringContaining('Opened by Bolt')]);
     expect(g(r.bare, 'rev-parse', s.branch)).toBe(g(r.repo, 'rev-parse', s.branch));
-    expect(r.card('pr')!.card).toMatchObject({ number: 7, url: 'https://github.com/o/r/pull/7' });
+    expect(r.calls.find((c) => c[1] === 'merge')).toEqual(['pr', 'merge', 'https://github.com/o/r/pull/7', '--merge']);
+    expect(r.card('approval')!.card).toMatchObject({ status: 'approved', by: 'you', ship: { state: 'merged', pr: { number: 7, url: 'https://github.com/o/r/pull/7' } } });
+    expect(r.card('pr')).toBeUndefined();
     expect(r.msgs()[1]!.card).toMatchObject({ status: 'done', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'done' }] });
   });
 
@@ -107,7 +114,7 @@ describe('a task', () => {
     await r.teams.decide(r.team.id, r.card('approval', 'pending')!.id, { action: 'reject', by: OWNER });
     await r.engine.wait(second);
     await r.idle();
-    expect(r.msgs().at(-1)!.text).toMatch(/^Rejected again\. Tell me what to change/);
+    expect(r.msgs().at(-1)!.text).toMatch(/^Sent back again\. Tell me what to change/);
     expect(r.tasks()).toHaveLength(2);
   });
 });
@@ -120,14 +127,14 @@ describe('hand-offs', () => {
     const second = await r.runTask(`@Probe continue ${ref}: add a note`);
     expect(r.tasks()[1]).toMatchObject({ agent: 'tester', chain: first });
     expect(r.store.state(second)!.baseSha).toBe(g(r.repo, 'rev-parse', r.store.state(first)!.branch));
-    expect(r.msgs().find((m) => m.run === second && m.card?.kind === 'run')!.text).toBe(`Taking it. Started R-${second.slice(-4).toUpperCase()} on ${ref}'s branch.`);
+    expect(r.msgs().find((m) => m.run === second && m.card?.kind === 'run')!.text).toBe("Picking this up from Bolt's branch.");
     r.talk.reply = 'Small and fine.\nVERDICT: PASS';
     const runs = r.store.listRows().length;
     r.post(`@Lens review ${ref}`);
     await r.idle();
     expect(r.store.listRows()).toHaveLength(runs);
     expect(r.talk.prompts.at(-1)).toMatch(/<diff>[\s\S]*fix\.txt[\s\S]*<\/diff>/);
-    expect(r.msgs().at(-1)).toMatchObject({ from: { name: 'Lens' }, text: 'Small and fine.\nVERDICT: PASS', run: first });
+    expect(r.msgs().at(-1)).toMatchObject({ from: { name: 'Lens' }, text: 'Small and fine.', report: 'Small and fine.\nVERDICT: PASS', run: first });
   });
 });
 
@@ -140,14 +147,15 @@ describe('loop work', () => {
     await r.until(() => r.goals.db.must(goal.id).status === 'met');
     await r.idle();
     const texts = r.msgs().map((m) => m.text);
-    expect(texts).toContain('On it. I made it a loop: the goal is `test -f fix.txt` passing, limit $2.00 or 3 runs. I\'ll post after each run.');
+    expect(texts).toContain('On it. I made it a recurring ticket, done when `test -f fix.txt` passes, limit $2.00 or 3 runs. I\'ll post after each run.');
     expect(texts.some((t) => /^Run 1 done: check failing → passing/.test(t))).toBe(true);
-    expect(texts).toContain('Loop met: `test -f fix.txt` passes.');
+    expect(texts).toContain('Done: `test -f fix.txt` passes.');
     const ship = r.card('approval', 'pending')!;
-    expect(ship.card).toMatchObject({ what: 'ship', goalId: goal.id });
+    expect(ship).toMatchObject({ text: '@you ready when you are.', ticket: goal.id });
+    expect(ship.card).toMatchObject({ what: 'ship', goalId: goal.id, files: 1, tests: { ok: true, line: 'test -f fix.txt passes' } });
     await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
     await r.idle();
-    expect(r.card('pr')).toBeDefined();
+    expect(r.card('approval')!.card).toMatchObject({ status: 'approved', ship: { state: 'merged', pr: { number: 7 } } });
     expect(r.tasks()[0]).toMatchObject({ kind: 'loop', goal: goal.id });
     // the $ the person wrote is the loop's own cap: its runs enforce it with Spending caps off
     expect(r.store.state(r.tasks()[0]!.runId)).toMatchObject({ capsOn: true, pipeline: { settings: { maxCostUsd: 2 } } });
@@ -160,7 +168,7 @@ describe('loop work', () => {
     expect(goal).not.toHaveProperty('budgetUsd');
     await r.until(() => r.goals.db.must(goal.id).status === 'met');
     await r.idle();
-    expect(r.msgs().map((m) => m.text)).toContain("On it. I made it a loop: the goal is `test -f fix.txt` passing, limit 3 runs. I'll post after each run.");
+    expect(r.msgs().map((m) => m.text)).toContain("On it. I made it a recurring ticket, done when `test -f fix.txt` passes, limit 3 runs. I'll post after each run.");
     const s = r.store.state(r.tasks()[0]!.runId)!;
     expect(s.capsOn).toBe(false);
     expect(s.pipeline.settings.maxCostUsd).toBeUndefined();

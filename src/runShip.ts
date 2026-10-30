@@ -80,6 +80,13 @@ export class RunShip {
   }
 
   /** Merge once the PR's checks pass; pending checks are looked at again later, a failure is recorded. */
+  /** Merge a PR this run already opened (a ticket's Merge PR), once its checks pass. */
+  mergeOpen(runId: string): void {
+    const ship = this.d.store.state(runId)?.ship;
+    if (!ship?.url || ship.number === undefined || ship.merged) throw new HttpError(409, 'This run has no open PR to merge.');
+    this.job(this.merge(runId, { url: ship.url, number: ship.number }, 0));
+  }
+
   private async merge(runId: string, pr: { url: string; number: number }, tries: number): Promise<void> {
     let st: Awaited<ReturnType<typeof prChecks>>;
     try {

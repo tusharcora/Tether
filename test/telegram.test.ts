@@ -126,7 +126,7 @@ describe('pairing and /iam', () => {
     expect(r.f.texts().at(-1)).toMatch(/not valid any more/);
     await r.send(r.msg(MAYA, `/pair@tether_bot ${code}`));
     expect(r.now().link).toBe(String(CHAT));
-    expect(r.f.texts().some((t) => /Linked to the Tether team “<b>Core<\/b>”/.test(t))).toBe(true);
+    expect(r.f.texts().some((t) => /Linked to the Tether squad “<b>Core<\/b>”/.test(t))).toBe(true);
     // the pinned status goes up at once
     expect(r.f.of('pinChatMessage')).toHaveLength(1);
     expect(loadTg(r.home).teams[r.team.id]!.pin).toBe(r.f.of('pinChatMessage')[0]!.params.message_id);
@@ -178,7 +178,7 @@ describe('talking to agents in the group', () => {
     expect(r.f.texts().filter((t) => t.startsWith('<b>Lens</b>'))).toEqual(['<b>Lens</b>: It says fixture.']);
   });
 
-  it('a task: its run card is sent once and edited in place; the ship card has Approve / Reject / Diff', async () => {
+  it('a task: its run card is sent once and edited in place; the agent speaks in its voice; the ship card has Ship it / Not yet / Diff', async () => {
     const r = tgRig();
     await r.send(r.msg(TUSHAR, '@Bolt fix the thing'));
     const runId = await r.until(() => r.tasks()[0]?.runId);
@@ -193,7 +193,10 @@ describe('talking to agents in the group', () => {
     // edits of one message keep their gap
     for (let i = 1; i < edits.length; i++) expect(edits[i]!.at - edits[i - 1]!.at).toBeGreaterThanOrEqual(35);
     const ship = r.msgs().find((m) => m.card?.kind === 'approval')!;
+    // the squad voice in the group: the done message is a sentence and What I did, not the agent's raw output
+    expect(r.f.texts()).toContain('<b>Bolt</b>: Done, 1 file changed, tests pass. @Lens mind reviewing it?\n<i>1 file · +1 −0 · test -f fix.txt passed</i>');
     const sent = r.f.of('sendMessage').find((c) => c.params.reply_markup && /Ship/.test(c.params.text))!;
+    expect(sent.params.text).toMatch(/^<b>Bolt<\/b>: @you ready when you are\./);
     expect(sent.params.reply_markup.inline_keyboard[0].map((b: { callback_data: string }) => b.callback_data)).toEqual([`a|${ship.id}`, `r|${ship.id}`, `f|${ship.id}`]);
   });
 
@@ -204,7 +207,7 @@ describe('talking to agents in the group', () => {
     expect(goal).toMatchObject({ team: r.team.id, agent: 'tester', maxRuns: 2 });
     await r.until(() => ['met', 'stopped', 'paused'].includes(r.goals.db.must(goal.id).status));
     await r.settle();
-    expect(r.f.texts().some((t) => /^<b>Probe<\/b>: On it\. I made it a loop/.test(t))).toBe(true);
+    expect(r.f.texts().some((t) => /^<b>Probe<\/b>: On it\. I made it a recurring ticket/.test(t))).toBe(true);
   });
 
   it('/new forces a task on the first agent; /status and /runs answer in the group', async () => {
@@ -217,7 +220,7 @@ describe('talking to agents in the group', () => {
     await r.send(r.msg(TUSHAR, '/runs'));
     expect(r.f.texts().at(-1)).toMatch(new RegExp(`^<b>R-${runId.slice(-4).toUpperCase()}</b> · the back button is broken · done · \\$0\\.00 · <a href="https://github.com/o/r/pull/7">PR #7</a>`));
     await r.send(r.msg(TUSHAR, '/status'));
-    expect(r.f.texts().at(-1)).toMatch(/^<b>Nothing running<\/b>\n0 live · 0 need you · \$0\.00 of \$10\.00 today$/);
+    expect(r.f.texts().at(-1)).toMatch(/^<b>Nothing running<\/b>\n0 live · 0 need you · \$0\.\d\d of \$10\.00 today$/);
   });
 });
 
@@ -284,7 +287,7 @@ describe('approvals both ways (Inbox parity)', () => {
     expect(r.answers().at(-1)).toBe('Approved');
     expect(r.store.state(runId)!.nodes.ship!.status).not.toBe('awaiting');
     const edit = r.f.of('editMessageText').filter((c) => c.params.message_id === r.tgIdOf(ship.id)).at(-1)!;
-    expect(edit.params.text).toMatch(/✓ Approved by Tushar · \d\d:\d\d$/);
+    expect(edit.params.text).toMatch(/✓ Approved by Tushar · \d\d:\d\d/);
     expect(edit.params.reply_markup).toEqual({ inline_keyboard: [] });
     await r.send(r.press(TUSHAR, `a|${ship.id}`));
     expect(r.answers().at(-1)).toMatch(/^Already approved by Tushar/);
@@ -300,7 +303,7 @@ describe('approvals both ways (Inbox parity)', () => {
     r.engine.approve(runId, 'ship', false, 'dashboard');
     await r.settle();
     const edit = r.f.of('editMessageText').filter((c) => c.params.message_id === r.tgIdOf(ship.id)).at(-1)!;
-    expect(edit.params.text).toMatch(/✕ Rejected by Tushar/);
+    expect(edit.params.text).toMatch(/✕ Sent back by Tushar/);
   });
 
   it('Diff replies with the diff in a code block', async () => {
@@ -343,8 +346,8 @@ describe('the pinned status and /mute', () => {
     const runId = await r.until(() => r.tasks()[0]?.runId);
     await r.engine.wait(runId);
     await r.settle();
-    expect(r.f.texts().some((t) => /On it\. Started/.test(t))).toBe(false);
-    expect(r.f.texts().some((t) => /Ship “fix the thing”\?/.test(t))).toBe(true);
+    expect(r.f.texts().some((t) => /<b>Bolt<\/b>: On it\./.test(t))).toBe(false);
+    expect(r.f.texts().some((t) => /Ship “Fix the thing”\?/.test(t))).toBe(true);
     await r.send(r.msg(TUSHAR, '/mute off'));
     await r.send(r.msg(TUSHAR, '@Lens and now?'));
     expect(r.f.texts()).toContain('<b>Lens</b>: It says fixture.');

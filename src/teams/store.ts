@@ -1,11 +1,11 @@
 /**
- * Teams on disk, under <home>/teams/ (0600 files, written atomically):
+ * Squads on disk, under <home>/squads/ (0600 files, written atomically; they were teams, in <home>/teams/, moved once):
  *   teams.json   { teams, agents }: every team, and each agent's profile (specialty, personality) keyed by bot id
  *   <id>.json    { messages, tasks, answers }: a Tether team's channel (the newest 300 messages), the runs its agents started
  *                (the newest 200) and today's answer costs
  * Validation lives here too: a team comes in from the dashboard (and later Slack/Telegram) and is checked field by field.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpError } from '../serverkit.js';
 import type { AgentProfile, Level, Person, Team, TeamState } from './types.js';
@@ -27,7 +27,22 @@ export interface TeamsFile {
   agents: Record<string, AgentProfile>;
 }
 
-const dir = (home: string) => join(home, 'teams');
+const moved = new Set<string>();
+/**
+ * Teams become squads (spec 2026-10-30-squads-tickets §2.6): the folder `<home>/teams/` is renamed `<home>/squads/`
+ * once, with every file in it (same ids, same channels, the Telegram state). A home that already has `squads/` keeps it
+ * and its `teams/` is left alone, so nothing is overwritten and running it again changes nothing.
+ */
+export function squadsDir(home: string): string {
+  const to = join(home, 'squads');
+  if (!moved.has(home)) {
+    moved.add(home);
+    const from = join(home, 'teams');
+    if (!existsSync(to) && existsSync(from)) renameSync(from, to);
+  }
+  return to;
+}
+const dir = squadsDir;
 const teamsFile = (home: string) => join(dir(home), 'teams.json');
 const stateFile = (home: string, id: string) => {
   if (!TEAM_ID_RE.test(id)) throw new Error(`not a team id: ${id.slice(0, 60)}`);

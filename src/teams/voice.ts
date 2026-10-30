@@ -35,7 +35,11 @@ const FAILURE = /\b(couldn't|could not|can't|cannot|didn't|did not|failed|fails|
 const MENTION = /(^|[^\w@])@([\w-]+)/g;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 /** A reason as the end of a sentence: one line, no trailing stop, short. */
-const reasonOf = (s: string) => s.split('\n').map((l) => l.trim()).find(Boolean)?.replace(/[.!?:;\s]+$/, '').slice(0, 140) || 'something went wrong';
+const reasonOf = (s: string) => {
+  const r = s.split('\n').map((l) => l.trim()).find(Boolean)?.replace(/[.!?:;\s]+$/, '').slice(0, 140) || 'something went wrong';
+  // mid-sentence: "Nothing to ship" reads "nothing to ship" (an acronym like "PR" keeps its case)
+  return /^[A-Z][a-z]/.test(r) ? r.charAt(0).toLowerCase() + r.slice(1) : r;
+};
 
 function testsLine(t?: Facts['tests']): string {
   if (!t) return '';

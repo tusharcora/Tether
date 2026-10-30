@@ -334,12 +334,12 @@ export class Telegram {
   private async pair(chat: number, from: TgUser, code: string): Promise<void> {
     const what = editTg(this.d.home, (s) => takeCode(s, code));
     const team = what && what !== 'iam' ? this.d.teams.all().find((t) => t.id === what && t.place === 'telegram') : undefined;
-    if (!team) return void (await this.say(chat, 'That pairing code is not valid any more. Make a new one in Tether: New team → Telegram group.'));
-    if (team.link) return void (await this.say(chat, `The Tether team “${esc(team.name)}” is already linked to another group.`));
+    if (!team) return void (await this.say(chat, 'That pairing code is not valid any more. Make a new one in Tether: New squad → Telegram group.'));
+    if (team.link) return void (await this.say(chat, `The Tether squad “${esc(team.name)}” is already linked to another group.`));
     this.d.teams.setLink(team.id, String(chat));
     this.person({ ...team, link: String(chat) }, from);
     const names = this.d.teams.who(team).map((w) => `@${w.name}`);
-    await this.say(chat, `Linked to the Tether team “<b>${esc(team.name)}</b>”. Mention an agent (${esc(names.join(', '))}) to ask a question, hand over a task or start a loop. /status shows what is running.`);
+    await this.say(chat, `Linked to the Tether squad “<b>${esc(team.name)}</b>”. Mention an agent (${esc(names.join(', '))}) to ask a question, hand over a task or start recurring work. /status shows what is running.`);
     this.statusSoon(team.id, 0);
   }
 
@@ -352,7 +352,7 @@ export class Telegram {
     if (!ok) return void (await this.say(chat, 'That code is not valid any more. Get a new one in Tether: Settings → Accounts → Telegram.'));
     // the owner is the owner everywhere now, not a teammate with switches
     for (const t of this.d.teams.all()) if (t.people.some((p) => p.id === `tg${from.id}`)) this.d.teams.removePerson(t.id, `tg${from.id}`);
-    await this.say(chat, 'You are linked as the owner of this Tether: you can approve and start runs in every Telegram team.');
+    await this.say(chat, 'You are linked as the owner of this Tether: you can approve and start runs in every Telegram squad.');
   }
 
   private async onCommand(team: Team, person: Person, cmd: { name: string; args: string }, chat: number): Promise<void> {
@@ -364,7 +364,7 @@ export class Telegram {
       if (!cmd.args) return void (await this.say(chat, 'Say what to do: /new fix the Back button after a new chat'));
       const agents = this.d.teams.who(team);
       const to = mentionsOf(cmd.args, agents)[0] ?? agents[0]?.id;
-      if (!to) return void (await this.say(chat, 'This team has no agents left in the crew.'));
+      if (!to) return void (await this.say(chat, 'This squad has no agents left in the crew.'));
       this.d.teams.post(team.id, { text: cmd.args, from: person, to, force: 'task' });
     }
   }
@@ -569,8 +569,8 @@ export class Telegram {
   /** A one-time `/pair` code for a Telegram team that is not linked yet. */
   pairCode(teamId: string): { code: string; exp: number; bot?: string } {
     const team = this.d.teams.must(teamId);
-    if (team.place !== 'telegram') throw new HttpError(400, 'only a Telegram team pairs with a group');
-    if (team.link) throw new HttpError(409, 'this team is already linked to a group');
+    if (team.place !== 'telegram') throw new HttpError(400, 'only a Telegram squad pairs with a group');
+    if (team.link) throw new HttpError(409, 'this squad is already linked to a group');
     if (!this.account()) throw new HttpError(409, 'connect a Telegram bot first: Settings → Accounts → Telegram');
     const c = editTg(this.d.home, (s) => newCode(s, teamId));
     const bot = loadTg(this.d.home).bot?.username;

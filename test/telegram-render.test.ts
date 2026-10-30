@@ -19,18 +19,28 @@ describe('rendering team messages for Telegram (board 5)', () => {
     expect(renderMessage(m).text).toBe('<b>Bolt</b>: On it.\n<b>R-5B07</b> · Fix Back after a new chat\nPlan ✓ · Code ▸ · tests\nrunning · $0.40');
   });
 
-  it('an approval has Approve / Reject / Diff until decided, then says who and when', () => {
+  it('a ship card has Ship it / Not yet / Diff until decided, then says who, when and how the ship went', () => {
     const at = new Date(2026, 9, 30, 14, 2).getTime();
     const ship = msg({ id: 'mS', card: { kind: 'approval', what: 'ship', title: 'Ship “probe timeout”?', detail: 'npm test passed · +4 −1 in 2 files', runId: 'r1', node: 'ship', status: 'pending' } });
-    expect(renderMessage(ship).reply_markup).toEqual({ inline_keyboard: [[{ text: 'Approve', callback_data: 'a|mS' }, { text: 'Reject', callback_data: 'r|mS' }, { text: 'Diff', callback_data: 'f|mS' }]] });
+    expect(renderMessage(ship).reply_markup).toEqual({ inline_keyboard: [[{ text: 'Ship it', callback_data: 'a|mS' }, { text: 'Not yet', callback_data: 'r|mS' }, { text: 'Diff', callback_data: 'f|mS' }]] });
     const done = { ...ship, card: { ...ship.card!, status: 'approved' as const, by: 'Maya', at } } as TeamMessage;
     expect(renderMessage(done)).toEqual({ text: '<b>Bolt</b>: On it.\n<b>Ship “probe timeout”?</b>\nnpm test passed · +4 −1 in 2 files\n✓ Approved by Maya · 14:02' });
     const mine = { ...ship, card: { ...ship.card!, status: 'rejected' as const, by: 'you', at } } as TeamMessage;
-    expect(renderMessage(mine, 'Tushar').text).toMatch(/✕ Rejected by Tushar · 14:02$/);
+    expect(renderMessage(mine, 'Tushar').text).toMatch(/✕ Sent back by Tushar · 14:02$/);
+    const merged = { ...done, card: { ...done.card!, review: { by: 'Lens', pass: true }, ship: { state: 'merged' as const, pr: { url: 'https://github.com/o/r/pull/7', number: 7 } } } } as TeamMessage;
+    expect(renderMessage(merged).text).toBe('<b>Bolt</b>: On it.\n<b>Ship “probe timeout”?</b>\nnpm test passed · +4 −1 in 2 files\nLens approved\n✓ Approved by Maya · 14:02\n<a href="https://github.com/o/r/pull/7">PR #7</a> merged');
+    expect(renderMessage({ ...ship, card: { ...ship.card!, status: 'superseded' as const } } as TeamMessage).text).toMatch(/Replaced by a newer run$/);
     const plan = msg({ card: { kind: 'approval', what: 'plan', title: 'Approve the plan?', runId: 'r1', node: 'approve-plan', status: 'pending' } });
     expect(renderMessage(plan).reply_markup!.inline_keyboard[0]!.map((b) => b.text)).toEqual(['Approve', 'Reject']);
     const next = msg({ card: { kind: 'approval', what: 'next', title: 'Start the next run?', goalId: 'g1', status: 'pending' } });
     expect(renderMessage(next).reply_markup!.inline_keyboard[0]!.map((b) => b.text)).toEqual(['Start run', 'Skip']);
+  });
+
+  it('an agent speaks in its squad voice: one line of What I did, never the raw report', () => {
+    const m = msg({ text: 'Fixed it. 3 files, tests pass. @Lens mind checking the redirect check?', report: '## Summary of changes\n1. **callback.ts**: …', work: { files: ['auth/callback.ts', 'auth/sameSite.ts', 'callback.test.ts'], plus: 42, minus: 9, ran: [{ command: 'npm test -- auth', ok: true, summary: '24 passed' }] } });
+    const t = renderMessage(m).text;
+    expect(t).toBe('<b>Bolt</b>: Fixed it. 3 files, tests pass. @Lens mind checking the redirect check?\n<i>3 files · +42 −9 · npm test -- auth 24 passed</i>');
+    expect(t).not.toMatch(/Summary of changes/);
   });
 
   it('a proposal has Start run / Edit / Dismiss, then who started it', () => {
@@ -70,6 +80,6 @@ describe('Telegram state', () => {
     expect(Object.keys(t.msgs)).toHaveLength(MAX_EDITABLE);
     expect(t.msgs.m3).toBe(3);
     expect(t.msgs.m2).toBeUndefined();
-    expect(statSync(join(home, 'teams', 'telegram.json')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(home, 'squads', 'telegram.json')).mode & 0o777).toBe(0o600);
   });
 });
