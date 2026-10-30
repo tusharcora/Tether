@@ -9,6 +9,7 @@ import { TriggerForm } from './triggers/TriggerForm';
 import { TriggerCard } from './triggers/TriggerCard';
 import { TriggerFlow } from './triggers/TriggerFlow';
 import { TriggerTest } from './triggers/TriggerTest';
+import { Schedules } from './triggers/Schedules';
 import { blank, fromTrigger, split, type Delivery, type Form, type Trigger, type Workspace } from './triggers/types';
 import { WebhookSetup } from './triggers/WebhookSetup';
 import { cn } from './ui/cn';
@@ -141,6 +142,7 @@ export function Triggers(props: { /** The Create menu asked for a new trigger (a
               <div className="tg-actions">{actions}</div>
             </div>
           )}
+          <Schedules workspaces={workspaces} workflows={workflows} />
         </section>
       </Loading>
       <FloatBar at="left">

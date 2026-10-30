@@ -9,7 +9,7 @@ import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
 import { loadPrefs, savePrefs } from './prefs.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
-import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
+import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, pipelineFor, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
 import { GithubAccount, ghExec } from './accounts/github.js';
 import { NvidiaAccount, type NvidiaDeps } from './accounts/nvidia.js';
 import { OpenRouterAccount, type OpenRouterDeps } from './accounts/openrouter.js';
@@ -51,6 +51,7 @@ import { eccInfo, gitFetch, importEcc, removeEcc, type Fetch } from './eccImport
 import { aorchSkills, eccSkillPrompt, eccSkills, findSkill } from './skills.js';
 import { ECC_REF } from './ecc.js';
 import { HttpError, readJson, reqObject, send } from './serverkit.js';
+import { Scheduler, schedulesRoute, type ScheduleRefs } from './schedules.js';
 import { httpRoute } from './http/routes.js';
 import { codeRoute } from './codeRoutes.js';
 import { HttpClientError, statusFor } from './http/errors.js';
@@ -265,6 +266,22 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  /** Schedules start a workflow in their workspace, or give a goal its next turn. */
+  const scheduler = new Scheduler(cfg.home, async (s) => {
+    if (s.target.kind === 'goal') return void goals.kick(s.target.goalId);
+    const w = s.workspace ? getWorkspace(cfg.home, s.workspace) : undefined;
+    if (!w?.exists) throw new Error(`workspace "${s.workspace}" is missing`);
+    refreshCrew(cfg.home);
+    return engine.start({ pipeline: pipelineFor(cfg.home, s.target.workflow, w.path), task: s.target.task, repo: w.path, workspace: w.id });
+  });
+  const scheduleRefs: ScheduleRefs = {
+    workspacePath: (id) => {
+      const w = getWorkspace(cfg.home, id);
+      return w?.exists ? w.path : undefined;
+    },
+    checkWorkflow: (name, dir) => void pipelineFor(cfg.home, name, dir),
+    hasGoal: (id) => !!goals.db.get(id),
+  };
   // run_code spills older than a day go on start: in run worktrees and in workspace folders (where the assistant's land)
   const worktrees = join(cfg.home, 'worktrees');
   for (const dir of [...(existsSync(worktrees) ? readdirSync(worktrees).map((n) => join(worktrees, n)) : []), ...listWorkspaces(cfg.home).map((w) => w.path)]) void sweepSpills(dir);
@@ -391,6 +408,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs: () => attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })), modelInfo }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
     if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
+    if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
     if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
@@ -1087,10 +1105,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     server.listen(o.port ?? 4177, host, () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : o.port;
+      scheduler.begin();
       resolveP({
         server,
         url: `http://${host === '::1' ? '[::1]' : host}:${port}`,
-        close: () => new Promise((r) => (server.closeAllConnections?.(), server.close(() => r()))),
+        close: () => new Promise((r) => (scheduler.stop(), server.closeAllConnections?.(), server.close(() => r()))),
       });
     });
   });

@@ -9,6 +9,7 @@ Parts of Tether are ported from deepseek-harness (re-implemented against Tether'
 - `spill/spill-policy`, `spill/spill-local` → `src/codemode/spill.ts`
 - `experimental/browser-use-playwright-mcp`, `experimental/browser-use-chrome-devtools-mcp` → `MCP_PRESETS` in `src/codemode/mcpServers.ts`
 - `webhook/webhook-github` → issue and comment events in `src/pr.ts` (`parseIssue`, `parseComment`) and the webhook checks in `src/server.ts`
+- `schedule/schedule` → `src/cron.ts` (the cron dialect and next-fire walk) and the catch-up rule in `src/schedules.ts`
 
 ```
 MIT License
