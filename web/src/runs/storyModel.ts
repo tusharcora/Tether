@@ -23,6 +23,8 @@ export interface StoryRow {
 
 const STATE: Record<string, StoryState> = { done: 'done', running: 'working', awaiting: 'waiting', error: 'failed', queued: 'queued', skipped: 'skipped' };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+/** Why a step was skipped, on its row (spec 2026-10-30 §3.5: nothing is skipped without saying why). */
+const skippedWhy = (s: RunView['nodes'][string]) => (s.status === 'skipped' && s.error ? s.error : '');
 const took = (s: RunView['nodes'][string]) => (s.startedAt !== undefined && s.finishedAt !== undefined ? fmtDur(s.finishedAt - s.startedAt) : '');
 
 /** What an agent step did, said the way a person would: by what kind of step it is and where it stands. */
@@ -65,11 +67,11 @@ export function storyRows(r: RunView, botOf: (n: PipelineNode) => string, nameOf
     if (n.kind === 'gate') {
       const cmd = n.command ?? title;
       const result = s.gate ? (s.gate.ok ? 'passed' : `failed (exit ${s.gate.exitCode ?? '?'})`) : '';
-      rows.push({ id, node: id, bot, sentence: st === 'done' ? `${name} ran ${title}` : st === 'failed' ? `${title} failed` : st === 'working' ? `${name} is running ${title}` : `${name} runs ${title}`, line: [cmd !== title ? cmd : '', result, s.loops ? plural(s.loops, 'fix loop') : '', took(s)].filter(Boolean).join(' · '), state: st });
+      rows.push({ id, node: id, bot, sentence: st === 'done' ? `${name} ran ${title}` : st === 'failed' ? `${title} failed` : st === 'working' ? `${name} is running ${title}` : `${name} runs ${title}`, line: [cmd !== title ? cmd : '', result, s.loops ? plural(s.loops, 'fix loop') : '', took(s), skippedWhy(s)].filter(Boolean).join(' · '), state: st });
       continue;
     }
     const stat = s.stat ? `${plural(s.stat.files, 'file')} · +${s.stat.added} −${s.stat.deleted}` : '';
-    rows.push({ id, node: id, bot, sentence: agentSentence(name, n, st, s.verdict), line: [title !== n.role ? title : '', stat, s.verdict ? `verdict ${s.verdict}` : '', took(s), s.costUsd ? fmtUsd(s.costUsd) : ''].filter(Boolean).join(' · '), state: st });
+    rows.push({ id, node: id, bot, sentence: agentSentence(name, n, st, s.verdict), line: [title !== n.role ? title : '', stat, s.verdict ? `verdict ${s.verdict}` : '', took(s), s.costUsd ? fmtUsd(s.costUsd) : '', skippedWhy(s)].filter(Boolean).join(' · '), state: st });
   }
   // auto-fix's rounds after the steps they ran again (spec 2026-10-30 §3.4)
   const a = r.autofix;

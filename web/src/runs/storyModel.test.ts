@@ -32,6 +32,14 @@ const shipRun = () =>
     },
   });
 
+describe('a skipped step says why', () => {
+  it('the reason is on its row', () => {
+    const base = shipRun();
+    const r = { ...base, nodes: { ...base.nodes, review: { status: 'skipped' as const, attempts: 0, costUsd: 0, loops: 0, error: 'upstream "tests" did not succeed' } } };
+    expect(storyRows(r, botOf, nameOf).find((x) => x.id === 'review')!.line).toContain('upstream "tests" did not succeed');
+  });
+});
+
 describe('auto-fix in the story', () => {
   it('a row per round, saying what it did; a gave-up row says why; Allow edits waits on you', () => {
     const base = shipRun();
