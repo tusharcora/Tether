@@ -224,6 +224,21 @@ export interface HarnessRef {
   probe?: ProbeTag['side'];
 }
 
+/** Where a run was started from (Runs' "Started from"; a team's runs open in its room). Runs before 2026-10-29 have none. */
+export interface RunOrigin {
+  kind: 'chat' | 'goal' | 'team' | 'trigger' | 'schedule';
+  /** The chat, goal, team, trigger or schedule's id. */
+  id: string;
+  /** The team whose run it is (a team's task, or a team goal's run). */
+  team?: string;
+}
+/** What one step's commit changed. */
+export interface DiffStat {
+  files: number;
+  added: number;
+  deleted: number;
+}
+
 export type RunEvent =
   | {
       type: 'run.started';
@@ -246,6 +261,7 @@ export type RunEvent =
       budgetUsd?: number;
       /** Evolve probe replay: which proposal it tests and on which side. Probe runs never teach lessons or count in signals. */
       probe?: ProbeTag;
+      origin?: RunOrigin;
     }
   | { type: 'plan.question'; round: number; questions: Question[] }
   | { type: 'plan.answer'; answers: Answer[] }
@@ -283,6 +299,8 @@ export type RunEvent =
       attempt: number;
       /** The step was refused or cut short by the run's spend cap (structured; never inferred from error text). */
       budget?: true;
+      /** What its commit changed. */
+      stat?: DiffStat;
     }
   | { type: 'node.skipped'; node: string; reason: string }
   | { type: 'gate.result'; node: string; ok: boolean; exitCode: number | null; output: string; durationMs: number }
@@ -342,6 +360,8 @@ export interface NodeState {
   feedback?: { rating: Rating; note?: string };
   /** Out of free requests until `resetsAt`: set while the step waits for the reset (or another model), cleared when it starts again. */
   limit?: { resetsAt: number };
+  /** What its commits changed, summed over its attempts. */
+  stat?: DiffStat;
 }
 
 export interface RunState {
@@ -395,6 +415,7 @@ export interface RunState {
   probe?: ProbeTag;
   /** The spend cap stopped the run or one of its steps (run.finished.budget / node.finished.budget). */
   budgetStop?: true;
+  origin?: RunOrigin;
 }
 
 /** A team run whose plan is finished and waits for the person's go-ahead. */
@@ -425,6 +446,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         mode: e.mode ?? 'live',
         planning: e.kind === 'team',
         ...(e.probe ? { probe: e.probe } : {}),
+        ...(e.origin ? { origin: e.origin } : {}),
         ...(e.kind === 'team' ? { team: { ...(e.roster?.length ? { roster: e.roster } : {}), maxRounds: e.maxRounds ?? 3, yes: !!e.yes, ...(e.budgetUsd !== undefined ? { budgetUsd: e.budgetUsd } : {}) } } : {}),
         round: 0,
         pending: [],
@@ -566,6 +588,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
           n.commit = e.commit ?? n.commit;
           n.sessionId = e.sessionId ?? n.sessionId;
           n.verdict = e.verdict;
+          if (e.stat) n.stat = n.stat ? { files: Math.max(n.stat.files, e.stat.files), added: n.stat.added + e.stat.added, deleted: n.stat.deleted + e.stat.deleted } : e.stat;
           n.costUsd += e.costUsd ?? 0;
           s.costUsd += e.costUsd ?? 0;
           n.live = undefined;
@@ -779,6 +802,9 @@ export interface RunRowExtras {
   steps: RunStep[];
   current?: RunCurrent;
   bots: string[];
+  /** Lines added and removed by the run's commits; absent when no step recorded it (runs before 2026-10-29). */
+  added?: number;
+  deleted?: number;
 }
 export type AttentionKind = 'plan_ready' | 'question' | 'approval' | 'free_limit' | 'planning_error' | 'paused' | 'interrupted' | 'failed';
 export type AttentionAction = 'answer' | 'review' | 'approve' | 'resume' | 'retry' | 'open';

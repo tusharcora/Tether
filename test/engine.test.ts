@@ -16,6 +16,15 @@ const fullPipeline = () =>
   );
 
 describe('engine', () => {
+  it('records what each step’s commit changed and where the run was started from', async () => {
+    const { engine } = setup();
+    const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'one\ntwo\n' } } }], []);
+    const id = await engine.start({ pipeline: p, task: 'write a.txt', repo: makeRepo(), origin: { kind: 'chat', id: 'c1' } });
+    const s = await engine.wait(id);
+    expect(s.nodes.code!.stat).toEqual({ files: 1, added: 2, deleted: 0 });
+    expect(s.origin).toEqual({ kind: 'chat', id: 'c1' });
+  });
+
   it('loops a failing gate back to the fixing agent, pauses at approval, and resumes without re-running finished nodes', async () => {
     const { engine, mock, store } = setup();
     const repo = makeRepo();

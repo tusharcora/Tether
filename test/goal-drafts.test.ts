@@ -74,6 +74,7 @@ describe('the goal a draft makes', () => {
   });
 
   it('the first run’s task carries the ask, the description and the check', () => {
-    expect(firstTask('Fix the redirect', { ...(checkDraft(draft({ description: 'Keep ?next=.', check: { kind: 'tests', command: 'npm test' } }), ctx) as never) })).toBe('Fix the redirect\n\nKeep ?next=.\n\nDone when `npm test` passes.');
+    const d = checkDraft(draft({ description: 'Keep ?next=.', check: { kind: 'tests', command: 'npm test' } }), ctx) as Exclude<ReturnType<typeof checkDraft>, string>;
+    expect(firstTask('Fix the redirect', d)).toBe('Fix the redirect\n\nKeep ?next=.\n\nDone when `npm test` passes.');
   });
 });

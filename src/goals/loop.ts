@@ -250,8 +250,8 @@ export class Goals {
         g.team && this.d.hooks
           ? await this.d.hooks.start(g, plan)
           : g.workflow === 'team'
-          ? await this.d.engine.startTeam({ task: plan.task, repo, ...(budgetUsd !== undefined ? { budgetUsd } : {}), background: true, ...(auto ? { mode: 'autonomous' as const } : {}) })
-          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto });
+          ? await this.d.engine.startTeam({ task: plan.task, repo, ...(budgetUsd !== undefined ? { budgetUsd } : {}), background: true, ...(auto ? { mode: 'autonomous' as const } : {}), origin: { kind: 'goal', id: g.id } })
+          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto, origin: { kind: 'goal', id: g.id } });
     } catch (e) {
       return this.stop(g, `Could not start the run: ${(e as Error).message.split('\n')[0]!.slice(0, 160)}`);
     }

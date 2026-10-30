@@ -23,6 +23,26 @@ describe('run rows for Home', () => {
     expect(rowExtras(s, 0).repoReal).toBe(target);
   });
 
+  it('carry the lines a run added and removed, summed over its steps, and none when no step recorded it', () => {
+    const store = Store.open(':memory:');
+    seedRun(store, 'r2', { nodes: [{ id: 'a', role: 'coder' }, { id: 'b', role: 'coder' }] });
+    expect(rowExtras(store.state('r2')!, 0)).not.toHaveProperty('added');
+    store.append('r2', { type: 'node.finished', node: 'a', status: 'done', output: '', durationMs: 1, attempt: 1, commit: 'c1', stat: { files: 2, added: 30, deleted: 4 } });
+    store.append('r2', { type: 'node.finished', node: 'b', status: 'done', output: '', durationMs: 1, attempt: 1, commit: 'c2', stat: { files: 1, added: 12, deleted: 5 } });
+    store.append('r2', { type: 'node.finished', node: 'b', status: 'done', output: '', durationMs: 1, attempt: 2, commit: 'c3', stat: { files: 1, added: 1, deleted: 0 } });
+    expect(store.state('r2')!.nodes.b!.stat).toEqual({ files: 1, added: 13, deleted: 5 });
+    expect(rowExtras(store.state('r2')!, 0)).toMatchObject({ added: 43, deleted: 9 });
+  });
+
+  it('keep where a run was started from, through the fold and the list row', () => {
+    const store = Store.open(':memory:');
+    seedRun(store, 'r3');
+    expect(store.listRows()[0]!.summary).not.toHaveProperty('origin');
+    store.append('r4', { ...store.events('r3')[0]!.event, origin: { kind: 'goal', id: 'g1', team: 'web' } } as never);
+    expect(store.state('r4')!.origin).toEqual({ kind: 'goal', id: 'g1', team: 'web' });
+    expect(store.listRows().find((r) => r.summary.id === 'r4')!.summary.origin).toEqual({ kind: 'goal', id: 'g1', team: 'web' });
+  });
+
   it('lists steps in pipeline order, the first running or awaiting step as current, and the agent bots', () => {
     const store = Store.open(':memory:');
     seedRun(store, 'r1', { nodes: [{ id: 'plan', role: 'planner', title: 'Plan' }, { id: 'code', role: 'coder', title: 'Implement' }, { id: 'gate', kind: 'gate', command: 'npm test' }, { id: 'ok', kind: 'approval' }] });

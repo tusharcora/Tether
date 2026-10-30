@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve as resolvePath, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
-import { cloneShared, commitAll, commitFiles, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
+import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, removeBranch, removeWorktree, diffAgainst, entryPaths, revertEntries, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
 import { childrenOf, normalizePipeline, parentsOf, preflight } from './pipeline.js';
 import { baseStep, handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, type HandRequest, type PlanTask } from './handoff.js';
@@ -17,7 +17,7 @@ import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } fr
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
-import { planWaiting, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunState, type TeamMode } from './types.js';
+import { planWaiting, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
 import { CREW, crewFor } from './bots.js';
@@ -63,6 +63,7 @@ export interface StartInput {
   reflect?: boolean;
   /** false: leave the saved API requests block out of this run's prompts. */
   endpoints?: boolean;
+  origin?: RunOrigin;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -146,6 +147,7 @@ export interface TeamStartInput {
   background?: boolean;
   /** false: leave the saved API requests block out of this run's prompts. */
   endpoints?: boolean;
+  origin?: RunOrigin;
 }
 
 /** Test-only: the scripted planning replies. Roster, rounds and yes live in the run's events. */
@@ -411,6 +413,7 @@ export class Engine {
       ...(input.kind ? { kind: input.kind } : {}),
       ...(input.mode ? { mode: input.mode } : {}),
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
+      ...(rawInput.origin ? { origin: rawInput.origin } : {}),
     });
     this.launch(runId, extra.after);
     return runId;
@@ -492,6 +495,7 @@ export class Engine {
       maxRounds: clampRounds(i.maxRounds),
       yes: !!i.yes,
       ...(i.budgetUsd !== undefined && i.budgetUsd > 0 ? { budgetUsd: Math.min(TEAM_MAX_BUDGET_USD, i.budgetUsd) } : {}),
+      ...(i.origin ? { origin: i.origin } : {}),
     });
     if (i.background) this.continuePlanningInBackground(runId);
     else await this.planRound(runId, 1);
@@ -2004,6 +2008,7 @@ export class Engine {
     const timedOut = sig.aborted;
 
     let commit: string | undefined;
+    let stat: DiffStat | undefined;
     let error = res.error;
     let status: 'done' | 'error' = res.exitCode === 0 && !timedOut ? 'done' : 'error';
     if (timedOut) error = `timed out after ${Math.round(timeoutMs / 1000)}s`;
@@ -2018,6 +2023,7 @@ export class Engine {
         }
       } else {
         commit = await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) attempt ${attempt}`, state.setupArtifacts);
+        if (commit) stat = await commitStat(state.workdir, commit).catch(() => undefined);
       }
     } catch (err) {
       status = 'error';
@@ -2044,6 +2050,7 @@ export class Engine {
       sessionId: res.sessionId,
       verdict,
       attempt,
+      ...(stat ? { stat } : {}),
       ...(probe && (probe.estimated || (status === 'error' && (() => {
         const cap = this.state(runId).pipeline.settings.maxCostUsd;
         return cap !== undefined && this.state(runId).costUsd >= cap - 1e-9;

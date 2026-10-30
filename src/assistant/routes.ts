@@ -228,8 +228,8 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
         try {
           prop.runId =
             prop.kind === 'workflow'
-              ? await c.engine.start({ pipeline: readPipeline(c.home, prop.workflow!), task: prop.task, repo: resolve(root) })
-              : await c.engine.startTeam({ task: prop.task, repo: resolve(root), mode: prop.mode, background: true });
+              ? await c.engine.start({ pipeline: readPipeline(c.home, prop.workflow!), task: prop.task, repo: resolve(root), origin: { kind: 'chat', id: chat.id } })
+              : await c.engine.startTeam({ task: prop.task, repo: resolve(root), mode: prop.mode, background: true, origin: { kind: 'chat', id: chat.id } });
           prop.status = 'started';
         } catch (e) {
           prop.status = 'failed';

@@ -28,7 +28,9 @@ export function rowExtras(s: RunState, lastTs: number): RunRowExtras {
     return st === 'running' || st === 'awaiting';
   });
   const bots = [...new Set(s.pipeline.nodes.filter((n) => n.kind === 'agent').map((n) => crewFor(n)))];
+  const stats = Object.values(s.nodes).flatMap((n) => (n.stat ? [n.stat] : []));
   return {
+    ...(stats.length ? { added: stats.reduce((a, x) => a + x.added, 0), deleted: stats.reduce((a, x) => a + x.deleted, 0) } : {}),
     branch: s.branch,
     lastTs,
     steps,

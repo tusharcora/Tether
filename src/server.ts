@@ -334,7 +334,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     refreshCrew(cfg.home);
     const ref = { provider: 'github' as const, repo: pr.repo, number: pr.number, url: `https://github.com/${pr.repo}/pull/${pr.number}` };
     // answer GitHub at once (it gives up after 10s); the run goes on in the background
-    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment, workspace: rule.workspace, agent: rule.agent, model: rule.model })
+    startPrRun({ home: cfg.home, engine }, ref, { workflow: rule.workflow, comment: rule.comment, workspace: rule.workspace, agent: rule.agent, model: rule.model, ...(rule.id ? { origin: { kind: 'trigger' as const, id: rule.id } } : {}) })
       .then((r) => {
         recordDelivery(cfg.home, { at: at(), trigger: rule.id, source: 'webhook', repo: pr.repo, pr: pr.number, outcome: 'started', runId: r.runId });
         console.error(`[aorch] PR ${pr.repo}#${pr.number} -> run ${r.runId} (${rule.workflow})`);
@@ -726,7 +726,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       refreshCrew(cfg.home);
       const at = () => new Date().toISOString();
       try {
-        const started = await startPrRun({ home: cfg.home, engine, exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model });
+        const started = await startPrRun({ home: cfg.home, engine, exec }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model, ...(r.id ? { origin: { kind: 'trigger' as const, id: r.id } } : {}) });
         started.done.catch(() => undefined);
         recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: 'started', runId: started.runId });
         return send(res, 200, { matches: true, why: verdict.why, fired: true, runId: started.runId, pr }), true;

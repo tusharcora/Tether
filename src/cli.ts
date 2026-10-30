@@ -1389,7 +1389,7 @@ async function main() {
         const at = () => new Date().toISOString();
         let started;
         try {
-          started = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model, onComment: (e) => console.log(e ? `${red('✘')} ${e.message}` : `${green('✔')} posted the review on ${ref.url}`) });
+          started = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: r.workflow, comment: r.comment, workspace: r.workspace, agent: r.agent, model: r.model, ...(r.id ? { origin: { kind: 'trigger' as const, id: r.id } } : {}), onComment: (e) => console.log(e ? `${red('✘')} ${e.message}` : `${green('✔')} posted the review on ${ref.url}`) });
         } catch (e) {
           const msg = (e as Error).message;
           recordDelivery(cfg.home, { at: at(), trigger: r.id, source: 'test', repo: ref.repo, pr: ref.number, outcome: classifyFailure(msg), reason: msg.slice(0, 300) });
@@ -1515,7 +1515,7 @@ async function main() {
               try {
                 busy++;
                 lastBad.delete(key);
-                const run = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: hit.workflow, comment: hit.comment, workspace: hit.workspace, agent: hit.agent, model: hit.model, onComment: (e) => console.log(e ? `${red('✘')} ${r.repo}#${p.number}: ${e.message}` : `${green('✔')} commented on ${r.repo}#${p.number}`) });
+                const run = await startPrRun({ home: cfg.home, engine: ctx.engine }, ref, { workflow: hit.workflow, comment: hit.comment, workspace: hit.workspace, agent: hit.agent, model: hit.model, ...(hit.id ? { origin: { kind: 'trigger' as const, id: hit.id } } : {}), onComment: (e) => console.log(e ? `${red('✘')} ${r.repo}#${p.number}: ${e.message}` : `${green('✔')} commented on ${r.repo}#${p.number}`) });
                 recordDelivery(cfg.home, { at: new Date().toISOString(), trigger: hit.id, source: 'poll', repo: r.repo, pr: p.number, outcome: 'started', runId: run.runId });
                 console.log(`${cyan('▶')} ${r.repo}#${p.number} ${dim('→ ' + hit.workflow + ' · run ' + run.runId)}`);
                 void run.done.then((st) => console.log(`${st.status === 'done' ? green('✔') : red('✘')} ${r.repo}#${p.number} ${dim(st.status + ' · $' + st.costUsd.toFixed(2))}`)).finally(() => busy--);
