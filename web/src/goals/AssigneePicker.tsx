@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { useContext } from 'react';
 import { Picker, type PickerOption } from '../components/bencho/Picker';
+import { Face } from '../Face';
 import { Avatars, Roster, useWho } from './Avatars';
 import type { Assignee } from './goalsApi';
 import './goals.css';
@@ -18,7 +19,7 @@ export function AssigneePicker({ value, onChange, compact, label = 'Assignees' }
   const known: Assignee[] = [...(roster?.teams ?? []).map((t) => ({ kind: 'team' as const, id: t.id })), ...(roster?.agents ?? []).map((a) => ({ kind: 'agent' as const, id: a.id }))];
   const options = [...known, ...value.filter((v) => !known.some((k) => key(k) === key(v)))].map((a): PickerOption => {
     const w = whoIs(a);
-    return { id: key(a), name: w.removed ? `${w.name} (removed)` : w.name, group: a.kind === 'team' ? 'Teams' : 'Agents' };
+    return { id: key(a), name: w.removed ? `${w.name} (removed)` : w.name, group: a.kind === 'team' ? 'Teams' : 'Agents', lead: a.kind === 'agent' ? <Face id={a.id} size={28} label="" /> : undefined };
   });
   return (
     <Picker

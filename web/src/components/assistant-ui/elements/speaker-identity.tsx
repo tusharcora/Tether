@@ -1,7 +1,7 @@
-// assistant-ui element (github.com/assistant-ui/assistant-ui, MIT), verbatim but for import paths.
+// assistant-ui element (github.com/assistant-ui/assistant-ui, MIT), verbatim but for import paths and the optional `avatar`.
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { BotIcon, UserIcon, WrenchIcon } from "lucide-react";
 import { cn } from "../../beui/lib/utils";
 import { mono } from "./surfaces";
@@ -14,6 +14,8 @@ export interface SpeakerTurn {
   name: string;
   detail?: string;
   text: string;
+  /** Drawn instead of the kind icon, on no tile (Tether: the speaker's face). */
+  avatar?: ReactNode;
 }
 
 const TONE: Record<SpeakerKind, string> = {
@@ -42,11 +44,13 @@ export function SpeakerIdentity({
           <span
             className={cn(
               "flex size-6 shrink-0 items-center justify-center rounded-lg",
-              TONE[turn.kind],
+              !turn.avatar && TONE[turn.kind],
               turn.kind === "subagent" && "rounded-full",
             )}
           >
-            {turn.kind === "user" ? (
+            {turn.avatar ? (
+              turn.avatar
+            ) : turn.kind === "user" ? (
               <UserIcon className="size-3" />
             ) : turn.kind === "tool" ? (
               <WrenchIcon className="size-3" />

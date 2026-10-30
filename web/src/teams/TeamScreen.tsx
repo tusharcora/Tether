@@ -8,7 +8,7 @@ import { TeamRunCard } from '../assistant/taskCards';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Loading } from '../components/Loading';
-import { Face } from '../Face';
+import { Face, TETHER_ID } from '../Face';
 import { GoalScore } from '../goals/Goals';
 import { goalLine, noLimits, type GoalView } from '../goals/goalsApi';
 import type { WorkspaceRow } from '../home/workspaces';
@@ -240,7 +240,7 @@ export function TeamScreen(p: { id: string; goals?: GoalView[]; agents: TeamsRep
             {shown.map((m) => (
               <li key={m.id} className="tm-msg who">
                 {/* who spoke, from the element; the body below keeps its mentions and cards (the element's text is plain) */}
-                <SpeakerIdentity turns={[{ id: m.id, kind: SPEAKER[m.from.kind], name: m.from.name, detail: [m.from.kind === 'agent' ? `agent${specialty(m.from.id) ? ` · ${specialty(m.from.id)}` : ''}` : '', time(m.at)].filter(Boolean).join(' · '), text: '' }]} />
+                <SpeakerIdentity turns={[{ id: m.id, kind: SPEAKER[m.from.kind], name: m.from.name, detail: [m.from.kind === 'agent' ? `agent${specialty(m.from.id) ? ` · ${specialty(m.from.id)}` : ''}` : '', time(m.at)].filter(Boolean).join(' · '), text: '', avatar: m.from.kind === 'person' ? undefined : <Face id={m.from.kind === 'tether' ? TETHER_ID : m.from.id} size={24} label="" /> }]} />
                 <div className="tm-msg-main">
                   <p className={cn('tm-text', { pending: !!m.pending })} aria-busy={m.pending || undefined}>
                     {withMentions(m.text, names)}
