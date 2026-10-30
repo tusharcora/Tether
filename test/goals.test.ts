@@ -175,6 +175,75 @@ describe('the loop', () => {
   });
 });
 
+describe('optional limits', () => {
+  it('a goal with no limits is not capped: it goes past five runs until paused', async () => {
+    const r = rig({});
+    const g = r.goals.create(r.goal({ approval: 'auto', budgetUsd: undefined, maxRuns: undefined }));
+    await until(() => r.store.listRows().length >= 6);
+    r.goals.setStatus(g.id, 'paused');
+    await r.goals.idle();
+    expect(r.goals.db.must(g.id)).toMatchObject({ status: 'paused' });
+    expect(r.goals.db.must(g.id)).not.toHaveProperty('budgetUsd');
+    expect(r.goals.db.must(g.id)).not.toHaveProperty('maxRuns');
+  });
+
+  it('the time limit stops the goal once it has passed since the first Start', async () => {
+    const r = rig({});
+    const g = r.goals.create(r.goal({ approval: 'auto', maxMinutes: 1, startedAt: Date.now() - 2 * 60_000 }));
+    await until(() => r.goals.db.must(g.id).status === 'stopped');
+    expect(r.goals.db.must(g.id).reason).toBe('Time limit reached (1 min)');
+    expect(r.store.listRows()).toHaveLength(0);
+  });
+
+  it('a team goal with no limits is still held by its team', async () => {
+    const r = rig({}, { blocked: () => "Today's limit is reached", start: async () => 'never' });
+    const g = r.goals.create(r.goal({ approval: 'auto', budgetUsd: undefined, maxRuns: undefined, team: 'core', agent: 'coder' }));
+    await until(() => r.goals.db.must(g.id).status === 'paused');
+    expect(r.goals.db.must(g.id).reason).toBe("Today's limit is reached");
+    expect(r.store.listRows()).toHaveLength(0);
+  });
+
+  it('a run with no goal budget gets the engine default, not a made-up cap', async () => {
+    const r = rig({});
+    const g = r.goals.create(r.goal({ approval: 'auto', workflow: 'team', budgetUsd: undefined, maxRuns: 1 }));
+    await until(() => r.store.listRows().length === 1);
+    r.goals.setStatus(g.id, 'stopped');
+    expect(r.store.listRows()[0]!.state.team).not.toHaveProperty('budgetUsd');
+    const capped = r.goals.create(r.goal({ approval: 'auto', workflow: 'team', budgetUsd: 2, maxRuns: 1 }));
+    await until(() => r.store.listRows().length === 2);
+    r.goals.setStatus(capped.id, 'stopped');
+    expect(r.store.listRows().map((x) => x.state.team?.budgetUsd)).toContain(2);
+  });
+});
+
+describe('a goal made from chat (begin)', () => {
+  it('waits paused, then one Start runs its first run at once; with no check it is met when the run is done', async () => {
+    const r = rig();
+    const g = r.goals.create(r.goal({ status: 'paused', check: undefined, kind: 'tracker', origin: { kind: 'chat', chat: 'c1', message: 'm1' } }));
+    await r.goals.idle();
+    expect(r.store.listRows()).toHaveLength(0);
+    expect(r.goals.db.must(g.id)).not.toHaveProperty('startedAt');
+    expect(r.goals.begin(g.id, 'create done.txt')).toMatchObject({ status: 'active' });
+    expect(() => r.goals.begin(g.id, 'again')).toThrow(/already started/);
+    await until(() => r.goals.db.must(g.id).status === 'met');
+    const [item] = r.goals.db.items(g.id);
+    expect(item).toMatchObject({ kind: 'run', text: 'create done.txt', done: true });
+    expect(r.goals.db.must(g.id).origin).toEqual({ kind: 'chat', chat: 'c1', message: 'm1' });
+    expect(r.store.listRows()).toHaveLength(1);
+  });
+
+  it('a loop checks first, then starts the run the person started without asking again', async () => {
+    const r = rig();
+    const g = r.goals.create(r.goal({ status: 'paused' }));
+    await r.goals.idle();
+    expect(r.goals.db.must(g.id).lastCheck).toBeUndefined();
+    r.goals.begin(g.id, 'create done.txt please');
+    await until(() => r.goals.db.must(g.id).status === 'met');
+    expect(r.planner.prompts).toHaveLength(0); // nothing proposed: the person's task ran
+    expect(r.goals.db.items(g.id)[0]).toMatchObject({ text: 'create done.txt please', done: true });
+  });
+});
+
 /** The real server on a temp home, and a JSON caller. */
 async function serve(r: ReturnType<typeof rig>) {
   const vault = new Vault(tmp('vault-'));
@@ -225,6 +294,28 @@ describe('/api/goals', () => {
         q.end();
       });
       expect(first).toMatch(/^event: goals\ndata: \[\]/);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('limits are optional: none by default, null clears one, out of range is 400', async () => {
+    const r = rig();
+    const { s, call } = await serve(r);
+    try {
+      const made = await call('POST', '/api/goals', { title: 'Loop', workspace: r.ws.id, check: { kind: 'command', command: 'true' }, maxMinutes: 30 });
+      expect(made.status).toBe(201);
+      expect(made.json).not.toHaveProperty('budgetUsd');
+      expect(made.json).not.toHaveProperty('maxRuns');
+      expect(made.json.maxMinutes).toBe(30);
+      const id = made.json.id as string;
+      expect((await call('PATCH', `/api/goals/${id}`, { budgetUsd: 3, maxRuns: 4 })).json).toMatchObject({ budgetUsd: 3, maxRuns: 4, maxMinutes: 30 });
+      const cleared = await call('PATCH', `/api/goals/${id}`, { budgetUsd: null, maxMinutes: null });
+      expect(cleared.json).not.toHaveProperty('budgetUsd');
+      expect(cleared.json).not.toHaveProperty('maxMinutes');
+      expect(cleared.json.maxRuns).toBe(4);
+      expect((await call('PATCH', `/api/goals/${id}`, { maxMinutes: 2000 })).status).toBe(400);
+      expect((await call('POST', '/api/goals', { title: 'x', workspace: r.ws.id, maxRuns: 1.5 })).status).toBe(400);
     } finally {
       await s.close();
     }

@@ -487,10 +487,11 @@ export class Teams {
     const tasks = readState(this.d.home, team.id).tasks.filter((k) => k.goal === g.id);
     const prev = tasks.at(-1);
     const prevState = prev ? this.d.store.state(prev.runId) : undefined;
-    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd: this.budget(team, g.budgetUsd - g.spentUsd), ship: false });
+    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd: this.budget(team, g.budgetUsd === undefined ? Infinity : g.budgetUsd - g.spentUsd), ship: false });
     const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project });
     const s = this.d.store.state(runId)!;
-    const msg = this.loopMsg(team.id, g.id)?.id ?? '';
+    // a goal made elsewhere (a chat's goal card) gets its card in the channel on its first run, so the team sees it
+    const msg = this.loopMsg(team.id, g.id)?.id ?? this.say(team.id, TETHER, `Goal: ${g.title}`, { card: { kind: 'loop', goalId: g.id } }).id;
     this.edit(team.id, (st) => st.tasks.push({ runId, agent: def.id, kind: 'loop', task: plan.task, chain: prev?.chain ?? runId, base: prev?.base ?? s.baseSha, msg, goal: g.id, hops: 0, startedAt: Date.now() }));
     this.runs.set(runId, team.id);
     return runId;
@@ -527,13 +528,13 @@ export class Teams {
   private async loopMet(team: Team, g: Goal): Promise<void> {
     const from = this.agentFrom(g.agent!);
     const last = readState(this.d.home, team.id).tasks.filter((k) => k.goal === g.id).at(-1);
-    this.say(team.id, from, `Loop met: \`${g.check?.command}\` passes.`);
+    this.say(team.id, from, g.check ? `Loop met: \`${g.check.command}\` passes.` : `Done: ${firstLine(g.title, 120)}.`);
     if (!last) return;
     await this.learn(team, last, 'done', g.lastCheck?.summary ?? 'the check passes');
     const s = this.d.store.state(last.runId);
     if (!s) return;
     if (team.level === 'loose') return this.ship(team, last);
-    const detail = [`${g.check?.command} passed`, await this.diffStat(team, last, s.branch)].join(' · ');
+    const detail = [...(g.check ? [`${g.check.command} passed`] : []), await this.diffStat(team, last, s.branch)].join(' · ');
     this.say(team.id, from, 'Ready to ship the loop’s work. It needs a person to approve.', { run: last.runId, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending' } });
   }
 
@@ -652,7 +653,7 @@ export class Teams {
       const n = this.d.goals.db.items(g.id).filter((i) => i.kind === 'run').length;
       const last = g.lastCheck;
       const progress = last?.passing !== undefined ? last.passing / Math.max(1, last.passing + (last.failing ?? 0)) : 0;
-      working.push({ kind: 'loop', title: g.title, agent: g.agent ?? '', needs: g.status === 'needs_you', goalId: g.id, progress, line: `${n} of ≤${g.maxRuns} runs · ${usd(g.spentUsd)} of ${usd(g.budgetUsd)}${last?.summary ? ` · ${last.summary}` : ''}` });
+      working.push({ kind: 'loop', title: g.title, agent: g.agent ?? '', needs: g.status === 'needs_you', goalId: g.id, progress, line: `${n}${g.maxRuns ? ` of ≤${g.maxRuns}` : ''} run${n === 1 && !g.maxRuns ? '' : 's'} · ${usd(g.spentUsd)}${g.budgetUsd ? ` of ${usd(g.budgetUsd)}` : ''}${last?.summary ? ` · ${last.summary}` : ''}` });
     }
     const pending = (runId: string) => st.messages.some((m) => m.card?.kind === 'approval' && m.card.runId === runId && m.card.status === 'pending');
     for (const k of st.tasks) {

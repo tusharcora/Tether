@@ -4,7 +4,7 @@
  */
 import type { Db } from '../http/history.js';
 import { HttpError } from '../serverkit.js';
-import type { Assignee, Attempt, CheckResult, Goal, GoalCheck, GoalItem, GoalKind, GoalStatus, GoalType, Plan } from './types.js';
+import type { Assignee, Attempt, CheckResult, Goal, GoalCheck, GoalItem, GoalKind, GoalOrigin, GoalStatus, GoalType, Plan } from './types.js';
 
 export function ensureGoals(db: Db): void {
   db.exec(`
@@ -43,7 +43,8 @@ export function ensureGoals(db: Db): void {
     const have = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name));
     for (const [c, t] of cols) if (!have.has(c)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${c} ${t}`);
   };
-  add('goals', [['team', 'TEXT'], ['agent', 'TEXT'], ['type', 'TEXT'], ['description', 'TEXT'], ['assignees', 'TEXT'], ['ended_at', 'INTEGER']]);
+  // asks become goals (2026-10-29): a time limit, the first Start, and the chat a goal came from
+  add('goals', [['team', 'TEXT'], ['agent', 'TEXT'], ['type', 'TEXT'], ['description', 'TEXT'], ['assignees', 'TEXT'], ['ended_at', 'INTEGER'], ['max_minutes', 'INTEGER'], ['started_at', 'INTEGER'], ['origin', 'TEXT']]);
   add('goal_items', [['assignees', 'TEXT']]);
 }
 
@@ -56,8 +57,10 @@ const toGoal = (r: Row): Goal => ({
   kind: r.kind as GoalKind,
   status: r.status as GoalStatus,
   ...(r.check_json ? { check: json<GoalCheck>(r.check_json) } : {}),
-  budgetUsd: r.budget_usd as number,
-  maxRuns: r.max_runs as number,
+  // the old columns are NOT NULL: 0 (outside both ranges) is "no limit"
+  ...((r.budget_usd as number) > 0 ? { budgetUsd: r.budget_usd as number } : {}),
+  ...((r.max_runs as number) > 0 ? { maxRuns: r.max_runs as number } : {}),
+  ...(r.max_minutes ? { maxMinutes: r.max_minutes as number } : {}),
   approval: r.approval as 'ask' | 'auto',
   workflow: r.workflow as string,
   ...(r.due_date ? { dueDate: r.due_date as string } : {}),
@@ -72,6 +75,8 @@ const toGoal = (r: Row): Goal => ({
   ...(r.description ? { description: r.description as string } : {}),
   ...(r.assignees ? { assignees: json<Assignee[]>(r.assignees) } : {}),
   ...(r.ended_at ? { endedAt: r.ended_at as number } : {}),
+  ...(r.started_at ? { startedAt: r.started_at as number } : {}),
+  ...(r.origin ? { origin: json<GoalOrigin>(r.origin) } : {}),
 });
 /** Assignees as stored: JSON, or null for none. */
 const who = (a?: Assignee[]) => (a?.length ? JSON.stringify(a) : null);
@@ -105,14 +110,14 @@ export class GoalStore {
   }
   insert(g: Goal): void {
     this.db
-      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent, type, description, assignees) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)')
-      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.createdAt, g.team ?? null, g.agent ?? null, g.type ?? null, g.description ?? null, who(g.assignees));
+      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent, type, description, assignees, max_minutes, started_at, origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)')
+      .run(g.id, g.workspace, g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd ?? 0, g.maxRuns ?? 0, g.approval, g.workflow, g.dueDate ?? null, g.createdAt, g.team ?? null, g.agent ?? null, g.type ?? null, g.description ?? null, who(g.assignees), g.maxMinutes ?? null, g.startedAt ?? null, g.origin ? JSON.stringify(g.origin) : null);
   }
   /** Replace the fields that change after creation. */
   save(g: Goal): void {
     this.db
-      .prepare('UPDATE goals SET title=?, kind=?, status=?, check_json=?, budget_usd=?, max_runs=?, approval=?, workflow=?, due_date=?, spent_usd=?, reason=?, last_check=?, pending=?, type=?, description=?, assignees=?, ended_at=? WHERE id=?')
-      .run(g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd, g.maxRuns, g.approval, g.workflow, g.dueDate ?? null, g.spentUsd, g.reason ?? null, g.lastCheck ? JSON.stringify(g.lastCheck) : null, g.pending ? JSON.stringify(g.pending) : null, g.type ?? null, g.description ?? null, who(g.assignees), g.endedAt ?? null, g.id);
+      .prepare('UPDATE goals SET title=?, kind=?, status=?, check_json=?, budget_usd=?, max_runs=?, approval=?, workflow=?, due_date=?, spent_usd=?, reason=?, last_check=?, pending=?, type=?, description=?, assignees=?, ended_at=?, max_minutes=?, started_at=?, team=?, agent=? WHERE id=?')
+      .run(g.title, g.kind, g.status, g.check ? JSON.stringify(g.check) : null, g.budgetUsd ?? 0, g.maxRuns ?? 0, g.approval, g.workflow, g.dueDate ?? null, g.spentUsd, g.reason ?? null, g.lastCheck ? JSON.stringify(g.lastCheck) : null, g.pending ? JSON.stringify(g.pending) : null, g.type ?? null, g.description ?? null, who(g.assignees), g.endedAt ?? null, g.maxMinutes ?? null, g.startedAt ?? null, g.team ?? null, g.agent ?? null, g.id);
   }
   remove(id: string): void {
     this.db.prepare('DELETE FROM goal_items WHERE goal_id = ?').run(id);

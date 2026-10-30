@@ -44,8 +44,11 @@ export interface Goal {
   kind: GoalKind;
   status: GoalStatus;
   check?: GoalCheck;
-  budgetUsd: number;
-  maxRuns: number;
+  /** Caps, each optional: none set means none checked (a team goal is still held by its team's daily limits). */
+  budgetUsd?: number;
+  maxRuns?: number;
+  /** Stop once this long has passed since the first Start. */
+  maxMinutes?: number;
   approval: 'ask' | 'auto';
   /** 'team' or a saved workflow's name. */
   workflow: string;
@@ -66,6 +69,15 @@ export interface Goal {
   assignees?: Assignee[];
   /** When the goal became met or stopped. */
   endedAt?: number;
+  /** The first Start (a goal made from chat waits paused, "not started", until then). */
+  startedAt?: number;
+  /** Where it was made: a chat's goal card. */
+  origin?: GoalOrigin;
+}
+export interface GoalOrigin {
+  kind: 'chat';
+  chat: string;
+  message: string;
 }
 export interface GoalItem {
   id: number;

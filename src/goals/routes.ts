@@ -20,6 +20,11 @@ const num = (b: Record<string, unknown>, k: string, lo: number, hi: number, whol
   if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi || (whole && !Number.isInteger(v))) throw new HttpError(400, `"${k}" must be ${whole ? 'a whole number' : 'a number'} from ${lo} to ${hi}`);
   return v;
 };
+/** The caps: each optional; `null` clears one on a PATCH. */
+export const LIMITS: Record<LimitKey, [lo: number, hi: number, whole: boolean]> = { budgetUsd: [0.01, 1000, false], maxRuns: [1, 50, true], maxMinutes: [1, 1440, true] };
+type LimitKey = 'budgetUsd' | 'maxRuns' | 'maxMinutes';
+const limitsOf = (b: Record<string, unknown>): Partial<Record<LimitKey, number | null>> =>
+  Object.fromEntries((Object.keys(LIMITS) as LimitKey[]).flatMap((k): [LimitKey, number | null][] => (b[k] === null ? [[k, null]] : b[k] === undefined ? [] : [[k, num(b, k, ...LIMITS[k])!]])));
 const text = (b: Record<string, unknown>, k: string, max: number, oneLine = true): string | undefined => {
   const v = b[k];
   if (v === undefined || v === null) return undefined;
@@ -120,8 +125,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       kind,
       status: 'active',
       ...(check ? { check } : {}),
-      budgetUsd: num(b, 'budgetUsd', 0.01, 1000) ?? 5,
-      maxRuns: num(b, 'maxRuns', 1, 50, true) ?? 5,
+      ...Object.fromEntries(Object.entries(limitsOf(b)).filter(([, v]) => v !== null)),
       approval: enumOf(b, 'approval', ['ask', 'auto'] as const) ?? 'ask',
       workflow: workflowOf(c.home, b) ?? 'team',
       ...(dueDate ? { dueDate } : {}),
@@ -158,10 +162,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals }
       if (title) patch.title = title;
       const approval = enumOf(b, 'approval', ['ask', 'auto'] as const);
       if (approval) patch.approval = approval;
-      const budgetUsd = num(b, 'budgetUsd', 0.01, 1000);
-      if (budgetUsd !== undefined) patch.budgetUsd = budgetUsd;
-      const maxRuns = num(b, 'maxRuns', 1, 50, true);
-      if (maxRuns !== undefined) patch.maxRuns = maxRuns;
+      for (const [k, v] of Object.entries(limitsOf(b))) patch[k as LimitKey] = v ?? undefined;
       const wf = workflowOf(c.home, b);
       if (wf) patch.workflow = wf;
       if (b.dueDate !== undefined) patch.dueDate = dateOf(b);
