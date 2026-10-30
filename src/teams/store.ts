@@ -1,8 +1,8 @@
 /**
  * Squads on disk, under <home>/squads/ (0600 files, written atomically; they were teams, in <home>/teams/, moved once):
  *   teams.json   { teams, agents }: every team, and each agent's profile (specialty, personality) keyed by bot id
- *   <id>.json    { messages, tasks, answers }: a Tether team's channel (the newest 300 messages), the runs its agents started
- *                (the newest 200) and today's answer costs
+ *   <id>.json    { messages, tasks, answers, queue }: a squad's channel (the newest 300 messages), the runs its agents
+ *                started (the newest 200), today's answer costs and the tasks waiting for a busy agent
  * Validation lives here too: a team comes in from the dashboard (and later Slack/Telegram) and is checked field by field.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -78,10 +78,10 @@ export function readState(home: string, id: string): TeamState {
   const j = read(stateFile(home, id));
   if (!isObj(j)) return { messages: [], tasks: [], answers: [] };
   const arr = <T>(v: unknown) => (Array.isArray(v) ? (v as T[]) : []);
-  return { messages: arr(j.messages), tasks: arr(j.tasks), answers: arr(j.answers), ...(Array.isArray(j.told) ? { told: arr<string>(j.told) } : {}) };
+  return { messages: arr(j.messages), tasks: arr(j.tasks), answers: arr(j.answers), ...(Array.isArray(j.told) ? { told: arr<string>(j.told) } : {}), ...(Array.isArray(j.queue) ? { queue: arr(j.queue) } : {}) };
 }
 export function writeState(home: string, id: string, s: TeamState, now = Date.now()): void {
-  write(stateFile(home, id), { messages: s.messages.slice(-MAX_MESSAGES), tasks: s.tasks.slice(-MAX_TASKS), answers: s.answers.filter((a) => a.at >= startOfDay(now)), ...(s.told?.length ? { told: s.told.slice(-MAX_TASKS) } : {}) });
+  write(stateFile(home, id), { messages: s.messages.slice(-MAX_MESSAGES), tasks: s.tasks.slice(-MAX_TASKS), answers: s.answers.filter((a) => a.at >= startOfDay(now)), ...(s.told?.length ? { told: s.told.slice(-MAX_TASKS) } : {}), ...(s.queue?.length ? { queue: s.queue } : {}) });
 }
 export const removeState = (home: string, id: string): void => {
   try {

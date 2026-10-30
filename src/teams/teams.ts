@@ -276,7 +276,7 @@ export class Teams {
     const m: TeamMessage = { id: mid(), at: Date.now(), from, text, ...extra };
     this.edit(teamId, (s) => s.messages.push(m));
     // a ticket's activity reads like the squad: the agents' messages about it, said the same way
-    if (m.ticket && from.kind === 'agent' && !m.pending) this.d.goals.note(m.ticket, { who: from, text: m.text, ...(m.run ? { runId: m.run } : {}) });
+    if (m.ticket && from.kind === 'agent' && !m.pending && m.card?.kind !== 'approval') this.d.goals.note(m.ticket, { who: from, text: m.text, ...(m.run ? { runId: m.run } : {}) });
     return m;
   }
   /** An agent's message in its voice (the writer, with the squad's cheapest model for reports). */
@@ -371,16 +371,18 @@ export class Teams {
     if (intent === 'task') {
       // an agent already on a run here takes a new task next; a hand-off on a run's branch goes at once
       if (!ref && this.liveTask(team.id, bot)) return this.enqueue(team, bot, said, m, via);
-      return void (await this.task(team, bot, said, { ref, hops, kind: 'task', by: via.asker, ...(via.ticket ? { ticket: via.ticket } : {}), msg: m.id, ...where }));
+      // an agent handing an agent's own run back (a failed review) is a rework of it
+      const kind = ref && m.from.kind === 'agent' && ref.agent === bot ? ('rework' as const) : ('task' as const);
+      return void (await this.task(team, bot, said, { ref, hops, kind, by: via.asker, ...(via.ticket ? { ticket: via.ticket } : {}), msg: m.id, ...where }));
     }
     return this.answer(team, bot, said, m, { hops, asker: via.asker, images: via.images, ...where });
   }
 
   // ---------- the queue and tickets (spec 2026-10-30-squads-tickets) ----------
 
-  /** The agent's run in this squad that is still going (not a loop's), newest first. */
+  /** The agent's run in this squad that it is working on now (not a loop's; one waiting on a person leaves it free). */
   private liveTask(teamId: string, bot: string): TeamTask | undefined {
-    return [...readState(this.d.home, teamId).tasks].reverse().find((k) => k.agent === bot && k.kind !== 'loop' && !k.superseded && !isFinished(this.d.store.state(k.runId)?.status ?? 'done'));
+    return [...readState(this.d.home, teamId).tasks].reverse().find((k) => k.agent === bot && k.kind !== 'loop' && !k.superseded && this.d.store.state(k.runId)?.status === 'running');
   }
   /** The ticket an ask in a squad becomes: assigned to the agent, reviewed by the squad's reviewer, made from the message. */
   private ticketFor(team: Team, bot: string, said: string, msg: string | undefined, asker: string | undefined, queued: boolean): Goal {
