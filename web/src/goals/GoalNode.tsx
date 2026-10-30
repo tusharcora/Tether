@@ -68,7 +68,8 @@ export function nextStrip(g: GoalView): NextStrip | undefined {
   }
   const runs = g.items.filter((i) => i.kind === 'run').length;
   const live = liveRun(g);
-  return { label: `Step ${Math.min(live ? runs : runs + 1, g.maxRuns)} of ${g.maxRuns}:`, text: live ? firstLine(live.text) : 'Planning the next run…', action: 'watch', tone: 'live' };
+  const step = live ? runs : runs + 1;
+  return { label: g.maxRuns ? `Step ${Math.min(step, g.maxRuns)} of ${g.maxRuns}:` : `Step ${step}:`, text: live ? firstLine(live.text) : 'Planning the next run…', action: 'watch', tone: 'live' };
 }
 
 /** The type's tile: a coloured glyph on a rounded square (the type is also named in words beside it). */

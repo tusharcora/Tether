@@ -146,6 +146,18 @@ function Shell() {
     shell.open('float');
     go(lastOther.current);
   };
+  /** The sidebar's ⋯: a renamed open chat reads its title again; a deleted open chat leaves for New chat. */
+  const renameFromSide = (id: string, title: string) =>
+    assistantApi.rename(projects.current?.id, id, title).then(() => {
+      void chats.refresh();
+      if (activeChat === id) chat.refresh();
+    }, notify.fail);
+  const deleteFromSide = (id: string) =>
+    assistantApi.remove(projects.current?.id, id).then(() => {
+      void chats.refresh();
+      if (activeChat === id) setActiveChat(undefined);
+      if (screen.tab === 'chats' && screen.id === id) go({ tab: 'chats', id: 'new' });
+    }, notify.fail);
   const deleteChat = async (id: string) => {
     await assistantApi.remove(projects.current?.id, id);
     if (activeChat === id) setActiveChat(undefined);
@@ -299,7 +311,7 @@ function Shell() {
               onCompose={compose}
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
-              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }) }}
+              chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }), onRename: renameFromSide, onDelete: deleteFromSide }}
               teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: () => go({ tab: 'teams', id: 'new' }), onOpen: (id) => go({ tab: 'teams', id }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
@@ -348,6 +360,8 @@ function Shell() {
                 onSelect={(id) => go(id ? { tab: 'runs', id } : { tab: 'runs' })}
                 onSelectNode={(node) => screen.id && go({ tab: 'runs', id: screen.id, ...(node ? { node } : {}) })}
                 onStart={() => go({ tab: 'home' })}
+                goals={goals.goals}
+                onGo={go}
               />
             ) : null}
             {screen.tab === 'api' ? (

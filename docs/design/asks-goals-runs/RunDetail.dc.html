@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Run details</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}a:hover{color:#bfdbfe}
+.fc{position:relative;display:inline-block;flex:none;width:24px;height:24px;border-radius:6px}
+.fc::before,.fc::after{content:'';position:absolute;top:8px;width:4px;height:5px;background:#141414;border-radius:1px}
+.fc::before{left:6px}.fc::after{right:6px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#2f2f2f;color:#d4d4d8;font-size:12px;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:8px;font:500 13px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.14);background:#2f2f2f;color:#f4f4f5;cursor:pointer;white-space:nowrap}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.st{position:relative;display:flex;gap:12px;padding:10px 12px;border-radius:10px;color:#f4f4f5;font:13px 'Geist',sans-serif;background:transparent;border:0;text-align:left;width:100%;cursor:pointer}
+.st small{display:block;color:#a1a1aa;font-size:11.5px;margin-top:3px}
+.tool{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#232323;font-size:12.5px;color:#d4d4d8}
+.tool .mono{color:#a1a1aa;font-size:12px}
+.tab{height:30px;padding:0 12px;border-radius:7px;border:0;background:transparent;color:#a1a1aa;font:500 13px 'Geist',sans-serif;cursor:pointer}
+.dl{display:grid;grid-template-columns:96px minmax(0,1fr);row-gap:10px;column-gap:10px;font-size:12.5px;margin:0}
+.dl dt{color:#a1a1aa}.dl dd{margin:0;color:#e4e4e7}
+.ln{display:block;padding:0 12px;white-space:pre}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px">
+
+  <header style="padding:14px 24px 12px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#a1a1aa"><a href="Runs.dc.html">← Runs</a><span>/</span><span># web</span><span>/</span><span class="mono">r-8f2a</span></div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+      <h1 style="margin:0;font-size:19px;font-weight:600">Sign-in returns people to where they were</h1>
+      <span class="chip" style="background:rgba(251,191,36,.12);color:#fbbf24">Needs you</span>
+      <a class="chip" href="Main.dc.html" style="color:#d4d4d8">! Goal · try 1 of 3</a>
+      <span style="flex:1"></span>
+      <span class="mono" style="font-size:12px;color:#a1a1aa">9m 12s · $0.63 of $2.00</span>
+      <button class="btn" type="button">Try 2 more ways</button>
+      <button class="btn ghost" type="button">Stop</button>
+    </div>
+  </header>
+
+  <div role="status" style="margin:12px 24px 0;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.05)">
+    <span style="width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:rgba(251,191,36,.15);color:#fbbf24;font-weight:700">✓</span>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1 1 300px"><b style="font-weight:500">Checks pass and Lens approved. Ship it?</b><span style="font-size:12px;color:#a1a1aa">Done when: <span class="mono">npm test -- auth</span> ✓ 24 passed · 1 comment of yours went back to Bolt and was fixed</span></div>
+    <button class="btn pri" type="button">Merge to main</button>
+    <button class="btn" type="button">Open PR instead</button>
+    <button class="btn ghost" type="button">Send back…</button>
+  </div>
+
+  <div style="flex:1;display:flex;flex-wrap:wrap;min-height:0;padding:12px 12px 0">
+
+    <nav aria-label="What happened" style="flex:1 1 250px;max-width:290px;box-sizing:border-box;padding:6px 8px;display:flex;flex-direction:column;gap:2px">
+      <div style="padding:4px 12px 8px;font-size:12px;color:#a1a1aa;display:flex"><b style="color:#f4f4f5;font-weight:600;font-size:13px">What happened</b><span style="margin-left:auto">5 steps</span></div>
+      <button class="st" type="button"><span class="fc" style="background:#93c5fd"></span><span>Tether planned<small>picked # web, Bolt, Lens, Probe · 6s</small></span></button>
+      <button class="st" type="button" style="background:#262626;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)"><span class="fc" style="background:#fbbf24"></span><span style="flex:1">Bolt fixed it<small>3 files · +42 −9 · 3m 40s · $0.41</small></span><span style="color:#34d399;font-size:12px">✓</span></button>
+      <button class="st" type="button"><span class="fc" style="background:#c4b5fd"></span><span style="flex:1">Probe ran tests<small><span class="mono">npm test -- auth</span> · 24 passed · $0.00</small></span><span style="color:#34d399;font-size:12px">✓</span></button>
+      <button class="st" type="button"><span class="fc" style="background:#34d399"></span><span style="flex:1">Lens reviewed<small>1 nit, Bolt fixed it · $0.08</small></span><span style="color:#34d399;font-size:12px">✓</span></button>
+      <button class="st" type="button"><span style="width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:rgba(251,191,36,.15);color:#fbbf24;font-weight:700;flex:none">·</span><span>You approve<small style="color:#fbbf24">waiting on you</small></span></button>
+      <div style="margin-top:14px;padding:10px 12px;border-radius:10px;border:1px dashed rgba(255,255,255,.14);font-size:12px;color:#a1a1aa;line-height:1.5">Every step is a checkpoint. <a href="#">Rewind to before Bolt</a> to undo code and chat, or <a href="#">fork from here</a> into a new try.</div>
+    </nav>
+
+    <section aria-label="Step" style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.07);border-radius:14px 14px 0 0;background:#1d1d1d">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)">
+        <span class="fc" style="background:#fbbf24"></span><b style="font-weight:600">Bolt fixed it</b><span style="font-size:12px;color:#a1a1aa">Sonnet 5.5 · read-write · worktree <span class="mono">tether/r-8f2a</span></span>
+        <div role="tablist" aria-label="Step view" style="margin-left:auto;display:flex;gap:2px;background:#232323;border-radius:9px;padding:3px">
+          <button class="tab" role="tab" aria-selected="false" type="button">Transcript</button>
+          <button class="tab" role="tab" aria-selected="true" type="button" style="background:#383838;color:#f4f4f5">Changes 3</button>
+          <button class="tab" role="tab" aria-selected="false" type="button">Terminal</button>
+          <button class="tab" role="tab" aria-selected="false" type="button">Preview</button>
+        </div>
+      </div>
+
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+        <div class="tool"><span>Read</span><span class="mono">src/auth/callback.ts, src/auth/session.ts +2</span><span style="margin-left:auto;color:#a1a1aa;font-size:11.5px">0:04</span></div>
+        <div class="tool"><span>Edited</span><span class="mono">src/auth/callback.ts</span><span style="margin-left:auto;font-size:11.5px" class="mono"><span style="color:#34d399">+18</span> <span style="color:#f87171">−7</span></span></div>
+        <div class="tool"><span>Ran</span><span class="mono">npm test -- auth</span><span style="margin-left:auto;color:#34d399;font-size:11.5px">24 passed</span></div>
+      </div>
+
+      <div style="margin:0 16px 16px;border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;font-family:'Geist Mono',monospace;font-size:12px;line-height:20px">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#232323;font-family:'Geist',sans-serif;font-size:12.5px"><span class="mono">src/auth/callback.ts</span><span class="mono" style="color:#34d399">+18</span><span class="mono" style="color:#f87171">−7</span><span style="margin-left:auto;color:#a1a1aa">click a line to comment</span></div>
+        <span class="ln" style="color:#a1a1aa">  const session = await createSession(user);</span>
+        <span class="ln" style="background:rgba(248,113,113,.10);color:#fca5a5">- return redirect('/home');</span>
+        <span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ const next = url.searchParams.get('next');</span>
+        <span class="ln" style="background:rgba(52,211,153,.10);color:#6ee7b7">+ return redirect(isSameSite(next) ? next : '/home');</span>
+        <div style="margin:6px 12px 8px;padding:10px 12px;border-radius:8px;background:#262626;font-family:'Geist',sans-serif;font-size:12.5px;display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;align-items:center;gap:8px"><span class="fc" style="background:#e4e4e7;width:18px;height:18px;border-radius:5px"></span><b style="font-weight:500">You</b><span style="color:#a1a1aa">Also reject protocol-relative //evil.com</span></span>
+          <span style="display:flex;align-items:center;gap:8px"><span class="fc" style="background:#fbbf24;width:18px;height:18px;border-radius:5px"></span><b style="font-weight:500">Bolt</b><span style="color:#a1a1aa">Done: isSameSite() now rejects // and added a test.</span><span style="margin-left:auto;color:#34d399">resolved</span></span>
+        </div>
+        <span class="ln" style="color:#a1a1aa">  }</span>
+      </div>
+    </section>
+
+    <aside aria-label="Outcome" style="flex:1 1 260px;max-width:300px;box-sizing:border-box;padding:6px 16px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <b style="font-weight:600;font-size:13px">Outcome</b>
+        <dl class="dl">
+          <dt>Check</dt><dd style="color:#34d399">passes · 24 tests</dd>
+          <dt>Branch</dt><dd class="mono" style="font-size:12px">tether/r-8f2a</dd>
+          <dt>Started from</dt><dd><a href="Main.dc.html">Chat: sign-in bug</a></dd>
+          <dt>Team</dt><dd># web</dd>
+        </dl>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <b style="font-weight:600;font-size:13px">Files</b>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono" style="flex:1;color:#d4d4d8">auth/callback.ts</span><span style="width:46px;height:5px;border-radius:3px;background:linear-gradient(90deg,#34d399 70%,#f87171 70%)"></span></div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono" style="flex:1;color:#d4d4d8">auth/sameSite.ts</span><span style="width:30px;height:5px;border-radius:3px;background:#34d399"></span></div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono" style="flex:1;color:#d4d4d8">auth/callback.test.ts</span><span style="width:24px;height:5px;border-radius:3px;background:#34d399"></span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <b style="font-weight:600;font-size:13px">Cost</b>
+        <div style="display:flex;height:8px;border-radius:4px;overflow:hidden"><span style="width:65%;background:#fbbf24"></span><span style="width:13%;background:#34d399"></span><span style="width:22%;background:#93c5fd"></span></div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#a1a1aa">
+          <span style="display:flex"><span>Bolt · Sonnet 5.5</span><span style="margin-left:auto" class="mono">$0.41</span></span>
+          <span style="display:flex"><span>Tether · planning</span><span style="margin-left:auto" class="mono">$0.14</span></span>
+          <span style="display:flex"><span>Lens · Haiku 5.5</span><span style="margin-left:auto" class="mono">$0.08</span></span>
+          <span style="display:flex"><span>Probe · free</span><span style="margin-left:auto" class="mono">$0.00</span></span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <b style="font-weight:600;font-size:13px">More</b>
+        <a href="#" style="font-size:12.5px">Every event (raw timeline)</a>
+        <a href="#" style="font-size:12.5px">Open worktree in Code</a>
+        <a href="#" style="font-size:12.5px">Save as a workflow</a>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

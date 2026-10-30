@@ -10,7 +10,7 @@ import { ghExec } from './accounts/github.js';
 import { defaultExec, type Exec } from './exec.js';
 import { applyOverrides, ensureIds } from './triggers.js';
 import { getWorkspace } from './workspace.js';
-import type { Pipeline, RunState } from './types.js';
+import type { Pipeline, RunOrigin, RunState } from './types.js';
 
 export type Provider = 'github' | 'azure' | 'aws';
 export interface PrRef {
@@ -267,6 +267,8 @@ export interface PrRunOpts {
   model?: string;
   /** called once the comment was posted (no argument) or failed (the error) */
   onComment?: (err?: Error) => void;
+  /** The trigger that started it. */
+  origin?: RunOrigin;
 }
 
 export async function startPrRun(d: PrDeps, ref: PrRef, o: PrRunOpts): Promise<{ runId: string; info: PrInfo; repoDir: string; done: Promise<RunState> }> {
@@ -286,7 +288,7 @@ export async function startPrRun(d: PrDeps, ref: PrRef, o: PrRunOpts): Promise<{
   const prev = alreadyRan(d.home, ref, info.headSha);
   if (prev) throw new Error(`already reviewed at ${info.headSha.slice(0, 7)} (run ${prev})`);
   const gitRef = await fetchHead(repoDir, info, exec);
-  const runId = await d.engine.start({ pipeline, task: prTask(info, o.note), repo: repoDir, ref: gitRef, autoApprove: o.autoApprove, workspace: o.workspace });
+  const runId = await d.engine.start({ pipeline, task: prTask(info, o.note), repo: repoDir, ref: gitRef, autoApprove: o.autoApprove, workspace: o.workspace, ...(o.origin ? { origin: o.origin } : {}) });
   markRan(d.home, ref, info.headSha, runId);
   const done = d.engine.wait(runId).then(async (s) => {
     if (o.comment) {

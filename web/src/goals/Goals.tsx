@@ -23,7 +23,8 @@ import { cn } from '../ui/cn';
 import { AssigneePicker } from './AssigneePicker';
 import { Avatars, Roster, useWho } from './Avatars';
 import { endOf, GoalNode, sections, TypeTile } from './GoalNode';
-import { copyOf, goalEvents, goalScore, goalsApi, inProject, isOpen, STATUS_LABEL, TYPE_GLYPH, TYPE_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
+import { LimitsField, draftOf, limitsBody, type LimitDraft } from './LimitsField';
+import { copyOf, goalEvents, goalScore, goalsApi, inProject, isOpen, noLimits, STATUS_LABEL, TYPE_GLYPH, TYPE_LABEL, typeOf, type Assignee, type GoalType, type GoalView } from './goalsApi';
 import { LoopFlow } from './LoopFlow';
 import { CheckDialog, NewGoalForm, TypeField } from './NewGoalDialog';
 import { Tracker } from './Tracker';
@@ -239,7 +240,11 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
       </FloatBar>
       <FloatBar at="right">
         <div className="gl-acts" role="group" aria-label="Goal actions">
-          {loop && g.status !== 'met' && g.status !== 'stopped' ? (
+          {g.status === 'paused' && !g.startedAt ? (
+            <Button size="sm" variant="primary" onClick={() => void run(() => goalsApi.start(g.id))}>
+              Start
+            </Button>
+          ) : loop && g.status !== 'met' && g.status !== 'stopped' ? (
             <>
               <Button size="sm" variant="secondary" onClick={() => void run(() => goalsApi.patch(g.id, { status: g.status === 'paused' ? 'active' : 'paused' }))}>
                 {g.status === 'paused' ? 'Resume goal' : 'Pause goal'}
@@ -303,24 +308,29 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
       {loop ? (
         <FloatBar at="bottom" className="gl-limits">
           <div className="gl-limits-in" role="group" aria-label="Limits">
-            <div className="gl-limit">
-              <span className="gl-limit-top">
-                Budget
-                <b className="mono">
-                  {fmtUsd(g.spentUsd)} of {fmtUsd(g.budgetUsd)}
-                </b>
-              </span>
-              <Bar label="Budget used" value={pct(g.spentUsd, g.budgetUsd)} />
-            </div>
-            <div className="gl-limit">
-              <span className="gl-limit-top">
-                Runs
-                <b className="mono">
-                  {runs} of {g.maxRuns}
-                </b>
-              </span>
-              <Bar label="Runs used" value={pct(runs, g.maxRuns)} />
-            </div>
+            {g.budgetUsd !== undefined ? (
+              <div className="gl-limit">
+                <span className="gl-limit-top">
+                  Budget
+                  <b className="mono">
+                    {fmtUsd(g.spentUsd)} of {fmtUsd(g.budgetUsd)}
+                  </b>
+                </span>
+                <Bar label="Budget used" value={pct(g.spentUsd, g.budgetUsd)} />
+              </div>
+            ) : null}
+            {g.maxRuns !== undefined ? (
+              <div className="gl-limit">
+                <span className="gl-limit-top">
+                  Runs
+                  <b className="mono">
+                    {runs} of {g.maxRuns}
+                  </b>
+                </span>
+                <Bar label="Runs used" value={pct(runs, g.maxRuns)} />
+              </div>
+            ) : null}
+            {noLimits(g) ? <span className="gl-limit-top mono">{`No limits · ${fmtUsd(g.spentUsd)} spent · ${runs} ${runs === 1 ? 'run' : 'runs'}`}</span> : g.maxMinutes !== undefined ? <span className="gl-limit-top mono">{`Time limit ${g.maxMinutes} min`}</span> : null}
             <SegmentedControl label="Approval" options={[{ value: 'ask', label: 'Ask each run' }, { value: 'auto', label: 'Auto' }]} value={g.approval} onValueChange={(v) => void run(() => goalsApi.patch(g.id, { approval: v }))} />
           </div>
         </FloatBar>
@@ -334,8 +344,7 @@ function Detail({ goal: g, set, onBack, onSettings, onGo, newGoal, duplicate, fo
 /** Budget, runs and due date, in the dock; Delete is here, behind its own question. */
 function GoalSettings(p: { goal: GoalView; onClose: () => void; onSaved: (g: GoalView) => void; onDeleted: () => void }) {
   const notify = useNotify();
-  const [budget, setBudget] = useState(String(p.goal.budgetUsd));
-  const [runs, setRuns] = useState(String(p.goal.maxRuns));
+  const [limits, setLimits] = useState<LimitDraft>(() => draftOf(p.goal));
   const [due, setDue] = useState(p.goal.dueDate ?? '');
   const [type, setType] = useState<GoalType>(typeOf(p.goal));
   const [desc, setDesc] = useState(p.goal.description ?? '');
@@ -377,7 +386,7 @@ function GoalSettings(p: { goal: GoalView; onClose: () => void; onSaved: (g: Goa
         try {
           p.onSaved(
             await goalsApi.patch(p.goal.id, {
-              ...(loop ? { budgetUsd: Number(budget), maxRuns: Number(runs) } : {}),
+              ...limitsBody(limits, true),
               dueDate: due || null,
               ...(type !== typeOf(p.goal) ? { type } : {}),
               ...(desc.trim() !== (p.goal.description ?? '') ? { description: desc.trim() } : {}),
@@ -391,12 +400,7 @@ function GoalSettings(p: { goal: GoalView; onClose: () => void; onSaved: (g: Goa
     >
       <TypeField value={type} onChange={setType} />
       <Textarea label="Description" rows={3} maxLength={500} value={desc} onChange={(e) => setDesc(e.target.value)} />
-      {loop ? (
-        <div className="gd-row">
-          <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />
-          <Input label="Max runs" type="number" min={1} max={50} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
-        </div>
-      ) : null}
+      <LimitsField value={limits} onChange={setLimits} approval={p.goal.approval} />
       <Input label="Due date" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
       {error ? (
         <p className="sl-alert" role="alert">

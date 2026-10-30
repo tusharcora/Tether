@@ -209,6 +209,10 @@ export class Teams {
   private limit(team: Team): string | undefined {
     return limitReason(team, this.spend(team));
   }
+  /** A team agent started this run: its team ships it. */
+  owns(runId: string): boolean {
+    return this.runs.has(runId);
+  }
   /** For the run page and the Inbox: may this person approve this run? Runs no team started: yes. */
   mayApproveRun(runId: string, personId: string): boolean {
     const tid = this.runs.get(runId);
@@ -307,7 +311,7 @@ export class Teams {
     let runId: string;
     try {
       const pipeline = taskPipeline({ bot: def, level: team.level, gates: this.gates(team), budgetUsd: this.budget(team), ship: true });
-      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(prev ? { ref: prev.branch } : {}), workspace: team.project });
+      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(prev ? { ref: prev.branch } : {}), workspace: team.project, origin: { kind: 'team', id: team.id, team: team.id } });
     } catch (e) {
       return void this.say(team.id, this.agentFrom(bot), `I could not start a run: ${(e as Error).message.split('\n')[0]!.slice(0, 200)}`);
     }
@@ -422,6 +426,8 @@ export class Teams {
         const k = st.tasks.find((x) => x.runId === task.runId);
         if (k) k.pr = r;
       });
+      // the run keeps its PR too (Runs counts merged PRs; the run page links it)
+      this.d.store.append(task.runId, { type: 'run.shipped', url: r.url, number: r.number });
       this.say(team.id, from, `Shipped. Opened PR #${r.number}.`, { run: task.runId, card: { kind: 'pr', url: r.url, number: r.number, title } });
     } finally {
       this.shipping.delete(task.runId);
@@ -461,6 +467,8 @@ export class Teams {
     this.edit(teamId, (s) => {
       for (const m of s.messages) if (m.card?.kind === 'pr' && m.card.number === pr.number) m.card.merged = true;
     });
+    const merged = readState(this.d.home, teamId).tasks.find((k) => k.pr?.number === pr.number);
+    if (merged) this.d.store.append(merged.runId, { type: 'run.shipped', merged: true });
     this.say(teamId, from, `Merged PR #${pr.number}.`);
   }
 
@@ -487,10 +495,11 @@ export class Teams {
     const tasks = readState(this.d.home, team.id).tasks.filter((k) => k.goal === g.id);
     const prev = tasks.at(-1);
     const prevState = prev ? this.d.store.state(prev.runId) : undefined;
-    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd: this.budget(team, g.budgetUsd - g.spentUsd), ship: false });
-    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project });
+    const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd: this.budget(team, g.budgetUsd === undefined ? Infinity : g.budgetUsd - g.spentUsd), ship: false });
+    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id } });
     const s = this.d.store.state(runId)!;
-    const msg = this.loopMsg(team.id, g.id)?.id ?? '';
+    // a goal made elsewhere (a chat's goal card) gets its card in the channel on its first run, so the team sees it
+    const msg = this.loopMsg(team.id, g.id)?.id ?? this.say(team.id, TETHER, `Goal: ${g.title}`, { card: { kind: 'loop', goalId: g.id } }).id;
     this.edit(team.id, (st) => st.tasks.push({ runId, agent: def.id, kind: 'loop', task: plan.task, chain: prev?.chain ?? runId, base: prev?.base ?? s.baseSha, msg, goal: g.id, hops: 0, startedAt: Date.now() }));
     this.runs.set(runId, team.id);
     return runId;
@@ -527,13 +536,13 @@ export class Teams {
   private async loopMet(team: Team, g: Goal): Promise<void> {
     const from = this.agentFrom(g.agent!);
     const last = readState(this.d.home, team.id).tasks.filter((k) => k.goal === g.id).at(-1);
-    this.say(team.id, from, `Loop met: \`${g.check?.command}\` passes.`);
+    this.say(team.id, from, g.check ? `Loop met: \`${g.check.command}\` passes.` : `Done: ${firstLine(g.title, 120)}.`);
     if (!last) return;
     await this.learn(team, last, 'done', g.lastCheck?.summary ?? 'the check passes');
     const s = this.d.store.state(last.runId);
     if (!s) return;
     if (team.level === 'loose') return this.ship(team, last);
-    const detail = [`${g.check?.command} passed`, await this.diffStat(team, last, s.branch)].join(' · ');
+    const detail = [...(g.check ? [`${g.check.command} passed`] : []), await this.diffStat(team, last, s.branch)].join(' · ');
     this.say(team.id, from, 'Ready to ship the loop’s work. It needs a person to approve.', { run: last.runId, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending' } });
   }
 
@@ -652,7 +661,7 @@ export class Teams {
       const n = this.d.goals.db.items(g.id).filter((i) => i.kind === 'run').length;
       const last = g.lastCheck;
       const progress = last?.passing !== undefined ? last.passing / Math.max(1, last.passing + (last.failing ?? 0)) : 0;
-      working.push({ kind: 'loop', title: g.title, agent: g.agent ?? '', needs: g.status === 'needs_you', goalId: g.id, progress, line: `${n} of ≤${g.maxRuns} runs · ${usd(g.spentUsd)} of ${usd(g.budgetUsd)}${last?.summary ? ` · ${last.summary}` : ''}` });
+      working.push({ kind: 'loop', title: g.title, agent: g.agent ?? '', needs: g.status === 'needs_you', goalId: g.id, progress, line: `${n}${g.maxRuns ? ` of ≤${g.maxRuns}` : ''} run${n === 1 && !g.maxRuns ? '' : 's'} · ${usd(g.spentUsd)}${g.budgetUsd ? ` of ${usd(g.budgetUsd)}` : ''}${last?.summary ? ` · ${last.summary}` : ''}` });
     }
     const pending = (runId: string) => st.messages.some((m) => m.card?.kind === 'approval' && m.card.runId === runId && m.card.status === 'pending');
     for (const k of st.tasks) {

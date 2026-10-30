@@ -64,7 +64,7 @@ describe('the chat', () => {
     await screen.findByText('add a test');
     expect(api.decide).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
-    await waitFor(() => expect(api.decide).toHaveBeenCalledWith('api', 'c1', 'p1', 'start'));
+    await waitFor(() => expect(api.decide).toHaveBeenCalledWith('api', 'c1', 'p1', 'start', undefined));
     expect(await screen.findByRole('button', { name: 'Open run' })).toBeTruthy();
   });
 

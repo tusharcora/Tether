@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#191919}
+a{color:#93c5fd;text-decoration:none}a:hover{color:#bfdbfe}
+.fc{position:relative;display:inline-block;flex:none;width:20px;height:20px;border-radius:5px;box-shadow:0 0 0 2px #191919}
+.fc::before,.fc::after{content:'';position:absolute;top:7px;width:3px;height:4px;background:#141414;border-radius:1px}
+.fc::before{left:5px}.fc::after{right:5px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:999px;background:#2f2f2f;color:#d4d4d8;font-size:11.5px;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 12px;border-radius:8px;font:500 12.5px 'Geist',sans-serif;border:1px solid rgba(255,255,255,.14);background:#2f2f2f;color:#f4f4f5;cursor:pointer}
+.btn.pri{background:#f4f4f5;color:#111;border-color:#f4f4f5}
+.btn.ghost{background:transparent;border-color:transparent;color:#a1a1aa}
+.seg{width:18px;height:4px;border-radius:2px;background:#383838}
+.row{display:grid;grid-template-columns:22px minmax(0,1fr) 70px 110px 110px 90px;align-items:center;gap:14px;padding:11px 14px;border-radius:10px;color:#f4f4f5;font-size:13px}
+.row:hover{background:#232323}
+.dot{width:9px;height:9px;border-radius:50%;justify-self:center}
+.sec{display:flex;align-items:baseline;gap:8px;margin:22px 0 6px;padding:0 14px;font-size:12px;color:#a1a1aa}
+.sec b{color:#f4f4f5;font-weight:600;font-size:13px}
+.t{display:flex;flex-direction:column;gap:3px;min-width:0}
+.t span{font-size:11.5px;color:#a1a1aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.faces{display:flex}.faces .fc+.fc{margin-left:-5px}
+.num{font-size:12px;color:#a1a1aa;text-align:right}
+</style>
+</helmet>
+<div style="width:100%;min-height:940px;display:flex;flex-wrap:wrap;background:#191919;color:#f4f4f5;font-family:'Geist',ui-sans-serif,system-ui,sans-serif;font-size:14px">
+
+  <main style="flex:999 1 640px;min-width:0;padding:22px 28px;box-sizing:border-box">
+    <header style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+      <h1 style="margin:0;font-size:20px;font-weight:600">Runs</h1>
+      <span style="flex:1"></span>
+      <label for="q" style="position:absolute;left:-9999px">Search runs</label>
+      <input id="q" placeholder="Search runs, goals, files…" style="width:260px;height:32px;box-sizing:border-box;padding:0 12px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:#262626;color:#f4f4f5;font:13px 'Geist',sans-serif">
+      <button class="btn pri" type="button">New run</button>
+    </header>
+
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px">
+      <div role="tablist" aria-label="Filter" style="display:flex;gap:2px;background:#232323;border-radius:9px;padding:3px">
+        <button type="button" role="tab" aria-selected="true" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:#383838;color:#f4f4f5;font:500 12.5px 'Geist',sans-serif">All</button>
+        <button type="button" role="tab" aria-selected="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#a1a1aa;font:500 12.5px 'Geist',sans-serif">Needs you · 1</button>
+        <button type="button" role="tab" aria-selected="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#a1a1aa;font:500 12.5px 'Geist',sans-serif">Live · 2</button>
+        <button type="button" role="tab" aria-selected="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#a1a1aa;font:500 12.5px 'Geist',sans-serif">Scheduled</button>
+      </div>
+      <span class="chip">Team: any</span><span class="chip">Agent: any</span><span class="chip">acme-web</span>
+      <span style="margin-left:auto;font-size:12px;color:#a1a1aa">Group by <b style="color:#f4f4f5;font-weight:500">when</b></span>
+    </div>
+
+    <div class="sec"><b>Needs you</b>1</div>
+    <div style="border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.05);border-radius:12px;padding:12px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:14px">
+      <span class="dot" style="background:#fbbf24"></span>
+      <div class="t" style="flex:1 1 280px"><b style="font-weight:500">Sign-in returns people to where they were</b><span>Lens passed it · ship 3 files (+42 −9) to main? · # web · goal</span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#fbbf24"></span><span class="seg"></span></div>
+      <button class="btn pri" type="button">Approve &amp; open PR</button><button class="btn" type="button">Review diff</button>
+    </div>
+
+    <div class="sec"><b>Live</b>2</div>
+    <a class="row" href="RunDetail.dc.html">
+      <span class="dot" style="background:#2b6cf0;box-shadow:0 0 0 4px rgba(43,108,240,.2)"></span>
+      <div class="t"><b style="font-weight:500">Dark mode for settings</b><span>Bolt editing <span class="mono">settings/Theme.tsx</span> · run 2 of 4 · # web</span></div>
+      <div class="faces"><span class="fc" style="background:#fbbf24"></span><span class="fc" style="background:#34d399"></span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#2b6cf0"></span><span class="seg"></span><span class="seg"></span></div>
+      <span class="num mono">+118 −34</span>
+      <span class="num">$0.84 · 6m</span>
+    </a>
+    <a class="row" href="RunDetail.dc.html">
+      <span class="dot" style="background:#2b6cf0;box-shadow:0 0 0 4px rgba(43,108,240,.2)"></span>
+      <div class="t"><b style="font-weight:500">Faster search results <span class="chip" style="margin-left:6px">best of 3</span></b><span>3 attempts side by side · Sonnet, Kimi K2, Nemotron · compare when done</span></div>
+      <div class="faces"><span class="fc" style="background:#fbbf24"></span><span class="fc" style="background:#f9a8d4"></span><span class="fc" style="background:#c4b5fd"></span></div>
+      <div style="display:flex;flex-direction:column;gap:3px"><div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#2b6cf0"></span></div><div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#2b6cf0"></span><span class="seg"></span></div><div style="display:flex;gap:3px"><span class="seg" style="background:#f87171"></span><span class="seg"></span><span class="seg"></span></div></div>
+      <span class="num mono">3 branches</span>
+      <span class="num">$0.31 · 9m</span>
+    </a>
+
+    <div class="sec"><b>Today</b>4 · $1.96</div>
+    <a class="row" href="RunDetail.dc.html">
+      <span class="dot" style="background:#34d399"></span>
+      <div class="t"><b style="font-weight:500">Settings: remember last tab</b><span>PR #141 merged 11:20 · # web</span></div>
+      <div class="faces"><span class="fc" style="background:#fbbf24"></span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span></div>
+      <span class="num mono">+22 −4</span>
+      <span class="num">$0.18 · 4m</span>
+    </a>
+    <a class="row" href="RunDetail.dc.html">
+      <span class="dot" style="background:#a1a1aa"></span>
+      <div class="t"><b style="font-weight:500">Keep main green · check 14</b><span>Loop · Probe · check passes, nothing to do</span></div>
+      <div class="faces"><span class="fc" style="background:#c4b5fd"></span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span></div>
+      <span class="num mono">—</span>
+      <span class="num">$0.00 · 40s</span>
+    </a>
+    <a class="row" href="RunDetail.dc.html">
+      <span class="dot" style="background:#f87171"></span>
+      <div class="t"><b style="font-weight:500">Upgrade vite to 7</b><span style="color:#f87171">Tests failed at step 2 · Retry from Tests or rewind to before Fix</span></div>
+      <div class="faces"><span class="fc" style="background:#fbbf24"></span><span class="fc" style="background:#c4b5fd"></span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#f87171"></span><span class="seg"></span></div>
+      <span class="num mono">+6 −6</span>
+      <span class="num">$0.22 · 3m</span>
+    </a>
+
+    <div class="sec"><b>Earlier</b>this week · 23</div>
+    <a class="row" href="RunDetail.dc.html" style="color:#a1a1aa">
+      <span class="dot" style="background:#34d399"></span>
+      <div class="t"><b style="font-weight:500;color:#d4d4d8">Billing page empty state</b><span>Mon · PR #138 merged</span></div>
+      <div class="faces"><span class="fc" style="background:#fbbf24"></span><span class="fc" style="background:#34d399"></span></div>
+      <div style="display:flex;gap:3px"><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span><span class="seg" style="background:#34d399"></span></div>
+      <span class="num mono">+64 −12</span>
+      <span class="num">$0.51 · 11m</span>
+    </a>
+  </main>
+
+  <aside aria-label="Overview" style="flex:1 1 300px;max-width:340px;box-sizing:border-box;padding:22px 22px;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:18px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <b style="font-weight:600;font-size:13px">This week</b>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+        <div style="background:#262626;border-radius:10px;padding:12px"><div style="font-size:20px;font-weight:600">31</div><div style="font-size:11.5px;color:#a1a1aa">runs</div></div>
+        <div style="background:#262626;border-radius:10px;padding:12px"><div style="font-size:20px;font-weight:600">9</div><div style="font-size:11.5px;color:#a1a1aa">PRs merged</div></div>
+        <div style="background:#262626;border-radius:10px;padding:12px"><div style="font-size:20px;font-weight:600">$6.40</div><div style="font-size:11.5px;color:#a1a1aa">spent · 38% free models</div></div>
+        <div style="background:#262626;border-radius:10px;padding:12px"><div style="font-size:20px;font-weight:600">84%</div><div style="font-size:11.5px;color:#a1a1aa">passed first try</div></div>
+      </div>
+      <div aria-label="Spend per day" role="img" style="display:flex;align-items:flex-end;gap:6px;height:56px;padding:0 2px">
+        <span style="flex:1;height:30%;background:#383838;border-radius:3px"></span><span style="flex:1;height:55%;background:#383838;border-radius:3px"></span><span style="flex:1;height:40%;background:#383838;border-radius:3px"></span><span style="flex:1;height:80%;background:#383838;border-radius:3px"></span><span style="flex:1;height:62%;background:#383838;border-radius:3px"></span><span style="flex:1;height:20%;background:#383838;border-radius:3px"></span><span style="flex:1;height:45%;background:#2b6cf0;border-radius:3px"></span>
+      </div>
+      <a href="#" style="font-size:12px">Spend by agent and model →</a>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <b style="font-weight:600;font-size:13px">Scheduled</b>
+      <div style="background:#262626;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px">Triage failing tests</span><span style="font-size:11.5px;color:#a1a1aa">every night 02:00 · Probe · last: 0 failures</span></div>
+      <div style="background:#262626;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px">Bump dependencies</span><span style="font-size:11.5px;color:#a1a1aa">Mondays 09:00 · Bolt · opens a PR</span></div>
+      <button class="btn ghost" type="button" style="justify-content:flex-start;padding:0">+ Schedule a run</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <b style="font-weight:600;font-size:13px">Started from</b>
+      <div style="display:flex;flex-wrap:wrap;gap:6px"><span class="chip">Chats 14</span><span class="chip">Goals 9</span><span class="chip"># web 5</span><span class="chip">PR trigger 2</span><span class="chip">Schedule 1</span></div>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

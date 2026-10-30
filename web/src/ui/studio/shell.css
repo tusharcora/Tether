@@ -67,7 +67,10 @@
 .sl-run-glyph { flex: none; }
 .sl-side-row-extra { display: flex; flex: none; }
 .sl-side-row-more { opacity: 0; transition: opacity var(--t-fast) var(--ease); }
-.sl-side-row:hover .sl-side-row-more, .sl-side-row-more:focus-within { opacity: 1; }
+.sl-side-row:hover .sl-side-row-more, .sl-side-row:focus-within .sl-side-row-more, .sl-side-row.current .sl-side-row-more { opacity: 1; }
+/* a chat's inline rename, in its row's place */
+.sl-side-rename { display: flex; height: 28px; margin: 0 8px; }
+.sl-side-rename input { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--s1); color: var(--ink); font: inherit; font-size: 13px; }
 /* Favorites: beui's sortable list. The handle shows on hover and focus; the rail keeps the rows still. */
 .sl-pins { width: 100%; }
 .sl-pin-group { margin: 0; padding: 0; list-style: none; display: grid; }

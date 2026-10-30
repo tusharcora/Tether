@@ -2,27 +2,44 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
+import { useState } from 'react';
 import { api, type RunView, type StoredEvent } from '../api';
-import { Runs } from '../Runs';
 import { cssRule } from '../test/css';
-import { calls, FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from '../test/fixtures';
+import { calls, makeAwaitingRun, makeRow, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { useNotify } from '../ui/notify';
+import type { InspectorTarget } from './RunPage';
+import { StepInspector } from './StepInspector';
 
 const DIFF = 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n+one\n+two\n-three';
 const done = () => makeRun({ status: 'done', live: false, nodes: { ...makeRun().nodes, code: { ...makeRun().nodes.code!, status: 'done', live: undefined }, gate: { status: 'done', attempts: 1, costUsd: 0, loops: 0 } } });
-const show = (run: RunView, props: Partial<Parameters<typeof Runs>[0]> = {}, events: StoredEvent['event'][] = []) => {
-  const p = { onSelect: vi.fn(), onSelectNode: vi.fn(), ...props };
-  renderApp(<Runs selected="r1" {...p} />);
-  act(() => FakeEventSource.all[0]!.emit('state', run));
-  events.forEach((event, i) => act(() => FakeEventSource.all[0]!.emit('event', { seq: i + 1, ts: Date.now(), event })));
-  return p;
+/** The inspector as a page holds it (the run page's Every event, the team room's step sheet): its target and the run an action returns. */
+function Harness(p: { run: RunView; target?: InspectorTarget; events: StoredEvent[]; onSelectNode: (n?: string) => void }) {
+  const notify = useNotify();
+  const [t, setT] = useState(p.target);
+  const [acted, setR] = useState<RunView>();
+  const onAct = async (path: string, body: unknown = {}) => {
+    try {
+      setR(await api<RunView>('POST', `/api/runs/r1/${path}`, body));
+      return true;
+    } catch (e) {
+      notify.fail(e);
+      return false;
+    }
+  };
+  return t ? <StepInspector run={acted ?? p.run} events={p.events} target={t} onTarget={(x) => (setT(x), x.mode === 'step' && p.onSelectNode(x.node))} onClose={() => (setT(undefined), p.onSelectNode(undefined))} onAct={onAct} /> : null;
+}
+const show = (run: RunView, props: { node?: string; pane?: 'timeline' | 'changes' } = {}, events: StoredEvent['event'][] = []) => {
+  const p = { onSelectNode: vi.fn() };
+  const target: InspectorTarget = props.pane ? { mode: 'run', tab: props.pane } : { mode: 'step', node: props.node ?? 'code' };
+  const evs = events.map((event, i) => ({ seq: i + 1, ts: Date.now(), runId: 'r1', event }) as StoredEvent);
+  const view = renderApp(<Harness run={run} target={target} events={evs} onSelectNode={p.onSelectNode} />);
+  return { ...p, rerender: (r: RunView) => view.rerender(<Harness run={r} target={target} events={evs} onSelectNode={p.onSelectNode} />) };
 };
 const panel = (name = 'Step inspector') => screen.findByRole('complementary', { name });
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
-  FakeEventSource.all = [];
-  vi.stubGlobal('EventSource', FakeEventSource);
   routeApi({
     'GET /api/runs': [makeRow()],
     'GET /api/runs/r1/events': [],
@@ -32,19 +49,15 @@ beforeEach(() => {
 });
 
 describe('StepInspector', () => {
-  it('opens a 440 px panel when a crew card is clicked', async () => {
-    const p = show(makeRun());
-    fireEvent.click(await screen.findByRole('button', { name: /writing$/ }));
-    expect(p.onSelectNode).toHaveBeenCalledWith('code');
+  it('is a 440 px panel (the whole screen on a phone)', async () => {
+    show(makeRun());
     expect(await panel()).toBeTruthy();
     expect(cssRule('runs/inspector.css', '.insp')).toContain('width: 440px');
     expect(cssRule('runs/inspector.css', '.insp', '@media (max-width: 899px)')).toContain('inset: 0');
   });
 
-  it('opens from a deep link once the run loads, with identity, figures and tabs', async () => {
-    renderApp(<Runs selected="r1" node="code" onSelect={() => {}} />);
-    expect(screen.queryByRole('complementary', { name: 'Step inspector' })).toBeNull();
-    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
+  it('shows the step’s identity, figures and tabs', async () => {
+    show(makeRun(), { node: 'code' });
     const el = await panel();
     expect(within(el).getByText('2 of 3')).toBeTruthy();
     expect(within(el).getByRole('heading', { name: 'Bolt' })).toBeTruthy();
@@ -71,10 +84,10 @@ describe('StepInspector', () => {
     const p = show(makeRun(), { node: 'code' });
     fireEvent.click(within(await panel()).getByRole('button', { name: 'Close inspector' }));
     expect(p.onSelectNode).toHaveBeenLastCalledWith(undefined);
-    fireEvent.click(await screen.findByRole('button', { name: /writing$/ }));
+    const q = show(makeRun(), { node: 'code' });
     await panel();
     fireEvent.click(document.querySelector('.insp-scrim')!);
-    expect(p.onSelectNode).toHaveBeenLastCalledWith(undefined);
+    expect(q.onSelectNode).toHaveBeenLastCalledWith(undefined);
   });
 
   it('leaves arrow keys alone inside a text field', async () => {
@@ -159,31 +172,24 @@ describe('StepInspector', () => {
     expect(await within(el).findByText('+2 −1')).toBeTruthy();
   });
 
-  it('opens run mode on Timeline from ?pane=timeline', async () => {
-    renderApp(<Runs selected="r1" pane="timeline" onSelect={() => {}} />);
-    act(() => FakeEventSource.all[0]!.emit('state', makeRun()));
-    act(() => FakeEventSource.all[0]!.emit('event', { seq: 1, ts: Date.now(), event: { type: 'run.started' } }));
+  it('opens run mode on the Timeline (every event)', async () => {
+    show(makeRun(), { pane: 'timeline' }, [{ type: 'run.started' } as never]);
     const el = await panel('Run details');
     expect(within(el).getByRole('tab', { name: 'Timeline (1)' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('opens run mode on Changes from Run details and Review diff, and keeps the branch diff live', async () => {
+  it('opens run mode on Changes and keeps the branch diff live', async () => {
     const base = makeAwaitingRun();
-    show(base);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run details' }));
-    let el = await panel('Run details');
+    const s = show(base, { pane: 'changes' });
+    const el = await panel('Run details');
     expect(within(el).getByRole('tab', { name: 'Changes' }).getAttribute('aria-selected')).toBe('true');
     expect(within(el).getByText('aorch/r1')).toBeTruthy();
     expect((await within(el).findAllByText('src/a.ts')).length).toBeGreaterThan(0);
     const n = calls('GET', '/api/runs/r1/diff').length;
-    act(() => FakeEventSource.all[0]!.emit('state', { ...base, costUsd: 0.5 }));
+    act(() => s.rerender({ ...base, costUsd: 0.5 }));
     await new Promise((r) => setTimeout(r, 20));
     expect(calls('GET', '/api/runs/r1/diff')).toHaveLength(n);
-    act(() => FakeEventSource.all[0]!.emit('state', { ...base, nodes: { ...base.nodes, code: { ...base.nodes.code!, commit: 'def5678' } } }));
+    act(() => s.rerender({ ...base, nodes: { ...base.nodes, code: { ...base.nodes.code!, commit: 'def5678' } } }));
     await waitFor(() => expect(calls('GET', '/api/runs/r1/diff').length).toBeGreaterThan(n));
-    fireEvent.click(within(el).getByRole('button', { name: 'Close inspector' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Review diff' }));
-    el = await panel('Run details');
-    expect(within(el).getByRole('tab', { name: 'Changes' }).getAttribute('aria-selected')).toBe('true');
   });
 });

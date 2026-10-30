@@ -126,6 +126,12 @@ export function ChatComposer(p: { chat: Assistant; project?: string; context: As
               <Bookmark size={15} aria-hidden="true" />
             </button>
             <ContextRing chat={chat} />
+            {p.project ? (
+              <label className="aic-goals" title="Asks to build, fix or do something come back as a goal you can start">
+                <input type="checkbox" checked={chat.asksToGoals} onChange={(e) => void chat.setAsksToGoals(e.target.checked).catch(notify.fail)} />
+                Turn asks into goals
+              </label>
+            ) : null}
           </>
         }
         groupOf={(m) => (nvFree.includes(m) ? NV_GROUP : orExtra.includes(m) ? OR_GROUP : undefined)}

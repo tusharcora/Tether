@@ -25,6 +25,9 @@ import { checkReply } from './reply.js';
 import { splitArtifacts } from './artifactBlocks.js';
 import { artifactsDir, ensureIgnored, readArtifact, saveArtifact } from './artifacts.js';
 import { personaOf } from '../composer.js';
+import type { Goals } from '../goals/loop.js';
+import { loadPrefs } from '../prefs.js';
+import { draftContext, goalFromDraft, goalsPromptPart } from './goalDraft.js';
 import { AGENT_KINDS, loadCrew } from '../crew.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
 
@@ -38,6 +41,8 @@ export interface AssistantCtx {
   needs(): AttentionItem[];
   /** The answering model's context size and free-tier limit, where known (the server asks OpenRouter's models list). */
   modelInfo?(agent: string, model?: string): Promise<{ size?: number; limit?: ContextUse['limit'] }>;
+  /** Asks become goals: a reply's goal card makes a paused goal here. None (a team agent's turn): no goal cards. */
+  goals?: Goals;
 }
 
 /** The tools part of what a turn sends: run_code's description (one item per connector it lists) and Code Mode's note. */
@@ -188,6 +193,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     }
   }
 
+  // asks become goals: Tether's own turn in a project, with the switch on
+  const drafts = c.goals && o.ws && o.root && !who && !o.ephemeral && loadPrefs(c.home).asksToGoals !== false ? draftContext(c.home, o.ws) : undefined;
   const scratch = o.root ? undefined : mkdtempSync(join(tmpdir(), 'tether-assistant-'));
   const cwd = o.root ?? scratch!;
   const ws = o.ws ? getWorkspace(c.home, o.ws) : undefined;
@@ -234,6 +241,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       extra: o.extra,
       ...(refs.length ? { artifacts: refs } : {}),
       ...(artifact ? { artifact } : {}),
+      ...(drafts ? { goals: goalsPromptPart(drafts) } : {}),
     };
     const prompt = buildPrompt(input);
     const cm = await openCodeModeFor({
@@ -307,7 +315,9 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     flush();
     if (signal.aborted) return fail('Stopped.');
     if (res.exitCode !== 0 || res.error) return fail((res.error ?? `the agent exited ${res.exitCode}`).split('\n')[0]!.slice(0, 300));
-    const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault });
+    const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault, drafts });
+    // a goal card's goal exists as soon as the card does (paused, "not started"), so it shows on Goals at once
+    for (const p of checked.proposals) if (p.kind === 'goal' && p.draft && drafts) p.goalId = c.goals!.create(goalFromDraft(p.draft, { workspace: o.ws!, origin: { kind: 'chat', chat: chat.id, message: id }, ctx: drafts })).id;
     // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either
     const artifacts: ArtifactRef[] = [];
     const unsaved: string[] = [];

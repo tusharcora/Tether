@@ -9,17 +9,32 @@ import { badgeFor, stepDesc } from '../ui/studio/status';
 import { CARD_H, CARD_W, edgeState, layersOf, placeCards } from './graphModel';
 import './graph.css';
 
+const YOU = '__you';
+
 /**
  * The run as crew cards in dependency layers, left to right (the demo's graph). Edges take the colour of their ends'
  * state and a live edge carries a moving dot (none under reduced motion). Wide runs scroll sideways. A card selects its step.
  */
-export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: string) => void; /** Gives each card its fan: Open logs, Retry from here, View diff, Pause or Resume. */ onAct?: RunAct; onViewDiff?: () => void }) {
+export function RunGraph(p: {
+  run: RunView;
+  selected?: string;
+  onSelect: (id: string) => void;
+  /** Gives each card its fan: Open logs, Retry from here, View diff, Pause or Resume. */ onAct?: RunAct;
+  onViewDiff?: () => void;
+  /** The person who asked, drawn as a first card ("You" and this line, e.g. "asked 14:02") leading into the first steps. */
+  you?: string;
+  /** Scale (the team room's − / + / Fit). */
+  zoom?: number;
+}) {
   const runLive = p.run.live && p.run.status === 'running';
   const { crew } = useCrew();
   const reduced = useReducedMotionPref();
-  const { nodes, edges } = p.run.pipeline;
+  const { nodes } = p.run.pipeline;
   if (!nodes.length) return null;
-  const { pos, width, height } = placeCards(layersOf(nodes, edges));
+  const roots = nodes.filter((n) => !p.run.pipeline.edges.some((e) => e.to === n.id)).map((n) => n.id);
+  const edges = p.you ? [...roots.map((to) => ({ from: YOU, to })), ...p.run.pipeline.edges] : p.run.pipeline.edges;
+  const { pos, width, height } = placeCards(layersOf(p.you ? [{ id: YOU }, ...nodes] : nodes, edges));
+  const z = p.zoom ?? 1;
   // right middle of one card to the left middle of the next
   const curve = (from: string, to: string) => {
     const a = pos[from]!, b = pos[to]!;
@@ -28,12 +43,13 @@ export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: st
   };
   return (
     <div className="rg">
-      <div className="rg-inner" style={{ width, height }}>
+      <div className="rg-inner" style={{ width: width * z, height: height * z }}>
+       <div className="rg-scale" style={{ width, height, ...(z !== 1 ? { transform: `scale(${z})` } : {}) }}>
         <svg className="rg-lines" aria-hidden="true">
           {edges
             .filter((e) => pos[e.from] && pos[e.to])
             .map((e) => {
-              const st = edgeState(p.run.nodes[e.from]?.status, p.run.nodes[e.to]?.status);
+              const st = edgeState(e.from === YOU ? 'done' : p.run.nodes[e.from]?.status, p.run.nodes[e.to]?.status);
               const d = curve(e.from, e.to);
               return (
                 <g key={`${e.from}→${e.to}`}>
@@ -47,6 +63,17 @@ export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: st
               );
             })}
         </svg>
+        {p.you ? (
+          <div className="rg-node" style={{ left: pos[YOU]!.x, top: pos[YOU]!.y, width: CARD_W, height: CARD_H }}>
+            <div className="rg-card rg-you">
+              <span className="rg-you-mark" aria-hidden="true">✓</span>
+              <span className="rg-text">
+                <span className="rg-name">You</span>
+                <span className="rg-sub">{p.you}</span>
+              </span>
+            </div>
+          </div>
+        ) : null}
         {nodes.map((n) => {
           const s = p.run.nodes[n.id];
           const look = badgeFor(stepDesc(n, s));
@@ -78,6 +105,7 @@ export function RunGraph(p: { run: RunView; selected?: string; onSelect: (id: st
             </div>
           );
         })}
+       </div>
       </div>
     </div>
   );

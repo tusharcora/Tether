@@ -5,6 +5,7 @@ import { SegmentedControl } from '../components/beui/kit/controls';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { Textarea } from '../components/kept/textarea/textarea';
 import type { WorkspaceRow } from '../home/workspaces';
+import { draftOf, LimitsField, limitsBody, type LimitDraft } from './LimitsField';
 import { goalsApi, TYPE_LABEL, type GoalCheck, type GoalType, type GoalView } from './goalsApi';
 import './goals.css';
 
@@ -34,24 +35,43 @@ const TYPES = (Object.keys(TYPE_LABEL) as GoalType[]).map((t) => ({ value: t, la
 /** The four goal types, in the New goal form and Settings. */
 export const TypeField = (p: { value: GoalType; onChange: (t: GoalType) => void }) => <SegmentedControl label="Type" options={TYPES} value={p.value} onValueChange={(v) => p.onChange(v as GoalType)} />;
 
-/** New goal (in the Goals dock): a title and a project; with a finish check it is an outcome loop, without one a tracker. */
-export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; workflows: string[]; /** Preset by the create menu. */ type?: GoalType; onCreated: (g: GoalView) => void; onCancel: () => void }) {
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState<GoalType>(p.type ?? 'feature');
-  const [desc, setDesc] = useState('');
+/** What a goal card's Edit goal hands the form, and gets back: the goal as drafted, before it exists for the person. */
+export interface DraftFields {
+  title: string;
+  type: GoalType;
+  description?: string;
+  workflow: string;
+  check?: GoalCheck;
+  approval: 'ask' | 'auto';
+  limits?: Partial<Record<'budgetUsd' | 'maxRuns' | 'maxMinutes', number>>;
+}
+
+/**
+ * New goal (in the Goals dock): a title and a project; with a finish check it is an outcome loop, without one a tracker.
+ * With `draft` (a chat's goal card) it edits that draft instead: no project to pick, and Save hands the fields back.
+ */
+export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; workflows: string[]; /** Preset by the create menu. */ type?: GoalType; onCreated: (g: GoalView) => void; onCancel: () => void; draft?: { initial: DraftFields; onSave: (d: DraftFields) => void } }) {
+  const d = p.draft?.initial;
+  const [title, setTitle] = useState(d?.title ?? '');
+  const [type, setType] = useState<GoalType>(d?.type ?? p.type ?? 'feature');
+  const [desc, setDesc] = useState(d?.description ?? '');
   const [ws, setWs] = useState<string>();
-  const [workflow, setWorkflow] = useState('team');
-  const [withCheck, setWithCheck] = useState(false);
-  const [check, setCheck] = useState<GoalCheck>(BLANK);
-  const [budget, setBudget] = useState('5');
-  const [runs, setRuns] = useState('5');
-  const [approval, setApproval] = useState<'ask' | 'auto'>('ask');
+  const [workflow, setWorkflow] = useState(d?.workflow ?? 'team');
+  const [withCheck, setWithCheck] = useState(!!d?.check);
+  const [check, setCheck] = useState<GoalCheck>(d?.check ?? BLANK);
+  const [limits, setLimits] = useState<LimitDraft>(() => draftOf(d?.limits));
+  const [approval, setApproval] = useState<'ask' | 'auto'>(d?.approval ?? 'ask');
   const [due, setDue] = useState('');
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const project = ws ?? p.current ?? p.projects[0]?.id;
 
   const submit = async () => {
+    const checked = withCheck ? { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) } : undefined;
+    if (p.draft) {
+      const set = limitsBody(limits) as DraftFields['limits'];
+      return p.draft.onSave({ title: title.trim(), type, ...(desc.trim() ? { description: desc.trim() } : {}), workflow, ...(checked ? { check: checked } : {}), approval, ...(set && Object.keys(set).length ? { limits: set } : {}) });
+    }
     setBusy(true);
     setError(undefined);
     try {
@@ -61,7 +81,8 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
         ...(desc.trim() ? { description: desc.trim() } : {}),
         workspace: project,
         workflow,
-        ...(withCheck ? { check: { ...check, command: check.command.trim(), ...(check.kind === 'number' ? { target: check.target?.trim() } : {}) }, budgetUsd: Number(budget), maxRuns: Number(runs), approval } : {}),
+        ...(checked ? { check: checked, approval } : {}),
+        ...limitsBody(limits),
         ...(due ? { dueDate: due } : {}),
       });
       p.onCreated(g);
@@ -84,7 +105,7 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
       <Input label="Title" value={title} placeholder="Login tests green" maxLength={200} autoFocus onChange={(e) => setTitle(e.target.value)} />
       <TypeField value={type} onChange={setType} />
       <Textarea label="Description" rows={2} maxLength={500} placeholder="One or two sentences (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
-      <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />
+      {p.draft ? null : <Select label="Project" value={project} onValueChange={setWs} options={p.projects.map((w) => ({ value: w.id, label: w.name }))} />}
       <Select label="Who works on it" value={workflow} onValueChange={setWorkflow} options={[{ value: 'team', label: 'Team' }, ...p.workflows.map((w) => ({ value: w, label: `Workflow · ${w}` }))]} />
       <div className="gd-switch">
         <div>
@@ -96,14 +117,11 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
       {withCheck ? (
         <>
           <CheckFields check={check} onChange={setCheck} />
-          <div className="gd-row">
-            <Input label="Budget ($)" type="number" min={0.01} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} />
-            <Input label="Max runs" type="number" min={1} max={50} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
-          </div>
           <SegmentedControl label="Approval" options={[{ value: 'ask', label: 'Ask each run' }, { value: 'auto', label: 'Auto' }]} value={approval} onValueChange={(v) => setApproval(v as 'ask' | 'auto')} />
         </>
       ) : null}
-      <Input label="Due date (optional)" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+      <LimitsField value={limits} onChange={setLimits} approval={withCheck ? approval : 'ask'} />
+      {p.draft ? null : <Input label="Due date (optional)" type="date" value={due} onChange={(e) => setDue(e.target.value)} />}
       {error ? (
         <p className="sl-alert" role="alert">
           {error}
@@ -113,8 +131,8 @@ export function NewGoalForm(p: { projects: WorkspaceRow[]; current?: string; wor
         <Button type="button" variant="secondary" onClick={p.onCancel}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" loading={busy} disabled={!title.trim() || !project || (withCheck && !check.command.trim())}>
-          Create goal
+        <Button type="submit" variant="primary" loading={busy} disabled={!title.trim() || (!project && !p.draft) || (withCheck && !check.command.trim())}>
+          {p.draft ? 'Save' : 'Create goal'}
         </Button>
       </div>
     </form>

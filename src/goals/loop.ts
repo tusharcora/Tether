@@ -2,7 +2,8 @@
  * The outcome loop. A goal with a finish check runs the check, and while it fails and the caps allow, proposes a run
  * (the default crew agent through the assistant's lean call and ```tether proposal format), waits for the person on
  * `ask` or starts it at once on `auto`, then re-checks when the run finishes. It ends `met` (the check passes) or
- * `stopped` (the budget or the run cap). Pause and Stop never kill a run already going: nothing new starts.
+ * `stopped` (the budget, the run cap or the time limit, each only when set). Pause and Stop never kill a run already
+ * going: nothing new starts. A goal made from chat waits paused until the person's first Start (`begin`).
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -53,6 +54,17 @@ export interface GoalHooks {
   blocked(g: Goal): string | undefined;
 }
 
+/** Why a goal's caps stop it now; a cap that is not set is not checked. */
+export function capReason(g: Goal, attempts: number, now = Date.now()): string | undefined {
+  if (g.budgetUsd !== undefined && g.spentUsd >= g.budgetUsd) return `Budget reached ($${g.spentUsd.toFixed(2)} of $${g.budgetUsd.toFixed(2)})`;
+  if (g.maxRuns !== undefined && attempts >= g.maxRuns) return `Run cap reached (${attempts} of ${g.maxRuns})`;
+  if (g.maxMinutes !== undefined && g.startedAt !== undefined && now - g.startedAt >= g.maxMinutes * 60_000) return `Time limit reached (${g.maxMinutes} min)`;
+  return undefined;
+}
+
+/** A run item this loop started and has not settled yet (a run linked by hand has no attempt and is not watched). */
+const unsettled = (i: GoalItem) => i.kind === 'run' && !!i.runId && !!i.attempt && !i.attempt.runStatus;
+
 export interface GoalsDeps {
   home: string;
   store: Store;
@@ -77,8 +89,8 @@ export class Goals {
     });
     // after a restart: pick up the runs that were in flight
     for (const g of this.db.list()) {
-      if (g.kind !== 'loop' || g.status === 'met' || g.status === 'stopped') continue;
-      const open = this.db.items(g.id).find((i) => i.kind === 'run' && i.runId && !i.attempt?.after);
+      if (g.status === 'met' || g.status === 'stopped') continue;
+      const open = this.db.items(g.id).find(unsettled);
       if (!open) continue;
       this.watched.set(open.runId!, g.id);
       if (this.runDone(open.runId!)) this.job(this.afterRun(g.id, open.runId!));
@@ -115,11 +127,12 @@ export class Goals {
     this.save({ ...g, status: 'stopped', reason, pending: undefined });
   }
 
-  /** Create: a loop begins at once with its first check. */
-  create(g: Goal): Goal {
+  /** Create: a loop begins at once with its first check; one made paused waits for `begin`. */
+  create(goal: Goal): Goal {
+    const g = goal.status === 'active' && !goal.startedAt ? { ...goal, startedAt: goal.createdAt } : goal;
     this.db.insert(g);
     this.save(g);
-    if (g.kind === 'loop') this.job(this.checkAndAdvance(g.id));
+    if (g.kind === 'loop' && g.status === 'active') this.job(this.checkAndAdvance(g.id));
     return g;
   }
 
@@ -141,11 +154,13 @@ export class Goals {
   }
 
   /** Edit a goal. Adding a finish check to a tracker turns it into a loop, which starts at once. */
-  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'dueDate' | 'workflow' | 'check' | 'type' | 'description' | 'assignees'>>): Goal {
+  update(id: string, patch: Partial<Pick<Goal, 'title' | 'approval' | 'budgetUsd' | 'maxRuns' | 'maxMinutes' | 'dueDate' | 'workflow' | 'check' | 'type' | 'description' | 'assignees' | 'team' | 'agent'>>): Goal {
     const g = this.db.must(id);
+    // a goal not started yet takes a check and stays waiting for its Start
     const loops = !!patch.check && g.kind === 'tracker';
-    const r = this.save({ ...g, ...patch, ...(loops ? { kind: 'loop' as const, status: 'active' as const } : {}) });
-    if (loops) this.job(this.checkAndAdvance(id));
+    const waits = !g.startedAt && g.status === 'paused';
+    const r = this.save({ ...g, ...patch, ...(loops ? { kind: 'loop' as const, ...(waits ? {} : { status: 'active' as const }) } : {}) });
+    if (loops && !waits) this.job(this.checkAndAdvance(id));
     return r;
   }
 
@@ -154,10 +169,10 @@ export class Goals {
     return this.settle(id, r);
   }
 
-  private async checkAndAdvance(id: string): Promise<void> {
+  private async checkAndAdvance(id: string, plan?: Plan): Promise<void> {
     try {
       const g = this.settle(id, await this.runCheck(this.db.must(id)));
-      if (g.status === 'active') await this.advance(id);
+      if (g.status === 'active') await this.advance(id, plan);
     } catch (e) {
       this.failed(id, e);
     }
@@ -167,12 +182,12 @@ export class Goals {
     if (g && g.status !== 'met') this.stop(g, (e as Error).message.split('\n')[0]!.slice(0, 200));
   }
 
-  /** Caps, then a proposal; `ask` waits for the person, `auto` starts. */
-  private async advance(id: string): Promise<void> {
+  /** Caps, then a proposal; `ask` waits for the person, `auto` starts. A `plan` the person already started skips both. */
+  private async advance(id: string, given?: Plan): Promise<void> {
     let g = this.db.must(id);
-    const attempts = this.db.items(id).filter((i) => i.kind === 'run').length;
-    if (g.spentUsd >= g.budgetUsd) return this.stop(g, `Budget reached ($${g.spentUsd.toFixed(2)} of $${g.budgetUsd.toFixed(2)})`);
-    if (attempts >= g.maxRuns) return this.stop(g, `Run cap reached (${attempts} of ${g.maxRuns})`);
+    const why = capReason(g, this.db.items(id).filter((i) => i.kind === 'run').length);
+    if (why) return this.stop(g, why);
+    if (given) return this.startRun(g, given);
     if (this.teamBlocked(g)) return;
     const { plan, costUsd } = await this.propose(g);
     g = this.db.must(id);
@@ -225,7 +240,8 @@ export class Goals {
   /** Start the proposed run. It is the one place a goal starts anything; callers have checked the approval. */
   private async startRun(g: Goal, plan: Plan): Promise<void> {
     const repo = resolve(projectRoot(this.d.home, g.workspace));
-    const budgetUsd = Math.min(Math.max(g.budgetUsd - g.spentUsd, 0.01), TEAM_MAX_BUDGET_USD);
+    // no goal budget: the engine's default for the run (a team's run is capped by its team's day)
+    const budgetUsd = g.budgetUsd === undefined ? undefined : Math.min(Math.max(g.budgetUsd - g.spentUsd, 0.01), TEAM_MAX_BUDGET_USD);
     const auto = g.approval === 'auto';
     if (this.teamBlocked(g)) return;
     let runId: string;
@@ -234,29 +250,39 @@ export class Goals {
         g.team && this.d.hooks
           ? await this.d.hooks.start(g, plan)
           : g.workflow === 'team'
-          ? await this.d.engine.startTeam({ task: plan.task, repo, budgetUsd, background: true, ...(auto ? { mode: 'autonomous' as const } : {}) })
-          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto });
+          ? await this.d.engine.startTeam({ task: plan.task, repo, ...(budgetUsd !== undefined ? { budgetUsd } : {}), background: true, ...(auto ? { mode: 'autonomous' as const } : {}), origin: { kind: 'goal', id: g.id } })
+          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto, origin: { kind: 'goal', id: g.id } });
     } catch (e) {
       return this.stop(g, `Could not start the run: ${(e as Error).message.split('\n')[0]!.slice(0, 160)}`);
     }
     this.db.addItem({ goalId: g.id, kind: 'run', text: plan.task, runId, attempt: { ...(g.lastCheck ? { before: g.lastCheck } : {}) } });
     this.watched.set(runId, g.id);
-    this.save({ ...g, status: g.status === 'paused' ? 'paused' : 'active', pending: undefined });
+    // re-read: a pause or stop that landed while the run was starting must stick
+    const now = this.db.must(g.id);
+    this.save({ ...now, status: now.status === 'paused' || now.status === 'stopped' ? now.status : 'active', pending: undefined });
     if (this.runDone(runId)) this.job(this.afterRun(g.id, runId));
   }
 
-  /** A run finished: record its cost and the check after it, then end or go on. */
+  /** A run finished: record its cost and the check after it, then end or go on. With no check, the run itself decides. */
   private async afterRun(id: string, runId: string): Promise<void> {
     if (this.watched.get(runId) !== id) return;
     this.watched.delete(runId);
     try {
       const s = this.d.store.state(runId);
       const item = this.db.items(id).find((i) => i.runId === runId)!;
-      const after = await this.runCheck(this.db.must(id), s?.workdir);
-      const attempt: Attempt = { ...item.attempt, after, costUsd: s?.costUsd ?? 0, runStatus: s?.status ?? 'gone' };
-      this.db.saveItem({ ...item, attempt, done: after.ok });
+      const before = this.db.must(id);
+      const after = before.check ? await this.runCheck(before, s?.workdir) : undefined;
+      const attempt: Attempt = { ...item.attempt, ...(after ? { after } : {}), costUsd: s?.costUsd ?? 0, runStatus: s?.status ?? 'gone' };
+      this.db.saveItem({ ...item, attempt, done: after ? after.ok : s?.status === 'done' });
       const g = this.db.must(id);
       this.save({ ...g, spentUsd: g.spentUsd + (s?.costUsd ?? 0) });
+      if (!after) {
+        // a goal with no check is met once every item is done
+        const items = this.db.items(id);
+        const now = this.db.must(id);
+        if (now.status === 'active' && items.every((i) => i.done)) this.save({ ...now, status: 'met', pending: undefined });
+        return;
+      }
       const now = this.settle(id, after);
       if (now.status === 'active') await this.advance(id);
     } catch (e) {
@@ -275,9 +301,22 @@ export class Goals {
     if (to === 'paused') return this.save({ ...g, status: 'paused', pending: undefined });
     // resume: a run in flight carries on by itself; otherwise check again and propose
     const inflight = [...this.watched.values()].includes(id);
-    const r = this.save({ ...g, status: 'active', reason: undefined });
+    const r = this.save({ ...g, status: 'active', reason: undefined, startedAt: g.startedAt ?? Date.now() });
     if (g.kind === 'loop' && !inflight) this.job(this.checkAndAdvance(id));
     return r;
+  }
+
+  /**
+   * The person's first Start of a goal that waits "not started" (one made from chat). The Start is their go-ahead for the
+   * first run, `task`: a loop checks first (it may already pass), then starts it; a goal with no check starts it at once.
+   */
+  begin(id: string, task: string): Goal {
+    const g = this.db.must(id);
+    if (g.startedAt || g.status !== 'paused') throw new HttpError(409, 'this goal has already started');
+    const started = this.save({ ...g, status: 'active', startedAt: Date.now(), reason: undefined });
+    const plan: Plan = { task: task.slice(0, 2000), why: 'You started it' };
+    this.job(g.kind === 'loop' ? this.checkAndAdvance(id, plan) : this.advance(id, plan).catch((e) => this.failed(id, e)));
+    return started;
   }
 
   /** The person's answer to a proposed run. */

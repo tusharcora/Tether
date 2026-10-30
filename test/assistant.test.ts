@@ -343,6 +343,71 @@ describe('POST /api/assistant', () => {
   });
 });
 
+describe('asks become goals', () => {
+  const card = (team: string, o: Record<string, unknown> = {}) =>
+    `It's a bug fix, so I made it a goal.\n\`\`\`tether\n${JSON.stringify({ proposals: [{ kind: 'goal', task: 'Fix the sign-in redirect', draft: { title: 'Sign-in returns people to where they were', type: 'bugfix', team, agents: [{ id: 'coder', role: 'fixes it', why: 'code' }, { id: 'ghost', role: 'x' }], workflow: 'nope', limits: { budgetUsd: 5000 }, ...o } }] })}\n\`\`\``;
+
+  it('an ask comes back as one goal card whose paused goal exists at once, with only real ids attached', async () => {
+    const t = await boot();
+    const team = (await t.call('POST', '/api/teams', { name: 'web', place: 'tether', project: 'api', agents: ['coder', 'reviewer'] })).json.team?.id ?? (await t.call('GET', '/api/teams')).json.teams[0].id;
+    t.agent.reply = card(team);
+    const { done, chat } = await t.turn({ message: 'After sign-in people land on /home. Fix it.' });
+    expect(t.agent.prompts[0]).toContain('Asks become goals');
+    expect(t.agent.prompts[0]).toContain(team);
+    const prop = done!.message.proposals![0]!;
+    expect(prop).toMatchObject({ kind: 'goal', status: 'proposed', task: 'Fix the sign-in redirect', draft: { team, agents: [{ id: 'coder', role: 'fixes it' }], workflow: 'team', limits: { budgetUsd: 1000 } } });
+    const goals = (await t.call('GET', '/api/goals?ws=api')).json;
+    expect(goals).toHaveLength(1);
+    expect(goals[0]).toMatchObject({ id: prop.goalId, status: 'paused', title: 'Sign-in returns people to where they were', type: 'bugfix', team, agent: 'coder', budgetUsd: 1000, origin: { kind: 'chat', chat, message: done!.message.id } });
+    expect(goals[0].assignees).toEqual([{ kind: 'team', id: team }, { kind: 'agent', id: 'coder' }]);
+    expect(t.store.list()).toHaveLength(0);
+  });
+
+  it('Start sends the card’s edits (checked strictly) and starts the goal once; its run follows', async () => {
+    const t = await boot();
+    t.agent.reply = card('', { limits: {} });
+    const { done, chat } = await t.turn({ message: 'add a limit test' });
+    const prop = done!.message.proposals![0]!;
+    const start = (draft?: unknown) => t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'start', ...(draft ? { draft } : {}) });
+    expect((await start({ ...prop.draft, agents: [{ id: 'nobody', role: 'x' }] })).status).toBe(400);
+    expect((await start({ ...prop.draft, limits: { maxRuns: 99 } })).status).toBe(400);
+    const go = await start({ ...prop.draft, limits: { maxRuns: 2 } });
+    expect(go.json.proposal).toMatchObject({ status: 'started', draft: { limits: { maxRuns: 2 } } });
+    expect((await start()).json.proposal.status).toBe('started');
+    const g = (await t.call('GET', `/api/goals/${prop.goalId}`)).json;
+    expect(g).toMatchObject({ status: expect.stringMatching(/active|met|stopped/), maxRuns: 2 });
+    expect(g.startedAt).toBeGreaterThan(0);
+    expect(g).not.toHaveProperty('budgetUsd');
+    for (let i = 0; i < 100 && !t.store.list().length; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(t.store.list()).toHaveLength(1);
+    expect((await t.call('GET', `/api/assistant?ws=api&chat=${chat}`)).json.messages.at(-1).proposals[0].status).toBe('started');
+  });
+
+  it('"Just answer, no goal" deletes the paused goal and starts nothing', async () => {
+    const t = await boot();
+    t.agent.reply = card('');
+    const { done, chat } = await t.turn({ message: 'fix it' });
+    const prop = done!.message.proposals![0]!;
+    const r = await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'dismiss' });
+    expect(r.json.proposal.status).toBe('dismissed');
+    expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
+    expect(t.store.list()).toHaveLength(0);
+  });
+
+  it('the composer’s switch turns it off: no instruction, and a goal block is dropped', async () => {
+    const t = await boot();
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(true);
+    expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: 'no' })).status).toBe(400);
+    expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: false })).json).toEqual({ asksToGoals: false });
+    expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(false);
+    t.agent.reply = card('');
+    const { done } = await t.turn({ message: 'fix it' });
+    expect(t.agent.prompts[0]).not.toContain('Asks become goals');
+    expect(done!.message.proposals).toBeUndefined();
+    expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
+  });
+});
+
 describe('what the chat elements read', () => {
   it('keeps a web search’s result on its step, and no other tool’s', async () => {
     const t = await boot();
