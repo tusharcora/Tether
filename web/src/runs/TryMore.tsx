@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type AgentPick, type RunView } from '../api';
+import { api, type AgentPick } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 
@@ -17,18 +17,18 @@ export const pickLabel = (a: AgentPick) => `${a.agent}${a.model ? ` · ${a.model
  * Try more ways: how many more attempts (1–4) and which agent or model each runs on, the defaults filled in (free first,
  * none twice, never the run's own). Start runs them as one set and opens Compare.
  */
-export function TryMore({ run: r, onClose, onStarted }: { run: RunView; onClose: () => void; onStarted: (set: string) => void }) {
+export function TryMore({ runId, onClose, onStarted }: { runId: string; onClose: () => void; onStarted: (set: string) => void }) {
   const [data, setData] = useState<PicksReply>();
   const [error, setError] = useState<string>();
   const [count, setCount] = useState(2);
   const [rows, setRows] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api<PicksReply>('GET', `/api/runs/${encodeURIComponent(r.id)}/attempts?count=4`).then(
+    api<PicksReply>('GET', `/api/runs/${encodeURIComponent(runId)}/attempts?count=4`).then(
       (d) => (setData(d), setRows(d.picks.map((p) => key(p ?? d.original)))),
       (e: unknown) => setError((e as Error).message),
     );
-  }, [r.id]);
+  }, [runId]);
   const options = data ? [data.original, ...data.choices.filter((c) => key(c) !== key(data.original))] : [];
   const byKey = new Map(options.map((o) => [key(o), o]));
   const start = async () => {
@@ -36,7 +36,7 @@ export function TryMore({ run: r, onClose, onStarted }: { run: RunView; onClose:
     setError(undefined);
     try {
       const agents = rows.slice(0, count).map((k) => byKey.get(k) ?? data!.original);
-      const res = await api<{ ids: string[]; set: string }>('POST', `/api/runs/${encodeURIComponent(r.id)}/attempts`, { count, agents });
+      const res = await api<{ ids: string[]; set: string }>('POST', `/api/runs/${encodeURIComponent(runId)}/attempts`, { count, agents });
       onStarted(res.set);
     } catch (e) {
       setError((e as Error).message);
