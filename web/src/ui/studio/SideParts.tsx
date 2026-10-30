@@ -69,6 +69,8 @@ export interface MenuItem {
   label: string;
   onPick: () => void;
   disabled?: boolean;
+  /** Destroys something (Delete chat): drawn in red. */
+  danger?: boolean;
 }
 
 /** A ⋯ (or other) button and its popup menu. */
@@ -82,7 +84,7 @@ export function SideMenu(p: { label: string; items: MenuItem[]; icon?: ReactNode
       {menu.open ? (
         <div ref={menu.menuRef} className="sl-menu sl-side-menu" role="menu" aria-label={p.label} onKeyDown={menu.onMenuKey}>
           {p.items.map((it) => (
-            <button key={it.label} type="button" role="menuitem" disabled={it.disabled} onClick={() => (menu.close(), it.onPick())}>
+            <button key={it.label} type="button" role="menuitem" className={it.danger ? 'sl-menu-danger' : undefined} disabled={it.disabled} onClick={() => (menu.close(), it.onPick())}>
               {it.label}
             </button>
           ))}
