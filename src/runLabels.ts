@@ -8,6 +8,8 @@ import type { RunState, RunStatus, TeamPlan } from './types.js';
 export const NOT_TRUSTED = "This folder isn't trusted, so the check didn't run.";
 /** A solo run that left the folder as it was: `ship.error` holds it, but nothing went wrong. */
 export const NO_FILES = 'No files came out of this run.';
+/** The same for any other run: the folder already had this work. */
+export const NOTHING_TO_LAND = 'Nothing to put in the folder: it already has this work.';
 
 /** A task that starts by changing something in the repo: "Update README.md …", "Fix the login bug". */
 const CHANGES = /^\W*(?:please\s+)?(update|fix|add|write|rewrite|refactor|implement|change|edit|create|rename|remove|delete|replace|bump|migrate|apply|port|upgrade)\b/i;

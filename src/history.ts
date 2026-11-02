@@ -13,7 +13,7 @@ const SKIP_NAMES = ['node_modules', '.venv', 'venv', '__pycache__', '.DS_Store']
 /** Marks a commit that holds a person's uncommitted work, so shipping can tell it from real history. */
 export const DIRTY_MESSAGE = 'tether: uncommitted work';
 
-export const NOTHING_TO_LAND = 'Nothing to put in the folder: it already has this work.';
+export { NOTHING_TO_LAND } from './runLabels.js';
 const REWRITTEN = "This run's history was changed, so it can't be shipped safely. Nothing was pushed.";
 const UNREADABLE = "Could not read this run's history, so nothing was shipped.";
 

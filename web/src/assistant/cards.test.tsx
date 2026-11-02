@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
 import { api, ApiError, type RunView } from '../api';
@@ -132,7 +132,7 @@ describe('the route card', () => {
     expect(within(c).getAllByRole('button').map((b) => b.textContent)).toEqual(['Do it myself', 'Make a ticket', 'Use a workflow', 'Use a team']);
     await click('Do it myself');
     expect(posts).toEqual([{ ws: 'w1', chat: 'c1', choice: 'solo' }]);
-    expect(await screen.findByText('Ready')).toBeTruthy();
+    expect(await screen.findByText("This work isn't in your folder yet.")).toBeTruthy();
   });
 
   it('a double click starts one run', async () => {
@@ -258,6 +258,90 @@ describe('the route card', () => {
     expect(await screen.findByText('Ready')).toBeTruthy();
     await click('Open the run');
     expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r1' });
+  });
+
+  it('a plain run that ended without landing says so, and never Ready', async () => {
+    open(card({ status: 'started', chose: 'workflow', runId: 'r1' }), { 'GET /api/runs/r1': plainRun({ solo: undefined }) });
+    expect(await screen.findByText("This work isn't in your folder yet.")).toBeTruthy();
+    expect(screen.queryByText('Ready')).toBeNull();
+    await click('Open the run');
+    expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r1' });
+  });
+
+  describe('reads the run only while there is more to come', () => {
+    const LONG_AGO = Date.now() - 3_600_000;
+    const started = card({ status: 'started', chose: 'solo', runId: 'r1' });
+    const reads = () => calls('GET', '/api/runs/r1').length;
+    const later = () => act(() => vi.advanceTimersByTimeAsync(40_000));
+    beforeEach(() => void vi.useFakeTimers({ shouldAdvanceTime: true }));
+    afterEach(() => void vi.useRealTimers());
+
+    it.each([
+      ['landed', () => landed(), 'hw3.py · +12 −3'],
+      ['undone', () => plainRun({ undone: true } as Partial<RunView>), 'Undone. Your folder is back to how it was.'],
+      ['failed', () => plainRun({ status: 'error' }), "This didn't finish, so your folder wasn't changed."],
+      ['stopped', () => plainRun({ status: 'stopped' }), "This was stopped, so your folder wasn't changed."],
+      ['ready', () => plainRun({ history: undefined }), 'Ready'],
+      ['not in the folder', () => plainRun({ solo: undefined }), "This work isn't in your folder yet."],
+      ['a solo run that never landed', () => plainRun({ finishedAt: LONG_AGO }), "This work isn't in your folder yet."],
+      ['paused', () => plainRun({ status: 'paused', finishedAt: undefined }), 'Waiting for you'],
+      ['waiting on a person', () => ({ ...makeAwaitingRun(), id: 'r1' }), 'Waiting for you'],
+      ['auto-fix asking for edits', () => plainRun({ status: 'error', live: true, autofix: { round: 0, of: 3, rounds: [], needsWrites: 'read-only' } } as Partial<RunView>), "This didn't finish, so your folder wasn't changed."],
+    ] as [string, () => RunView, string][])('%s: no more requests', async (_, run, text) => {
+      open(started, { 'GET /api/runs/r1': run() });
+      await screen.findByText(text);
+      await act(async () => {}); // the effect that stops the reads, which an open act would hold back
+      const seen = reads();
+      await later();
+      expect(reads()).toBe(seen);
+    });
+
+    it('a deleted run: the 404 stops it', async () => {
+      open(started, { 'GET /api/runs/r1': new ApiError('unknown run r1', 404) });
+      expect(await screen.findByText("This run couldn't be read.")).toBeTruthy();
+      await act(async () => {});
+      await later();
+      expect(reads()).toBe(1);
+    });
+
+    it('a server that is away is tried again', async () => {
+      open(started, { 'GET /api/runs/r1': new ApiError('Bad gateway', 502) });
+      await screen.findByText("This run couldn't be read.");
+      await later();
+      expect(reads()).toBeGreaterThan(1);
+    });
+
+    it('Undo still answers once the reads have stopped', async () => {
+      open(started, { 'GET /api/runs/r1': landed(), 'POST /api/runs/r1/undo-land': plainRun({ undone: true } as Partial<RunView>) });
+      await screen.findByText('hw3.py · +12 −3');
+      await click('Undo');
+      expect(await screen.findByText('Undone. Your folder is back to how it was.')).toBeTruthy();
+    });
+
+    it('a failed run auto-fix is working on is followed to its landing', async () => {
+      let run = plainRun({ status: 'error', live: true });
+      open(started, { 'GET /api/runs/r1': () => run });
+      await screen.findByText("This didn't finish, so your folder wasn't changed.");
+      run = landed();
+      await later();
+      expect(screen.getByText('hw3.py · +12 −3')).toBeTruthy();
+    });
+
+    it('a solo run that just finished is followed to its landing', async () => {
+      let run = plainRun();
+      open(started, { 'GET /api/runs/r1': () => run });
+      await screen.findByText("This work isn't in your folder yet.");
+      run = landed();
+      await later();
+      expect(screen.getByText('hw3.py · +12 −3')).toBeTruthy();
+    });
+  });
+
+  it('a row wraps rather than squeezing its reason at phone width', async () => {
+    open(card());
+    const row = (await screen.findByText('Do it myself', { selector: 'b' })).closest('li')!;
+    expect(row.className).toContain('flex-wrap');
+    expect(row.querySelector('span')!.className).toMatch(/min-w-\[/);
   });
 
   it('a plain card has no merge, branch, PR or commit', async () => {

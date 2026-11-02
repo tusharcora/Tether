@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NO_FILES, NOT_TRUSTED } from '../../../src/runLabels';
+import { NOT_TRUSTED } from '../../../src/runLabels';
 import { api, ApiError, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { usePoll, type Route } from '../hooks';
 import { planRows } from '../runs/planModel';
+import { NOT_IN_FOLDER, nothingToLand } from '../runs/storyModel';
 import { cn } from '../ui/cn';
 import { useNotify } from '../ui/notify';
 import { viewDesc } from '../ui/studio/status';
@@ -45,17 +46,29 @@ function landedLine(r: RunView): string {
   return stats.length ? `${files[0]} · +${count('added')} −${count('deleted')}` : files[0]!;
 }
 
-/** Nothing more to come soon. A solo run in a plain folder lands by itself just after it finishes, so it is watched until it has. */
-const settled = (r: RunView) => ['done', 'error', 'stopped'].includes(r.status) && !r.live && (!(r.solo && r.history && r.status === 'done') || !!r.ship?.landed || !!r.ship?.error || !!r.undone);
+/** How long after finishing a solo run in a plain folder may still land by itself. */
+const LANDING_MS = 60_000;
 
-/** A started run as the card tells it. An ended run is still read now and then: auto-fix, a retry or its own page can move it on. */
+/** More is coming without the person: it's working, auto-fix is on it (the server counts that as live), or a solo run is about to land. */
+function watching(r: RunView): boolean {
+  const state = taskState(viewDesc(r));
+  if (state === 'failed') return !!r.live && !r.autofix?.needsWrites;
+  // shortcut: a landing still queued after LANDING_MS reads as not landed until the card is next opened, fine for one folder's queue
+  if (state === 'done') return !!r.solo && !!r.history && !r.ship && !r.undone && Date.now() - (r.finishedAt ?? 0) < LANDING_MS;
+  return state === 'working';
+}
+
+/** A started run as the card tells it, read every 2.5 s while more is coming. */
 function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo: (r: Route) => void }) {
   const notify = useNotify();
-  const [quiet, setQuiet] = useState(false);
+  const [over, setOver] = useState(false);
+  const [afterUndo, setAfterUndo] = useState<RunView>();
   const [undoing, setUndoing] = useState(false);
-  const poll = usePoll<RunView>(`/api/runs/${encodeURIComponent(runId)}`, quiet ? 30_000 : 2500);
-  const run = poll.data;
-  useEffect(() => setQuiet(!!run && settled(run)), [run]);
+  const poll = usePoll<RunView>(over ? null : `/api/runs/${encodeURIComponent(runId)}`, 2500);
+  const run = afterUndo ?? poll.data;
+  useEffect(() => {
+    if (poll.status === 404 || (run && !watching(run))) setOver(true);
+  }, [run, poll.status]);
   const openRun = (label = 'Open the run') => (
     <Button size="sm" variant="secondary" onClick={() => onGo({ tab: 'runs', id: runId })}>
       {label}
@@ -74,8 +87,8 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
     if (run.ship?.landed) {
       const undo = () => {
         setUndoing(true);
-        api('POST', `/api/runs/${encodeURIComponent(runId)}/undo-land`)
-          .then(poll.refresh, (e: Error) => notify.fail(GIT_WORDS.test(e.message) ? new Error(NO_UNDO) : e))
+        api<RunView>('POST', `/api/runs/${encodeURIComponent(runId)}/undo-land`)
+          .then(setAfterUndo, (e: Error) => notify.fail(GIT_WORDS.test(e.message) ? new Error(NO_UNDO) : e))
           .finally(() => setUndoing(false));
       };
       return (
@@ -91,9 +104,9 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
       );
     }
     if (run.undone) return <Card><Say>Undone. Your folder is back to how it was.</Say></Card>;
-    if (run.ship?.error === NO_FILES) return ending('Nothing changed in your folder.');
+    if (nothingToLand(run)) return ending('Nothing changed in your folder.');
     if (run.ship?.error) return ending(run.ship.error, true);
-    return ending('Ready');
+    return ending(run.history ? NOT_IN_FOLDER : 'Ready');
   }
   if (state === 'failed') return ending(FAILED, true);
   if (state === 'cancelled') return ending(run.error === NOT_TRUSTED ? NOT_TRUSTED : STOPPED);
@@ -140,9 +153,9 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
         {card.rows.map((r) => {
           const rec = r.kind === card.recommend;
           return (
-            <li key={r.kind} data-recommended={rec ? '' : undefined} className={cn('flex items-baseline gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px]', rec && 'bg-[var(--accBg)]')}>
+            <li key={r.kind} data-recommended={rec ? '' : undefined} className={cn('flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 rounded-lg px-2.5 py-1.5 text-[13px]', rec && 'bg-[var(--accBg)]')}>
               <b className="w-28 flex-none font-medium">{ROW[r.kind]}</b>
-              <span className="min-w-0 flex-1 text-muted-foreground">{`${rec && !/^recommended/i.test(r.why) ? 'Recommended. ' : ''}${r.why}`}</span>
+              <span className="min-w-[min(12rem,100%)] flex-1 text-muted-foreground">{`${rec && !/^recommended/i.test(r.why) ? 'Recommended. ' : ''}${r.why}`}</span>
               {r.cost ? <em className="whitespace-nowrap font-mono text-[11px] not-italic text-muted-foreground">{r.cost}</em> : null}
             </li>
           );

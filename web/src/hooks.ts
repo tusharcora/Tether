@@ -9,6 +9,8 @@ export interface Poll<T> {
   error: string | undefined;
   /** Failures in a row (0 after a success). */
   fails: number;
+  /** The last failure's HTTP status (none after a success). */
+  status?: number;
   refresh: () => Promise<void>;
 }
 
@@ -36,6 +38,7 @@ export function usePoll<T>(path: string | null, ms: number): Poll<T> {
   const [error, setError] = useState<string>();
   const fails = useRef(0);
   const [failCount, setFailCount] = useState(0);
+  const [status, setStatus] = useState<number>();
   const current = useRef(path);
   current.current = path;
 
@@ -48,18 +51,20 @@ export function usePoll<T>(path: string | null, ms: number): Poll<T> {
       fails.current = 0;
       setFailCount(0);
       setError(undefined);
+      setStatus(undefined);
       setData(d);
     } catch (e) {
       if (current.current !== p) return;
       fails.current++;
       setFailCount(fails.current);
       setError((e as Error).message);
+      setStatus((e as { status?: number }).status);
     }
   }, []);
 
   useEffect(() => (path ? pollLoop(tick, ms, () => fails.current) : undefined), [path, ms, tick]);
 
-  return { data, error, fails: failCount, refresh: tick };
+  return { data, error, fails: failCount, status, refresh: tick };
 }
 
 /** While `on`, closing or reloading the page asks first (the browser's own prompt). */

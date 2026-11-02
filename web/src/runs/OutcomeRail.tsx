@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { NO_FILES } from '../../../src/runLabels';
 import { fmtUsd, type RunView } from '../api';
 import type { GoalView } from '../goals/goalsApi';
 import type { Route } from '../hooks';
@@ -9,6 +8,7 @@ import { cn } from '../ui/cn';
 import { gateSummary } from './ApprovalBar';
 import { FileBars } from './FileBars';
 import { commitsKey } from './RunFiles';
+import { nothingToLand } from './storyModel';
 import { useDiff } from './useDiff';
 
 const FROM = { chat: 'Chat', goal: 'Ticket', team: 'Squad', trigger: 'Trigger', schedule: 'Schedule', fork: 'Fork of a run' } as const;
@@ -69,7 +69,7 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
           ) : r.ship?.error ? (
             <>
               <dt>{plain ? 'Folder' : 'PR'}</dt>
-              <dd className={cn(r.ship.error !== NO_FILES && 'bad')}>{r.ship.error}</dd>
+              <dd className={cn(!nothingToLand(r) && 'bad')}>{r.ship.error}</dd>
             </>
           ) : null}
           <dt>Started from</dt>
