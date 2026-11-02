@@ -39,11 +39,19 @@ function landingBase(store: Store, s: RunState): string | undefined {
   return undefined;
 }
 
+/** What a landing failure tells a person: history.ts writes its own errors for them, but raw git and file-system text carries git words and paths. */
+function plainFailure(e: Error): string {
+  return e.message.startsWith('git ') || (e as NodeJS.ErrnoException).code ? "This work couldn't be put in the folder, so nothing was changed." : e.message;
+}
+
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
 export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string }> {
   const s = d.store.state(runId)!;
   return inFolder(s.repo, async () => {
-    if (d.store.state(runId)!.ship?.landed) return { error: 'This work is already in the folder.' };
+    const now = d.store.state(runId)!;
+    if (now.ship?.landed) return { error: 'This work is already in the folder.' };
+    // it may have been rewound while it waited its turn: what's on it now isn't the finished work
+    if (now.status !== 'done') return { error: 'This work is still changing, so nothing was put in the folder.' };
     try {
       const r = await landBranch(d.home, s.repo, s.branch, landingBase(d.store, s));
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
@@ -52,7 +60,7 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
       return { landed: r };
     } catch (e) {
       console.error(`[ship] ${(e as Error).message}`, (e as Error).cause ?? '');
-      return { error: (e as Error).message };
+      return { error: plainFailure(e as Error) };
     }
   });
 }
@@ -79,7 +87,11 @@ export class RunShip {
 
   constructor(private d: RunShipDeps) {
     d.store.onAppend((e) => {
-      if (e.event.type !== 'run.finished' || !this.want.has(e.runId) || e.event.status === 'paused') return;
+      if (e.event.type !== 'run.finished' || e.event.status === 'paused') return;
+      // the log is replayed by folding, not through here: only a new `run.finished` arrives, and landed work stays on the run's state
+      const s = d.store.state(e.runId);
+      if (e.event.status === 'done' && s?.solo && s.history && !s.ship?.landed && !d.teamOwns(e.runId)) this.want.set(e.runId, true);
+      if (!this.want.has(e.runId)) return;
       if (e.event.status === 'done') this.job(this.ship(e.runId));
       else this.want.delete(e.runId); // failed or stopped: nothing to ship
     });
@@ -120,7 +132,7 @@ export class RunShip {
       const s = this.d.store.state(runId)!;
       if (s.history) {
         const r = await landRun(this.d, runId);
-        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: r.error });
+        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: s.solo && r.error === NOTHING_TO_LAND ? 'Nothing needed changing, so nothing was put in the folder.' : r.error });
         return;
       }
       const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha, s.dirty);

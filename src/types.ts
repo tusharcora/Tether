@@ -270,6 +270,8 @@ export type RunEvent =
       origin?: RunOrigin;
       /** Spending caps were on when the run started (the setting, or an explicit cap). Absent in logs from before the setting: on. */
       capsOn?: boolean;
+      /** "Do it myself": one step, and in a plain folder it lands by itself when it finishes. */
+      solo?: true;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
   | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed; undone?: true }
@@ -410,6 +412,8 @@ export interface RunState {
   history?: string;
   /** The snapshot of a person's uncommitted work below this run, which must never be pushed. */
   dirty?: string;
+  /** "Do it myself" (run.started.solo). */
+  solo?: true;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -502,6 +506,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         branch: e.branch,
         ...(e.history ? { history: e.history } : {}),
         ...(e.dirty ? { dirty: e.dirty } : {}),
+        ...(e.solo ? { solo: true as const } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,

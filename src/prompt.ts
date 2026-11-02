@@ -76,6 +76,14 @@ export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[]
   ].join('\n');
 }
 
+/** How a step that changes things works (spec 2026-11-01 §6.7). */
+export const CAREFUL = `# Working carefully
+- Read the relevant files before changing them. Follow what's already there.
+- Make the smallest change that does the job, and don't add extras that weren't asked for.
+- Check the result (run the test, build or file) before saying it's done, and say plainly what wasn't checked.
+- Ask only what memory and the files can't answer.
+- Prefer doing it alone with a cheap model. Escalate only when the job needs it.`;
+
 export interface PromptInput {
   pipeline: Pipeline;
   node: PipelineNode;
@@ -103,6 +111,7 @@ export function buildPrompt(i: PromptInput): string {
   // the step's own prompt (or the role's default) always stays; an adopted harness persona is only ADDED, as a fenced role note
   const role = node.prompt ?? DEFAULT_ROLE_PROMPTS[node.role ?? ''] ?? '';
   if (role) parts.push(`# Your role\n${role}`);
+  if (!node.readOnly) parts.push(CAREFUL);
   if (i.harnessPersona?.trim()) parts.push(roleNoteBlock(i.harnessPersona));
   const c = node.spawn?.contract;
   if (node.spawn && c) {

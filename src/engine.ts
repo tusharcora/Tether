@@ -71,6 +71,8 @@ export interface StartInput {
   origin?: RunOrigin;
   /** true: the pipeline's maxCostUsd is an explicit cap (a goal's own $ limit, a probe) and holds with Spending caps off. Default: the setting. */
   capsOn?: boolean;
+  /** "Do it myself": in a plain folder the run lands by itself when it finishes (see `soloPipeline`). */
+  solo?: boolean;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -436,6 +438,7 @@ export class Engine {
       ...(input.mode ? { mode: input.mode } : {}),
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
+      ...(rawInput.solo ? { solo: true as const } : {}),
       capsOn: caps,
     });
     this.noticeLeftOut(runId, wt.leftOut);
