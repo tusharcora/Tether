@@ -839,7 +839,7 @@ export class Teams {
       if (s.history) {
         // a plain folder has no PR: the work goes into the folder and the card says so
         if (s.ship?.landed) return;
-        const l = await landRun(this.d, task.runId, task.base);
+        const l = await landRun(this.d, task.runId);
         if ('error' in l) {
           this.setShip(team.id, card, { state: 'failed', error: l.error });
           return void this.say(team.id, from, template({ kind: 'ship_failed', reason: l.error, plain: true }), { run: task.runId, report: l.error, ...where });
@@ -875,7 +875,7 @@ export class Teams {
     if (!mayApprove(team, by.id)) throw new HttpError(403, `Only ${approverNames(team)} can undo a ship here.`);
     const m = readState(this.d.home, teamId).messages.find((x) => x.id === msgId);
     const c = m?.card;
-    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, this.d.store.state(c?.kind === 'approval' ? (c.runId ?? '') : '')?.history ? 'There is nothing to undo here: it never went in the folder.' : 'There is nothing to undo here: it is already merged, or it never shipped.');
+    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, c?.kind === 'approval' && c.ship?.landed ? "It's in the folder: use Undo on its run to take it back out." : this.d.store.state(c?.kind === 'approval' ? (c.runId ?? '') : '')?.history ? 'There is nothing to undo here: it never went in the folder.' : 'There is nothing to undo here: it is already merged, or it never shipped.');
     if (c.ship.state === 'shipping' && this.d.store.state(c.runId)?.history) throw new HttpError(409, "It's being put in the folder. Try Undo in a moment.");
     const pr = c.ship.pr;
     if (pr) {
@@ -1076,6 +1076,9 @@ export class Teams {
     if (card.status !== 'pending') throw new HttpError(409, `already ${card.status}${card.by ? ` by ${card.by}` : ''}`);
     if (o.action !== 'approve' && o.action !== 'reject') throw new HttpError(400, '"action" must be "approve" or "reject"');
     const approved = o.action === 'approve';
+    const run = card.runId ? this.d.store.state(card.runId) : undefined;
+    // no step waits on a card without a node, so only this stops a rewound run landing half its work
+    if (approved && card.what === 'ship' && !card.node && run?.history && run.status !== 'done') throw new HttpError(409, "This work isn't finished, so it can't go in the folder yet.");
     if (card.runId && card.node) {
       // an engine approval: the run decides once (a second click, or one from the Inbox, gets 409)
       try {

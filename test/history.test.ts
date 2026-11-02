@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { gitInfo } from '../src/code.js';
+import { createWorktree } from '../src/git.js';
 import { FolderRefused, historyDir, insideGit, MAX_FILE_BYTES, snapshotDirty, snapshotFolder } from '../src/history.js';
 import { makeRepo, tmp } from './helpers.js';
 
@@ -74,6 +76,30 @@ describe('history', () => {
     mkdirSync(join(repo, 'sub'));
     expect(insideGit(join(repo, 'sub'))).toBe(true);
     expect(insideGit(tmp())).toBe(false);
+  });
+  it('a repo at the home folder does not make the folders in it repos', async () => {
+    const fake = makeRepo();
+    const folder = join(fake, 'Documents', 'Masters HW');
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'hw.py'), '1\n');
+    writeFileSync(join(fake, 'private.txt'), 'not this\n');
+    const inner = join(fake, 'code', 'app');
+    mkdirSync(join(inner, '.git'), { recursive: true });
+    vi.stubEnv('HOME', fake);
+    try {
+      expect(insideGit(folder)).toBe(false);
+      expect(insideGit(inner)).toBe(true);
+      expect(await gitInfo(folder)).toEqual({ git: false, prefix: '' });
+      const home = tmp('aorch-home-');
+      const wt = await createWorktree(folder, home, 'r1');
+      expect(wt.history).toBe(historyDir(home, folder));
+      expect(readdirSync(wt.workdir).sort()).toEqual(['.git', 'hw.py']);
+      expect(out(fake, 'status', '--porcelain')).not.toContain('A ');
+      expect(out(fake, 'log', '--all', '--format=%s').trim()).toBe('init');
+      await expect(snapshotFolder(home, fake)).rejects.toBeInstanceOf(FolderRefused);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
   it('snapshotDirty includes uncommitted and untracked work and leaves the repo alone', async () => {
     const repo = makeRepo();

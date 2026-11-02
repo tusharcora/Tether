@@ -7,7 +7,7 @@
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { landBranch, shippable, undoLanding } from './history.js';
+import { landBranch, realOr, shippable, undoLanding } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import type { Landed } from './history.js';
@@ -18,20 +18,22 @@ const TRIES = 30;
 /** Landings and undos in one folder go one at a time: two that both saw a clean snapshot would write over each other. */
 const folders = new Map<string, Promise<unknown>>();
 function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
-  const run = (folders.get(folder) ?? Promise.resolve()).then(fn, fn);
+  // its real path: runs may spell one folder differently (a symlink, /tmp and /private/tmp)
+  const key = realOr(folder);
+  const run = (folders.get(key) ?? Promise.resolve()).then(fn, fn);
   const tail = run.catch(() => {});
-  folders.set(folder, tail);
-  void tail.then(() => folders.get(folder) === tail && folders.delete(folder));
+  folders.set(key, tail);
+  void tail.then(() => folders.get(key) === tail && folders.delete(key));
   return run;
 }
 
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
-export async function landRun(d: { store: Store; home: string }, runId: string, base: string): Promise<{ landed: Landed } | { error: string }> {
+export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string }> {
   const s = d.store.state(runId)!;
   return inFolder(s.repo, async () => {
     if (d.store.state(runId)!.ship?.landed) return { error: 'This work is already in the folder.' };
     try {
-      const r = await landBranch(d.home, s.repo, base, s.branch);
+      const r = await landBranch(d.home, s.repo, s.branch);
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
       return { landed: r };
@@ -104,7 +106,7 @@ export class RunShip {
       this.want.delete(runId);
       const s = this.d.store.state(runId)!;
       if (s.history) {
-        const r = await landRun(this.d, runId, s.baseSha);
+        const r = await landRun(this.d, runId);
         if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: r.error });
         return;
       }
@@ -123,10 +125,10 @@ export class RunShip {
   async undo(runId: string): Promise<void> {
     const s = this.d.store.state(runId);
     if (!s) throw new HttpError(404, `unknown run ${runId}`);
-    const landed = s.ship?.landed;
-    if (!landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
+    if (!s.ship?.landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
     await inFolder(s.repo, async () => {
-      if (!this.d.store.state(runId)!.ship?.landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
+      const landed = this.d.store.state(runId)!.ship?.landed;
+      if (!landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
       let r: Awaited<ReturnType<typeof undoLanding>>;
       try {
         r = await undoLanding(this.d.home, s.repo, landed);

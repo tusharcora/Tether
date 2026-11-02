@@ -29,12 +29,25 @@ export interface Landed {
   modes?: Record<string, number>;
 }
 
-/** True when `dir` or a parent holds `.git` (a folder, or a file for worktrees and submodules). */
-export function insideGit(dir: string): boolean {
-  for (let d = resolve(dir); ; d = dirname(d)) {
-    if (existsSync(join(d, '.git'))) return true;
-    if (dirname(d) === d) return false;
+/** `p` with its symlinks resolved, or just absolute when it can't be read. */
+export function realOr(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
   }
+}
+
+/**
+ * True when `dir` or a parent holds `.git` (a folder, or a file for worktrees and submodules). One at the home folder or `/` doesn't
+ * count: a dotfiles repo doesn't make every folder under it a project, and treating one as such would snapshot the whole home.
+ */
+export function insideGit(dir: string): boolean {
+  const home = realOr(homedir());
+  for (let d = realOr(dir); dirname(d) !== d; d = dirname(d)) {
+    if (d !== home && existsSync(join(d, '.git'))) return true;
+  }
+  return false;
 }
 
 const folderId = (folder: string): string => createHash('sha256').update(realpathSync(folder)).digest('hex').slice(0, 16);
@@ -50,7 +63,7 @@ export function folderState(home: string, root: string): string {
 
 /** Refuse before walking: these would scan the whole disk or Tether's own state. */
 function refuse(home: string, real: string): void {
-  if (real === '/' || real === homedir()) {
+  if (real === '/' || real === realOr(homedir())) {
     throw new FolderRefused('This folder is too big to work in: it is your whole home folder. Pick a project folder inside it.');
   }
   const rel = relative(real, resolve(home));
@@ -315,12 +328,16 @@ async function move(home: string, real: string, from: string, to: string, files:
   }
 }
 
-/** Put a run's work (`base`..`head`) into the folder, or name the files a person changed in the meantime and change nothing. */
-export async function landBranch(home: string, folder: string, base: string, head: string): Promise<Landed | { conflicts: string[] }> {
+/** Put a run's work into the folder, or name the files a person changed in the meantime and change nothing. */
+export async function landBranch(home: string, folder: string, head: string): Promise<Landed | { conflicts: string[] }> {
   const real = here(folder);
   const pre = await snapshotFolder(home, real);
   const history = historyDir(home, real);
-  const files = await changed(history, base, head);
+  // from the snapshot the work grew from, its last commit on main: a fork starts on its parent's commit, which the folder may never have held
+  const base = (await listed(history, ['merge-base', head, 'refs/heads/main']))[0]!.trim();
+  // a file already as the work has it needs nothing, and isn't a clash: a fork of landed work carries its parent's files
+  const differ = new Set(await changed(history, pre.sha, head));
+  const files = (await changed(history, base, head)).filter((p) => differ.has(p));
   // a project the run made inside its work is stored as a bare pointer: it would land as an empty folder
   const tree = await listed(history, ['ls-tree', '-r', '-z', head]);
   const inner = tree.filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)).filter((p) => files.includes(p));
@@ -375,12 +392,18 @@ export function linkLeftOut(workdir: string, folder: string, leftOut: string[]):
 }
 
 /**
- * What may be pushed for a run in a real repo. A run started on uncommitted work descends from a snapshot of it, which must not
- * reach the remote: replay the run's own commits on the snapshot's parent as `<branch>-pr`. The run's branch is never rewritten.
+ * What may be pushed for a run in a real repo. A run that descends from a snapshot of uncommitted work, by starting on one or by
+ * forking from a run that did, must not take it to the remote: replay what came after on the snapshot's parent as `<branch>-pr`.
+ * A fork's PR so carries its parent run's commits too. The run's branch is never rewritten.
  */
 export async function shippable(top: string, home: string, runId: string, branch: string, base: string): Promise<{ branch: string; base: string } | { error: string }> {
-  if ((await git(top, ['log', '-1', '--format=%s', base])).stdout.trim() !== DIRTY_MESSAGE) return { branch, base };
-  const parent = await must(top, ['rev-parse', `${base}^`]);
+  const found = await git(top, ['log', '--topo-order', '--format=%H %s', '--fixed-strings', `--grep=${DIRTY_MESSAGE}`, branch]);
+  if (found.code !== 0) return { error: "Could not read this run's history, so nothing was shipped." };
+  // every match, not the newest: a commit quoting the words can sit above a snapshot, and a branch taken from a run's checkout can hold two
+  const dirty = found.stdout.split('\n').filter((l) => l.slice(l.indexOf(' ') + 1) === DIRTY_MESSAGE).map((l) => l.slice(0, l.indexOf(' ')));
+  const first = dirty.at(-1);
+  if (!first) return { branch, base };
+  const parent = await must(top, ['rev-parse', `${first}^`]);
   const pr = `aorch/${runId}-pr`;
   const dir = join(home, 'worktrees', `${runId}-pr`);
   const drop = async () => {
@@ -390,8 +413,8 @@ export async function shippable(top: string, home: string, runId: string, branch
   };
   await drop();
   await must(top, ['worktree', 'add', '-b', pr, dir, parent]);
-  const count = Number((await must(top, ['rev-list', '--count', `${base}..${branch}`])));
-  const pick = count ? await git(dir, ['cherry-pick', '--allow-empty', `${base}..${branch}`]) : { code: 0 };
+  const picks = (await must(top, ['rev-list', '--reverse', '--topo-order', `${first}..${branch}`])).split('\n').filter((c) => c && !dirty.includes(c));
+  const pick = picks.length ? await git(dir, ['cherry-pick', '--allow-empty', ...picks]) : { code: 0 };
   if (pick.code !== 0) {
     await git(dir, ['cherry-pick', '--abort']);
     await drop();

@@ -5,6 +5,7 @@
 import { accessSync, chmodSync, closeSync, constants, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { git } from './git.js';
+import { insideGit } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { CodeFile, CodeLang, GitBadge, TreeEntry } from './types.js';
 
@@ -59,6 +60,7 @@ export const langOf = (rel: string): CodeLang => LANG[extname(rel).toLowerCase()
 
 /** Whether the folder is in a git work tree, and where it sits under the repo's top ('' or 'sub/dir/'). */
 export async function gitInfo(root: string): Promise<{ git: boolean; prefix: string }> {
+  if (!insideGit(root)) return { git: false, prefix: '' };
   const r = await git(root, ['rev-parse', '--show-prefix']).catch(() => undefined);
   return r?.code === 0 ? { git: true, prefix: r.stdout.trim() } : { git: false, prefix: '' };
 }

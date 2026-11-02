@@ -88,7 +88,7 @@ describe('a task', () => {
     expect(r.card('pr')).toBeUndefined();
     // no PR or merge words for a folder, in the refusals either
     await expect(r.teams.shipRun(runId, OWNER)).rejects.toThrow('This work is already in the folder.');
-    await expect(r.teams.undoShip(r.team.id, ship.id, OWNER)).rejects.toThrow(/never went in the folder/);
+    await expect(r.teams.undoShip(r.team.id, ship.id, OWNER)).rejects.toThrow("It's in the folder: use Undo on its run to take it back out.");
     // Undo from the run's own route: the card waits for Ship it again and the folder is as it was
     await new RunShip({ store: r.store, engine: r.engine, exec: r.exec, home: r.home, teamOwns: () => true }).undo(runId);
     expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
@@ -99,6 +99,21 @@ describe('a task', () => {
     await r.idle();
     expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
     expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'merged', landed: true } });
+  });
+
+  it('plain folder: a run rewound after its Undo is not finished, so Ship it is refused and the card still waits', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    const ship = r.card('approval')!;
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    await new RunShip({ store: r.store, engine: r.engine, exec: r.exec, home: r.home, teamOwns: () => true }).undo(runId);
+    await r.engine.rewind(runId, 'work');
+    await expect(r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER })).rejects.toThrow("This work isn't finished, so it can't go in the folder yet.");
+    await r.idle();
+    expect(r.card('approval')!.card).toMatchObject({ status: 'pending' });
+    expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
   });
 
   it('plain folder: the ship card counts the files, a Loose squad lands on its own, and Undo is refused while landing', async () => {

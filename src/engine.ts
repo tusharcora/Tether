@@ -499,6 +499,7 @@ export class Engine {
   async rewind(runId: string, node: string): Promise<RunState> {
     const s = this.rewindable(runId, node, 'rewind');
     if (s.ship?.url) throw new Error(`already shipped as PR #${s.ship.number}: fork from a step instead`);
+    if (s.ship?.landed) throw new Error('This work is already in the folder. Undo that first.');
     this.moving.add(runId);
     try {
       const base = rewindBase(s, node);

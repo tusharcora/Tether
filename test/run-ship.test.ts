@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../src/exec.js';
+import { shippable, snapshotDirty } from '../src/history.js';
 import { RunShip } from '../src/runShip.js';
 import { startServer } from '../src/server.js';
 import { Vault } from '../src/vault.js';
@@ -155,6 +156,103 @@ describe('shipping work that started from uncommitted files', () => {
     expect(git(r.bare, 'branch', '--list')).toBe('');
     expect(git(r.repo, 'branch', '--list', '*-pr')).toBe('');
   });
+
+  /** A run with two steps, paused at its approval, on a repo with `wip.txt` uncommitted and a bare `origin`. */
+  async function twoSteps() {
+    const s = setup();
+    const repo = makeRepo();
+    const bare = tmp('bare-');
+    git(bare, 'init', '-q', '--bare');
+    git(repo, 'remote', 'add', 'origin', bare);
+    writeFileSync(join(repo, 'wip.txt'), 'token\n');
+    const exec: Exec = async (_c, args) => (args[1] === 'create' ? { code: 0, stdout: 'https://github.com/o/r/pull/9\n', stderr: '' } : { code: 0, stdout: '', stderr: '' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const p = pipe(
+      [
+        { id: 'a', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'a\n' } } },
+        { id: 'b', role: 'coder', mock: { writeFile: { path: 'b.txt', content: 'b\n' } } },
+        { id: 'ok', kind: 'approval', title: 'You approve' },
+      ],
+      [['a', 'b'], ['b', 'ok']],
+    );
+    const id = await s.engine.start({ pipeline: p, task: 'Write it', repo });
+    await s.engine.wait(id);
+    return { ...s, repo, bare, ship, id };
+  }
+  /** Fails if any commit the remote holds has the file, or the uncommitted-work commit is among them. */
+  function neverPushed(bare: string, file: string) {
+    const commits = git(bare, 'rev-list', '--all').split('\n').filter(Boolean);
+    expect(commits.length).toBeGreaterThan(0);
+    for (const c of commits) expect(git(bare, 'ls-tree', '-r', '--name-only', c)).not.toContain(file);
+    expect(git(bare, 'log', '--all', '--format=%s')).not.toContain('tether: uncommitted work');
+  }
+
+  it('a fork of such a run pushes its parent\'s commits and none of the uncommitted files', async () => {
+    const r = await twoSteps();
+    const fork = await r.engine.fork(r.id, 'a');
+    await r.engine.wait(fork);
+    await r.ship.decide(fork, false);
+    await r.ship.idle();
+    const st = r.store.state(fork)!;
+    expect(st.ship?.url).toBeTruthy();
+    expect(git(r.bare, 'branch', '--list')).toContain(`${st.branch}-pr`);
+    const files = git(r.bare, 'ls-tree', '-r', '--name-only', `${st.branch}-pr`);
+    expect(files).toContain('a.txt');
+    expect(files).toContain('b.txt');
+    neverPushed(r.bare, 'wip.txt');
+    expect(git(r.repo, 'show', `${st.branch}:wip.txt`)).toBe('token');
+  });
+
+  it('a run started from an earlier run\'s branch pushes none of the uncommitted files', async () => {
+    const r = await twoSteps();
+    const p = pipe([{ id: 'more', role: 'coder', mock: { writeFile: { path: 'c.txt', content: 'c\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['more', 'ok']]);
+    const next = await r.engine.start({ pipeline: p, task: 'More', repo: r.repo, ref: r.store.state(r.id)!.branch });
+    await r.engine.wait(next);
+    await r.ship.decide(next, false);
+    await r.ship.idle();
+    expect(r.store.state(next)!.ship?.url).toBeTruthy();
+    neverPushed(r.bare, 'wip.txt');
+  });
+
+  it('a commit quoting the marker neither hides the uncommitted work nor counts as it', async () => {
+    const repo = makeRepo();
+    const quoted = 'Explain\n\ntether: uncommitted work';
+    writeFileSync(join(repo, 'old.txt'), 'real\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', quoted);
+    writeFileSync(join(repo, 'wip.txt'), 'token\n');
+    git(repo, 'branch', 't', await snapshotDirty(repo));
+    git(repo, 'clean', '-fdq');
+    git(repo, 'checkout', '-q', 't');
+    writeFileSync(join(repo, 'c.txt'), 'c\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', quoted);
+    const base = git(repo, 'rev-parse', 'HEAD');
+    const out = await shippable(repo, tmp('home-'), 'x', 't', base);
+    expect(out).toMatchObject({ branch: 'aorch/x-pr' });
+    expect(git(repo, 'ls-tree', '-r', '--name-only', 'aorch/x-pr').split('\n').sort()).toEqual(['README.md', 'c.txt', 'old.txt']);
+  });
+
+  it('leaves out every uncommitted-work commit when a run was started from an earlier run\'s checkout', async () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'wip1.txt'), 'token\n');
+    git(repo, 'branch', 't', await snapshotDirty(repo));
+    git(repo, 'clean', '-fdq');
+    git(repo, 'checkout', '-q', 't');
+    writeFileSync(join(repo, 'c1.txt'), '1\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'one');
+    writeFileSync(join(repo, 'wip2.txt'), 'token\n');
+    git(repo, 'branch', 'u', await snapshotDirty(repo));
+    git(repo, 'clean', '-fdq');
+    git(repo, 'checkout', '-q', 'u');
+    writeFileSync(join(repo, 'c2.txt'), '2\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'two');
+    expect(await shippable(repo, tmp('home-'), 'x', 'u', git(repo, 'rev-parse', 'HEAD'))).toMatchObject({ branch: 'aorch/x-pr' });
+    for (const c of git(repo, 'rev-list', 'aorch/x-pr').split('\n')) expect(git(repo, 'ls-tree', '-r', '--name-only', c)).not.toContain('wip');
+    expect(git(repo, 'ls-tree', '-r', '--name-only', 'aorch/x-pr').split('\n').sort()).toEqual(['README.md', 'c1.txt', 'c2.txt']);
+  });
 });
 
 describe('shipping a run in a plain folder', () => {
@@ -239,6 +337,104 @@ describe('shipping a run in a plain folder', () => {
     const other = [a, b].find((id) => !landed.includes(id))!;
     expect(s.store.state(other)!.ship?.error).toContain('a.txt changed since');
     expect(read(folder, 'a.txt')).toBe(landed[0] === a ? 'A\n' : 'B\n');
+  });
+
+  it('two spellings of one folder take the same turn: the second sees the first as a conflict', async () => {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const other = join(tmp('links-'), 'same');
+    symlinkSync(folder, other);
+    const mk = async (content: string, repo: string) => {
+      const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content } } }], []);
+      const id = await s.engine.start({ pipeline: p, task: 't', repo });
+      await s.engine.wait(id);
+      return id;
+    };
+    const [a, b] = [await mk('A\n', folder), await mk('B\n', other)];
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    await Promise.all([ship.decide(a, true), ship.decide(b, true)]);
+    await ship.idle();
+    expect([a, b].filter((id) => s.store.state(id)!.ship?.landed)).toHaveLength(1);
+    expect([a, b].map((id) => s.store.state(id)!.ship?.error).find(Boolean)).toContain('a.txt changed since');
+  });
+
+  it('undo takes out what is landed when its turn comes, not what was landed when it was asked', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    const asked = r.store.state(r.id)!.ship!.landed!;
+    const undo = r.ship.undo(r.id);
+    r.store.append(r.id, { type: 'run.shipped', undone: true });
+    r.store.append(r.id, { type: 'run.shipped', merged: true, landed: { ...asked, files: [] } });
+    await undo;
+    expect(read(r.folder, 'b.txt')).toBe('two\n');
+  });
+
+  /** A run in a plain folder: three steps, each changing the folder, paused at its approval. */
+  async function chain() {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const p = pipe(
+      [
+        { id: 'a', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'A\n' } } },
+        { id: 'c', role: 'coder', mock: { writeFile: { path: 'c.txt', content: 'c\n' } } },
+        { id: 'b', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'B\n' } } },
+        { id: 'ok', kind: 'approval', title: 'You approve' },
+      ],
+      [['a', 'c'], ['c', 'b'], ['b', 'ok']],
+    );
+    const id = await s.engine.start({ pipeline: p, task: 't', repo: folder });
+    await s.engine.wait(id);
+    return { ...s, ship, folder, id };
+  }
+
+  it('a fork of a run that never landed lands the parent\'s work with its own, with no false conflict', async () => {
+    const r = await chain();
+    const fork = await r.engine.fork(r.id, 'c');
+    await r.engine.wait(fork);
+    await r.ship.decide(fork, true);
+    await r.ship.idle();
+    const ship = r.store.state(fork)!.ship!;
+    expect(ship.error).toBeUndefined();
+    expect(ship.landed!.files.sort()).toEqual(['a.txt', 'c.txt']);
+    expect(read(r.folder, 'a.txt')).toBe('B\n');
+    expect(read(r.folder, 'c.txt')).toBe('c\n');
+    await r.ship.undo(fork);
+    expect(read(r.folder, 'a.txt')).toBe('one\n');
+    expect(existsSync(join(r.folder, 'c.txt'))).toBe(false);
+  });
+
+  it('a fork of a landed run is not stopped by the parent\'s own files', async () => {
+    const r = await chain();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    const fork = await r.engine.fork(r.id, 'c');
+    await r.engine.wait(fork);
+    await r.ship.decide(fork, true);
+    await r.ship.idle();
+    expect(r.store.state(fork)!.ship?.error).toBeUndefined();
+    expect(r.store.state(fork)!.ship?.landed).toBeTruthy();
+    expect(read(r.folder, 'a.txt')).toBe('B\n');
+  });
+
+  it('a person\'s edit to a file the parent changed still stops a fork', async () => {
+    const r = await chain();
+    const fork = await r.engine.fork(r.id, 'c');
+    await r.engine.wait(fork);
+    writeFileSync(join(r.folder, 'a.txt'), 'mine\n');
+    await r.ship.decide(fork, true);
+    await r.ship.idle();
+    expect(r.store.state(fork)!.ship?.error).toContain('a.txt changed since');
+    expect(read(r.folder, 'a.txt')).toBe('mine\n');
+    expect(existsSync(join(r.folder, 'c.txt'))).toBe(false);
+  });
+
+  it('a landed run cannot be rewound, in plain words', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    await expect(r.engine.rewind(r.id, 'code')).rejects.toThrow('This work is already in the folder. Undo that first.');
   });
 });
 
