@@ -508,7 +508,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     }
     if (p === '/api/prefs' && m === 'PUT') {
       const b = await readJson(req);
-      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number } = {};
+      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number; soloWithoutAsking?: boolean } = {};
       if (b.spendingCaps !== undefined) {
         if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
         patch.spendingCaps = b.spendingCaps;
@@ -521,7 +521,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (!Number.isInteger(b.autoFixRounds) || b.autoFixRounds < 1 || b.autoFixRounds > 6) throw new HttpError(400, '"autoFixRounds" must be a whole number from 1 to 6');
         patch.autoFixRounds = b.autoFixRounds;
       }
-      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix" or "autoFixRounds"');
+      if (b.soloWithoutAsking !== undefined) {
+        if (typeof b.soloWithoutAsking !== 'boolean') throw new HttpError(400, '"soloWithoutAsking" must be true or false');
+        patch.soloWithoutAsking = b.soloWithoutAsking;
+      }
+      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix", "autoFixRounds" or "soloWithoutAsking"');
       savePrefs(cfg.home, patch);
       return send(res, 200, patch), true;
     }

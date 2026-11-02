@@ -1,15 +1,15 @@
 /**
  * One assistant turn: the default crew agent (Tether's binding), read-only, in a Code Mode session that may not change
  * files and may not reach the outside world without a grant. The turn streams what the agent writes and the scripts it
- * runs; its final answer is checked (reply.ts) and saved. Nothing here starts a run.
+ * runs; its final answer is checked (reply.ts) and saved. A turn starts a run only on the person's standing say-so (soloWithoutAsking).
  */
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AdapterRegistry } from '../adapters/index.js';
 import { loadBindings } from '../bindings.js';
 import { openCodeModeFor } from './codemodeFor.js';
-import { listPipelines } from '../config.js';
+import { listPipelines, readPipeline } from '../config.js';
 import { redactText } from '../http/redact.js';
 import { loadSecrets } from '../http/secrets.js';
 import type { Engine } from '../engine.js';
@@ -28,9 +28,11 @@ import { artifactsDir, ensureIgnored, readArtifact, saveArtifact } from './artif
 import { personaOf } from '../composer.js';
 import type { Goals } from '../goals/loop.js';
 import { loadPrefs } from '../prefs.js';
+import { soloPipeline } from '../solo.js';
+import { setTrust, trustState } from '../trust.js';
 import { draftContext, goalFromDraft, goalsPromptPart } from './goalDraft.js';
 import { AGENT_KINDS, loadCrew } from '../crew.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type StreamEvent, type ToolRun } from './types.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ArtifactRef, type AssistantContext, type ChatMessage, type ContextUse, type Retrieved, type RouteCard, type RouteKind, type StreamEvent, type ToolRun } from './types.js';
 
 export interface AssistantCtx {
   home: string;
@@ -130,6 +132,31 @@ const secretsFor = (home: string, ws: string | undefined): Map<string, string> =
 };
 
 /**
+ * Do what a route card's row says, in the chat's folder, and return the card as it now stands. Never throws: a start that
+ * fails is a failed card. `trust` is the person's answer to the trust question, saved first; a ticket starts nothing, so it has none.
+ */
+export async function startRoute(c: AssistantCtx, o: { ws: string; root: string; chat: string; message: string; bot?: string }, card: RouteCard, choice: RouteKind, trust?: boolean): Promise<RouteCard> {
+  const { task } = card;
+  const repo = resolve(o.root);
+  const origin = { kind: 'chat' as const, id: o.chat };
+  const chose: RouteCard = { ...card, chose: choice };
+  try {
+    if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(card.draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws) })).id };
+    if (trust !== undefined) setTrust(c.home, o.root, trust);
+    const runId =
+      choice === 'team'
+        ? await c.engine.startTeam({ task, repo, background: true, origin })
+        : choice === 'workflow'
+          ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin })
+          : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, solo: true });
+    return { ...chose, status: 'started', runId };
+  } catch {
+    // the error can carry paths under <home> and git words: the card says neither
+    return { ...chose, status: 'failed', note: "This couldn't start, and nothing in the folder changed." };
+  }
+}
+
+/**
  * One turn in `o.chat`, or in a new chat this first message makes (the start event names it). A team agent's turn passes
  * `who` (its identity) and `extra` (fenced team context and memory) and is `ephemeral`: nothing lands in the assistant's chats.
  */
@@ -196,8 +223,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     }
   }
 
-  // asks become goals: Tether's own turn in a project, with the switch on
-  const drafts = c.goals && o.ws && o.root && !who && !o.ephemeral && loadPrefs(c.home).asksToGoals !== false ? draftContext(c.home, o.ws) : undefined;
+  // asks get a route card: any agent's turn in the person's own chat in a project, with the switch on
+  const drafts = c.goals && o.ws && o.root && !o.ephemeral && loadPrefs(c.home).asksToGoals !== false ? draftContext(c.home, o.ws) : undefined;
   const scratch = o.root ? undefined : mkdtempSync(join(tmpdir(), 'tether-assistant-'));
   const cwd = o.root ?? scratch!;
   const ws = o.ws ? getWorkspace(c.home, o.ws) : undefined;
@@ -323,6 +350,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault, drafts });
     // a goal card's goal exists as soon as the card does (paused, "not started"), so it shows on Goals at once
     for (const p of checked.proposals) if (p.kind === 'goal' && p.draft && drafts) p.goalId = c.goals!.create(goalFromDraft(p.draft, { workspace: o.ws!, origin: { kind: 'chat', chat: chat.id, message: id }, ctx: drafts })).id;
+    const offered = checked.route;
+    const route = offered?.recommend === 'solo' && loadPrefs(c.home).soloWithoutAsking === true && trustState(c.home, o.root!) === 'trusted' ? await startRoute(c, { ws: o.ws!, root: o.root!, chat: chat.id, message: id, ...(as ? { bot: as.id } : {}) }, offered, 'solo') : offered;
     // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either
     const artifacts: ArtifactRef[] = [];
     const unsaved: string[] = [];
@@ -354,6 +383,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       ...by,
       ...(checked.cites.length ? { cites: checked.cites } : {}),
       ...(checked.proposals.length ? { proposals: checked.proposals } : {}),
+      ...(route ? { route } : {}),
       ...(checked.ask ? { ask: checked.ask } : {}),
       ...(checked.compare ? { compare: checked.compare } : {}),
       ...(checked.report ? { report: checked.report } : {}),

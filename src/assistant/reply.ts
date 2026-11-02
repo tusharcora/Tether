@@ -1,6 +1,6 @@
 /**
  * The agent's answer is plain text with any artifacts (artifactBlocks.ts: a page or a doc, cut out and saved by the turn),
- * optionally ending in one ```tether JSON block: its sources, runs it proposes, questions
+ * optionally ending in one ```tether JSON block: its sources, the routes it offers, runs it proposes, questions
  * it needs answered, a comparison and the cards (report, spec, choice, diagram, timeline). The block is data: it is cut from the text and every part is checked here (files must
  * exist in the project, runs in the store, notes in the vault, workflows on disk) before the dashboard sees it.
  */
@@ -13,12 +13,13 @@ import type { Store } from '../store.js';
 import type { Vault } from '../vault.js';
 import { splitArtifacts, type ArtifactBlock } from './artifactBlocks.js';
 import { checkDraft, type DraftCtx } from './goalDraft.js';
-import type { AskCard, Choice, Compare, Cite, Diagram, Proposal, Report, Spec, TimelineEvent } from './types.js';
+import { ROUTE_KINDS, type AskCard, type Choice, type Compare, type Cite, type Diagram, type Proposal, type Report, type RouteCard, type RouteKind, type Spec, type TimelineEvent } from './types.js';
 
 export interface Checked {
   text: string;
   cites: Cite[];
   proposals: Proposal[];
+  route?: RouteCard;
   ask?: AskCard;
   compare?: Compare;
   report?: Report;
@@ -100,7 +101,61 @@ const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+
 let seq = 0;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-/** `drafts`: goal proposals are kept, checked against it (asks become goals); without it they are dropped. */
+/** How many times doing it alone each bigger route costs, for lack of past runs. */
+const COST_MULTIPLE = { ticket: 1, workflow: 3, team: 4 };
+
+/**
+ * A row's rough cost, from the model's estimate for doing it alone ("about 8k tokens"): the workflow's own past runs
+ * (`pastUsd`) where there are some, otherwise a fixed multiple. Nothing usable from the model: no cost at all.
+ */
+export function routeCost(kind: RouteKind, solo: unknown, pastUsd: number[]): string {
+  const said = str(solo, 40);
+  const m = /^about (\d{1,7}(?:\.\d{1,3})?)(k|m)? tokens$/.exec(said);
+  const n = m ? Number(m[1]) * (m[2] === 'k' ? 1e3 : m[2] === 'm' ? 1e6 : 1) : 0;
+  if (!n) return '';
+  if (kind === 'solo') return said;
+  if (kind === 'workflow' && pastUsd.length) return `about $${(pastUsd.reduce((a, b) => a + b, 0) / pastUsd.length).toFixed(2)}`;
+  const t = n * COST_MULTIPLE[kind];
+  return `about ${t >= 1e6 ? `${Number((t / 1e6).toFixed(1))}m` : t >= 1e3 ? `${Math.round(t / 1e3)}k` : t} tokens`;
+}
+
+/**
+ * The route the reply offers, from a model, so untrusted: only these fields are read, and a route can name neither a folder
+ * nor a pipeline's content. A row that can't be acted on goes; with no rows left there is no card, and the text still stands.
+ */
+function checkRoute(v: unknown, o: { home: string; store: Store; drafts: DraftCtx }): RouteCard | undefined {
+  const x = obj(v);
+  const task = str(x?.task, 2000);
+  if (!x || !task) return undefined;
+  const name = str(x.workflow, 64);
+  const workflow = NAME_RE.test(name) && existsSync(join(pipelinesDir(o.home), `${name}.json`)) ? name : undefined;
+  const checked = checkDraft(x.draft, o.drafts);
+  const draft = typeof checked === 'string' ? undefined : checked;
+  const kept = uniqBy(
+    list(x.rows, 8).filter((r) => ROUTE_KINDS.includes(r.kind as RouteKind) && str(r.why, 200) && (r.kind !== 'workflow' || workflow) && (r.kind !== 'ticket' || draft)),
+    (r) => String(r.kind),
+  );
+  if (!kept.length) return undefined;
+  const solo = kept.find((r) => r.kind === 'solo')?.cost;
+  const past = o.store
+    .listRows()
+    .map((r) => r.summary)
+    .filter((r) => r.pipeline === workflow && r.status === 'done' && !r.probe && r.costUsd > 0)
+    .map((r) => r.costUsd);
+  const rows = kept.map((r) => ({ kind: r.kind as RouteKind, why: str(r.why, 200), cost: routeCost(r.kind as RouteKind, solo, past) }));
+  const has = (k: unknown) => rows.some((r) => r.kind === k);
+  return {
+    id: uid('rc'),
+    task,
+    recommend: has(x.recommend) ? (x.recommend as RouteKind) : has('solo') ? 'solo' : rows[0]!.kind,
+    rows,
+    ...(workflow && has('workflow') ? { workflow } : {}),
+    ...(draft && has('ticket') ? { draft } : {}),
+    status: 'proposed',
+  };
+}
+
+/** `drafts`: routes and goal proposals are kept, checked against it (asks get a route card); without it they are dropped. */
 export async function checkReply(output: string, o: { home: string; repo?: string; store: Store; vault?: Vault; drafts?: DraftCtx }): Promise<Checked> {
   const cut = splitArtifacts(output);
   const artifacts = cut.artifacts.filter((a) => a.content.trim()).slice(0, 3);
@@ -176,5 +231,6 @@ export async function checkReply(output: string, o: { home: string; repo?: strin
     });
     if (columns.length && rows.length) compare = { ...(str(c.title, 80) ? { title: str(c.title, 80) } : {}), columns, rows };
   }
-  return { text, cites, proposals, artifacts, ...(questions.length ? { ask: { id: uid('a'), questions, status: 'pending' as const } } : {}), ...(compare ? { compare } : {}), ...checkCards(raw, cites.length) };
+  const route = o.drafts ? checkRoute(raw.route, { home: o.home, store: o.store, drafts: o.drafts }) : undefined;
+  return { text, cites, proposals, artifacts, ...(route ? { route } : {}), ...(questions.length ? { ask: { id: uid('a'), questions, status: 'pending' as const } } : {}), ...(compare ? { compare } : {}), ...checkCards(raw, cites.length) };
 }

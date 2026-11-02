@@ -31,6 +31,8 @@ export interface Prefs {
   httpActiveEnv?: Record<string, string>;
   /** Tether turns asks to build, fix or do something into goal cards. Default on. */
   asksToGoals?: boolean;
+  /** Do it myself starts at once when it is recommended and the folder is trusted. Default off: the card asks. */
+  soloWithoutAsking?: boolean;
   /** Runs stop at their $ caps (workflow maxCostUsd, team defaults, teams' daily $). Default off: costs show, nothing stops. */
   spendingCaps?: boolean;
   /** The app server auto-fixes a failed run: diagnose and retry, then a stronger model. Default on. */
@@ -54,6 +56,7 @@ export function loadPrefs(home: string): Prefs {
     if (typeof j.graphics === 'boolean') out.graphics = j.graphics;
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
     if (typeof j.asksToGoals === 'boolean') out.asksToGoals = j.asksToGoals;
+    if (typeof j.soloWithoutAsking === 'boolean') out.soloWithoutAsking = j.soloWithoutAsking;
     if (typeof j.spendingCaps === 'boolean') out.spendingCaps = j.spendingCaps;
     if (typeof j.autoFix === 'boolean') out.autoFix = j.autoFix;
     if (Number.isInteger(j.autoFixRounds) && (j.autoFixRounds as number) >= 1 && (j.autoFixRounds as number) <= 6) out.autoFixRounds = j.autoFixRounds as number;
