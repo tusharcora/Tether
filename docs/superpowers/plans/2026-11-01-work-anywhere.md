@@ -12,7 +12,7 @@
 
 **Verified by a spike on git 2.54 (2026-11-01):** `git init --bare`; `add -A` with `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` set, honouring `info/exclude`; `worktree add` from the bare repo; a symlink in the worktree stays hidden if `info/exclude` names it; `checkout <sha> -- <paths>` writes into the folder; `git rev-parse --show-toplevel` **fails** in a bare repo, so every helper that calls it must change (Task 2). The folder had no `.git` afterwards.
 
-**Not in this plan:** Do it myself and "Trust this folder?" (stage 2, with commands), Firecrawl and generative UI (stage 6), picking an unregistered folder in the composer (stage 4), a job's in-place Undo (stage 2, built on Task 3's functions). Later plans get written when the stage before them lands, because they build on its code.
+**Not in this plan:** Do it myself and "Trust this folder?" (stage 2, with commands), Crawlee and generative UI (stage 6), picking an unregistered folder in the composer (stage 4), a job's in-place Undo (stage 2, built on Task 3's functions). Later plans get written when the stage before them lands, because they build on its code.
 
 ## Global Constraints
 
