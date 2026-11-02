@@ -6,7 +6,7 @@ Start the next session in the **orchestrator** project, in this worktree:
 cd /Users/tushar/Documents/PROJECTS/orchestrator/.claude/worktrees/squads
 ```
 
-`main` in `/Users/tushar/Documents/PROJECTS/orchestrator` is old (the aorch/Maestro build). Tether's current code is here, on `feature/agent-first`, at `abc8a93`, which builds on `feature/squads-tickets`.
+Tether's current code is here, on `feature/agent-first`, which builds on `feature/squads-tickets`. The local `main` in `/Users/tushar/Documents/PROJECTS/orchestrator` is old (the aorch/Maestro build); `origin/main` has moved: see Where things stand.
 
 ## The goal
 
@@ -25,14 +25,16 @@ Six stages, from the design's §8:
 
 ## Where things stand
 
-- **Stage 1 is finished and reviewed.** 26 commits on the branch. The last full run: 2,920 tests passed, 1 skipped, no failures.
-- **Nothing is pushed.** `feature/agent-first` exists only on this Mac.
+- **Stage 1 is finished and reviewed.**
+- **Stage 2 is built and local only.** The final review's fixes are in. It's checked in tests only: no real model has run the hook, the deny list or the scrub, and it hasn't been checked in the app.
+- **The four differences from the design are approved** (2026-11-02): Do it myself on a hidden copy, a real repo ending on Merge or Open PR, always-ask commands refused, each job starting fresh.
+- **Nothing is pushed for agent-first.** `feature/agent-first` exists only on this Mac.
+- **`main` moved.** PRs 31-33 merged at `54b3035` on `origin/main`, separately from this work. `feature/agent-first` merges onto it with one conflict, as of `efcbc2d` and after the fixes: two import lines at the top of `test/teams.test.ts`, keep both. No other file conflicts (`git merge-tree`).
 - **Tether.app** at `/Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app` is built from `abc8a93` and was running on the owner's real home. It looks mostly unchanged, because stage 1 is behind the scenes. Its visible changes need a finished run in a plain folder, and `Masters HW` has none yet.
-- **Not committed:** `docs/superpowers/plans/2026-11-02-agents-do-the-work.md` and this file. The owner hasn't asked for a commit.
 
 ## Next step
 
-Stage 2 is built (see `docs/HANDOFF.md` for what to check in the app, and its limits). Write stage 3's plan next: memory, About you and briefs, from the design's §8. Write it only after the owner has checked stage 2, or says to go ahead. Still open from stage 2: the four differences from the design (Do it myself on a hidden copy, a real repo ending on Merge or Open PR, always-ask commands refused, each job starting fresh) need the owner's yes.
+The owner checks stage 2 in the app, including the three real-model checks, in the order `docs/HANDOFF.md` gives them, with its limits. Then write stage 3's plan: memory, About you and briefs, from the design's §8. Write it only after that check, or when the owner says to go ahead.
 
 ## Rules that bit us
 
