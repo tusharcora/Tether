@@ -28,13 +28,15 @@ function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** What a fork's parents still have in the folder, nearest first: an undone one has nothing there. */
-function givenBy(store: Store, s: RunState): Pick<Landed, 'post' | 'files'>[] {
-  const given: Pick<Landed, 'post' | 'files'>[] = [];
-  for (let p = s.origin?.kind === 'fork' ? store.state(s.origin.id) : undefined; p; p = p.origin?.kind === 'fork' ? store.state(p.origin.id) : undefined) {
-    if (p.ship?.landed) given.push(p.ship.landed);
+/** Where a fork's unlanded work starts: the fork point just below its nearest landed parent. Undefined with none landed, so an unlanded parent's work lands with it. */
+function landingBase(store: Store, s: RunState): string | undefined {
+  for (let run = s; run.origin?.kind === 'fork'; ) {
+    const parent = store.state(run.origin.id);
+    if (!parent) return undefined;
+    if (parent.ship?.landed) return run.baseSha;
+    run = parent;
   }
-  return given;
+  return undefined;
 }
 
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
@@ -43,7 +45,7 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
   return inFolder(s.repo, async () => {
     if (d.store.state(runId)!.ship?.landed) return { error: 'This work is already in the folder.' };
     try {
-      const r = await landBranch(d.home, s.repo, s.branch, givenBy(d.store, s));
+      const r = await landBranch(d.home, s.repo, s.branch, landingBase(d.store, s));
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
       if (!r.files.length) return { error: NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
