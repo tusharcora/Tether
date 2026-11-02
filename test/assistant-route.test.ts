@@ -1,7 +1,7 @@
 import { realpathSync, rmSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { readChat, saveChat, setRoute } from '../src/assistant/history.js';
@@ -14,6 +14,7 @@ import { Engine } from '../src/engine.js';
 import { loadPrefs } from '../src/prefs.js';
 import { startServer } from '../src/server.js';
 import { Store } from '../src/store.js';
+import { setSecret } from '../src/http/secrets.js';
 import { setTrust, trustState } from '../src/trust.js';
 import type { AgentAdapter, AgentRequest, AgentResult } from '../src/types.js';
 import { Vault } from '../src/vault.js';
@@ -301,6 +302,30 @@ describe('route card', () => {
     expect((await t.click(c.card!, c.chat, { choice: 'solo' })).json.route).toMatchObject({ status: 'started', noCommands: true });
     await t.settled();
     expect(t.agent.prompts.at(-1)).toContain("You can't run commands here");
+  });
+
+  it('a failed start logs its cause without a secret, and the card stays plain', async () => {
+    const t = await boot();
+    setSecret(t.home, 'default', 'TOKEN', 'sk-very-secret-value');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(t.engine, 'start').mockRejectedValue(new Error('clone of https://me:hunter2@example.com/x with sk-very-secret-value failed at /home/x'));
+    const { card, chat } = await t.offer(good);
+    const go = await t.click(card!, chat, { choice: 'solo', trust: true });
+    expect(go.json.route).toMatchObject({ status: 'failed', note: "This couldn't start, and nothing in the folder changed." });
+    const said = log.mock.calls.map((c) => c.join(' ')).join('\n');
+    log.mockRestore();
+    expect(said).toContain('[route]');
+    expect(said).toContain('/home/x');
+    expect(said).not.toContain('sk-very-secret-value');
+    expect(said).not.toContain('hunter2');
+  });
+
+  it('a stray goal proposal makes no ticket and no card', async () => {
+    const t = await boot();
+    t.agent.reply = `Sure.\n\`\`\`tether\n${JSON.stringify({ proposals: [{ kind: 'goal', task: 'Fix it', draft }, { kind: 'team', task: 'old', why: 'old' }] })}\n\`\`\``;
+    const { message } = await t.turn({ message: 'fix it' });
+    expect(message.proposals!.map((p) => p.kind)).toEqual(['team']);
+    expect((await t.call('GET', '/api/tickets?ws=api')).json).toHaveLength(0);
   });
 
   it('a stale second tab cannot overwrite an answer', async () => {

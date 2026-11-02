@@ -155,7 +155,7 @@ function checkRoute(v: unknown, o: { home: string; store: Store; drafts: DraftCt
   };
 }
 
-/** `drafts`: routes and goal proposals are kept, checked against it (asks get a route card); without it they are dropped. */
+/** `drafts`: a route is kept, checked against it (asks get a route card); without it it is dropped. */
 export async function checkReply(output: string, o: { home: string; repo?: string; store: Store; vault?: Vault; drafts?: DraftCtx }): Promise<Checked> {
   const cut = splitArtifacts(output);
   const artifacts = cut.artifacts.filter((a) => a.content.trim()).slice(0, 3);
@@ -193,12 +193,7 @@ export async function checkReply(output: string, o: { home: string; repo?: strin
   const proposals: Proposal[] = [];
   for (const p of (Array.isArray(raw.proposals) ? raw.proposals : []).slice(0, 3)) {
     const x = (p ?? {}) as Record<string, unknown>;
-    if (x.kind === 'goal') {
-      // one goal card per reply
-      const draft = o.drafts && !proposals.some((y) => y.kind === 'goal') ? checkDraft(x.draft, o.drafts) : undefined;
-      if (draft && typeof draft !== 'string') proposals.push({ id: uid('p'), kind: 'goal', task: str(x.task, 2000) || draft.title, draft, status: 'proposed' });
-      continue;
-    }
+    if (x.kind === 'goal') continue; // a ticket comes from the person's click on a route card, never silently from a model's reply
     const task = str(x.task, 2000);
     if (!task) continue;
     const why = str(x.why, 200) || undefined;

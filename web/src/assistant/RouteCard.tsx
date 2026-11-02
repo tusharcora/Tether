@@ -20,6 +20,7 @@ const FAILED = "This didn't finish, so your folder wasn't changed.";
 const STOPPED = "This was stopped, so your folder wasn't changed.";
 const NO_RUN = "This run couldn't be read.";
 const NO_UNDO = "That couldn't be undone, so nothing was changed.";
+const UNCHECKED = "It ran without commands, so this wasn't checked.";
 /** Agents' own lines and undo's raw errors can say these: a plain folder's card must not. */
 const GIT_WORDS = /\b(git|branch(es)?|merg\w*|commit\w*|PRs?|pull request|repo(sitory)?|worktree|rebase)\b/i;
 
@@ -73,9 +74,11 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
       {label}
     </Button>
   );
+  const unchecked = card.noCommands ? <p className="m-0 mt-1 text-xs text-muted-foreground">{UNCHECKED}</p> : null;
   const ending = (say: ReactNode, bad?: boolean) => (
     <Card>
       <Say bad={bad}>{say}</Say>
+      {say === NOT_TRUSTED || say === NO_RUN ? null : unchecked}
       <Acts>{openRun()}</Acts>
     </Card>
   );
@@ -93,6 +96,7 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
       return (
         <Card>
           <Say>{landedLine(run)}</Say>
+          {unchecked}
           <Acts>
             {openRun('See changes')}
             <Button size="sm" variant="ghost" loading={undoing} onClick={undo}>
@@ -148,6 +152,7 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
   const first = [...card.rows].sort((a, b) => Number(b.kind === card.recommend) - Number(a.kind === card.recommend));
   return (
     <Card title="How I'd do this">
+      <p className="m-0 mt-1 text-sm">{card.task}</p>
       <ul className="m-0 mt-2 flex list-none flex-col p-0">
         {card.rows.map((r) => {
           const rec = r.kind === card.recommend;

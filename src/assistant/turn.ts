@@ -160,7 +160,9 @@ export async function startRoute(c: AssistantCtx, o: { ws: string; root: string;
           ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin, context, noCommands })
           : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, context, noCommands, solo: true });
     return { ...chose, status: 'started', runId, ...(trustState(c.home, o.root) === 'trusted' ? {} : { noCommands: true }) };
-  } catch {
+  } catch (e) {
+    // the log is for the owner, so it keeps paths; a saved secret or a URL's password can sit in the cause, and stays out of it
+    console.error('[route] could not start:', redactText((e as Error)?.stack ?? String(e), secretsFor(c.home, o.ws)).replace(/\/\/[^/\s@]*@/g, '//***@'));
     // the error can carry paths under <home> and git words: the card says neither
     return { ...chose, status: 'failed', note: START_FAILED };
   }
@@ -358,8 +360,6 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     if (signal.aborted) return fail('Stopped.');
     if (res.exitCode !== 0 || res.error) return fail((res.error ?? `the agent exited ${res.exitCode}`).split('\n')[0]!.slice(0, 300));
     const checked = await checkReply(redact(res.output || text), { home: c.home, repo: o.root, store: c.store, vault: c.vault, drafts });
-    // a goal card's goal exists as soon as the card does (paused, "not started"), so it shows on Goals at once
-    for (const p of checked.proposals) if (p.kind === 'goal' && p.draft && drafts) p.goalId = c.goals!.create(goalFromDraft(p.draft, { workspace: o.ws!, origin: { kind: 'chat', chat: chat.id, message: id }, ctx: drafts })).id;
     const offered = checked.route;
     const route = offered?.recommend === 'solo' && loadPrefs(c.home).soloWithoutAsking === true && trustState(c.home, o.root!) === 'trusted' ? await startRoute(c, { ws: o.ws!, root: o.root!, chat: chat.id, message: id, messages: [...chat.messages, { id, role: 'tether', text: checked.text, at: Date.now(), ...by }], ...(as ? { bot: as.id } : {}) }, offered, 'solo') : offered;
     // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either

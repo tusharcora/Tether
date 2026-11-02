@@ -189,6 +189,28 @@ describe('the route card', () => {
     expect(await screen.findByText("It can't run commands here, because this folder isn't trusted.")).toBeTruthy();
   });
 
+  it('shows the task first, so a person sees what they are approving', async () => {
+    open(card());
+    const c = await screen.findByRole('region', { name: "How I'd do this" });
+    expect(c.querySelector('h4')!.nextElementSibling!.textContent).toBe(card().task);
+  });
+
+  it('keeps saying a run without commands was not checked once it ends, in plain words', async () => {
+    const started = () => card({ status: 'started', chose: 'solo', runId: 'r1', noCommands: true });
+    const line = 'It ran without commands, so this wasn\'t checked.';
+    const a = open(started(), { 'GET /api/runs/r1': landed() });
+    expect(await screen.findByText(line)).toBeTruthy();
+    a.unmount();
+    const b = open(started(), { 'GET /api/runs/r1': plainRun({ status: 'error', error: 'boom' } as Partial<RunView>) });
+    expect(await screen.findByText("This didn't finish, so your folder wasn't changed.")).toBeTruthy();
+    expect(screen.getByText(line)).toBeTruthy();
+    b.unmount();
+    // the stop already says it, once is enough
+    open(started(), { 'GET /api/runs/r1': plainRun({ status: 'stopped', error: "This folder isn't trusted, so the check didn't run." } as Partial<RunView>) });
+    expect(await screen.findByText("This folder isn't trusted, so the check didn't run.")).toBeTruthy();
+    expect(screen.queryByText(line)).toBeNull();
+  });
+
   it('moves through working to landed and undoes', async () => {
     let run = running();
     open(card({ status: 'started', chose: 'solo', runId: 'r1' }), { 'GET /api/runs/r1': () => run, 'POST /api/runs/r1/undo-land': () => ((run = plainRun({ undone: true } as Partial<RunView>)), run) });
