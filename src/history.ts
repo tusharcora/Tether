@@ -37,9 +37,15 @@ export function insideGit(dir: string): boolean {
   }
 }
 
+const folderId = (folder: string): string => createHash('sha256').update(realpathSync(folder)).digest('hex').slice(0, 16);
+
 export function historyDir(home: string, folder: string): string {
-  const id = createHash('sha256').update(realpathSync(folder)).digest('hex').slice(0, 16);
-  return join(home, 'history', `${id}.git`);
+  return join(home, 'history', `${folderId(folder)}.git`);
+}
+
+/** Where Tether keeps a plain folder's own files (chat artifacts, saved prompts), so the folder gets none. */
+export function folderState(home: string, root: string): string {
+  return join(home, 'folders', folderId(root));
 }
 
 /** Refuse before walking: these would scan the whole disk or Tether's own state. */

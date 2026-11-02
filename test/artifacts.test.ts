@@ -5,7 +5,8 @@ import { splitArtifacts, wordCount } from '../src/assistant/artifactBlocks.js';
 import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact, saveArtifact } from '../src/assistant/artifacts.js';
 import { checkReply } from '../src/assistant/reply.js';
 import { Store } from '../src/store.js';
-import { tmp } from './helpers.js';
+import { makeRepo, tmp } from './helpers.js';
+import { folderState } from '../src/history.js';
 
 const PAGE = '<!doctype html>\n<html><body><h1>Hi</h1>\n```js\nnot a fence\n```\n</body></html>';
 
@@ -50,12 +51,12 @@ describe('artifact blocks in a reply', () => {
 
 describe('.aorch/.gitignore', () => {
   it('is created with artifacts/ and prompts.json, or gets only the missing lines appended, other lines kept', () => {
-    const a = tmp('proj-');
+    const a = makeRepo();
     ensureIgnored(a);
     expect(readFileSync(join(a, '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
     ensureIgnored(a);
     expect(readFileSync(join(a, '.aorch', '.gitignore'), 'utf8')).toBe('artifacts/\nprompts.json\n');
-    const b = tmp('proj-');
+    const b = makeRepo();
     mkdirSync(join(b, '.aorch'));
     writeFileSync(join(b, '.aorch', '.gitignore'), '# mine\nhttp/secrets\n  prompts.json  \nlast-no-newline');
     writeFileSync(join(b, '.gitignore'), 'node_modules\n');
@@ -68,24 +69,39 @@ describe('.aorch/.gitignore', () => {
   it('refuses a symlinked .gitignore or .aorch, writing nothing through it', () => {
     const outside = tmp('outside-');
     writeFileSync(join(outside, 'g'), 'theirs\n');
-    const a = tmp('proj-');
+    const a = makeRepo();
     mkdirSync(join(a, '.aorch'));
     symlinkSync(join(outside, 'g'), join(a, '.aorch', '.gitignore'));
     expect(() => ensureIgnored(a)).toThrow(/symlinked/);
-    const b = tmp('proj-');
+    const b = makeRepo();
     symlinkSync(outside, join(b, '.aorch'));
     expect(() => ensureIgnored(b)).toThrow(/symlinked/);
     expect(readFileSync(join(outside, 'g'), 'utf8')).toBe('theirs\n');
     expect(existsSync(join(outside, '.gitignore'))).toBe(false);
+  });
+
+  it('does nothing for a plain folder', () => {
+    const a = tmp('proj-');
+    ensureIgnored(a);
+    expect(existsSync(join(a, '.aorch'))).toBe(false);
   });
 });
 
 describe('the artifacts folder', () => {
   it('lives in the project at .aorch/artifacts, or in Tether’s home with no project', () => {
     const home = tmp('home-');
-    const root = tmp('proj-');
+    const root = makeRepo();
     expect(artifactsDir(home, root)).toBe(join(root, '.aorch', 'artifacts'));
     expect(artifactsDir(home)).toBe(join(home, 'artifacts'));
+  });
+
+  it('keeps artifacts under home for a plain folder, and uses what it already has', () => {
+    const home = tmp('home-');
+    const folder = tmp('proj-');
+    expect(artifactsDir(home, folder)).toBe(join(folderState(home, folder), 'artifacts'));
+    const had = tmp('proj-');
+    mkdirSync(join(had, '.aorch', 'artifacts'), { recursive: true });
+    expect(artifactsDir(home, had)).toBe(join(had, '.aorch', 'artifacts'));
   });
 
   it('saves a version per write: an id it has makes v2, an unknown id a new artifact slugged from the title', () => {
