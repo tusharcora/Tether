@@ -288,6 +288,7 @@ export class Engine {
       await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
       if (existsSync(s.workdir)) rmSync(s.workdir, { recursive: true, force: true });
       if (s.branch) await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
+      if (s.branch) await removeBranch(s.history ?? s.repo, `${s.branch}-pr`).catch(() => {});
     }
     this.planAbort.get(runId)?.abort();
     this.teams.delete(runId);

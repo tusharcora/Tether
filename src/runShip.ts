@@ -4,8 +4,11 @@
  * create`) and, for a merge, waits for the PR's checks and merges it. A team's own run ships through its team, as it
  * always has: here it is only approved. What happened lands on the run as `run.shipped`.
  */
+import { dirname } from 'node:path';
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
+import { gitTop } from './git.js';
+import { shippable } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import { mergePr, prChecks, shipBranch } from './teams/ship.js';
@@ -70,7 +73,9 @@ export class RunShip {
       const merge = this.want.get(runId) ?? false;
       this.want.delete(runId);
       const s = this.d.store.state(runId)!;
-      const r = await shipBranch({ repo: s.repo, branch: s.branch, base: s.baseSha, title: firstLine(s.task, 70), body: `Opened from Tether (run ${runId}).\n\n${s.task}`, exec: this.d.exec });
+      const out = s.history ? { branch: s.branch, base: s.baseSha } : await shippable(await gitTop(s.repo), dirname(dirname(s.workdir)), runId, s.branch, s.baseSha);
+      if ('error' in out) return void this.d.store.append(runId, { type: 'run.shipped', error: out.error });
+      const r = await shipBranch({ repo: s.repo, branch: out.branch, base: out.base, title: firstLine(s.task, 70), body: `Opened from Tether (run ${runId}).\n\n${s.task}`, exec: this.d.exec });
       if ('error' in r) return void this.d.store.append(runId, { type: 'run.shipped', error: r.error });
       this.d.store.append(runId, { type: 'run.shipped', url: r.url, number: r.number });
       if (merge) await this.merge(runId, r, 0);

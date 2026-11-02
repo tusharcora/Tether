@@ -245,6 +245,7 @@ export class Attempts {
       if (!p || p.run === s.id || now - p.at < KEEP_MS || this.d.engine.isLive(s.id) || !existsSync(s.workdir)) continue;
       await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
       await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
+      await removeBranch(s.history ?? s.repo, `${s.branch}-pr`).catch(() => {});
       n++;
     }
     return n;

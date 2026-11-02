@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../src/exec.js';
 import { RunShip } from '../src/runShip.js';
@@ -112,5 +114,45 @@ describe('POST /api/runs/:id/ship and /sendback', () => {
     } finally {
       await srv.close();
     }
+  });
+});
+
+describe('shipping work that started from uncommitted files', () => {
+  async function dirtyRig(write: { path: string; content: string }) {
+    const s = setup();
+    const repo = makeRepo();
+    const bare = tmp('bare-');
+    git(bare, 'init', '-q', '--bare');
+    git(repo, 'remote', 'add', 'origin', bare);
+    writeFileSync(join(repo, 'wip.txt'), 'scratch\n');
+    const exec: Exec = async (_c, args) => (args[1] === 'create' ? { code: 0, stdout: 'https://github.com/o/r/pull/9\n', stderr: '' } : { code: 0, stdout: '', stderr: '' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, teamOwns: () => false });
+    const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: write } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
+    const id = await s.engine.start({ pipeline: p, task: 'Write it', repo });
+    await s.engine.wait(id);
+    await ship.decide(id, false);
+    await ship.idle();
+    return { ...s, repo, bare, id };
+  }
+
+  it('pushes the run without the uncommitted files, and leaves the run branch alone', async () => {
+    const r = await dirtyRig({ path: 'b.txt', content: 'b\n' });
+    const st = r.store.state(r.id)!;
+    const before = git(r.repo, 'rev-parse', st.branch);
+    expect(st.ship?.url).toBeTruthy();
+    expect(git(r.bare, 'branch', '--list')).toContain(`${st.branch}-pr`);
+    const files = git(r.bare, 'ls-tree', '-r', '--name-only', `${st.branch}-pr`);
+    expect(files).toContain('b.txt');
+    expect(files).not.toContain('wip.txt');
+    expect(git(r.repo, 'rev-parse', st.branch)).toBe(before);
+    expect(git(r.repo, 'show', `${st.branch}:wip.txt`)).toBe('scratch');
+  });
+
+  it('refuses when the run edits an uncommitted file, and pushes nothing', async () => {
+    const r = await dirtyRig({ path: 'wip.txt', content: 'changed\n' });
+    const st = r.store.state(r.id)!;
+    expect(st.ship?.error).toContain("depends on changes you haven't committed");
+    expect(git(r.bare, 'branch', '--list')).toBe('');
+    expect(git(r.repo, 'branch', '--list', '*-pr')).toBe('');
   });
 });

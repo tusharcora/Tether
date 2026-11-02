@@ -20,7 +20,8 @@ import { AGENT_KINDS, loadCrew, type BotDef } from '../crew.js';
 import type { Engine } from '../engine.js';
 import type { Exec } from '../exec.js';
 import { fence } from '../fence.js';
-import { git } from '../git.js';
+import { git, gitTop } from '../git.js';
+import { shippable } from '../history.js';
 import { recent } from '../activity.js';
 import { isFree } from '../attempts.js';
 import { parseCounts, type Goals } from '../goals/loop.js';
@@ -818,7 +819,9 @@ export class Teams {
       const from = this.agentFrom(task.agent);
       const title = firstLine(task.task, 70);
       if (card) this.setShip(team.id, card, { state: 'shipping' });
-      const r = await shipBranch({ repo: projectRoot(this.d.home, team.project), branch: s.branch, base: task.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
+      const repo = projectRoot(this.d.home, team.project);
+      const out = s.history ? { branch: s.branch, base: task.base } : await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base);
+      const r = 'error' in out ? out : await shipBranch({ repo, branch: out.branch, base: out.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
       if ('error' in r) {
         this.setShip(team.id, card, { state: 'failed', error: r.error });
         return void this.say(team.id, from, template({ kind: 'ship_failed', reason: r.error }), { run: task.runId, report: r.error, ...where });

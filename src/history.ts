@@ -2,13 +2,16 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { gitEnv, gitTop, must } from './git.js';
+import { git, gitEnv, gitTop, must } from './git.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_FOLDER_FILES = 100_000;
 const SKIP_NAMES = ['node_modules', '.venv', 'venv', '__pycache__', '.DS_Store'];
 
 // shortcut: history grows without pruning, add a sweep (git gc, old refs) when a folder's history passes a size people notice
+
+/** Marks a commit that holds a person's uncommitted work, so shipping can tell it from real history. */
+export const DIRTY_MESSAGE = 'tether: uncommitted work';
 
 export class FolderRefused extends Error {}
 
@@ -90,12 +93,12 @@ async function out(cwd: string, env: Record<string, string>, args: string[], std
  * Tree of `env`'s index as a commit on `parent`, or `parent` itself when the tree is the same. `files` are added by force, exactly,
  * so a .gitignore or global excludes in the folder cannot drop them; without `files` it is `add -A` (real repos, which keep their ignores).
  */
-async function commitTree(cwd: string, env: Record<string, string>, parent: string | null, files?: string[]): Promise<string> {
+async function commitTree(cwd: string, env: Record<string, string>, parent: string | null, files?: string[], message = 'snapshot'): Promise<string> {
   if (!files) await out(cwd, env, ['add', '-A']);
   else if (files.length) await out(cwd, { ...env, GIT_LITERAL_PATHSPECS: '1' }, ['add', '-f', '--pathspec-from-file=-', '--pathspec-file-nul'], files.join('\0'));
   const tree = await out(cwd, env, ['write-tree']);
   if (parent && (await out(cwd, env, ['rev-parse', `${parent}^{tree}`])) === tree) return parent;
-  return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', 'snapshot']);
+  return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
 }
 
 /** Commit the folder's current files into its hidden history. Nothing is written inside the folder. */
@@ -138,7 +141,7 @@ export async function snapshotDirty(top: string): Promise<string> {
   return withFolder(gitDirPath, top, async (env) => {
     // GIT_DIR stays the repo's own: worktrees and submodules keep their .git file
     await out(top, env, ['read-tree', head]);
-    return commitTree(top, env, head);
+    return commitTree(top, env, head, undefined, DIRTY_MESSAGE);
   });
 }
 
@@ -155,4 +158,31 @@ export function linkLeftOut(workdir: string, folder: string, leftOut: string[]):
     mkdirSync(dirname(join(workdir, p)), { recursive: true });
     symlinkSync(join(folder, p), join(workdir, p));
   }
+}
+
+/**
+ * What may be pushed for a run in a real repo. A run started on uncommitted work descends from a snapshot of it, which must not
+ * reach the remote: replay the run's own commits on the snapshot's parent as `<branch>-pr`. The run's branch is never rewritten.
+ */
+export async function shippable(top: string, home: string, runId: string, branch: string, base: string): Promise<{ branch: string; base: string } | { error: string }> {
+  if ((await git(top, ['log', '-1', '--format=%s', base])).stdout.trim() !== DIRTY_MESSAGE) return { branch, base };
+  const parent = await must(top, ['rev-parse', `${base}^`]);
+  const pr = `aorch/${runId}-pr`;
+  const dir = join(home, 'worktrees', `${runId}-pr`);
+  const drop = async () => {
+    await git(top, ['worktree', 'remove', '--force', dir]);
+    await git(top, ['worktree', 'prune']);
+    await git(top, ['branch', '-D', pr]);
+  };
+  await drop();
+  await must(top, ['worktree', 'add', '-b', pr, dir, parent]);
+  const count = Number((await must(top, ['rev-list', '--count', `${base}..${branch}`])));
+  const pick = count ? await git(dir, ['cherry-pick', '--allow-empty', `${base}..${branch}`]) : { code: 0 };
+  if (pick.code !== 0) {
+    await git(dir, ['cherry-pick', '--abort']);
+    await drop();
+    return { error: "This work depends on changes you haven't committed. Commit them first, then ship again." };
+  }
+  await git(top, ['worktree', 'remove', '--force', dir]);
+  return { branch: pr, base: parent };
 }
