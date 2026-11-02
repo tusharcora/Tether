@@ -12,7 +12,7 @@ import { aliasPath, startServer } from '../src/server.js';
 import { Store } from '../src/store.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace } from '../src/workspace.js';
-import { makeRepo, tmp } from './helpers.js';
+import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 /** The goals table as it was before tickets (2026-10-29): every column up to `origin`. */
 function oldDb() {
@@ -252,5 +252,24 @@ describe('ideas from your chats (board 10, Backlog)', () => {
     } finally {
       await s.close();
     }
+  });
+});
+
+describe('a ticket knows whether its folder is plain', () => {
+  async function ticketOn(folder: string) {
+    const r = rig();
+    const ws = initWorkspace(r.home, folder, { id: 'other', name: 'other' }).workspace;
+    const { s, call } = await serve(r);
+    try {
+      return (await call('POST', '/api/tickets', { title: 'x', workspace: ws.id })).json;
+    } finally {
+      await s.close();
+    }
+  }
+  it('a ticket on a plain Workspace is plain before it has a run', async () => {
+    expect((await ticketOn(plainFolder({ 'a.txt': '1' }))).plain).toBe(true);
+  });
+  it('a ticket in a real repo is not', async () => {
+    expect((await ticketOn(makeRepo())).plain).toBeUndefined();
   });
 });
