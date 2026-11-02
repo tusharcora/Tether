@@ -204,6 +204,28 @@ describe('run_command', () => {
     }
   });
 
+  it('leaves no backgrounded command behind', async () => {
+    const out = await runStepCommand(tmp(), 'sleep 77 >/dev/null 2>&1 & echo $!', new AbortController().signal);
+    const pid = Number(out.trim());
+    expect(pid).toBeGreaterThan(0);
+    const alive = () => {
+      try {
+        return process.kill(pid, 0);
+      } catch {
+        return false;
+      }
+    };
+    await expect.poll(alive, { timeout: 3000 }).toBe(false);
+  });
+
+  it('never returns a secrets file', async () => {
+    const root = tmp();
+    writeFileSync(join(root, '.env'), 'API=hunter2\n');
+    const out = await runStepCommand(root, 'cat .env', new AbortController().signal);
+    expect(out).toMatch(/not run/i);
+    expect(out).not.toContain('hunter2');
+  });
+
   it('stops a running command when the step is cancelled, and starts none once it is', async () => {
     const root = tmp();
     const stop = new AbortController();

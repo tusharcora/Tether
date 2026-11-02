@@ -7,6 +7,10 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const SECRET = [/^\.env(\..*)?$/, /\.pem$/i, /\.key$/i, /^id_/];
+/** Secrets files open read-only, are left out of search and never go into an agent's prompt. Here, not in code.ts, so the command hook stays light. */
+export const isSecretPath = (rel: string): boolean => SECRET.some((re) => re.test(rel.split('/').pop() ?? ''));
+
 export const normalizeCommand = (c: string) => c.trim().replace(/\s+/g, ' ');
 
 const file = (home: string) => join(home, 'permissions.json');
@@ -82,14 +86,18 @@ export const MAX_COMMAND_MS = 120_000;
 /** Characters of output kept, from the end: that is where a failure shows. */
 export const MAX_COMMAND_OUTPUT = 20_000;
 
+// PAT, AUTH and DSN only as a whole part of the name: PATH and GIT_AUTHOR_NAME stay
+const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|(^|_)(PAT|AUTH|AUTHORIZATION|DSN)(_|$)/i;
+const SECRET_VALUE = /:\/\/[^/\s@]*:[^/\s]*@/; // a URL holding a user and password
+
 /** Run one command in `cwd` with a timeout and a size cap, without secrets from the environment. */
 export function runCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number } = {}): Promise<CommandResult> {
   return spawnCommand(command, cwd, o);
 }
 
-function spawnCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number; signal?: AbortSignal }): Promise<CommandResult> {
+function spawnCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number; signal?: AbortSignal; /** Kill what the shell left in the background. */ reap?: boolean }): Promise<CommandResult> {
   const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(process.env)) if (!/KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL/i.test(k)) env[k] = v;
+  for (const [k, v] of Object.entries(process.env)) if (!SECRET_NAME.test(k) && !SECRET_VALUE.test(v ?? '')) env[k] = v;
   const max = o.maxBytes ?? 20_000;
   const t0 = Date.now();
   return new Promise((resolve) => {
@@ -124,6 +132,7 @@ function spawnCommand(command: string, cwd: string, o: { timeoutMs?: number; max
     });
     child.on('close', (code) => {
       done();
+      if (o.reap) kill();
       resolve({ exit: code, output: out.slice(-max), ms: Date.now() - t0, timedOut });
     });
   });
@@ -138,6 +147,8 @@ const BIN = /^\/(?:bin|usr\/bin|usr\/local\/bin|opt\/homebrew\/bin)\/([^/]+)$/; 
 const SENDS = /^(-[a-zA-Z]*[dFTX]|--(data|data-\w+|form|upload-file|json|request|post-data|post-file|method)\b)/;
 
 type W = { s: string; q: boolean }; // a word, and whether any of it was quoted
+
+const ENV_SHOWN = 'it prints the environment, which can hold secrets';
 
 /** Why this one simple command is refused, or undefined. `t` is its words, wrappers already stripped. */
 function whyRefused(t: string[]): string | undefined {
@@ -163,14 +174,16 @@ function whyRefused(t: string[]): string | undefined {
   if (cmd === 'defaults' && sub === 'write') return 'it changes system settings';
   if (cmd === 'systemsetup' || cmd === 'launchctl') return 'it changes system settings';
   if (cmd === 'sudo' || cmd === 'doas' || cmd === 'su') return 'needs administrator rights';
+  if (cmd === 'printenv' || ((cmd === 'set' || cmd === 'export') && !rest.length) || (cmd === 'export' && rest[0] === '-p')) return ENV_SHOWN;
   return undefined;
 }
 
-/** A reason this word points outside the folder, or undefined. Judged from the text alone: `..` by depth. */
+/** A reason this word is off limits: a secrets file, or a path outside the folder. Judged from the text alone: `..` by depth. */
 function outside(word: string, root?: string): string | undefined {
   let w = word;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) return undefined; // a URL is not a path
   if (w.includes('=')) w = w.slice(w.indexOf('=') + 1); // --out=/etc/x, FOO=../x
+  if (isSecretPath(w)) return 'it touches a secrets file, and agents never read those';
   if (/^~|\$\{?HOME\b/.test(w)) return 'it reaches outside this folder (your home)';
   if (w.startsWith('/')) {
     if (root && (w === root || w.startsWith(`${root}/`))) w = w.slice(root.length);
@@ -243,6 +256,7 @@ function subs(text: string): string[] {
 /** Why one simple command is refused: wrappers peeled off, then shells, find -exec, paths and the refused list. */
 function judge(t: W[], root?: string): string | undefined {
   const all = [...t];
+  let env = false; // `env` with nothing left to run prints the environment
   while (t[0]) {
     const w = t[0];
     const bin = BIN.exec(w.s);
@@ -250,11 +264,13 @@ function judge(t: W[], root?: string): string | undefined {
     if (/^\w+=/.test(w.s) || LEAD.has(w.s)) t.shift();
     else if (!WRAPPERS.has(w.s)) break;
     else {
+      env ||= w.s === 'env';
       t.shift();
       while (t[0]?.s.startsWith('-')) t.splice(0, WRAP_ARGS[w.s]?.includes(t[0].s) ? 2 : 1);
       if (w.s === 'timeout' && /^\d/.test(t[0]?.s ?? '')) t.shift();
     }
   }
+  if (env && !t[0]) return ENV_SHOWN;
   const cmd = (t[0]?.s ?? '').replace(/^.*\//, '');
   const rest = t.slice(1);
   const exempt = new Set<W>(); // text a command only reads: a commit message, a search pattern
@@ -326,7 +342,7 @@ export async function runStepCommand(root: string, command: string, signal: Abor
   if (!rule.ok) return refusal(rule.why);
   if (signal.aborted) return 'Not run: this step was stopped.';
   try {
-    const r = await spawnCommand(command, root, { timeoutMs: MAX_COMMAND_MS, maxBytes: MAX_COMMAND_OUTPUT, signal });
+    const r = await spawnCommand(command, root, { timeoutMs: MAX_COMMAND_MS, maxBytes: MAX_COMMAND_OUTPUT, signal, reap: true });
     const head = r.timedOut ? `Stopped: it ran past ${MAX_COMMAND_MS / 1000} s.` : signal.aborted ? 'Stopped: this step was stopped.' : r.exit ? `Exit code ${r.exit}.` : '';
     const cut = r.output.length >= MAX_COMMAND_OUTPUT ? '[output cut: this is the end of it]' : '';
     return [head, cut, r.output].filter(Boolean).join('\n') || '(no output)';

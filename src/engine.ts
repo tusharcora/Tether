@@ -2025,7 +2025,7 @@ export class Engine {
     const diff = node.includeDiff ? await diffAgainst(state.workdir, state.baseSha, state.setupArtifacts) : undefined;
     // What was already dirty when this node began (setup output, a gate's artifacts): not this node's doing.
     const dirtyBefore = new Set(await statusEntries(state.workdir));
-    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona, commands: cm.commands });
+    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona, noCommands: !cm.commands && !adapter.ownShell });
     this.noticeSpills(runId, node.id, prompt);
 
     let buf = '';

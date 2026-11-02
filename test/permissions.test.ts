@@ -1,8 +1,12 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { allowAlways, blockedReason, clearAllowed, isAllowed, loadAllowed, commandRule, runCommand } from '../src/permissions.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { allowAlways, blockedReason, clearAllowed, isAllowed, isSecretPath, loadAllowed, commandRule, runCommand } from '../src/permissions.js';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('Tether commands', () => {
   it('refuses plainly destructive commands even when everything is allowed', () => {
@@ -74,3 +78,31 @@ describe('commandRule, review round 1', () => {
   });
 });
 
+describe('secrets and commands', () => {
+  const no = (c: string) => expect(commandRule(c, '/w').ok, c).toBe(false);
+  const yes = (c: string) => expect(commandRule(c, '/w'), c).toEqual({ ok: true });
+
+  it('refuses a secrets file as an argument, as isSecretPath names one', () => {
+    for (const c of ['cat .env', 'cat secrets/.env', 'cp .env x', 'cat .env.local', 'cat < .env', 'head -1 ./.env', 'node --env-file=.env x.js', 'cat server.pem', 'cat /tmp/x.key', 'cat ssh/id_rsa', 'echo "$(cat .env)"', 'grep API .env', 'x && cat .env', 'source .env']) no(c);
+    expect(isSecretPath('.env.example')).toBe(true);
+    no('cat .env.example');
+    for (const c of ['cat env.ts', 'cat src/environment.ts', 'npm test', 'git commit -m "ignore .env"', 'grep .env README.md', 'curl https://example.com/id_card']) yes(c);
+  });
+
+  it('refuses printing the environment, and keeps env as a wrapper', () => {
+    for (const c of ['env', 'env -0', 'env FOO=1', '/usr/bin/env', 'printenv', 'printenv API_KEY', 'set', 'export -p', 'export', 'env | grep KEY', 'echo "$(env)"', 'npm test; printenv', 'sh -c env']) no(c);
+    for (const c of ['env git status', 'env FOO=1 npm test', 'set -e', 'set -e; npm test', 'export FOO=1', 'export FOO=1 && npm test']) yes(c);
+  });
+
+  it('keeps secrets out of a command, and not PATH or your git name', async () => {
+    vi.stubEnv('GITHUB_PAT', 'gone1');
+    vi.stubEnv('NPM_AUTH', 'gone2');
+    vi.stubEnv('SENTRY_DSN', 'gone3');
+    vi.stubEnv('DATABASE_URL', 'postgres://u:gone4@db.example.com/x');
+    vi.stubEnv('AUTHORIZATION', 'gone5');
+    vi.stubEnv('GIT_AUTHOR_NAME', 'kept1');
+    vi.stubEnv('SITE_URL', 'https://example.com:8080/a@b');
+    const r = await runCommand('echo "$GITHUB_PAT|$NPM_AUTH|$SENTRY_DSN|$DATABASE_URL|$AUTHORIZATION|$GIT_AUTHOR_NAME|$SITE_URL|$PATH"', tmpdir());
+    expect(r.output.trim()).toBe(`|||||kept1|https://example.com:8080/a@b|${process.env.PATH}`);
+  });
+});

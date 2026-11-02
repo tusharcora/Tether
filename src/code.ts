@@ -6,8 +6,11 @@ import { accessSync, chmodSync, closeSync, constants, openSync, readdirSync, rea
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { git } from './git.js';
 import { insideGit } from './history.js';
+import { isSecretPath } from './permissions.js';
 import { HttpError } from './serverkit.js';
 import type { CodeFile, CodeLang, GitBadge, TreeEntry } from './types.js';
+
+export { isSecretPath };
 
 /** Text files up to this size open in the editor; bigger ones get a panel instead. */
 export const MAX_TEXT = 2 * 1024 * 1024;
@@ -45,10 +48,6 @@ export function resolveInWorkspace(root: string, rel: string): { abs: string; re
   if (clean.split('/').includes('.git')) throw new HttpError(403, 'files inside .git are not shown');
   return { abs, rel: clean };
 }
-
-const SECRET = [/^\.env(\..*)?$/, /\.pem$/i, /\.key$/i, /^id_/];
-/** Secrets files open read-only, are left out of search and never go into an agent's prompt. */
-export const isSecretPath = (rel: string): boolean => SECRET.some((re) => re.test(rel.split('/').pop() ?? ''));
 
 const LANG: Record<string, CodeLang> = {
   '.ts': 'typescript', '.mts': 'typescript', '.cts': 'typescript', '.tsx': 'tsx',

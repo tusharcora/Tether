@@ -919,6 +919,8 @@ export interface AgentAdapter {
   attachCommand?(sessionId?: string): { cmd: string; args: string[] } | undefined;
   /** How it takes Code Mode's run_code: over a per-run MCP config, natively in its own loop, or not at all (direct only). */
   codeMode?: 'mcp' | 'native';
+  /** Runs commands with a shell of its own, which Tether can't gate: `commands` doesn't reach it. */
+  ownShell?: boolean;
 }
 
 // ---------- dashboard read models (Home) ----------

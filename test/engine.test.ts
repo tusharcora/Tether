@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { claudeArgs } from '../src/adapters/claude.js';
+import { CliAdapter, codexSpec, customSpec, opencodeSpec } from '../src/adapters/cli.js';
 import { CLAUDE_TOOL } from '../src/codemode/delivery.js';
 import { commandHookLine } from '../src/codemode/launch.js';
 import { savePrefs } from '../src/prefs.js';
@@ -251,16 +252,37 @@ describe('commands', () => {
     const args = claudeArgs({ commands: true, readOnly: false });
     expect(args[args.indexOf('--allowedTools') + 1]).toBe('Bash');
     expect(args[args.indexOf('--settings') + 1]).toContain('PreToolUse');
-    expect(hookOf(args).matcher).toBe('Bash');
+    expect(hookOf(args).matcher).toBe('Bash|Monitor');
+    expect(args).not.toContain('--disallowedTools');
     expect(JSON.parse(args[args.indexOf('--settings') + 1]!).disableAllHooks).toBe(false); // a project's own settings cannot turn the guard off
-    expect(claudeArgs({ readOnly: false }).join(' ')).not.toContain('Bash');
-    expect(claudeArgs({ readOnly: false })).not.toContain('--settings');
+    const off = claudeArgs({ readOnly: false });
+    expect(off.slice(off.indexOf('--disallowedTools'), off.indexOf('--disallowedTools') + 3)).toEqual(['--disallowedTools', 'Bash', 'Monitor']);
+    expect(off).not.toContain('--allowedTools');
+    expect(off).not.toContain('--settings');
+  });
+
+  it('denies Bash and Monitor in any mode but plan, in one list with Code Mode', () => {
+    expect(claudeArgs({ readOnly: true })).not.toContain('--disallowedTools');
+    expect(claudeArgs({ readOnly: false, permissionMode: 'plan' })).not.toContain('--disallowedTools');
+    const bypass = claudeArgs({ readOnly: false, permissionMode: 'bypassPermissions' });
+    expect(bypass[bypass.indexOf('--disallowedTools') + 1]).toBe('Bash');
+    expect(claudeArgs({ readOnly: true, permissionMode: 'acceptEdits' })).toContain('--disallowedTools');
+
+    const codeMode = { note: 'n', runner: {}, readsOnly: true, mcp: { command: 'x', args: [], dir: tmp() } } as unknown as CodeModeRequest;
+    const args = claudeArgs({ readOnly: false, codeMode });
+    expect(args.filter((a) => a === '--disallowedTools')).toHaveLength(1);
+    expect(args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--disallowedTools') + 5).sort()).toEqual(['Bash', 'Glob', 'Grep', 'Monitor']);
   });
 
   it('a read-only step gets neither, even if asked', () => {
     const args = claudeArgs({ commands: true, readOnly: true });
     expect(args.join(' ')).not.toContain('Bash');
     expect(args).not.toContain('--settings');
+  });
+
+  it('the hook also judges Monitor, and refuses a Monitor with no command', () => {
+    expect(hook({ tool_name: 'Monitor', tool_input: { command: 'tail -f ../other.log' } }).status).toBe(2);
+    expect(hook({ tool_name: 'Monitor', tool_input: { ws: { url: 'wss://example.com' } } }).status).toBe(2);
   });
 
   it('keeps one --allowedTools, with Code Mode', () => {
@@ -317,14 +339,23 @@ describe('commands', () => {
     const p = () => pipe([{ id: 'look', role: 'planner', readOnly: true, mock: { output: 'ok' } }, { id: 'code', role: 'coder', mock: { output: 'ok' } }], [['look', 'code']]);
     await engine.wait(await engine.start({ pipeline: p(), task: 't', repo }));
     expect(mock.calls.map((c) => [c.nodeId, c.commands])).toEqual([['look', false], ['code', false]]);
-    expect(mock.calls[1]!.prompt).toContain(NO_COMMANDS);
-    expect(mock.calls[0]!.prompt).not.toContain(NO_COMMANDS);
+    expect(mock.calls.map((c) => c.prompt.includes(NO_COMMANDS))).toEqual([true, true]);
 
     mock.calls.length = 0;
     setTrust(home, repo, true);
     await engine.wait(await engine.start({ pipeline: p(), task: 't', repo }));
     expect(mock.calls.map((c) => [c.nodeId, c.commands])).toEqual([['look', false], ['code', true]]);
-    expect(mock.calls[1]!.prompt).not.toContain(NO_COMMANDS);
+    expect(mock.calls.map((c) => c.prompt.includes(NO_COMMANDS))).toEqual([true, false]);
+  });
+
+  it('says nothing about commands to an agent with its own shell', async () => {
+    expect(new CliAdapter(codexSpec).ownShell).toBe(true);
+    expect(new CliAdapter(opencodeSpec).ownShell).toBe(true);
+    expect(new CliAdapter(customSpec('mine', { command: 'x', args: [] })).ownShell).toBe(true);
+    const { engine, mock } = setup();
+    Object.assign(mock, { ownShell: true });
+    await engine.wait(await engine.start({ pipeline: pipe([{ id: 'code', role: 'coder', mock: { output: 'ok' } }], []), task: 't', repo: makeRepo() }));
+    expect(mock.calls[0]!.prompt).not.toContain(NO_COMMANDS);
   });
 
   it('a verdict still ends the answer', async () => {

@@ -89,8 +89,8 @@ export interface PromptInput {
   harnessGuidance?: string[];
   /** The bot's harness persona, only when it differs from its v1 baseline. Same trust as the step's own prompt. */
   harnessPersona?: string;
-  /** The step may run commands. */
-  commands?: boolean;
+  /** The step can't run commands, and should say so. */
+  noCommands?: boolean;
 }
 
 export function buildPrompt(i: PromptInput): string {
@@ -116,7 +116,7 @@ export function buildPrompt(i: PromptInput): string {
   if (i.harnessGuidance?.length) parts.push(harnessGuidanceBlock(i.harnessGuidance));
   const mine = (state.userAsks ?? []).filter((a) => a.node === node.id && a.answer);
   if (mine.length) parts.push(userAnswersBlock(mine.map((a) => ({ question: a.question.ask, answer: describeAnswer(a.answer!, [a.question]), by: a.answer!.by }))));
-  if (!node.readOnly && !i.commands) parts.push("You can't run commands here, so end by saying what you did not check.");
+  if (i.noCommands) parts.push("You can't run commands here, so end by saying what you did not check.");
   if (node.verdict && !/VERDICT:/.test(role)) {
     parts.push('End your answer with exactly one line: `VERDICT: PASS` or `VERDICT: FAIL`.');
   }
