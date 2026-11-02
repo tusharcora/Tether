@@ -17,13 +17,18 @@ export interface GitResult {
   stderr: string;
 }
 
-export async function git(cwd: string, args: string[]): Promise<GitResult> {
-  const r = await runProcess({ cmd: 'git', args, cwd, env: GIT_ENV, maxBuffer: 20_000_000 });
+/** `git` with extra env (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE ...) on top of the default one. */
+export async function gitEnv(cwd: string, args: string[], env: Record<string, string>): Promise<GitResult> {
+  const r = await runProcess({ cmd: 'git', args, cwd, env: { ...GIT_ENV, ...env }, maxBuffer: 20_000_000 });
   if (r.spawnError) throw new Error(`git failed to start: ${r.spawnError}`);
   return { code: r.code ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
 
-async function must(cwd: string, args: string[]): Promise<string> {
+export function git(cwd: string, args: string[]): Promise<GitResult> {
+  return gitEnv(cwd, args, {});
+}
+
+export async function must(cwd: string, args: string[]): Promise<string> {
   const r = await git(cwd, args);
   if (r.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr.trim() || r.stdout.trim()}`);
   return r.stdout.trim();
