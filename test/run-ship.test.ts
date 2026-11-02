@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { request } from 'node:http';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../src/exec.js';
-import { shippable, snapshotDirty } from '../src/history.js';
+import { realOr, shippable, snapshotDirty } from '../src/history.js';
 import { RunShip } from '../src/runShip.js';
 import { startServer } from '../src/server.js';
+import { shipBranch } from '../src/teams/ship.js';
 import { Vault } from '../src/vault.js';
 import { makeRepo, pipe, plainFolder, setup, tmp } from './helpers.js';
 
@@ -214,6 +215,136 @@ describe('shipping work that started from uncommitted files', () => {
     neverPushed(r.bare, 'wip.txt');
   });
 
+  const CHANGED = "This run's history was changed, so it can't be shipped safely. Nothing was pushed.";
+  const remoteEmpty = (bare: string) => expect(git(bare, 'for-each-ref')).toBe('');
+
+  /** Paused before its first step, on `wip.txt` uncommitted: the worktree's HEAD is the snapshot itself. */
+  async function pausedOnSnapshot() {
+    const s = setup();
+    const repo = makeRepo();
+    const bare = tmp('bare-');
+    git(bare, 'init', '-q', '--bare');
+    git(repo, 'remote', 'add', 'origin', bare);
+    writeFileSync(join(repo, 'wip.txt'), 'token\n');
+    const exec: Exec = async (_c, args) => (args[1] === 'create' ? { code: 0, stdout: 'https://github.com/o/r/pull/9\n', stderr: '' } : { code: 0, stdout: '', stderr: '' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const p = pipe([{ id: 'first', kind: 'approval', title: 'Go on' }, { id: 'code', role: 'coder', mock: { writeFile: { path: 'b.txt', content: 'b\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['first', 'code'], ['code', 'ok']]);
+    const id = await s.engine.start({ pipeline: p, task: 'Write it', repo });
+    await s.engine.wait(id);
+    const go = async () => {
+      s.engine.approve(id, 'first', true);
+      await s.engine.resume(id);
+      await s.engine.wait(id);
+    };
+    return { ...s, repo, bare, ship, id, go };
+  }
+
+  it('records the snapshot on a run that began from uncommitted work, and on what comes from it; not on a clean run', async () => {
+    const r = await twoSteps();
+    const st = r.store.state(r.id)!;
+    expect(st.dirty).toBe(st.baseSha);
+    const fork = await r.engine.fork(r.id, 'a');
+    await r.engine.wait(fork);
+    expect(r.store.state(fork)!.dirty).toBe(st.baseSha);
+    const p = pipe([{ id: 'more', role: 'coder', mock: { writeFile: { path: 'c.txt', content: 'c\n' } } }], []);
+    const next = await r.engine.start({ pipeline: p, task: 'More', repo: r.repo, ref: st.branch });
+    await r.engine.wait(next);
+    expect(r.store.state(next)!.dirty).toBe(st.baseSha);
+    const clean = await rig();
+    expect(clean.store.state(clean.id)!.dirty).toBeUndefined();
+  });
+
+  it('an amended snapshot pushes nothing, and neither does a fork of that run', async () => {
+    const r = await pausedOnSnapshot();
+    git(r.store.state(r.id)!.workdir, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '--amend', '-m', 'tidy');
+    await r.go();
+    await r.ship.decide(r.id, false);
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship?.error).toBe(CHANGED);
+    expect(r.store.state(r.id)!.ship?.url).toBeUndefined();
+    remoteEmpty(r.bare);
+    const fork = await r.engine.fork(r.id, 'code');
+    await r.engine.wait(fork);
+    await r.ship.decide(fork, false);
+    await r.ship.idle();
+    expect(r.store.state(fork)!.ship?.error).toBe(CHANGED);
+    remoteEmpty(r.bare);
+  });
+
+  it('reset --soft then commit pushes nothing, and a run started from that branch pushes nothing', async () => {
+    const r = await twoSteps();
+    const st = r.store.state(r.id)!;
+    git(st.workdir, 'reset', '-q', '--soft', `${st.baseSha}^`);
+    git(st.workdir, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '-m', 'all of it');
+    await r.ship.decide(r.id, false);
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship?.error).toBe(CHANGED);
+    remoteEmpty(r.bare);
+    const p = pipe([{ id: 'more', role: 'coder', mock: { writeFile: { path: 'c.txt', content: 'c\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['more', 'ok']]);
+    const next = await r.engine.start({ pipeline: p, task: 'More', repo: r.repo, ref: st.branch });
+    await r.engine.wait(next);
+    await r.ship.decide(next, false);
+    await r.ship.idle();
+    expect(r.store.state(next)!.ship?.error).toBe(CHANGED);
+    remoteEmpty(r.bare);
+  });
+
+  it('a file taken out and put back with the same bytes is not brought along by the replay', async () => {
+    const r = await twoSteps();
+    const dir = r.store.state(r.id)!.workdir;
+    const commit = (m: string) => (git(dir, 'add', '-A'), git(dir, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '-m', m));
+    rmSync(join(dir, 'wip.txt'));
+    writeFileSync(join(dir, 'c.txt'), 'c\n'); // a commit left empty by the replay would stop it, which hides the leak
+    commit('out');
+    writeFileSync(join(dir, 'wip.txt'), 'token\n');
+    commit('back');
+    await r.ship.decide(r.id, false);
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship?.error).toBe(CHANGED);
+    remoteEmpty(r.bare);
+    expect(git(r.repo, 'branch', '--list', '*-pr')).toBe('');
+  });
+
+  it('an uncommitted edit to a tracked file is not brought back by the replay either', async () => {
+    const s = setup();
+    const repo = makeRepo();
+    const bare = tmp('bare-');
+    git(bare, 'init', '-q', '--bare');
+    git(repo, 'remote', 'add', 'origin', bare);
+    const was = readFileSync(join(repo, 'README.md'), 'utf8');
+    writeFileSync(join(repo, 'README.md'), 'token\n');
+    const exec: Exec = async () => ({ code: 0, stdout: 'https://github.com/o/r/pull/9\n', stderr: '' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'b.txt', content: 'b\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
+    const id = await s.engine.start({ pipeline: p, task: 'Write it', repo });
+    await s.engine.wait(id);
+    const dir = s.store.state(id)!.workdir;
+    const commit = (m: string) => (git(dir, 'add', '-A'), git(dir, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '-m', m));
+    writeFileSync(join(dir, 'README.md'), was);
+    writeFileSync(join(dir, 'c.txt'), 'c\n');
+    commit('old');
+    writeFileSync(join(dir, 'README.md'), 'token\n');
+    commit('new');
+    await ship.decide(id, false);
+    await ship.idle();
+    expect(s.store.state(id)!.ship?.error).toBe(CHANGED);
+    remoteEmpty(bare);
+  });
+
+  it('shipping again after an undo replaces the run\'s own PR branch, without the uncommitted files', async () => {
+    const r = await dirtyRig({ path: 'b.txt', content: 'b\n' });
+    const st = r.store.state(r.id)!;
+    const pushed = git(r.bare, 'rev-parse', `${st.branch}-pr`);
+    await new Promise((d) => setTimeout(d, 1100)); // a replay in the same second has the same shas
+    const out = await shippable(r.repo, r.home, r.id, st.branch, st.baseSha, st.dirty);
+    if ('error' in out) throw new Error(out.error);
+    const exec: Exec = async () => ({ code: 0, stdout: 'https://github.com/o/r/pull/10\n', stderr: '' });
+    expect(await shipBranch({ repo: r.repo, branch: out.branch, base: out.base, title: 't', body: 'b', exec })).toEqual({ url: 'https://github.com/o/r/pull/10', number: 10 });
+    expect(git(r.bare, 'rev-parse', `${st.branch}-pr`)).not.toBe(pushed);
+    expect(git(r.bare, 'rev-parse', `${st.branch}-pr`)).toBe(git(r.repo, 'rev-parse', `${st.branch}-pr`));
+    expect(git(r.bare, 'ls-tree', '-r', '--name-only', `${st.branch}-pr`)).not.toContain('wip.txt');
+  });
+
   it('a commit quoting the marker neither hides the uncommitted work nor counts as it', async () => {
     const repo = makeRepo();
     const quoted = 'Explain\n\ntether: uncommitted work';
@@ -358,6 +489,43 @@ describe('shipping a run in a plain folder', () => {
     expect([a, b].map((id) => s.store.state(id)!.ship?.error).find(Boolean)).toContain('a.txt changed since');
   });
 
+  it('a spelling that differs only in case takes the same turn', async () => {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const other = join(dirname(folder), basename(folder).toUpperCase());
+    if (!existsSync(other)) return; // a case-sensitive disk has no such spelling
+    expect(realOr(other)).toBe(realOr(folder));
+    const mk = async (content: string, repo: string) => {
+      const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content } } }], []);
+      const id = await s.engine.start({ pipeline: p, task: 't', repo });
+      await s.engine.wait(id);
+      return id;
+    };
+    const [a, b] = [await mk('A\n', folder), await mk('B\n', other)];
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    await Promise.all([ship.decide(a, true), ship.decide(b, true)]);
+    await ship.idle();
+    expect([a, b].filter((id) => s.store.state(id)!.ship?.landed)).toHaveLength(1);
+    expect([a, b].map((id) => s.store.state(id)!.ship?.error).find(Boolean)).toContain('a.txt changed since');
+  });
+
+  it('a landing with nothing to change records none, and says so', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    await r.ship.undo(r.id);
+    writeFileSync(join(r.folder, 'b.txt'), 'two\n');
+    const before = r.store.state(r.id)!.ship;
+    expect(before).toBeUndefined();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.landed).toBeUndefined();
+    expect(ship.merged).toBeUndefined();
+    expect(ship.error).toBe('Nothing to put in the folder: it already has this work.');
+    await expect(r.ship.undo(r.id)).rejects.toMatchObject({ status: 409 });
+  });
+
   it('undo takes out what is landed when its turn comes, not what was landed when it was asked', async () => {
     const r = await plainRun();
     await r.ship.decide(r.id, true);
@@ -413,8 +581,7 @@ describe('shipping a run in a plain folder', () => {
     await r.engine.wait(fork);
     await r.ship.decide(fork, true);
     await r.ship.idle();
-    expect(r.store.state(fork)!.ship?.error).toBeUndefined();
-    expect(r.store.state(fork)!.ship?.landed).toBeTruthy();
+    expect(r.store.state(fork)!.ship?.error).toBe('Nothing to put in the folder: it already has this work.');
     expect(read(r.folder, 'a.txt')).toBe('B\n');
   });
 

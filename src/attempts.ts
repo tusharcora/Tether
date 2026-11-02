@@ -171,6 +171,7 @@ export class Attempts {
           task: original.task,
           repo: original.repo,
           ref: original.baseSha,
+          dirty: original.dirty,
           autoApprove: original.autoApprove,
           workspace: original.workspace?.id ?? false,
           ...(original.origin ? { origin: original.origin } : {}),

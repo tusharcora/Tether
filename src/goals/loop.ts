@@ -14,6 +14,7 @@ import { assistantAgent } from '../assistant/turn.js';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import type { Engine } from '../engine.js';
+import { NOTHING_TO_LAND } from '../history.js';
 import { runProcess } from '../proc.js';
 import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
@@ -478,7 +479,7 @@ export class Goals {
     } else if (ev.merged && at >= 0) prs[at] = { ...prs[at]!, merged: true };
     const n = ev.number ?? prs[at]?.number;
     this.save({ ...g, prs });
-    if (ev.error) return void this.note(id, { who: TETHER, text: `could not ship: ${ev.error.slice(0, 200)}`, runId });
+    if (ev.error) return void this.note(id, { who: TETHER, text: ev.error === NOTHING_TO_LAND ? ev.error : `could not ship: ${ev.error.slice(0, 200)}`, runId });
     if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.landed ? 'put the changes in the folder' : ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
   }
   /** A ticket's run moved: its approvals, its PR, how it ended (failures say so; a fixable one waits for auto-fix). */

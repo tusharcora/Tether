@@ -252,6 +252,8 @@ export type RunEvent =
       baseSha: string;
       branch: string;
       history?: string;
+      /** The snapshot of a person's uncommitted work below this run, by starting on it or from a run that did. */
+      dirty?: string;
       vault?: string;
       autoApprove?: boolean;
       workspace?: RunWorkspace;
@@ -406,6 +408,8 @@ export interface RunState {
   baseSha: string;
   branch: string;
   history?: string;
+  /** The snapshot of a person's uncommitted work below this run, which must never be pushed. */
+  dirty?: string;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -497,6 +501,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         baseSha: e.baseSha,
         branch: e.branch,
         ...(e.history ? { history: e.history } : {}),
+        ...(e.dirty ? { dirty: e.dirty } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,

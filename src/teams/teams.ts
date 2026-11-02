@@ -21,7 +21,7 @@ import type { Engine } from '../engine.js';
 import type { Exec } from '../exec.js';
 import { fence } from '../fence.js';
 import { git, gitTop } from '../git.js';
-import { shippable } from '../history.js';
+import { NOTHING_TO_LAND, shippable } from '../history.js';
 import { landRun } from '../runShip.js';
 import { recent } from '../activity.js';
 import { isFree } from '../attempts.js';
@@ -842,13 +842,13 @@ export class Teams {
         const l = await landRun(this.d, task.runId);
         if ('error' in l) {
           this.setShip(team.id, card, { state: 'failed', error: l.error });
-          return void this.say(team.id, from, template({ kind: 'ship_failed', reason: l.error, plain: true }), { run: task.runId, report: l.error, ...where });
+          return void this.say(team.id, from, l.error === NOTHING_TO_LAND ? l.error : template({ kind: 'ship_failed', reason: l.error, plain: true }), { run: task.runId, report: l.error, ...where });
         }
         if (card) this.setShip(team.id, card, { state: 'merged', landed: true });
         else this.say(team.id, from, "It's in the folder.", { run: task.runId, ...where });
         return;
       }
-      const out = await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base);
+      const out = await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base, s.dirty);
       const r = 'error' in out ? out : await shipBranch({ repo, branch: out.branch, base: out.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
       if ('error' in r) {
         this.setShip(team.id, card, { state: 'failed', error: r.error });

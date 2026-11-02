@@ -42,6 +42,8 @@ export interface Worktree {
   /** A plain folder's hidden history: where the branch and worktree live. */
   history?: string;
   leftOut?: string[];
+  /** The snapshot it starts on, when that holds a real repo's uncommitted work. */
+  dirty?: string;
 }
 
 /** The repo's own top, or the repo itself when it is bare (a plain folder's history has no work tree to ask for). */
@@ -58,10 +60,15 @@ export async function createWorktree(repo: string, home: string, runId: string, 
   let top: string;
   let baseSha: string;
   let plain: { history: string; leftOut: string[] } | undefined;
+  let dirty: string | undefined;
   if (insideGit(repo)) {
     top = await gitTop(repo);
     // uncommitted work comes along unless the run starts from a ref
-    baseSha = ref && ref !== 'HEAD' ? await must(top, ['rev-parse', '--verify', `${ref}^{commit}`]) : await snapshotDirty(top);
+    if (ref && ref !== 'HEAD') baseSha = await must(top, ['rev-parse', '--verify', `${ref}^{commit}`]);
+    else {
+      baseSha = await snapshotDirty(top);
+      if (baseSha !== (await must(top, ['rev-parse', 'HEAD']))) dirty = baseSha;
+    }
   } else {
     const snap = await snapshotFolder(home, repo);
     top = historyDir(home, repo);
@@ -73,7 +80,7 @@ export async function createWorktree(repo: string, home: string, runId: string, 
   mkdirSync(join(home, 'worktrees'), { recursive: true });
   await must(top, ['worktree', 'add', '-b', branch, workdir, baseSha]);
   if (plain) linkLeftOut(workdir, resolve(repo), plain.leftOut);
-  return { workdir, baseSha, branch, ...plain };
+  return { workdir, baseSha, branch, ...plain, ...(dirty ? { dirty } : {}) };
 }
 
 /**

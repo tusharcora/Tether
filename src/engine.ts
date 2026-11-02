@@ -56,6 +56,8 @@ export interface StartInput {
   task: string;
   repo: string;
   ref?: string;
+  /** `ref` is another run's work: the uncommitted-work snapshot below that run. */
+  dirty?: string;
   autoApprove?: boolean;
   /** Run kind; absent means a workflow. */
   kind?: RunKind;
@@ -415,6 +417,8 @@ export class Engine {
     }
     if (extra.probe) this.probes.set(runId, extra.probe);
     extra.onId?.(runId);
+    const fromRun = /^aorch\/(.+)$/.exec(input.ref ?? '')?.[1];
+    const dirty = wt.dirty ?? rawInput.dirty ?? (fromRun ? this.store.state(fromRun)?.dirty : undefined);
     this.store.append(runId, {
       type: 'run.started',
       pipeline: input.pipeline,
@@ -424,6 +428,7 @@ export class Engine {
       baseSha: wt.baseSha,
       branch: wt.branch,
       ...(wt.history ? { history: wt.history } : {}),
+      ...(dirty ? { dirty } : {}),
       vault: this.opts.vault?.root,
       autoApprove: input.autoApprove,
       workspace: ws ? snapshot(ws, { endpoints: rawInput.endpoints, dir: wt.workdir }) : undefined,
@@ -550,7 +555,7 @@ export class Engine {
     if (!start.nodes.some((n) => n.id === node)) throw new Error(`"${node}" was handed out by a manager: fork from one of the run's own steps`);
     const inherit = [...ancestorsOf(start, node), node];
     return this.startRun(
-      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node } },
+      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), dirty: s.dirty, autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node } },
       { inherit: { from: s, nodes: inherit } },
     );
   }
@@ -614,6 +619,7 @@ export class Engine {
       baseSha: wt.baseSha,
       branch: wt.branch,
       ...(wt.history ? { history: wt.history } : {}),
+      ...(wt.dirty ? { dirty: wt.dirty } : {}),
       vault: this.opts.vault?.root,
       workspace: ws ? snapshot(ws, { endpoints: i.endpoints, dir: wt.workdir }) : undefined,
       kind: 'team',

@@ -7,6 +7,7 @@ import { dirname } from 'node:path';
 import { isSecretPath, looksBinary, resolveInWorkspace } from '../../code.js';
 import { searchText } from '../../codeSearch.js';
 import { git } from '../../git.js';
+import { insideGit } from '../../history.js';
 import type { Connector, Method } from '../types.js';
 
 const MAX_READ = 64_000;
@@ -89,8 +90,8 @@ export function repoConnector(o: { workdir: string; writable: boolean; base?: st
       summary: o.base ? 'The changes in this run so far (a unified diff against where the run started).' : 'Uncommitted changes (a unified diff against HEAD).',
       returns: 'string',
       async run() {
-        const r = await git(root, ['diff', o.base ?? 'HEAD', '--']);
-        const text = r.stdout;
+        // a plain folder under a home-folder repo: git would answer for that repo
+        const text = insideGit(root) ? (await git(root, ['diff', o.base ?? 'HEAD', '--'])).stdout : '';
         return text.length > MAX_READ ? `${text.slice(0, MAX_READ)}\n[... diff cut at ${MAX_READ} characters]` : text || '(no changes)';
       },
     },

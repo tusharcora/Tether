@@ -150,6 +150,16 @@ describe('the ticket service', () => {
     expect(r.goals.db.must('g2').prs).toBeUndefined();
   });
 
+  it('a landing with nothing to change leaves the ticket where it is, and says so', () => {
+    const r = rig();
+    r.goals.create({ id: 'g4', workspace: r.ws.id, title: 'Fix sign-in', kind: 'tracker', status: 'active', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, stage: 'in_progress' });
+    r.store.append('r9', { type: 'run.started', pipeline: { name: 'p', version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 1 } }, task: 't', repo: '/x', workdir: '/x', baseSha: 'a', branch: 'b' } as never);
+    r.goals.addItem('g4', { text: 'fix it', runId: 'r9' });
+    r.store.append('r9', { type: 'run.shipped', error: 'Nothing to put in the folder: it already has this work.' });
+    expect(r.goals.db.must('g4').stage).toBe('in_progress');
+    expect(r.goals.db.must('g4').activity!.map((a) => a.text)).toEqual(['Nothing to put in the folder: it already has this work.']);
+  });
+
   it('a landed run moves its ticket to Done, and undo moves it back to In review', () => {
     const r = rig();
     r.goals.create({ id: 'g3', workspace: r.ws.id, title: 'Fix sign-in', kind: 'tracker', status: 'active', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, stage: 'in_progress' });

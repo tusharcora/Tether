@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { git, gitEnv, gitTop, must } from './git.js';
+import { git, gitEnv, gitTop, isAncestor, must } from './git.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_FOLDER_FILES = 100_000;
@@ -12,6 +12,10 @@ const SKIP_NAMES = ['node_modules', '.venv', 'venv', '__pycache__', '.DS_Store']
 
 /** Marks a commit that holds a person's uncommitted work, so shipping can tell it from real history. */
 export const DIRTY_MESSAGE = 'tether: uncommitted work';
+
+export const NOTHING_TO_LAND = 'Nothing to put in the folder: it already has this work.';
+const REWRITTEN = "This run's history was changed, so it can't be shipped safely. Nothing was pushed.";
+const UNREADABLE = "Could not read this run's history, so nothing was shipped.";
 
 export class FolderRefused extends Error {}
 
@@ -29,10 +33,10 @@ export interface Landed {
   modes?: Record<string, number>;
 }
 
-/** `p` with its symlinks resolved, or just absolute when it can't be read. */
+/** `p` with its symlinks resolved, or just absolute when it can't be read. Native: only that gives the disk's own case, so a case-only spelling is one folder. */
 export function realOr(p: string): string {
   try {
-    return realpathSync(p);
+    return realpathSync.native(p);
   } catch {
     return resolve(p);
   }
@@ -391,14 +395,28 @@ export function linkLeftOut(workdir: string, folder: string, leftOut: string[]):
   }
 }
 
+/** The blob at each path of `commit`. */
+async function blobs(top: string, commit: string): Promise<Map<string, string>> {
+  const entries = await listed(top, ['ls-tree', '-r', '-z', commit]);
+  return new Map(entries.map((e) => [e.slice(e.indexOf('\t') + 1), e.slice(0, e.indexOf('\t')).split(' ')[2]!]));
+}
+
+/** `pushed` holds a file as the snapshot `dirty` added or changed it. A replay can bring one back: one commit took it out, a later one put it back. */
+async function holdsUncommitted(top: string, dirty: string, pushed: string): Promise<boolean> {
+  const [had, wip, out] = await Promise.all([blobs(top, `${dirty}^`), blobs(top, dirty), blobs(top, pushed)]);
+  return [...wip].some(([p, b]) => b !== had.get(p) && b === out.get(p));
+}
+
 /**
  * What may be pushed for a run in a real repo. A run that descends from a snapshot of uncommitted work, by starting on one or by
  * forking from a run that did, must not take it to the remote: replay what came after on the snapshot's parent as `<branch>-pr`.
- * A fork's PR so carries its parent run's commits too. The run's branch is never rewritten.
+ * A fork's PR so carries its parent run's commits too. The run's branch is never rewritten. `dirty` is the snapshot recorded on the
+ * run: an agent can rewrite a commit's message, so the scan by message below is all there is only for a branch with none recorded.
  */
-export async function shippable(top: string, home: string, runId: string, branch: string, base: string): Promise<{ branch: string; base: string } | { error: string }> {
+export async function shippable(top: string, home: string, runId: string, branch: string, base: string, recorded?: string): Promise<{ branch: string; base: string } | { error: string }> {
+  if (recorded && !(await isAncestor(top, recorded, branch))) return { error: REWRITTEN };
   const found = await git(top, ['log', '--topo-order', '--format=%H %s', '--fixed-strings', `--grep=${DIRTY_MESSAGE}`, branch]);
-  if (found.code !== 0) return { error: "Could not read this run's history, so nothing was shipped." };
+  if (found.code !== 0) return { error: UNREADABLE };
   // every match, not the newest: a commit quoting the words can sit above a snapshot, and a branch taken from a run's checkout can hold two
   const dirty = found.stdout.split('\n').filter((l) => l.slice(l.indexOf(' ') + 1) === DIRTY_MESSAGE).map((l) => l.slice(0, l.indexOf(' ')));
   const first = dirty.at(-1);
@@ -419,6 +437,13 @@ export async function shippable(top: string, home: string, runId: string, branch
     await git(dir, ['cherry-pick', '--abort']);
     await drop();
     return { error: "This work depends on changes you haven't committed. Commit them first, then ship again." };
+  }
+  if (recorded) {
+    const back = await holdsUncommitted(top, recorded, pr).catch(() => undefined);
+    if (back !== false) {
+      await drop();
+      return { error: back ? REWRITTEN : UNREADABLE };
+    }
   }
   await git(top, ['worktree', 'remove', '--force', dir]);
   return { branch: pr, base: parent };

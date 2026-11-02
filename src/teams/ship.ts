@@ -14,7 +14,9 @@ export async function shipBranch(o: { repo: string; branch: string; base: string
   const ahead = await git(o.repo, ['rev-list', '--count', `${o.base}..${o.branch}`]);
   if (ahead.code !== 0) return { error: `Could not read ${o.branch}: ${first(ahead.stderr)}` };
   if (Number(ahead.stdout.trim()) === 0) return { error: 'Nothing to ship: the run changed no files.' };
-  const push = await git(o.repo, ['push', '--quiet', 'origin', `${o.branch}:${o.branch}`]);
+  // a replay gives `aorch/<run>-pr` new commits, and only that run writes it. A fetch failing means it isn't on the remote: nothing to replace
+  const replaces = /^aorch\/[^/]+-pr$/.test(o.branch) && (await git(o.repo, ['fetch', '--quiet', 'origin', `+refs/heads/${o.branch}:refs/remotes/origin/${o.branch}`])).code === 0;
+  const push = await git(o.repo, ['push', '--quiet', ...(replaces ? [`--force-with-lease=${o.branch}`] : []), 'origin', `${o.branch}:${o.branch}`]);
   if (push.code !== 0) return { error: `Could not push ${o.branch}: ${first(push.stderr)}` };
   const pr = await o.exec('gh', ['pr', 'create', '--head', o.branch, '--title', o.title, '--body', o.body], o.repo);
   if (pr.code !== 0) return { error: `Pushed ${o.branch}, but could not open a PR: ${ghWhy(pr)}` };

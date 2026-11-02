@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { gitInfo } from '../src/code.js';
+import { repoConnector } from '../src/codemode/connectors/repo.js';
 import { createWorktree } from '../src/git.js';
 import { FolderRefused, historyDir, insideGit, MAX_FILE_BYTES, snapshotDirty, snapshotFolder } from '../src/history.js';
 import { makeRepo, tmp } from './helpers.js';
@@ -90,6 +91,9 @@ describe('history', () => {
       expect(insideGit(folder)).toBe(false);
       expect(insideGit(inner)).toBe(true);
       expect(await gitInfo(folder)).toEqual({ git: false, prefix: '' });
+      writeFileSync(join(fake, 'README.md'), 'a change of the home repo\n');
+      const diff = (await repoConnector({ workdir: folder, writable: false }).methods()).find((x) => x.name === 'diff')!;
+      expect(await diff.run([])).toBe('(no changes)');
       const home = tmp('aorch-home-');
       const wt = await createWorktree(folder, home, 'r1');
       expect(wt.history).toBe(historyDir(home, folder));

@@ -7,7 +7,7 @@
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { landBranch, realOr, shippable, undoLanding } from './history.js';
+import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import type { Landed } from './history.js';
@@ -35,6 +35,7 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
     try {
       const r = await landBranch(d.home, s.repo, s.branch);
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
+      if (!r.files.length) return { error: NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
       return { landed: r };
     } catch (e) {
@@ -110,7 +111,7 @@ export class RunShip {
         if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: r.error });
         return;
       }
-      const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha);
+      const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha, s.dirty);
       if ('error' in out) return void this.d.store.append(runId, { type: 'run.shipped', error: out.error });
       const r = await shipBranch({ repo: s.repo, branch: out.branch, base: out.base, title: firstLine(s.task, 70), body: `Opened from Tether (run ${runId}).\n\n${s.task}`, exec: this.d.exec });
       if ('error' in r) return void this.d.store.append(runId, { type: 'run.shipped', error: r.error });

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { RunShip } from '../src/runShip.js';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -99,6 +99,19 @@ describe('a task', () => {
     await r.idle();
     expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
     expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'merged', landed: true } });
+  });
+
+  it('plain folder: Ship it with nothing to change says so, and the run records no landing', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    writeFileSync(join(r.repo, 'fix.txt'), 'fix 1\n');
+    await r.teams.decide(r.team.id, r.card('approval')!.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    const said = 'Nothing to put in the folder: it already has this work.';
+    expect(r.store.state(runId)!.ship?.landed).toBeUndefined();
+    expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'failed', error: said } });
+    expect(r.msgs().at(-1)!.text).toBe(said);
   });
 
   it('plain folder: a run rewound after its Undo is not finished, so Ship it is refused and the card still waits', async () => {
