@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { gitEnv, must } from './git.js';
@@ -39,9 +39,10 @@ function refuse(home: string, real: string): void {
   if (rel === '' || !rel.startsWith('..')) throw new FolderRefused('This folder is too big to work in: it holds Tether itself. Pick a project folder inside it.');
 }
 
-/** Walk without following symlinks. Returns what the history must skip, as paths relative to `root`. */
-function survey(root: string, maxFiles: number): string[] {
+/** Walk without following symlinks. Returns the files to keep and what to skip, as paths relative to `root`. */
+function survey(root: string, maxFiles: number): { files: string[]; leftOut: string[] } {
   const leftOut: string[] = [];
+  const kept: string[] = [];
   let files = 0;
   const walk = (dir: string, rel: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -60,10 +61,11 @@ function survey(root: string, maxFiles: number): string[] {
         throw new FolderRefused(`This folder has more than ${maxFiles.toLocaleString('en-US')} files, so Tether can't keep an undo history for it.`);
       }
       if (e.isFile() && lstatSync(p).size > MAX_FILE_BYTES) leftOut.push(r);
+      else kept.push(r);
     }
   };
   walk(root, '');
-  return leftOut;
+  return { files: kept, leftOut };
 }
 
 const anchored = (p: string) => '/' + p.replace(/[\\*?[]/g, '\\$&');
@@ -78,15 +80,19 @@ export async function withFolder<T>(history: string, folder: string, fn: (env: R
   }
 }
 
-async function out(cwd: string, env: Record<string, string>, args: string[]): Promise<string> {
-  const r = await gitEnv(cwd, args, env);
+async function out(cwd: string, env: Record<string, string>, args: string[], stdin?: string): Promise<string> {
+  const r = await gitEnv(cwd, args, env, stdin);
   if (r.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr.trim() || r.stdout.trim()}`);
   return r.stdout.trim();
 }
 
-/** Tree of `env`'s index (after `add -A`) as a commit on `parent`, or `parent` itself when the tree is the same. */
-async function commitTree(cwd: string, env: Record<string, string>, parent: string | null): Promise<string> {
-  await out(cwd, env, ['add', '-A']);
+/**
+ * Tree of `env`'s index as a commit on `parent`, or `parent` itself when the tree is the same. `files` are added by force, exactly,
+ * so a .gitignore or global excludes in the folder cannot drop them; without `files` it is `add -A` (real repos, which keep their ignores).
+ */
+async function commitTree(cwd: string, env: Record<string, string>, parent: string | null, files?: string[]): Promise<string> {
+  if (!files) await out(cwd, env, ['add', '-A']);
+  else if (files.length) await out(cwd, { ...env, GIT_LITERAL_PATHSPECS: '1' }, ['add', '-f', '--pathspec-from-file=-', '--pathspec-file-nul'], files.join('\0'));
   const tree = await out(cwd, env, ['write-tree']);
   if (parent && (await out(cwd, env, ['rev-parse', `${parent}^{tree}`])) === tree) return parent;
   return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', 'snapshot']);
@@ -96,20 +102,29 @@ async function commitTree(cwd: string, env: Record<string, string>, parent: stri
 export async function snapshotFolder(home: string, folder: string, limits: { maxFiles?: number } = {}): Promise<Snapshot> {
   const real = realpathSync(folder);
   refuse(home, real);
-  const leftOut = survey(real, limits.maxFiles ?? MAX_FOLDER_FILES);
+  const { files, leftOut } = survey(real, limits.maxFiles ?? MAX_FOLDER_FILES);
   const history = historyDir(home, real);
   if (!existsSync(join(history, 'HEAD'))) {
     mkdirSync(dirname(history), { recursive: true });
     await must(dirname(history), ['init', '-q', '--bare', '-b', 'main', history]);
   }
   mkdirSync(join(history, 'info'), { recursive: true });
-  writeFileSync(join(history, 'info', 'exclude'), [...SKIP_NAMES, ...leftOut.map(anchored)].join('\n') + '\n');
+  // rename so a concurrent snapshot never reads a half-written file
+  const exclude = join(history, 'info', `exclude-${randomBytes(4).toString('hex')}`);
+  writeFileSync(exclude, [...SKIP_NAMES, ...leftOut.map(anchored)].join('\n') + '\n');
+  renameSync(exclude, join(history, 'info', 'exclude'));
+  const ZERO = '0'.repeat(40);
   const sha = await withFolder(history, real, async (env) => {
-    const r = await gitEnv(real, ['rev-parse', '--verify', '-q', 'refs/heads/main'], env);
-    const parent = r.code === 0 ? r.stdout.trim() : null;
-    const commit = await commitTree(real, env, parent);
-    if (commit !== parent) await out(real, env, ['update-ref', 'refs/heads/main', commit]);
-    return commit;
+    // two snapshots of one folder may overlap: update-ref only if main is still the parent we read, else read again and rebuild on it
+    for (let attempt = 0; ; attempt++) {
+      const r = await gitEnv(real, ['rev-parse', '--verify', '-q', 'refs/heads/main'], env);
+      const parent = r.code === 0 ? r.stdout.trim() : null;
+      const commit = await commitTree(real, env, parent, files);
+      if (commit === parent) return commit;
+      const u = await gitEnv(real, ['update-ref', 'refs/heads/main', commit, parent ?? ZERO], env);
+      if (u.code === 0) return commit;
+      if (attempt >= 5) throw new Error(`git update-ref failed: ${u.stderr.trim()}`);
+    }
   });
   return { sha, leftOut };
 }

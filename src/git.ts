@@ -18,8 +18,8 @@ export interface GitResult {
 }
 
 /** `git` with extra env (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE ...) on top of the default one. */
-export async function gitEnv(cwd: string, args: string[], env: Record<string, string>): Promise<GitResult> {
-  const r = await runProcess({ cmd: 'git', args, cwd, env: { ...GIT_ENV, ...env }, maxBuffer: 20_000_000 });
+export async function gitEnv(cwd: string, args: string[], env: Record<string, string>, stdin?: string): Promise<GitResult> {
+  const r = await runProcess({ cmd: 'git', args, cwd, env: { ...GIT_ENV, ...env }, stdin, maxBuffer: 20_000_000 });
   if (r.spawnError) throw new Error(`git failed to start: ${r.spawnError}`);
   return { code: r.code ?? 1, stdout: r.stdout, stderr: r.stderr };
 }

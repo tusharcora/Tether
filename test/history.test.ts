@@ -44,6 +44,23 @@ describe('history', () => {
     expect(s.leftOut.sort()).toEqual(['big.bin', 'inner', 'node_modules', 'sub/.venv']);
     expect(names(home, folder, s.sha)).toEqual(['a.txt']);
   });
+  it('keeps files a .gitignore would hide, and still leaves a nested repo out', async () => {
+    const { home, folder } = plain({ '.gitignore': '*.csv\n', 'data.csv': 'x', 'a.txt': '1' });
+    mkdirSync(join(folder, 'inner'));
+    execFileSync('git', ['init', '-q'], { cwd: join(folder, 'inner') });
+    const s = await snapshotFolder(home, folder);
+    expect(names(home, folder, s.sha)).toEqual(['.gitignore', 'a.txt', 'data.csv']);
+    expect(s.leftOut).toEqual(['inner']);
+  });
+  it('overlapping snapshots of one folder both stay reachable from main', async () => {
+    const { home, folder } = plain({ 'a.txt': '1' });
+    await snapshotFolder(home, folder);
+    writeFileSync(join(folder, 'b.txt'), '2');
+    const p1 = snapshotFolder(home, folder);
+    const p2 = new Promise((r) => setTimeout(r, 15)).then(() => (writeFileSync(join(folder, 'c.txt'), '3'), snapshotFolder(home, folder)));
+    const shas = [(await p1).sha, (await p2).sha];
+    for (const sha of shas) expect(() => out(folder, ...gitDir(home, folder), 'merge-base', '--is-ancestor', sha, 'refs/heads/main')).not.toThrow();
+  });
   it('refuses the home folder and the root', async () => {
     await expect(snapshotFolder(tmp(), homedir())).rejects.toBeInstanceOf(FolderRefused);
     await expect(snapshotFolder(tmp(), '/')).rejects.toThrow(/too big|whole/);
