@@ -140,7 +140,8 @@ export const START_FAILED = "This couldn't start, and nothing in the folder chan
 
 /**
  * Do what a route card's row says, in the chat's folder, and return the card as it now stands. Never throws: a start that
- * fails is a failed card. `trust` is the person's answer to the trust question, saved first; a ticket starts nothing, so it has none.
+ * fails is a failed card. `trust` is the person's answer to the trust question: a yes is saved, only while the folder is still unasked,
+ * so a stale tab can't overwrite an answer; a no (Not now) is this run's alone. A ticket starts nothing, so it has none.
  */
 export async function startRoute(c: AssistantCtx, o: { ws: string; root: string; chat: string; message: string; messages: ChatMessage[]; bot?: string }, card: RouteCard, choice: RouteKind, trust?: boolean): Promise<RouteCard> {
   const { task } = card;
@@ -150,14 +151,15 @@ export async function startRoute(c: AssistantCtx, o: { ws: string; root: string;
   try {
     const context = recentChat(c.home, o.ws, o.messages);
     if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(card.draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws), context })).id };
-    if (trust !== undefined) setTrust(c.home, o.root, trust);
+    if (trust && trustState(c.home, o.root) === 'unknown') setTrust(c.home, o.root, true);
+    const noCommands = trust === false;
     const runId =
       choice === 'team'
-        ? await c.engine.startTeam({ task, repo, background: true, origin, context })
+        ? await c.engine.startTeam({ task, repo, background: true, origin, context, noCommands })
         : choice === 'workflow'
-          ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin, context })
-          : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, context, solo: true });
-    return { ...chose, status: 'started', runId, ...(trustState(c.home, o.root) === 'refused' ? { noCommands: true } : {}) };
+          ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin, context, noCommands })
+          : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, context, noCommands, solo: true });
+    return { ...chose, status: 'started', runId, ...(trustState(c.home, o.root) === 'trusted' ? {} : { noCommands: true }) };
   } catch {
     // the error can carry paths under <home> and git words: the card says neither
     return { ...chose, status: 'failed', note: START_FAILED };

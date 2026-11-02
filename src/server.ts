@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
@@ -33,7 +33,7 @@ import type { SecretStore } from './accounts/secretStore.js';
 import { LocalVoice } from './stt/voice.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, issueRefusal, lastDelivery, matchIssueRule, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
-import { clearTrust, listTrust, setTrust } from './trust.js';
+import { clearTrust, listTrust, setTrust, trustState } from './trust.js';
 import { checkPins, loadPins, savePins } from './pins.js';
 import { rgVersion } from './tools.js';
 import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
@@ -545,11 +545,13 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return send(res, 200, { pins }), true;
     }
 
-    if (p === '/api/trust' && m === 'GET') return send(res, 200, { folders: listTrust(cfg.home) }), true;
+    // `unanswered`: the projects Settings can offer to trust
+    const trustView = () => ({ folders: listTrust(cfg.home), unanswered: listWorkspaces(cfg.home).filter((w) => w.exists && !isAorchHome(w.path, cfg.home) && trustState(cfg.home, w.path) === 'unknown').map((w) => ({ folder: realpathSync(w.path), name: w.name })) });
+    if (p === '/api/trust' && m === 'GET') return send(res, 200, trustView()), true;
     if (p === '/api/trust' && (m === 'PUT' || m === 'DELETE')) {
       const b = reqObject(await readJson(req));
       if (typeof b.folder !== 'string' || !isAbsolute(b.folder)) throw new HttpError(400, 'folder must be an absolute path');
-      if (m === 'DELETE') return clearTrust(cfg.home, b.folder), send(res, 200, { folders: listTrust(cfg.home) }), true;
+      if (m === 'DELETE') return clearTrust(cfg.home, b.folder), send(res, 200, trustView()), true;
       if (typeof b.trusted !== 'boolean') throw new HttpError(400, 'trusted must be true or false');
       let dir = false;
       try {
@@ -557,7 +559,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       } catch {}
       if (!dir) throw new HttpError(400, 'that folder does not exist');
       setTrust(cfg.home, b.folder, b.trusted);
-      return send(res, 200, { folders: listTrust(cfg.home) }), true;
+      return send(res, 200, trustView()), true;
     }
 
     // ---- crew: bot <-> agent/model links (read live by the engine at every run start) ----

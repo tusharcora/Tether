@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NOT_TRUSTED } from '../../../src/runLabels';
+import { NOT_TRUSTED, TRUST_BODY } from '../../../src/runLabels';
 import { api, ApiError, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
 import { Dialog, DialogContent } from '../components/beui/kit/overlays';
@@ -16,7 +16,6 @@ import type { Assistant } from './useAssistant';
 const ROW: Record<RouteKind, string> = { solo: 'Do it myself', ticket: 'Make a ticket', workflow: 'Workflow', team: 'Team' };
 const BUTTON: Record<RouteKind, string> = { ...ROW, workflow: 'Use a workflow', team: 'Use a team' };
 const WORKING: Record<RouteKind, string> = { solo: 'Doing it myself · saved a checkpoint first', ticket: 'Making the ticket', workflow: 'Running the workflow', team: 'The team is on it' };
-const TRUST_BODY = "Agents can run commands here, like tests and installs. Undo restores files, but it can't reverse everything a command does. Some things always stop and ask first. Files in a downloaded project can try to steer an agent, so only trust folders you know.";
 const FAILED = "This didn't finish, so your folder wasn't changed.";
 const STOPPED = "This was stopped, so your folder wasn't changed.";
 const NO_RUN = "This run couldn't be read.";

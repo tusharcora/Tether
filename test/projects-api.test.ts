@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -98,6 +98,21 @@ describe('tools', () => {
 });
 
 describe('trust routes', () => {
+  it('lists the projects not yet answered, by real path, until they are', async () => {
+    const { api, base } = await start();
+    const dir = mkdtempSync(join(tmpdir(), 'aorch-trustask-'));
+    const gone = mkdtempSync(join(tmpdir(), 'aorch-trustgone-'));
+    const name = (await api('POST', '/api/workspaces', { path: dir })).json.name;
+    await api('POST', '/api/workspaces', { path: gone });
+    rmSync(gone, { recursive: true });
+    const row = [{ folder: realpathSync(dir), name }];
+    expect((await api('GET', '/api/trust')).json.unanswered).toEqual(row);
+    expect((await api('PUT', '/api/trust', { folder: realpathSync(dir), trusted: true })).json.unanswered).toEqual([]);
+    const del = await fetch(`${base}/api/trust`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ folder: dir }) });
+    expect((await del.json()).unanswered).toEqual(row);
+    expect((await api('PUT', '/api/trust', { folder: dir, trusted: false })).json.unanswered).toEqual([]);
+  });
+
   it('trusts a real folder, lists it, withdraws it, and refuses bad input', async () => {
     const { api, base } = await start();
     const dir = mkdtempSync(join(tmpdir(), 'aorch-trustapi-'));

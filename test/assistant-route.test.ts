@@ -255,26 +255,69 @@ describe('route card', () => {
     expect(readChat(t.home, 'api', chat)!.messages.at(-1)!.route!.status).toBe('proposed');
   });
 
-  it('solo with trust: true saves it and starts; trust: false saves it and starts without commands', async () => {
+  it('solo with trust: true saves it and starts with commands', async () => {
     const t = await boot();
     link(t.home, 'coder', { agent: 'scripted' });
     const a = await t.offer(good);
     const yes = await t.click(a.card!, a.chat, { choice: 'solo', trust: true });
     expect(yes.json.route.status).toBe('started');
+    expect(yes.json.route.noCommands).toBeUndefined();
     expect(trustState(t.home, t.dir)).toBe('trusted');
+    expect(t.store.state(yes.json.route.runId)!.noCommands).toBeUndefined();
     await t.settled();
     expect(t.agent.prompts.at(-1)).not.toContain("You can't run commands here");
-    const b = await t.offer(good);
-    const no = await t.click(b.card!, b.chat, { choice: 'solo', trust: false });
+  });
+
+  it('Not now starts this run without commands, saves nothing, and the next click asks again', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'scripted' });
+    const a = await t.offer(good);
+    const no = await t.click(a.card!, a.chat, { choice: 'solo', trust: false });
     expect(no.json.route).toMatchObject({ status: 'started', noCommands: true });
-    expect(yes.json.route.noCommands).toBeUndefined();
-    expect(trustState(t.home, t.dir)).toBe('refused');
+    expect(t.store.state(no.json.route.runId)!.noCommands).toBe(true);
+    expect(trustState(t.home, t.dir)).toBe('unknown');
     await t.settled();
     expect(t.agent.prompts.at(-1)).toContain("You can't run commands here");
-    // a folder that said no is not asked again
+    const b = await t.offer(good);
+    expect((await t.click(b.card!, b.chat, { choice: 'solo' })).json).toEqual({ needsTrust: true, folder: t.dir });
+  });
+
+  it('a workflow and a team carry Not now too', async () => {
+    const t = await boot();
+    const a = await t.offer(good);
+    const flow = await t.click(a.card!, a.chat, { choice: 'workflow', trust: false });
+    expect(t.store.state(flow.json.route.runId)!.noCommands).toBe(true);
+    const b = await t.offer(good);
+    const team = await t.click(b.card!, b.chat, { choice: 'team', trust: false });
+    expect(t.store.state(team.json.route.runId)!.noCommands).toBe(true);
+    await t.settled();
+  });
+
+  it('a saved no is not asked again, and starts without commands', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'scripted' });
+    setTrust(t.home, t.dir, false);
     const c = await t.offer(good);
     expect((await t.click(c.card!, c.chat, { choice: 'solo' })).json.route).toMatchObject({ status: 'started', noCommands: true });
     await t.settled();
+    expect(t.agent.prompts.at(-1)).toContain("You can't run commands here");
+  });
+
+  it('a stale second tab cannot overwrite an answer', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'scripted' });
+    setTrust(t.home, t.dir, false);
+    const a = await t.offer(good);
+    expect((await t.click(a.card!, a.chat, { choice: 'solo', trust: true })).json.route).toMatchObject({ status: 'started', noCommands: true });
+    expect(trustState(t.home, t.dir)).toBe('refused');
+    await t.settled();
+    setTrust(t.home, t.dir, true);
+    const b = await t.offer(good);
+    const late = await t.click(b.card!, b.chat, { choice: 'solo', trust: false });
+    expect(trustState(t.home, t.dir)).toBe('trusted');
+    expect(late.json.route.noCommands).toBeUndefined();
+    await t.settled();
+    expect(t.agent.prompts.at(-1)).not.toContain("You can't run commands here");
   });
 
   it('ticket makes a paused ticket; team starts a team run; workflow starts that workflow', async () => {

@@ -274,6 +274,8 @@ export type RunEvent =
       solo?: true;
       /** The chat this run came from, recent text, untrusted: the prompt fences it. */
       context?: string;
+      /** The person said Not now: gates, setup and commands stay off until the folder is trusted. Nothing is saved about the folder. */
+      noCommands?: true;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
   | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed; undone?: true }
@@ -418,6 +420,8 @@ export interface RunState {
   solo?: true;
   /** run.started.context. */
   context?: string;
+  /** run.started.noCommands. */
+  noCommands?: true;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -516,6 +520,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         ...(e.dirty ? { dirty: e.dirty } : {}),
         ...(e.solo ? { solo: true as const } : {}),
         ...(e.context ? { context: e.context } : {}),
+        ...(e.noCommands ? { noCommands: true as const } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,

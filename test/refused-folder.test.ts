@@ -8,7 +8,7 @@ import { Engine } from '../src/engine.js';
 import { Goals } from '../src/goals/loop.js';
 import type { Goal } from '../src/goals/types.js';
 import { Store } from '../src/store.js';
-import { clearTrust, setTrust } from '../src/trust.js';
+import { clearTrust, setTrust, trustState } from '../src/trust.js';
 import type { AgentAdapter, AgentRequest, AgentResult } from '../src/types.js';
 import { initWorkspace } from '../src/workspace.js';
 import { pipe, plainFolder, tmp } from './helpers.js';
@@ -50,6 +50,84 @@ const withGate = (marker: string) =>
     ],
     [['work', 'check']],
   );
+
+describe('a run started without commands (Not now)', () => {
+  it('a gate does not run and does not pass; the folder stays unasked, and the next run is not held back', async () => {
+    const w = world();
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    const s = w.store.state(id)!;
+    expect(s).toMatchObject({ status: 'stopped', error: SAID, noCommands: true });
+    expect(s.nodes.check).toMatchObject({ status: 'error', error: SAID });
+    expect(trustState(w.home, w.folder)).toBe('unknown');
+    const next = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder });
+    await w.engine.wait(next);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(w.store.state(next)!.status).toBe('done');
+  });
+
+  it('a plain resume changes nothing until the folder says yes, then picks it up; forgetting a no is not a yes', async () => {
+    const w = world();
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(w.store.state(id)).toMatchObject({ status: 'stopped', error: SAID });
+    setTrust(w.home, w.folder, false);
+    clearTrust(w.home, w.folder);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    setTrust(w.home, w.folder, true);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(w.store.state(id)).toMatchObject({ status: 'done', error: undefined });
+    expect(w.store.state(id)!.nodes.work!.attempts).toBe(1);
+  });
+
+  it('setup is skipped, and runs on a resume after a yes', async () => {
+    const w = world();
+    const gate = join(tmp('marks-'), 'gate');
+    const pipeline = { ...withGate(gate), settings: { ...withGate(gate).settings, setup: `touch ${w.marker}` } };
+    const id = await w.engine.start({ pipeline, task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(w.store.events(id).find((e) => e.event.type === 'setup.result')!.event).toMatchObject({ ok: false, skipped: true });
+    setTrust(w.home, w.folder, true);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(existsSync(gate)).toBe(true);
+    expect(w.store.state(id)).toMatchObject({ status: 'done', setupDone: true });
+  });
+
+  it('a folder already trusted runs its gate: the flag only holds until a yes', async () => {
+    const w = world();
+    setTrust(w.home, w.folder, true);
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(w.store.state(id)!.status).toBe('done');
+  });
+
+  it('a fork and a rewind keep it', async () => {
+    const w = world();
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    const fork = await w.engine.fork(id, 'work');
+    await w.engine.wait(fork);
+    expect(w.store.state(fork)).toMatchObject({ noCommands: true, status: 'stopped', error: SAID });
+    await w.engine.rewind(id, 'work');
+    expect(w.store.state(id)!.noCommands).toBe(true);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(w.store.state(id)).toMatchObject({ status: 'stopped', error: SAID });
+  });
+});
 
 describe('a folder that said no', () => {
   it('a gate does not run, does not pass and does not loop: the run stops and says why', async () => {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { api } from '../../api';
 import { ToastStackProvider } from '../../components/beui/kit/toast';
 import { cssRule } from '../../test/css';
+import { TRUST_BODY } from '../../../../src/runLabels';
 import { SettingsPage } from './SettingsPage';
 
 vi.mock('../../api', async (orig) => ({ ...(await orig<typeof import('../../api')>()), api: vi.fn() }));
@@ -103,6 +104,28 @@ describe('SettingsPage', () => {
     // a folder that said no is never asked again, so this is the way back
     fireEvent.click(within(card).getByRole('button', { name: 'Ask again' }));
     await waitFor(() => expect(vi.mocked(api)).toHaveBeenCalledWith('DELETE', '/api/trust', { folder: '/home/me/no' }));
+  });
+
+  it('trusts a project not yet asked about, only after the same notice', async () => {
+    const refresh = vi.fn(async () => {});
+    vi.mocked(api).mockClear();
+    vi.mocked(api).mockResolvedValue({ folders: [] });
+    const trust = { data: { folders: [{ folder: '/home/me/hw3', trusted: true, exists: true }], unanswered: [{ folder: '/home/me/app', name: 'app' }] }, error: undefined, fails: 0, refresh };
+    render(<ToastStackProvider><SettingsPage {...base} trust={trust} /></ToastStackProvider>);
+    const card = screen.getByRole('region', { name: 'Trusted folders' });
+    expect(within(card).getByRole('button', { name: 'Withdraw' })).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Trust' }));
+    const d = await screen.findByRole('dialog', { name: 'Trust this folder?' });
+    expect(d.textContent).toContain(TRUST_BODY);
+    expect(d.textContent).toContain('/home/me/app');
+    expect(vi.mocked(api)).not.toHaveBeenCalled();
+    fireEvent.click(within(d).getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Trust this folder?' })).toBeNull());
+    expect(vi.mocked(api)).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole('button', { name: 'Trust' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Trust this folder?' })).getByRole('button', { name: 'Trust this folder' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(vi.mocked(api)).toHaveBeenCalledWith('PUT', '/api/trust', { folder: '/home/me/app', trusted: true });
   });
 
   it('says so when no folder has been asked about', () => {

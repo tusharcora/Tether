@@ -41,7 +41,7 @@ export const assistantApi = {
   rename: (ws: string | undefined, chat: string, title: string) => api<{ chat: ChatSummary }>('PATCH', `/api/assistant/chats/${encodeURIComponent(chat)}`, { ws, title }),
   remove: (ws: string | undefined, chat: string) => api<{ ok: true }>('DELETE', `/api/assistant/chats/${encodeURIComponent(chat)}${q({ ws })}`),
   decide: (ws: string | undefined, chat: string | undefined, id: string, decision: 'start' | 'dismiss', draft?: GoalDraft) => api<{ proposal: Proposal }>('POST', `/api/assistant/proposals/${encodeURIComponent(id)}`, { ws, chat, decision, ...(draft ? { draft } : {}) }),
-  /** A route card's click. In a folder not yet asked about (`trust` not given) it refuses with 409 `{ needsTrust, folder }`. */
+  /** A route card's click. In a folder not yet asked about (`trust` not given) it refuses with 409 `{ needsTrust, folder }`. `trust: false` is Not now: this run only, nothing saved. */
   route: (ws: string | undefined, chat: string | undefined, id: string, choice: RouteKind, trust?: boolean) => api<{ route: RouteCard }>('POST', `/api/assistant/routes/${encodeURIComponent(id)}`, { ws, chat, choice, ...(trust === undefined ? {} : { trust }) }),
   turnIntoRun: (ws: string | undefined, chat: string | undefined, from: string) => api<{ message: ChatMessage }>('POST', '/api/assistant/proposals', { ws, chat, from }),
   tool: (ws: string | undefined, chat: string | undefined, id: string, decision: 'once' | 'always' | 'deny') => api<{ ask: ToolAsk }>('POST', `/api/assistant/tools/${encodeURIComponent(id)}`, { ws, chat, decision }),

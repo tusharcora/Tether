@@ -53,6 +53,12 @@ export function trustState(home: string, folder: string): 'trusted' | 'refused' 
   return !e || !same(r!, e) ? 'unknown' : e.trusted ? 'trusted' : 'refused';
 }
 
+/** A run's commands stay off: its folder said no, or the person said Not now for this run and has not said yes since. */
+export function commandsOff(home: string, run: { repo: string; noCommands?: true }): boolean {
+  const t = trustState(home, run.repo);
+  return t === 'refused' || (!!run.noCommands && t !== 'trusted');
+}
+
 export function setTrust(home: string, folder: string, trusted: boolean): void {
   const r = realpathSync(folder);
   const { dev, ino } = statSync(r);
