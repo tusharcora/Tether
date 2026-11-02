@@ -4,6 +4,7 @@ import { request } from 'node:http';
 import { basename, dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Exec } from '../src/exec.js';
+import { commitAll } from '../src/git.js';
 import { realOr, shippable, snapshotDirty } from '../src/history.js';
 import { RunShip } from '../src/runShip.js';
 import { startServer } from '../src/server.js';
@@ -595,6 +596,171 @@ describe('shipping a run in a plain folder', () => {
     expect(r.store.state(fork)!.ship?.error).toContain('a.txt changed since');
     expect(read(r.folder, 'a.txt')).toBe('mine\n');
     expect(existsSync(join(r.folder, 'c.txt'))).toBe(false);
+  });
+
+  describe('a fork of a landed run', () => {
+    /** Two steps paused at the approval: `x.txt` then `y.txt`, on a folder holding the old `x.txt` and `n.txt`. */
+    async function parent() {
+      const s = setup();
+      const folder = plainFolder({ 'x.txt': 'one\n', 'n.txt': 'old\n' });
+      const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+      const p = pipe(
+        [
+          { id: 'a', role: 'coder', mock: { writeFile: { path: 'x.txt', content: 'A\n' } } },
+          { id: 'b', role: 'coder', mock: { writeFile: { path: 'y.txt', content: 'B\n' } } },
+          { id: 'ok', kind: 'approval', title: 'You approve' },
+        ],
+        [['a', 'b'], ['b', 'ok']],
+      );
+      const id = await s.engine.start({ pipeline: p, task: 't', repo: folder });
+      await s.engine.wait(id);
+      const land = async (run: string) => {
+        await ship.decide(run, true);
+        await ship.idle();
+        return s.store.state(run)!.ship!;
+      };
+      /** A fork from `node` whose own work is `files`, committed by hand since the pipeline's steps are the parent's. */
+      const fork = async (from: string, node: string, files: Record<string, string>) => {
+        const f = await s.engine.fork(from, node);
+        await s.engine.wait(f);
+        const dir = s.store.state(f)!.workdir;
+        for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+        await commitAll(dir, 'fork');
+        return f;
+      };
+      return { ...s, folder, ship, id, land, fork };
+    }
+    const here = (dir: string, f: string) => existsSync(join(dir, f));
+
+    it('leaves a file the person put back as it was (scenario 1)', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      writeFileSync(join(r.folder, 'x.txt'), 'one\n');
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.error).toBeUndefined();
+      expect(ship.landed!.files).toEqual(['z.txt']);
+      expect(read(r.folder, 'x.txt')).toBe('one\n');
+      expect(read(r.folder, 'z.txt')).toBe('z\n');
+    });
+
+    it('leaves a file the person deleted deleted (scenario 2)', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      rmSync(join(r.folder, 'y.txt'));
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.landed!.files).toEqual(['z.txt']);
+      expect(here(r.folder, 'y.txt')).toBe(false);
+    });
+
+    it('changes a file the parent gave with no false conflict, and Undo restores what the parent gave (scenario 3)', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const f = await r.fork(r.id, 'b', { 'x.txt': 'F\n' });
+      const ship = await r.land(f);
+      expect(ship.error).toBeUndefined();
+      expect(ship.landed!.files).toEqual(['x.txt']);
+      expect(read(r.folder, 'x.txt')).toBe('F\n');
+      await r.ship.undo(f);
+      expect(read(r.folder, 'x.txt')).toBe('A\n');
+      expect(read(r.folder, 'y.txt')).toBe('B\n');
+    });
+
+    it('stops on a file the parent gave that the person changed too, naming it (scenario 4)', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      writeFileSync(join(r.folder, 'x.txt'), 'mine\n');
+      const ship = await r.land(await r.fork(r.id, 'b', { 'x.txt': 'F\n', 'z.txt': 'z\n' }));
+      expect(ship.error).toContain('x.txt changed since');
+      expect(ship.landed).toBeUndefined();
+      expect(read(r.folder, 'x.txt')).toBe('mine\n');
+      expect(here(r.folder, 'z.txt')).toBe(false);
+    });
+
+    it('leaves a person\'s edit from before the parent landed', async () => {
+      const r = await parent();
+      writeFileSync(join(r.folder, 'n.txt'), 'mine\n');
+      await r.land(r.id);
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.landed!.files).toEqual(['z.txt']);
+      expect(read(r.folder, 'n.txt')).toBe('mine\n');
+    });
+
+    it('leaves a file the person made before the parent landed', async () => {
+      const r = await parent();
+      writeFileSync(join(r.folder, 'mine.txt'), 'mine\n');
+      await r.land(r.id);
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.landed!.files).toEqual(['z.txt']);
+      expect(read(r.folder, 'mine.txt')).toBe('mine\n');
+    });
+
+    it('leaves another run\'s landed file', async () => {
+      const r = await parent();
+      const q = await r.engine.start({ pipeline: pipe([{ id: 'q', role: 'coder', mock: { writeFile: { path: 'q.txt', content: 'q\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['q', 'ok']]), task: 'q', repo: r.folder });
+      await r.engine.wait(q);
+      await r.land(q);
+      await r.land(r.id);
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.landed!.files).toEqual(['z.txt']);
+      expect(read(r.folder, 'q.txt')).toBe('q\n');
+    });
+
+    it('stops on a file only the fork changed, if the person edited it before the parent landed', async () => {
+      const r = await parent();
+      writeFileSync(join(r.folder, 'n.txt'), 'mine\n');
+      await r.land(r.id);
+      const ship = await r.land(await r.fork(r.id, 'b', { 'n.txt': 'F\n' }));
+      expect(ship.error).toContain('n.txt changed since');
+      expect(read(r.folder, 'n.txt')).toBe('mine\n');
+    });
+
+    it('from an earlier step replaces the parent\'s later changes, and Undo brings them back', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const f = await r.fork(r.id, 'a', { 'z.txt': 'z\n' });
+      // the fork runs step b again: this time it leaves no y.txt
+      rmSync(join(r.store.state(f)!.workdir, 'y.txt'));
+      await commitAll(r.store.state(f)!.workdir, 'no y');
+      const ship = await r.land(f);
+      expect(ship.error).toBeUndefined();
+      expect(ship.landed!.files.sort()).toEqual(['y.txt', 'z.txt']);
+      expect(here(r.folder, 'y.txt')).toBe(false);
+      await r.ship.undo(f);
+      expect(read(r.folder, 'y.txt')).toBe('B\n');
+    });
+
+    it('walks forks to the nearest run still landed: a person\'s revert of a grandparent\'s file stays', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const mid = await r.fork(r.id, 'b', { 'z.txt': 'z\n' });
+      await r.land(mid);
+      writeFileSync(join(r.folder, 'x.txt'), 'one\n');
+      // from step b, which comes before the commit that made z.txt, so z.txt goes
+      const last = await r.fork(mid, 'b', { 'w.txt': 'w\n' });
+      const ship = await r.land(last);
+      expect(ship.landed!.files.sort()).toEqual(['w.txt', 'z.txt']);
+      expect(read(r.folder, 'x.txt')).toBe('one\n');
+      expect(here(r.folder, 'z.txt')).toBe(false);
+    });
+
+    it('a fork changing a grandparent\'s file is not a false conflict', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const mid = await r.fork(r.id, 'b', { 'z.txt': 'z\n' });
+      await r.land(mid);
+      const ship = await r.land(await r.fork(mid, 'b', { 'x.txt': 'F\n' }));
+      expect(ship.error).toBeUndefined();
+      expect(read(r.folder, 'x.txt')).toBe('F\n');
+    });
+
+    it('an undone parent no longer counts: the fork brings its work in again', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      await r.ship.undo(r.id);
+      const ship = await r.land(await r.fork(r.id, 'b', { 'z.txt': 'z\n' }));
+      expect(ship.landed!.files.sort()).toEqual(['x.txt', 'y.txt', 'z.txt']);
+      expect(read(r.folder, 'x.txt')).toBe('A\n');
+    });
   });
 
   it('a landed run cannot be rewound, in plain words', async () => {

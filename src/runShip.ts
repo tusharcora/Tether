@@ -11,6 +11,7 @@ import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding } from './h
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import type { Landed } from './history.js';
+import type { RunState } from './types.js';
 import { mergePr, prChecks, shipBranch } from './teams/ship.js';
 
 const POLL_MS = 60_000;
@@ -27,13 +28,23 @@ function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** What a fork's parents still have in the folder: an undone one has nothing there. */
+function givenBy(store: Store, s: RunState): Pick<Landed, 'post' | 'files'> | undefined {
+  let given: Pick<Landed, 'post' | 'files'> | undefined;
+  for (let p = s.origin?.kind === 'fork' ? store.state(s.origin.id) : undefined; p; p = p.origin?.kind === 'fork' ? store.state(p.origin.id) : undefined) {
+    const l = p.ship?.landed;
+    if (l) given = { post: given?.post ?? l.post, files: [...(given?.files ?? []), ...l.files] };
+  }
+  return given;
+}
+
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
 export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string }> {
   const s = d.store.state(runId)!;
   return inFolder(s.repo, async () => {
     if (d.store.state(runId)!.ship?.landed) return { error: 'This work is already in the folder.' };
     try {
-      const r = await landBranch(d.home, s.repo, s.branch);
+      const r = await landBranch(d.home, s.repo, s.branch, givenBy(d.store, s));
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
       if (!r.files.length) return { error: NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
