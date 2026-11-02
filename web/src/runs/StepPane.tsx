@@ -149,7 +149,7 @@ export function StepPane({ run: r, row, comments, onAct, onOpenFile, tab: shown,
     );
   const bot = pnode ? crewFor(pnode, crew) : 'orchestrator';
   const name = crew[bot]?.name ?? bot;
-  const sub = !pnode ? r.branch : pnode.kind === 'agent' ? [pnode.model ?? pnode.agent ?? 'claude', pnode.readOnly ? 'read-only' : 'read-write', `worktree ${r.branch}`].join(' · ') : pnode.kind === 'gate' ? (pnode.command ?? 'gate') : 'your approval';
+  const sub = !pnode ? r.branch : pnode.kind === 'agent' ? [pnode.model ?? pnode.agent ?? 'claude', pnode.readOnly ? 'read-only' : 'read-write', r.history ? 'working copy' : `worktree ${r.branch}`].join(' · ') : pnode.kind === 'gate' ? (pnode.command ?? 'gate') : 'your approval';
   return (
     <section className="rp-step" aria-label="Step">
       <header className="rp-step-head">
@@ -175,7 +175,7 @@ export function StepPane({ run: r, row, comments, onAct, onOpenFile, tab: shown,
               Preview
             </Button>
           ) : null}
-          {tab === 'terminal' ? <span className="rp-where mono" title={r.workdir}>{`${r.workdir.replace(/^\/Users\/[^/]+/, '~')} · ${r.branch}`}</span> : null}
+          {tab === 'terminal' ? <span className="rp-where mono" title={r.workdir}>{`${r.workdir.replace(/^\/Users\/[^/]+/, '~')} ${r.history ? '' : ` · ${r.branch}`}`}</span> : null}
         </div>
         <TabsContent value="transcript" className="rp-body">
           {agentStep ? (

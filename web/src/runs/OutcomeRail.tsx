@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { fmtUsd, type RunView } from '../api';
 import type { GoalView } from '../goals/goalsApi';
 import type { Route } from '../hooks';
+import { Button } from '../components/beui/kit/Button';
+import type { RunAct } from '../Runs';
 import { cn } from '../ui/cn';
 import { gateSummary } from './ApprovalBar';
 import { FileBars } from './FileBars';
@@ -15,8 +18,10 @@ const TONES = ['var(--warn)', 'var(--ok)', 'var(--accInk)', 'var(--mut)'];
  * The run's outcome on the right (board 4): its check, branch, PR, where it was started from and its team; the files it
  * changed with ± bars; what it cost per agent and model; and More: every event (the raw timeline).
  */
-export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: string; cost: { label: string; usd: number }[]; onGo?: (r: Route) => void; onOpenFile?: (file: string) => void; onEvents: () => void }) {
+export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: string; cost: { label: string; usd: number }[]; onAct?: RunAct; onGo?: (r: Route) => void; onOpenFile?: (file: string) => void; onEvents: () => void }) {
   const r = p.run;
+  const plain = !!r.history;
+  const [undoing, setUndoing] = useState(false);
   const diff = useDiff(`/api/runs/${r.id}/diff`, commitsKey(r));
   const c = p.goal?.lastCheck;
   const total = p.cost.reduce((a, x) => a + x.usd, 0);
@@ -37,9 +42,23 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
         <dl className="rp-dl">
           <dt>Check</dt>
           <dd className={cn(c ? (c.ok ? 'ok' : 'bad') : undefined)}>{c ? `${c.ok ? 'passes' : 'fails'}${c.summary ? ` · ${c.summary}` : ''}` : gateSummary(r)}</dd>
-          <dt>Branch</dt>
-          <dd className="mono">{r.branch}</dd>
-          {r.ship?.url ? (
+          {plain ? null : (
+            <>
+              <dt>Branch</dt>
+              <dd className="mono">{r.branch}</dd>
+            </>
+          )}
+          {r.ship?.landed ? (
+            <>
+              <dt>Folder</dt>
+              <dd>
+                {`It's in your folder · ${r.ship.landed.files.length} file${r.ship.landed.files.length === 1 ? '' : 's'}`}
+                <Button size="sm" variant="ghost" loading={undoing} onClick={() => (setUndoing(true), void p.onAct?.('undo-land').finally(() => setUndoing(false)))}>
+                  Undo
+                </Button>
+              </dd>
+            </>
+          ) : r.ship?.url ? (
             <>
               <dt>PR</dt>
               <dd>
@@ -48,7 +67,7 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
             </>
           ) : r.ship?.error ? (
             <>
-              <dt>PR</dt>
+              <dt>{plain ? 'Folder' : 'PR'}</dt>
               <dd className="bad">{r.ship.error}</dd>
             </>
           ) : null}

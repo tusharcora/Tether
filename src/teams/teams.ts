@@ -761,7 +761,7 @@ export class Teams {
         const detail = [...gates, await this.diffStat(team, task, s.branch)].join(' · ');
         const asker = team.people.find((p) => p.id === task.by) ?? OWNER;
         const title = (task.ticket && this.d.goals.db.get(task.ticket)?.title) || firstLine(task.task);
-        this.say(teamId, from, template({ kind: 'ready', who: asker.name }), { run: runId, ...ticket, card: { kind: 'approval', what: 'ship', title: `Ship “${title}”?`, detail, runId, node, status: 'pending', files: done.facts.files, plus: done.facts.plus, minus: done.facts.minus, ...(done.tests ? { tests: done.tests } : {}), ...(done.reviewer ? { review: { by: done.reviewer.name } } : {}) } });
+        this.say(teamId, from, template({ kind: 'ready', who: asker.name }), { run: runId, ...ticket, card: { kind: 'approval', what: 'ship', title: `Ship “${title}”?`, detail, runId, node, status: 'pending', ...(s.history ? { plain: true as const } : {}), files: done.facts.files, plus: done.facts.plus, minus: done.facts.minus, ...(done.tests ? { tests: done.tests } : {}), ...(done.reviewer ? { review: { by: done.reviewer.name } } : {}) } });
         this.dispatch(team, done.msg, task.hops + 1, { ...(task.by ? { asker: task.by } : {}) });
         await this.pump(team, task.agent);
       })(),
@@ -842,7 +842,7 @@ export class Teams {
         const l = await landRun(this.d, task.runId, task.base);
         if ('error' in l) {
           this.setShip(team.id, card, { state: 'failed', error: l.error });
-          return void this.say(team.id, from, template({ kind: 'ship_failed', reason: l.error }), { run: task.runId, report: l.error, ...where });
+          return void this.say(team.id, from, template({ kind: 'ship_failed', reason: l.error, plain: true }), { run: task.runId, report: l.error, ...where });
         }
         if (card) this.setShip(team.id, card, { state: 'merged', landed: true });
         else this.say(team.id, from, "It's in the folder.", { run: task.runId, ...where });
@@ -875,7 +875,7 @@ export class Teams {
     if (!mayApprove(team, by.id)) throw new HttpError(403, `Only ${approverNames(team)} can undo a ship here.`);
     const m = readState(this.d.home, teamId).messages.find((x) => x.id === msgId);
     const c = m?.card;
-    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, 'There is nothing to undo here: it is already merged, or it never shipped.');
+    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, this.d.store.state(c?.kind === 'approval' ? (c.runId ?? '') : '')?.history ? 'There is nothing to undo here: it never went in the folder.' : 'There is nothing to undo here: it is already merged, or it never shipped.');
     if (c.ship.state === 'shipping' && this.d.store.state(c.runId)?.history) throw new HttpError(409, "It's being put in the folder. Try Undo in a moment.");
     const pr = c.ship.pr;
     if (pr) {
@@ -1014,7 +1014,7 @@ export class Teams {
     if (team.level === 'loose') return this.ship(team, last);
     const detail = [...(g.check ? [`${g.check.command} passed`] : []), await this.diffStat(team, last, s.branch)].join(' · ');
     const st = await this.stat(team, last, s.branch);
-    this.say(team.id, from, template({ kind: 'ready', who: OWNER.name }), { run: last.runId, ticket: g.id, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending', ...st, ...(g.check ? { tests: { ok: true, line: `${g.check.command} passes` } } : {}) } });
+    this.say(team.id, from, template({ kind: 'ready', who: OWNER.name }), { run: last.runId, ticket: g.id, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending', ...(this.d.store.state(last.runId)?.history ? { plain: true as const } : {}), ...st, ...(g.check ? { tests: { ok: true, line: `${g.check.command} passes` } } : {}) } });
   }
 
   /** Goals hook: a waiting run was decided (the Inbox, Goals): the team's card says so, unless it was decided on the card. */
@@ -1298,7 +1298,7 @@ export class Teams {
     const card = this.shipCard(team.id, runId);
     if (card?.card?.kind === 'approval' && card.card.status === 'pending') return void (await this.decide(team.id, card.id, { action: 'approve', by }));
     if (!mayApprove(team, by.id)) throw new HttpError(403, `Only ${approverNames(team)} can ship here.`);
-    if (!task.pr) throw new HttpError(409, 'Nothing is ready to ship yet.');
+    if (!task.pr) throw new HttpError(409, this.d.store.state(runId)?.ship?.landed ? 'This work is already in the folder.' : 'Nothing is ready to ship yet.');
     this.say(team.id, this.agentFrom(task.agent), `I'll merge PR #${task.pr.number} once its checks pass.`, task.ticket ? { ticket: task.ticket } : {});
     this.job(this.watchMerge(team.id, task.agent, task.pr, 0, card?.id));
   }

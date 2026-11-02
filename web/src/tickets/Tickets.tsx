@@ -504,13 +504,15 @@ function TicketPanel({ t, agents, squads, now, onClose, onTicket, onGo }: { t: T
               </button>
             ) : null}
           </Prop>
-          <Prop label="Linked PR">
-            {pr ? (
-              <a href={pr.url} target="_blank" rel="noreferrer">{`PR #${pr.number}${pr.merged ? ' · merged' : ''}`}</a>
-            ) : (
-              <span className="tk-mut">not opened yet</span>
-            )}
-          </Prop>
+          {t.plain ? null : (
+            <Prop label="Linked PR">
+              {pr ? (
+                <a href={pr.url} target="_blank" rel="noreferrer">{`PR #${pr.number}${pr.merged ? ' · merged' : ''}`}</a>
+              ) : (
+                <span className="tk-mut">not opened yet</span>
+              )}
+            </Prop>
+          )}
           <Prop label="Spent">
             <span className="tk-mut">{fmtUsd(t.spentUsd)}</span>
           </Prop>

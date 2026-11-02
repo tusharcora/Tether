@@ -101,7 +101,7 @@ export function goalView(goals: Goals, store: Store, g: Goal, prefix: (ws: strin
   const counts = last?.passing !== undefined || last?.failing !== undefined ? (last.passing ?? 0) / Math.max(1, (last.passing ?? 0) + (last.failing ?? 0)) : undefined;
   const progress = g.kind === 'tracker' ? (items.length ? items.filter(done).length / items.length : 0) : g.status === 'met' ? 1 : (counts ?? 0);
   const needs = needsOf(g, raw, store);
-  return { ...g, items, progress, key: keyOf(prefix(g.workspace), g.num), stage: stageOf(g), criteria: criteriaOf(g, raw), ...(needs ? { needs } : {}) };
+  return { ...g, items, progress, key: keyOf(prefix(g.workspace), g.num), stage: stageOf(g), criteria: criteriaOf(g, raw), ...(needs ? { needs } : {}), ...(items.some((i) => i.runId && store.state(i.runId)?.history) ? { plain: true as const } : {}) };
 }
 
 const memberOf = (v: unknown, k: string): Member | null | undefined => {

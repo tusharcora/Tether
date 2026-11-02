@@ -19,6 +19,7 @@ export function DecisionBanner(p: { run: RunView; goal?: GoalView; team?: boolea
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<string>();
   const r = p.run;
+  const plain = !!r.history;
   const d = decisionOf(r);
   const unsent = p.comments.list.filter((c) => !c.sent);
   if (!d) return null;
@@ -52,10 +53,10 @@ export function DecisionBanner(p: { run: RunView; goal?: GoalView; team?: boolea
       </div>
       {d.final ? (
         <>
-          <Button size="sm" variant="primary" loading={busy === 'merge'} disabled={!!busy} onClick={() => void act('merge', 'ship', { merge: !p.team }, p.team ? 'Approved: the team opens the PR' : 'Approved: it merges once the PR’s checks pass')}>
-            {p.team ? 'Approve & open PR' : 'Merge to main'}
+          <Button size="sm" variant="primary" loading={busy === 'merge'} disabled={!!busy} onClick={() => void act('merge', 'ship', { merge: !p.team }, plain ? 'Putting it in the folder' : p.team ? 'Approved: the team opens the PR' : 'Approved: it merges once the PR’s checks pass')}>
+            {plain ? 'Put it in the folder' : p.team ? 'Approve & open PR' : 'Merge to main'}
           </Button>
-          {p.team ? null : (
+          {p.team || plain ? null : (
             <Button size="sm" variant="secondary" loading={busy === 'pr'} disabled={!!busy} onClick={() => void act('pr', 'ship', { merge: false }, 'Approved: the PR opens when the run finishes')}>
               Open PR instead
             </Button>

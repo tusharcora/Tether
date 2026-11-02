@@ -309,7 +309,7 @@ describe('Code screen', () => {
     routeApi({ ...routes, 'GET /api/code/tree?ws=shop&dir=': { entries: [], git: false } });
     setup({ path: 'src/a.ts' });
     expect(await screen.findByText('This folder is empty.')).toBeTruthy();
-    expect(screen.getByText(/Not a git repository/)).toBeTruthy();
+    expect(screen.getByText(/Tether keeps the undo history for this folder/)).toBeTruthy();
     await waitFor(() => expect(editorText()).toBe(A));
     expect(screen.queryByRole('button', { name: /touched it/ })).toBeNull();
     expect(screen.queryByText('changed by a run in 30 days')).toBeNull();

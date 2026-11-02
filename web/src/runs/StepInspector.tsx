@@ -100,7 +100,7 @@ export function StepInspector(p: { run: RunView; events: StoredEvent[]; target: 
           ) : (
             <span className="insp-title">
               <b>Run details</b>
-              <span className="sl-meta">{`${r.branch}${r.notes.length ? ` · ${r.notes.length} vault notes` : ''}`}</span>
+              <span className="sl-meta">{[r.history ? '' : r.branch, r.notes.length ? `${r.notes.length} vault notes` : ''].filter(Boolean).join(' · ')}</span>
             </span>
           )}
           <button type="button" className="insp-close" aria-label="Close inspector" onClick={p.onClose}>

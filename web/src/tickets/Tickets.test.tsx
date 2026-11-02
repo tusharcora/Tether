@@ -138,6 +138,13 @@ describe('Tickets (board 10)', () => {
     expect([key, status, assignee, squad]).toEqual(['WEB-144', 'Todo', '—', '# web']);
   });
 
+  it('a plain folder ticket says nothing of a PR or a merge', () => {
+    setup({ tickets: [{ ...review, prs: undefined, plain: true }], selected: 't142' });
+    const panel = screen.getByRole('complementary', { name: 'Ticket' });
+    expect(within(panel).getByRole('button', { name: 'Ship it' })).toBeTruthy();
+    expect(panel.textContent).not.toMatch(/\bPR\b|merge/i);
+  });
+
   it('the detail panel: properties, criteria (one checked automatically), the ship banner, activity and a comment', async () => {
     const p = setup({ selected: 't142' });
     const panel = screen.getByRole('complementary', { name: 'Ticket' });

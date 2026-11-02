@@ -1392,7 +1392,7 @@ export class Tui {
   private runSkill(skill: Skill) {
     this.ask(`Skill “${skill.name}” — what should it work on?`, (task) => {
       if (!task) return;
-      this.ask('Repository (a git repo):', (repo) => {
+      this.ask('Folder:', (repo) => {
         const r = resolve((repo || process.cwd()).replace(/^~(?=$|\/)/, process.env.HOME ?? '~'));
         let p;
         try {
@@ -1598,7 +1598,7 @@ export class Tui {
   private askTeam() {
     this.ask('Team run — what should the team work on?', (task) => {
       if (!task) return;
-      this.ask('Repository (a git repo):', (repo) => this.startTeamRun(task, repo || process.cwd(), 'live'), process.cwd());
+      this.ask('Folder:', (repo) => this.startTeamRun(task, repo || process.cwd(), 'live'), process.cwd());
     });
   }
 
@@ -1629,7 +1629,7 @@ export class Tui {
   private askRun(pipeline: Pipeline) {
     this.ask(`Run “${pipeline.name}” — what should the crew do?`, (task) => {
       if (!task) return;
-      this.ask('Repository (a git repo):', (repo) => this.startRun(pipeline, repo || process.cwd(), task), process.cwd());
+      this.ask('Folder:', (repo) => this.startRun(pipeline, repo || process.cwd(), task), process.cwd());
     });
   }
 
@@ -1950,7 +1950,7 @@ export class Tui {
     const custom = lead && lead.id !== 'orchestrator' ? lead : undefined;
     this.ask(`Tell ${lead?.name ?? 'Tether'} what you want done:`, (task) => {
       if (!task) return;
-      this.ask('Repository (a git repo):', (repo) => {
+      this.ask('Folder:', (repo) => {
         const r = resolve(repo || process.cwd());
         const plan: Extract<Screen, { kind: 'plan' }> = { kind: 'plan', task, repo: r };
         this.push(plan);

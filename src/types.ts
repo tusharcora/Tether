@@ -937,6 +937,8 @@ export interface RunCurrent {
 export interface RunRowExtras {
   /** The repo folder's real path, so a run started on a symlinked path (/tmp) still matches its project (/private/tmp). */
   repoReal: string;
+  /** A plain folder, not a git repo: the list says folder, not PR. Never the path. */
+  plain?: true;
   branch: string;
   lastTs: number;
   steps: RunStep[];

@@ -99,6 +99,7 @@ export function nowLine(r: RunRow): { text: string; bad?: boolean } {
   }
   if (isLive(r) && r.current) return { text: `${r.current.bot} on ${r.current.title}` };
   if (r.live) return { text: r.kind === 'team' && !r.steps.length ? 'Tether is planning' : 'Working' };
+  if (r.ship?.landed) return { text: 'In your folder' };
   if (r.ship?.merged) return { text: `PR #${r.ship.number} merged` };
   if (r.ship?.url) return { text: `PR #${r.ship.number} open` };
   if (r.status === 'done') return { text: 'Done' };

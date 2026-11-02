@@ -71,6 +71,8 @@ export type Card =
       goalId?: string;
       /** superseded: a later run of the same work replaced it. */
       status: 'pending' | 'approved' | 'rejected' | 'superseded';
+      /** The run is in a plain folder: the card says folder, not PR. */
+      plain?: true;
       by?: string;
       at?: number;
       reason?: string;

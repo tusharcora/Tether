@@ -154,5 +154,7 @@ export interface GoalView extends Goal {
   stage: Stage;
   criteria: Criterion[];
   needs?: string;
+  /** One of its runs is in a plain folder: no PR, no merge. */
+  plain?: true;
 }
 export type TicketView = GoalView;

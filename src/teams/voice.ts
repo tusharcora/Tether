@@ -29,7 +29,7 @@ export type VoiceEvent =
   | { kind: 'gave_up'; rounds: number; why: string }
   | { kind: 'shipped'; pr: number }
   | { kind: 'merged'; pr: number }
-  | { kind: 'ship_failed'; reason: string };
+  | { kind: 'ship_failed'; reason: string; plain?: true };
 
 const FAILURE = /\b(couldn't|could not|can't|cannot|didn't|did not|failed|fails|failing|broke|broken|stuck|blocked|gave up|error)\b/i;
 const MENTION = /(^|[^\w@])@([\w-]+)/g;
@@ -76,7 +76,7 @@ export function template(ev: VoiceEvent): string {
     case 'merged':
       return `Merged PR #${ev.pr}.`;
     case 'ship_failed':
-      return `I couldn't ship it: ${reasonOf(ev.reason)}.`;
+      return `I couldn't ${ev.plain ? 'put it in the folder' : 'ship it'}: ${reasonOf(ev.reason)}.`;
   }
 }
 
