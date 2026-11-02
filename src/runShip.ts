@@ -4,23 +4,51 @@
  * create`) and, for a merge, waits for the PR's checks and merges it. A team's own run ships through its team, as it
  * always has: here it is only approved. What happened lands on the run as `run.shipped`.
  */
-import { dirname } from 'node:path';
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { shippable } from './history.js';
+import { landBranch, shippable, undoLanding } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
+import type { Landed } from './history.js';
 import { mergePr, prChecks, shipBranch } from './teams/ship.js';
 
 const POLL_MS = 60_000;
 const TRIES = 30;
+/** Landings and undos in one folder go one at a time: two that both saw a clean snapshot would write over each other. */
+const folders = new Map<string, Promise<unknown>>();
+function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
+  const run = (folders.get(folder) ?? Promise.resolve()).then(fn, fn);
+  const tail = run.catch(() => {});
+  folders.set(folder, tail);
+  void tail.then(() => folders.get(folder) === tail && folders.delete(folder));
+  return run;
+}
+
+/** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
+export async function landRun(d: { store: Store; home: string }, runId: string, base: string): Promise<{ landed: Landed } | { error: string }> {
+  const s = d.store.state(runId)!;
+  return inFolder(s.repo, async () => {
+    if (d.store.state(runId)!.ship?.landed) return { error: 'This work is already in the folder.' };
+    try {
+      const r = await landBranch(d.home, s.repo, base, s.branch);
+      if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
+      d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
+      return { landed: r };
+    } catch (e) {
+      console.error(`[ship] ${(e as Error).message}`, (e as Error).cause ?? '');
+      return { error: (e as Error).message };
+    }
+  });
+}
+
 const firstLine = (t: string, n: number) => t.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, n) ?? 'Tether run';
 
 export interface RunShipDeps {
   store: Store;
   engine: Engine;
   exec: Exec;
+  home: string;
   /** The run belongs to a team: its team ships it. */
   teamOwns: (runId: string) => boolean;
   /** How often and how many times a merge looks at pending checks (tests shorten it). */
@@ -55,6 +83,7 @@ export class RunShip {
   async decide(runId: string, merge: boolean): Promise<void> {
     const s = this.d.store.state(runId);
     if (!s) throw new HttpError(404, `unknown run ${runId}`);
+    if (s.ship?.landed) throw new HttpError(409, 'This work is already in the folder.');
     if (s.ship?.url) throw new HttpError(409, `already shipped as PR #${s.ship.number}`);
     const waiting = s.pipeline.nodes.filter((n) => n.kind === 'approval' && s.nodes[n.id]?.status === 'awaiting');
     if (!waiting.length && s.status !== 'done') throw new HttpError(409, 'nothing in this run waits on you');
@@ -73,7 +102,12 @@ export class RunShip {
       const merge = this.want.get(runId) ?? false;
       this.want.delete(runId);
       const s = this.d.store.state(runId)!;
-      const out = s.history ? { branch: s.branch, base: s.baseSha } : await shippable(await gitTop(s.repo), dirname(dirname(s.workdir)), runId, s.branch, s.baseSha);
+      if (s.history) {
+        const r = await landRun(this.d, runId, s.baseSha);
+        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: r.error });
+        return;
+      }
+      const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha);
       if ('error' in out) return void this.d.store.append(runId, { type: 'run.shipped', error: out.error });
       const r = await shipBranch({ repo: s.repo, branch: out.branch, base: out.base, title: firstLine(s.task, 70), body: `Opened from Tether (run ${runId}).\n\n${s.task}`, exec: this.d.exec });
       if ('error' in r) return void this.d.store.append(runId, { type: 'run.shipped', error: r.error });
@@ -82,6 +116,26 @@ export class RunShip {
     } finally {
       this.busy.delete(runId);
     }
+  }
+
+  /** Take a landing back out of the folder, or 409 naming the files a person changed since. The run's work is kept. */
+  async undo(runId: string): Promise<void> {
+    const s = this.d.store.state(runId);
+    if (!s) throw new HttpError(404, `unknown run ${runId}`);
+    const landed = s.ship?.landed;
+    if (!landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
+    await inFolder(s.repo, async () => {
+      if (!this.d.store.state(runId)!.ship?.landed) throw new HttpError(409, 'Nothing was put in the folder, so there is nothing to undo.');
+      let r: Awaited<ReturnType<typeof undoLanding>>;
+      try {
+        r = await undoLanding(this.d.home, s.repo, landed);
+      } catch (e) {
+        console.error(`[undo] ${(e as Error).message}`, (e as Error).cause ?? '');
+        throw new HttpError(409, (e as Error).message);
+      }
+      if (r !== true) throw new HttpError(409, `These files can't be undone automatically: ${r.conflicts.join(', ')}. Nothing was changed.`);
+      this.d.store.append(runId, { type: 'run.shipped', undone: true });
+    });
   }
 
   /** Merge once the PR's checks pass; pending checks are looked at again later, a failure is recorded. */

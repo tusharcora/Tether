@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { RunShip } from '../src/runShip.js';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addTeamLessons, loadLessons } from '../src/lessons.js';
 import { OWNER } from '../src/teams/store.js';
@@ -69,6 +72,25 @@ describe('a task', () => {
     expect(r.card('approval')!.card).toMatchObject({ status: 'approved', by: 'you', ship: { state: 'merged', pr: { number: 7, url: 'https://github.com/o/r/pull/7' } } });
     expect(r.card('pr')).toBeUndefined();
     expect(r.msgs()[1]!.card).toMatchObject({ status: 'done', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'done' }] });
+  });
+
+  it('a squad run in a plain folder lands, and the ship card says it is in the folder', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    const ship = r.card('approval')!;
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(r.calls).toEqual([]);
+    expect(r.store.state(runId)!.ship).toMatchObject({ merged: true, landed: { files: ['fix.txt'] } });
+    expect(r.card('approval')!.card).toMatchObject({ status: 'approved', ship: { state: 'merged', landed: true } });
+    expect(r.card('pr')).toBeUndefined();
+    // Undo from the run's own route: the card waits for Ship it again and the folder is as it was
+    await new RunShip({ store: r.store, engine: r.engine, exec: r.exec, home: r.home, teamOwns: () => true }).undo(runId);
+    expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
+    expect(r.card('approval')!.card).toMatchObject({ status: 'pending' });
+    expect((r.card('approval')!.card as { ship?: unknown }).ship).toBeUndefined();
   });
 
   it('tight: a plan to approve comes first', async () => {

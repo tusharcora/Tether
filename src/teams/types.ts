@@ -81,7 +81,7 @@ export type Card =
       tests?: { ok: boolean; line: string };
       review?: { by: string; pass?: boolean };
       /** After Ship it: the PR, opening then merging; Undo is possible until it is merged. */
-      ship?: { state: 'shipping' | 'open' | 'merged' | 'failed'; pr?: { url: string; number: number }; error?: string };
+      ship?: { state: 'shipping' | 'open' | 'merged' | 'failed'; /** Put in the plain folder, not a PR. */ landed?: true; pr?: { url: string; number: number }; error?: string };
     }
   /** `loop`: Start makes it a loop. `asker`: the person whose ask needs someone allowed to start it. */
   | { kind: 'proposal'; agent: string; task: string; status: 'proposed' | 'started' | 'dismissed'; runId?: string; loop?: boolean; asker?: string; by?: string }

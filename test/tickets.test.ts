@@ -149,6 +149,19 @@ describe('the ticket service', () => {
     expect(r.goals.db.must('g2')).toMatchObject({ stage: 'in_review' });
     expect(r.goals.db.must('g2').prs).toBeUndefined();
   });
+
+  it('a landed run moves its ticket to Done, and undo moves it back to In review', () => {
+    const r = rig();
+    r.goals.create({ id: 'g3', workspace: r.ws.id, title: 'Fix sign-in', kind: 'tracker', status: 'active', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, stage: 'in_progress' });
+    r.store.append('r8', { type: 'run.started', pipeline: { name: 'p', version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 1 } }, task: 't', repo: '/x', workdir: '/x', baseSha: 'a', branch: 'b' } as never);
+    r.goals.addItem('g3', { text: 'fix it', runId: 'r8' });
+    r.store.append('r8', { type: 'run.shipped', merged: true, landed: { pre: 'a', post: 'b', files: ['x.txt'] } });
+    expect(r.goals.db.must('g3')).toMatchObject({ stage: 'done' });
+    r.store.append('r8', { type: 'run.shipped', undone: true });
+    expect(r.goals.db.must('g3').stage).toBe('in_review');
+    expect(r.goals.db.must('g3').activity!.map((a) => a.text)).toEqual(['put the changes in the folder', 'took the changes back out of the folder']);
+    expect(r.store.state('r8')!.ship).toBeUndefined();
+  });
 });
 
 async function serve(r: ReturnType<typeof rig>) {

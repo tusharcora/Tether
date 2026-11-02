@@ -286,7 +286,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec, autofixing: (id) => autofix.pending(id) });
-  const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  const runShip = new RunShip({ store, engine, exec, home: cfg.home, teamOwns: (id) => teams.owns(id) });
   /** A ticket's last run: what Merge PR and Send back act on. */
   const ticketRun = (g: Goal) => {
     const r = goals.db.items(g.id).filter((i) => i.runId && store.state(i.runId)).at(-1)?.runId;
@@ -1134,9 +1134,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return send(res, 200, runView(id)), true;
     }
     // the run page's decision banner: Merge to main / Open PR instead, and Send back with comments
-    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback)$/)) && m === 'POST') {
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback|undo-land)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      if (g[2] === 'undo-land') {
+        if (!teams.mayApproveRun(id, OWNER.id)) throw new HttpError(403, 'Only the team’s chosen approvers can decide this run');
+        await runShip.undo(id);
+        return send(res, 200, runView(id)), true;
+      }
       const b = reqObject(await readJson(req));
       if (g[2] === 'ship') {
         if (typeof b.merge !== 'boolean') throw new HttpError(400, '"merge" must be true or false');

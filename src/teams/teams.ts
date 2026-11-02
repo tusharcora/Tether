@@ -22,6 +22,7 @@ import type { Exec } from '../exec.js';
 import { fence } from '../fence.js';
 import { git, gitTop } from '../git.js';
 import { shippable } from '../history.js';
+import { landRun } from '../runShip.js';
 import { recent } from '../activity.js';
 import { isFree } from '../attempts.js';
 import { parseCounts, type Goals } from '../goals/loop.js';
@@ -646,6 +647,10 @@ export class Teams {
       });
       const task = approved && node === 'approve-plan' ? this.taskOf(teamId, e.runId) : undefined;
       if (task) this.say(teamId, this.agentFrom(task.agent), template({ kind: 'plan_ok' }), { run: e.runId, ...(task.ticket ? { ticket: task.ticket } : {}), ...(task.thread ? { thread: task.thread } : {}) });
+    } else if (t === 'run.shipped' && e.event.undone) {
+      // taken back out of the folder: the card waits for Ship it again
+      const card = this.shipCard(teamId, e.runId);
+      if (card?.card?.kind === 'approval' && card.card.ship?.landed) this.patch(teamId, card.id, (x) => void (x.card?.kind === 'approval' && (delete x.card.ship, (x.card.status = 'pending'))));
     } else if (t === 'run.finished') {
       this.syncCard(teamId, e.runId);
       // a run waiting on an approval also "finishes" its pass, as paused: that is not its end
@@ -820,7 +825,19 @@ export class Teams {
       const title = firstLine(task.task, 70);
       if (card) this.setShip(team.id, card, { state: 'shipping' });
       const repo = projectRoot(this.d.home, team.project);
-      const out = s.history ? { branch: s.branch, base: task.base } : await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base);
+      if (s.history) {
+        // a plain folder has no PR: the work goes into the folder and the card says so
+        if (s.ship?.landed) return;
+        const l = await landRun(this.d, task.runId, task.base);
+        if ('error' in l) {
+          this.setShip(team.id, card, { state: 'failed', error: l.error });
+          return void this.say(team.id, from, template({ kind: 'ship_failed', reason: l.error }), { run: task.runId, report: l.error, ...where });
+        }
+        if (card) this.setShip(team.id, card, { state: 'merged', landed: true });
+        else this.say(team.id, from, "It's in the folder.", { run: task.runId, ...where });
+        return;
+      }
+      const out = await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base);
       const r = 'error' in out ? out : await shipBranch({ repo, branch: out.branch, base: out.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
       if ('error' in r) {
         this.setShip(team.id, card, { state: 'failed', error: r.error });

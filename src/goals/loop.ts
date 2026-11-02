@@ -470,6 +470,7 @@ export class Goals {
   private pr(id: string, runId: string, ev: Extract<StoredEvent['event'], { type: 'run.shipped' }>): void {
     const g = this.db.get(id);
     if (!g) return;
+    if (ev.undone) return void this.ticketEvent(id, { kind: 'asked', what: 'ship' }, { who: TETHER, text: 'took the changes back out of the folder', runId });
     const prs = [...(g.prs ?? [])];
     const at = prs.findIndex((p) => p.runId === runId || (ev.number !== undefined && p.number === ev.number));
     if (ev.url && ev.number !== undefined) {
@@ -478,7 +479,7 @@ export class Goals {
     const n = ev.number ?? prs[at]?.number;
     this.save({ ...g, prs });
     if (ev.error) return void this.note(id, { who: TETHER, text: `could not ship: ${ev.error.slice(0, 200)}`, runId });
-    if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
+    if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.landed ? 'put the changes in the folder' : ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
   }
   /** A ticket's run moved: its approvals, its PR, how it ended (failures say so; a fixable one waits for auto-fix). */
   private track(runId: string, ev: StoredEvent['event']): void {

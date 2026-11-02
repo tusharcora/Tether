@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +7,7 @@ import type { Exec } from '../src/exec.js';
 import { RunShip } from '../src/runShip.js';
 import { startServer } from '../src/server.js';
 import { Vault } from '../src/vault.js';
-import { makeRepo, pipe, setup, tmp } from './helpers.js';
+import { makeRepo, pipe, plainFolder, setup, tmp } from './helpers.js';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 const flow = () =>
@@ -37,7 +37,7 @@ async function rig(checks: string[] = []) {
     if (args[1] === 'view') return { code: 0, stdout: JSON.stringify({ state: 'OPEN', statusCheckRollup: (checks.shift() ?? 'SUCCESS') === 'PENDING' ? [{ status: 'IN_PROGRESS' }] : [{ status: 'COMPLETED', conclusion: 'SUCCESS' }] }), stderr: '' };
     return { code: 0, stdout: '', stderr: '' };
   };
-  const ship = new RunShip({ store: s.store, engine: s.engine, exec, teamOwns: () => false, pollMs: 10 });
+  const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false, pollMs: 10 });
   const id = await s.engine.start({ pipeline: flow(), task: 'Write fix.txt\n\nmore', repo });
   await s.engine.wait(id);
   return { ...s, repo, bare, calls, ship, id };
@@ -67,7 +67,7 @@ describe('the decision banner', () => {
 
   it('a run that waits on nobody and is not done has nothing to decide; a team run is only approved', async () => {
     const r = await rig();
-    const team = new RunShip({ store: r.store, engine: r.engine, exec: async () => ({ code: 1, stdout: '', stderr: 'no' }), teamOwns: () => true });
+    const team = new RunShip({ store: r.store, engine: r.engine, exec: async () => ({ code: 1, stdout: '', stderr: 'no' }), home: r.home, teamOwns: () => true });
     await team.decide(r.id, true);
     await r.engine.wait(r.id);
     await team.idle();
@@ -126,7 +126,7 @@ describe('shipping work that started from uncommitted files', () => {
     git(repo, 'remote', 'add', 'origin', bare);
     writeFileSync(join(repo, 'wip.txt'), 'scratch\n');
     const exec: Exec = async (_c, args) => (args[1] === 'create' ? { code: 0, stdout: 'https://github.com/o/r/pull/9\n', stderr: '' } : { code: 0, stdout: '', stderr: '' });
-    const ship = new RunShip({ store: s.store, engine: s.engine, exec, teamOwns: () => false });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
     const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: write } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
     const id = await s.engine.start({ pipeline: p, task: 'Write it', repo });
     await s.engine.wait(id);
@@ -154,5 +154,132 @@ describe('shipping work that started from uncommitted files', () => {
     expect(st.ship?.error).toContain("depends on changes you haven't committed");
     expect(git(r.bare, 'branch', '--list')).toBe('');
     expect(git(r.repo, 'branch', '--list', '*-pr')).toBe('');
+  });
+});
+
+describe('shipping a run in a plain folder', () => {
+  const calls: string[][] = [];
+  const exec: Exec = async (_c, args) => (calls.push(args), { code: 0, stdout: '', stderr: '' });
+  async function plainRun(files: Record<string, string> = { 'a.txt': 'one\n' }, content = 'two\n') {
+    const s = setup();
+    const folder = plainFolder(files);
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'b.txt', content } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
+    const id = await s.engine.start({ pipeline: p, task: 'Write b', repo: folder });
+    await s.engine.wait(id);
+    return { ...s, ship, folder, id };
+  }
+  const read = (dir: string, f: string) => readFileSync(join(dir, f), 'utf8');
+
+  it('lands the work in the folder instead of pushing', async () => {
+    calls.length = 0;
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    expect(read(r.folder, 'b.txt')).toBe('two\n');
+    expect(r.store.state(r.id)!.ship).toMatchObject({ merged: true, landed: { files: ['b.txt'] } });
+    expect(calls).toEqual([]);
+    await expect(r.ship.decide(r.id, false)).rejects.toThrow(/already in the folder/);
+  });
+
+  it('a conflict is recorded in plain words and changes nothing', async () => {
+    const r = await plainRun();
+    writeFileSync(join(r.folder, 'b.txt'), 'mine\n');
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.error).toBe('b.txt changed since this work started, so nothing was put in the folder. Keep your version, or send this back.');
+    expect(ship.landed).toBeUndefined();
+    expect(read(r.folder, 'b.txt')).toBe('mine\n');
+  });
+
+  it('undo takes it back out, keeps the run, and lets it land again', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    await r.ship.undo(r.id);
+    expect(existsSync(join(r.folder, 'b.txt'))).toBe(false);
+    expect(r.store.state(r.id)!.ship).toBeUndefined();
+    expect(existsSync(r.store.state(r.id)!.workdir)).toBe(true);
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    expect(read(r.folder, 'b.txt')).toBe('two\n');
+  });
+
+  it('undo after the person edited a landed file is a 409 naming it, and changes nothing', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    writeFileSync(join(r.folder, 'b.txt'), 'mine\n');
+    await expect(r.ship.undo(r.id)).rejects.toMatchObject({ status: 409, message: "These files can't be undone automatically: b.txt. Nothing was changed." });
+    expect(read(r.folder, 'b.txt')).toBe('mine\n');
+    expect(r.store.state(r.id)!.ship?.landed).toBeTruthy();
+  });
+
+  it('nothing to undo before it landed', async () => {
+    const r = await plainRun();
+    await expect(r.ship.undo(r.id)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('two runs that changed one file do not both land: the second sees the first as a conflict', async () => {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const mk = async (content: string) => {
+      const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
+      const id = await s.engine.start({ pipeline: p, task: 't', repo: folder });
+      await s.engine.wait(id);
+      return id;
+    };
+    const [a, b] = [await mk('A\n'), await mk('B\n')];
+    await Promise.all([ship.decide(a, true), ship.decide(b, true)]);
+    await ship.idle();
+    const landed = [a, b].filter((id) => s.store.state(id)!.ship?.landed);
+    expect(landed).toHaveLength(1);
+    const other = [a, b].find((id) => !landed.includes(id))!;
+    expect(s.store.state(other)!.ship?.error).toContain('a.txt changed since');
+    expect(read(folder, 'a.txt')).toBe(landed[0] === a ? 'A\n' : 'B\n');
+  });
+});
+
+describe('POST /api/runs/:id/undo-land', () => {
+  it('is a 409 naming the files when nothing can be undone, and 200 once it can', async () => {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const vault = new Vault(tmp('vault-'));
+    const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'b.txt', content: 'two\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['code', 'ok']]);
+    const id = await s.engine.start({ pipeline: p, task: 't', repo: folder });
+    await s.engine.wait(id);
+    const srv = await startServer({ engine: s.engine, store: s.store, vault, registry: s.registry, cfg: { home: s.home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, webDir: tmp('web-') });
+    const u = new URL(srv.url);
+    const call = (path: string) =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const q = request({ host: u.hostname, port: u.port, method: 'POST', path, headers: { host: u.host, 'content-type': 'application/json' } }, (res) => {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        });
+        q.on('error', reject);
+        q.end('{}');
+      });
+    try {
+      expect((await call(`/api/runs/${id}/ship`)).status).toBe(400);
+      expect((await call(`/api/runs/${id}/undo-land`)).status).toBe(409);
+      await new Promise<void>((resolve, reject) => {
+        const q = request({ host: u.hostname, port: u.port, method: 'POST', path: `/api/runs/${id}/ship`, headers: { host: u.host, 'content-type': 'application/json' } }, (res) => (res.resume(), res.on('end', () => resolve())));
+        q.on('error', reject);
+        q.end('{"merge":true}');
+      });
+      for (let i = 0; i < 100 && !s.store.state(id)!.ship?.landed; i++) await new Promise((r) => setTimeout(r, 25));
+      writeFileSync(join(folder, 'b.txt'), 'mine\n');
+      const bad = await call(`/api/runs/${id}/undo-land`);
+      expect(bad.status).toBe(409);
+      expect(JSON.parse(bad.body).error).toContain('b.txt');
+      writeFileSync(join(folder, 'b.txt'), 'two\n');
+      expect((await call(`/api/runs/${id}/undo-land`)).status).toBe(200);
+      expect(existsSync(join(folder, 'b.txt'))).toBe(false);
+    } finally {
+      await srv.close();
+    }
   });
 });

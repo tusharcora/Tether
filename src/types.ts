@@ -1,4 +1,5 @@
 import type { HttpGate } from './http/types.js';
+import type { Landed } from './history.js';
 export type { HttpGate };
 
 // Shared types. The pipeline file is the visual builder's document; RunEvent is the
@@ -269,7 +270,7 @@ export type RunEvent =
       capsOn?: boolean;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
-  | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string }
+  | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed; undone?: true }
   | { type: 'plan.question'; round: number; questions: Question[] }
   | { type: 'plan.answer'; answers: Answer[] }
   | { type: 'plan.ready'; plan: TeamPlan }
@@ -451,7 +452,7 @@ export interface RunState {
   capsOn?: boolean;
   origin?: RunOrigin;
   /** Its PR, once shipped (merged when merged), or why shipping failed. */
-  ship?: { url?: string; number?: number; merged?: boolean; error?: string };
+  ship?: { url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed };
   /** The last rewind, while it can still be undone (nothing has run since): what to put back. */
   rewind?: { node: string; ref: string; base: string; status: RunStatus; finishedAt?: number; error?: string; nodes: Record<string, NodeState> };
   /** Rewinds made so far (names the next rewind ref). */
@@ -747,6 +748,10 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'run.shipped': {
         const { type: _, ...ship } = e;
+        if (ship.undone) {
+          delete s.ship; // taken back out of the folder: it can land again
+          break;
+        }
         // an error clears once a later ship goes through, and a merge keeps the PR it merged
         s.ship = ship.error ? { ...s.ship, error: ship.error } : { ...s.ship, ...ship, error: undefined };
         break;
