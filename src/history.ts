@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { git, gitEnv, gitTop, must } from './git.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -18,6 +18,13 @@ export class FolderRefused extends Error {}
 export interface Snapshot {
   sha: string;
   leftOut: string[];
+}
+
+/** Work put into a folder: the snapshots either side of it and the files it covered, which is what undo needs. */
+export interface Landed {
+  pre: string;
+  post: string;
+  files: string[];
 }
 
 /** True when `dir` or a parent holds `.git` (a folder, or a file for worktrees and submodules). */
@@ -110,6 +117,8 @@ export async function snapshotFolder(home: string, folder: string, limits: { max
   if (!existsSync(join(history, 'HEAD'))) {
     mkdirSync(dirname(history), { recursive: true });
     await must(dirname(history), ['init', '-q', '--bare', '-b', 'main', history]);
+    // macOS sets this on, then `add` from stdin silently drops decomposed names (é as e + accent): keep every name byte for byte
+    await must(history, ['config', 'core.precomposeunicode', 'false']);
   }
   mkdirSync(join(history, 'info'), { recursive: true });
   // rename so a concurrent snapshot never reads a half-written file
@@ -130,6 +139,112 @@ export async function snapshotFolder(home: string, folder: string, limits: { max
     }
   });
   return { sha, leftOut };
+}
+
+/** The folder, resolved, or a plain error: `realpathSync` would put the path in its message. */
+function here(folder: string): string {
+  if (!statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new Error('This folder is no longer there, so nothing was changed.');
+  return realpathSync(folder);
+}
+
+/** Paths that differ between two commits. Not `out`: its trim would eat a name's leading space, and -z keeps odd names whole. */
+async function changed(history: string, from: string, to: string, filter?: string): Promise<string[]> {
+  const r = await git(history, ['diff', '--no-renames', '--name-only', '-z', ...(filter ? [`--diff-filter=${filter}`] : []), from, to]);
+  if (r.code !== 0) throw new Error(`git diff failed: ${r.stderr.trim()}`);
+  // gitEnv keeps only the tail past this size: a shortened list could hide a conflict
+  if (r.stdout.length >= 20_000_000) throw new Error('Too many files changed at once to do this safely.');
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+/** The `others` that sit on, above or below one of `paths`. Above and below count: git replaces a file or folder in a landed path's way. */
+function clashes(paths: string[], others: string[]): string[] {
+  const lineage = (p: string) => p.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
+  const exact = new Set(paths);
+  const within = new Set(paths.flatMap(lineage));
+  return [...new Set(others)].filter((o) => within.has(o) || lineage(o).some((a) => exact.has(a)));
+}
+
+/** Remove one file and any folders that leaves empty, refusing a path that resolves outside `real`. */
+function removeFile(real: string, rel: string): void {
+  const dir = dirname(join(real, rel));
+  if (!existsSync(dir)) return;
+  const parent = realpathSync(dir);
+  if (parent !== real && !parent.startsWith(real + sep)) throw new Error(`${rel} is outside this folder.`);
+  rmSync(join(parent, basename(rel)), { force: true });
+  for (let d = parent; d !== real; d = dirname(d)) {
+    try {
+      rmdirSync(d);
+    } catch {
+      return;
+    }
+  }
+}
+
+/** Make `files` in the folder match `to`, coming from `from`. Tries every file before reporting a failure, so a put-back does all it can. */
+async function matchFiles(history: string, real: string, from: string, to: string, files: string[]): Promise<void> {
+  const absent = new Set(await changed(history, from, to, 'D'));
+  let failure: unknown;
+  // removals first: a case-only rename or a file swapped for a folder needs the old path gone before the new one is written
+  for (const f of files.filter((p) => absent.has(p))) {
+    try {
+      removeFile(real, f);
+    } catch (e) {
+      failure ??= e;
+    }
+  }
+  const present = files.filter((p) => !absent.has(p));
+  if (present.length) {
+    await withFolder(history, real, async (env) => {
+      await out(real, env, ['read-tree', to]);
+      // no hooks: a global core.hooksPath must not run inside a person's folder
+      const r = await gitEnv(real, ['-c', 'core.hooksPath=/dev/null', 'checkout', to, '--pathspec-from-file=-', '--pathspec-file-nul'], { ...env, GIT_LITERAL_PATHSPECS: '1' }, present.join('\0'));
+      if (r.code !== 0) failure ??= new Error(`git checkout failed: ${r.stderr.trim()}`);
+    });
+  }
+  if (failure) throw failure;
+}
+
+/** Take `files` from `from` to `to` and return a snapshot of the result. On failure put them back and throw, saying what could not be. */
+async function move(home: string, real: string, from: string, to: string, files: string[]): Promise<string> {
+  const history = historyDir(home, real);
+  try {
+    await matchFiles(history, real, from, to, files);
+    return (await snapshotFolder(home, real)).sha;
+  } catch (cause) {
+    let left: string[];
+    try {
+      // checkout reports a file it could not rewrite even if that file never changed: judge by what is there now
+      await matchFiles(history, real, to, from, files).catch(() => {});
+      const check = await snapshotFolder(home, real);
+      left = clashes(files, [...(await changed(history, from, check.sha)), ...check.leftOut]);
+    } catch {
+      throw new Error('This stopped part way and Tether could not check your folder. Some files may have changed.', { cause });
+    }
+    throw new Error(left.length ? `This stopped part way, and these files could not be put back: ${left.join(', ')}` : 'This could not be finished, so your folder was put back as it was.', { cause });
+  }
+}
+
+/** Put a run's work (`base`..`head`) into the folder, or name the files a person changed in the meantime and change nothing. */
+export async function landBranch(home: string, folder: string, base: string, head: string): Promise<Landed | { conflicts: string[] }> {
+  const real = here(folder);
+  const pre = await snapshotFolder(home, real);
+  const history = historyDir(home, real);
+  const files = await changed(history, base, head);
+  // left-out files are in no snapshot, so a diff can't see them: they count as the person's
+  const conflicts = clashes(files, [...(await changed(history, base, pre.sha)), ...pre.leftOut]);
+  if (conflicts.length) return { conflicts };
+  return { pre: pre.sha, post: await move(home, real, pre.sha, head, files), files };
+}
+
+/** Take landed work back out, or name the landed files that changed since and change nothing. Other files are left alone. */
+export async function undoLanding(home: string, folder: string, l: Landed): Promise<true | { conflicts: string[] }> {
+  const real = here(folder);
+  const now = await snapshotFolder(home, real);
+  // a landed file now too big for the history can't be compared, so it can't be called unchanged
+  const conflicts = clashes(l.files, [...(await changed(historyDir(home, real), l.post, now.sha)), ...now.leftOut]);
+  if (conflicts.length) return { conflicts };
+  await move(home, real, now.sha, l.pre, l.files);
+  return true;
 }
 
 /** A real repo's working tree (uncommitted and untracked work included) as a commit on HEAD, touching no ref or real index. */
