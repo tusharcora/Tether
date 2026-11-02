@@ -341,7 +341,8 @@ export async function landBranch(home: string, folder: string, head: string, bas
   const pre = await snapshotFolder(home, real);
   const history = historyDir(home, real);
   // from the snapshot the work grew from, its last commit on main: a fork starts on its parent's commit, which the folder may never have held
-  const root = base ?? (await listed(history, ['merge-base', head, 'refs/heads/main']))[0]!.trim();
+  // merge-base with `base` too: a fork of a fork from a step they share doesn't descend from it, and the parent's later steps aren't this work
+  const root = (await listed(history, ['merge-base', head, base ?? 'refs/heads/main']))[0]!.trim();
   // a file already as the work has it needs nothing, and isn't a clash: a fork of landed work carries its parent's files
   const differ = new Set(await changed(history, pre.sha, head));
   const files = (await changed(history, root, head)).filter((p) => differ.has(p));

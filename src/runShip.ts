@@ -32,7 +32,7 @@ function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
 function landingBase(store: Store, s: RunState): string | undefined {
   for (let run = s; run.origin?.kind === 'fork'; ) {
     const parent = store.state(run.origin.id);
-    if (!parent) return undefined;
+    if (!parent) return run.baseSha; // it may have been landed: touch only the work below it
     if (parent.ship?.landed) return run.baseSha;
     run = parent;
   }

@@ -735,6 +735,60 @@ describe('shipping a run in a plain folder', () => {
       expect(here(r.folder, 'z.txt')).toBe(false);
     });
 
+    describe('a fork of an unlanded fork, from a step they share', () => {
+      /** A lands; B forks A at its last step; C forks B at the first, so B's fork point isn't below C. */
+      async function below(work: Record<string, string | null>, prepare?: (r: Awaited<ReturnType<typeof parent>>, b: string) => Promise<void>, before?: (folder: string) => void) {
+        const r = await parent();
+        before?.(r.folder);
+        await r.land(r.id);
+        const b = await r.fork(r.id, 'b', {});
+        await prepare?.(r, b);
+        return { ...r, landing: await r.land(await r.fork(b, 'a', work)) };
+      }
+
+      it('dropping the parent\'s later file leaves it', async () => {
+        const r = await below({ 'y.txt': null, 'w.txt': 'w\n' });
+        expect(r.landing.landed!.files).toEqual(['w.txt']);
+        expect(read(r.folder, 'y.txt')).toBe('B\n');
+      });
+
+      it('changing the parent\'s later file stops, naming it', async () => {
+        const r = await below({ 'y.txt': 'F\n', 'w.txt': 'w\n' });
+        expect(r.landing.error).toContain('y.txt changed since');
+        expect(read(r.folder, 'y.txt')).toBe('B\n');
+        expect(here(r.folder, 'w.txt')).toBe(false);
+      });
+
+      it('the same with the middle run landed and undone', async () => {
+        const r = await parent();
+        await r.land(r.id);
+        const b = await r.fork(r.id, 'b', { 'h.txt': 'h\n' });
+        await r.land(b);
+        await r.ship.undo(b);
+        const landing = await r.land(await r.fork(b, 'a', { 'y.txt': null, 'w.txt': 'w\n' }));
+        expect(landing.landed!.files).toEqual(['w.txt']);
+        expect(read(r.folder, 'y.txt')).toBe('B\n');
+      });
+
+      it('a file the person already had as A did stays', async () => {
+        const r = await below({ 'y.txt': null, 'w.txt': 'w\n' }, undefined, (f) => writeFileSync(join(f, 'y.txt'), 'B\n'));
+        expect(r.landing.landed!.files).toEqual(['w.txt']);
+        expect(read(r.folder, 'y.txt')).toBe('B\n');
+      });
+    });
+
+    it('a parent whose record is gone: the fork touches only its own work, and a revert stays', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const f = await r.fork(r.id, 'b', { 'z.txt': 'z\n' });
+      writeFileSync(join(r.folder, 'x.txt'), 'one\n');
+      await r.engine.deleteRun(r.id);
+      expect(r.store.state(r.id)).toBeUndefined();
+      const landing = await r.land(f);
+      expect(landing.landed!.files).toEqual(['z.txt']);
+      expect(read(r.folder, 'x.txt')).toBe('one\n');
+    });
+
     it('a run undone further up: a deletion a later run carries is not brought back or redone (U6)', async () => {
       const r = await parent();
       await r.land(r.id);
