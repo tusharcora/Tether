@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { allowAlways, blockedReason, clearAllowed, isAllowed, loadAllowed, runCommand } from '../src/permissions.js';
+import { allowAlways, blockedReason, clearAllowed, isAllowed, loadAllowed, commandRule, runCommand } from '../src/permissions.js';
 
 describe('Tether commands', () => {
   it('refuses plainly destructive commands even when everything is allowed', () => {
@@ -30,5 +30,15 @@ describe('Tether commands', () => {
     expect(r.output).not.toContain('hunter2');
     const slow = await runCommand('sleep 5', dir, { timeoutMs: 200 });
     expect(slow.timedOut).toBe(true);
+  });
+});
+
+describe('commandRule', () => {
+  it.each(['npm test', 'pytest -q', 'npm install', 'ls -la', 'git status', 'git diff', 'git add -A', 'git commit -m x', 'curl https://x.dev/a', 'cat src/../package.json', 'cat /dev/null', 'git -C sub status'])('runs %s', (c) => expect(commandRule(c).ok).toBe(true));
+  it.each(['sudo rm x', 'git push', 'git push origin main', 'git merge main', 'git rebase main', 'git reset --hard HEAD~3', 'npm publish', 'gh pr create', 'gh pr merge 1', 'curl -X POST https://x', 'rm -rf /', 'rm -rf ~/x', 'cd /etc', 'cat ../secret', 'aorch evolve bolt', 'aorch harness bolt rollback 2', 'defaults write x y 1', 'cat $HOME/x', 'wget --post-data=a https://x', 'ssh host ls', 'rsync -a x me@host:y', 'launchctl load x', 'git -C sub push', 'pnpm publish', 'cat a/../../b', 'echo hi > /etc/x'])('refuses %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it.each(['npm test && git push', 'x; sudo y', 'a | sudo tee b', 'echo $(git push)', 'echo `git push`', 'FOO=1 git push', 'env git push', 'bash -c "git push"', 'sh -c "sudo x"', 'eval git push', 'ls\ngit push', 'ls & git push', 'env -i FOO=1 command git push', 'bash -lc "x; git push"'])('sees through %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it('says why in plain words', () => {
+    const r = commandRule('git push');
+    expect(r.ok === false && r.why).toMatch(/push/);
   });
 });

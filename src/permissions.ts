@@ -112,3 +112,89 @@ export function runCommand(command: string, cwd: string, o: { timeoutMs?: number
     });
   });
 }
+
+const REFUSED_GIT = new Set(['push', 'pull', 'merge', 'rebase', 'filter-branch', 'filter-repo', 'update-ref', 'replace']);
+const OPTS_WITH_ARG = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
+const WRAPPERS = new Set(['env', 'command', 'exec', 'nohup', 'time']);
+const SENDS = /^(-[dFTX]|-X.+|--(data|data-\w+|form|upload-file|json|request|post-data|post-file|method)\b)/;
+
+/** Why this one simple command (no chaining) is refused, or undefined. `t` is its words, wrappers already stripped. */
+function whyRefused(t: string[]): string | undefined {
+  const cmd = (t[0] ?? '').replace(/^.*\//, '');
+  const rest = t.slice(1);
+  const sub = rest.filter((w) => !w.startsWith('-'))[0];
+  if (cmd === 'git') {
+    let i = 0;
+    while (i < rest.length && rest[i]!.startsWith('-')) i += OPTS_WITH_ARG.has(rest[i]!) ? 2 : 1;
+    const g = rest[i];
+    const args = rest.slice(i + 1);
+    if (g && REFUSED_GIT.has(g)) return `git ${g} sends or rewrites history, so it is left to you`;
+    if (g === 'reset' && args.some((a) => /^--(hard|keep|merge)$/.test(a))) return 'git reset --hard throws work away, so it is left to you';
+    if (g === 'commit' && args.includes('--amend')) return 'amending a commit rewrites history, so it is left to you';
+    if (g === 'reflog' || g === 'gc') return `git ${g} can destroy history, so it is left to you`;
+  }
+  if (cmd === 'gh') return 'gh acts on GitHub, outside this folder';
+  if (['npm', 'yarn', 'pnpm'].includes(cmd) && sub === 'publish') return 'publishing sends your work to the public';
+  if (cmd === 'curl' && rest.some((a) => SENDS.test(a))) return 'it sends data out of this folder';
+  if (cmd === 'wget' && rest.some((a) => /^--(post-data|post-file|method|body-data|body-file)\b/.test(a))) return 'it sends data out of this folder';
+  if (cmd === 'ssh' || cmd === 'scp') return `${cmd} reaches another machine`;
+  if (cmd === 'rsync' && rest.some((a) => /^([\w.-]+@|[\w.-]+:)/.test(a))) return 'rsync to another machine sends files out of this folder';
+  if (cmd === 'defaults' && sub === 'write') return 'it changes system settings';
+  if (cmd === 'systemsetup' || cmd === 'launchctl') return 'it changes system settings';
+  if (cmd === 'sudo' || cmd === 'doas') return 'needs administrator rights';
+  return undefined;
+}
+
+/** A reason this word points outside the folder, or undefined. Judged from the text alone: `..` by depth. */
+function outside(word: string): string | undefined {
+  let w = word.replace(/^[<>&]+/, '');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) return undefined; // a URL is not a path
+  if (w.includes('=')) w = w.slice(w.indexOf('=') + 1); // --out=/etc/x, FOO=../x
+  if (/^~|\$\{?HOME\b/.test(w)) return 'it reaches outside this folder (your home)';
+  if (w.startsWith('/')) return w === '/dev/null' || w === '/usr/bin/env' || w === '/tmp' || w.startsWith('/tmp/') ? undefined : 'it reaches outside this folder';
+  let depth = 0;
+  for (const seg of w.split('/')) {
+    if (seg === '..' && --depth < 0) return 'it climbs out of this folder';
+    else if (seg && seg !== '.' && seg !== '..') depth++;
+  }
+  return undefined;
+}
+
+/**
+ * Whether an agent may run this command in a folder the person trusted. Pure text, so it is cheap to import from a hook.
+ * Chained, nested and wrapped commands are each judged as if run alone.
+ */
+export function commandRule(command: string): { ok: true } | { ok: false; why: string } {
+  const no = (why: string) => ({ ok: false as const, why: `Not run: ${why}.` });
+  const bad = blockedReason(command) ?? needsApproval(command);
+  if (bad) return no(bad);
+  // shortcut: this matches text, so it stops mistakes, not a hostile project; the macOS Seatbelt port is the real boundary
+  const parts = command.replace(/\$\(|[`()]/g, ';').split(/;|&|\||\n/);
+  for (const part of parts) {
+    const all = part.replace(/["']/g, '').split(/\s+/).filter(Boolean);
+    if (!all.length) continue;
+    for (const w of all) {
+      const why = outside(w);
+      if (why) return no(why);
+    }
+    const t = [...all];
+    for (;;) {
+      if (/^\w+=/.test(t[0] ?? '')) t.shift();
+      else if (WRAPPERS.has(t[0]!)) {
+        t.shift();
+        while (t[0]?.startsWith('-') || /^\w+=/.test(t[0] ?? '')) t.shift();
+      } else break;
+      if (!t.length) break;
+    }
+    if (!t.length) continue;
+    const cmd = (t[0] ?? '').replace(/^.*\//, '');
+    const inner = (['bash', 'sh', 'zsh'].includes(cmd) && t.findIndex((w) => /^-\w*c$/.test(w)) + 1) || (cmd === 'eval' ? 1 : 0);
+    if (inner) {
+      const r = commandRule(t.slice(inner).join(' '));
+      if (!r.ok) return r;
+    }
+    const why = whyRefused(t);
+    if (why) return no(why);
+  }
+  return { ok: true };
+}
