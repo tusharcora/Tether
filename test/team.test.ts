@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { foldRun, type Question, type StoredEvent, type TeamPlan } from '../src/types.js';
 import { makeRepo, pipe, tmp } from './helpers.js';
+import { savePrefs } from '../src/prefs.js';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { Engine } from '../src/engine.js';
 import { Store } from '../src/store.js';
@@ -87,15 +88,25 @@ describe('plans and prompts', () => {
   it('recommendedAnswers records defaults', () => {
     expect(recommendedAnswers([q('a'), { ...q('b'), recommended: 'b' }])).toEqual([{ question: 'a', option: 'a', by: 'default' }, { question: 'b', option: 'b', by: 'default' }]);
   });
-  it('parsePlan drops unknown bots and never lets the model enable writes', () => {
+  it('parsePlan drops unknown bots; writes are on unless the person said no, whatever the model wrote', () => {
     const r = parsePlan(JSON.stringify({ plan: goodPlan }), ['coder'], []);
-    expect(r.plan!.assignments).toEqual([{ bot: 'coder', goal: 'write', mode: 'read' }]);
-    expect(r.plan!.limits).toEqual({ maxCostUsd: 3, allowWrites: false });
-    // ghost dropped, coder made read-only, and coder's assignment has no why
-    expect(r.errors.length).toBe(3);
-    const yes = parsePlan(JSON.stringify({ plan: goodPlan }), ['coder'], [{ question: 'writes', option: 'yes', by: 'user' }]);
-    expect(yes.plan!.assignments[0]!.mode).toBe('write');
-    expect(yes.plan!.limits.allowWrites).toBe(true);
+    expect(r.plan!.assignments).toEqual([{ bot: 'coder', goal: 'write', mode: 'write' }]);
+    expect(r.plan!.limits).toEqual({ maxCostUsd: 3, allowWrites: true });
+    // ghost dropped, and coder's assignment has no why
+    expect(r.errors.length).toBe(2);
+    const no = parsePlan(JSON.stringify({ plan: { ...goodPlan, limits: { allowWrites: true } } }), ['coder'], [{ question: 'writes', option: 'no', by: 'user' }]);
+    expect(no.plan!.assignments[0]!.mode).toBe('read');
+    expect(no.plan!.limits.allowWrites).toBe(false);
+  });
+  it('the default plan allows writes and its assignment edits files; an explicit no keeps it read-only', () => {
+    expect(defaultPlan('t', ['coder'], [])).toMatchObject({ limits: { allowWrites: true }, assignments: [{ mode: 'write' }] });
+    expect(defaultPlan('t', ['coder'], [{ question: 'writes', option: 'no', by: 'user' }])).toMatchObject({ limits: { allowWrites: false }, assignments: [{ mode: 'read' }] });
+  });
+  it('the planning prompt recommends writes and plans repo changes as file edits', () => {
+    const p = planningPrompt('Update README.md', [{ id: 'coder', title: 'Coder' }], [], 1, 3);
+    expect(p).toContain('recommended "yes"');
+    expect(p).toMatch(/plan it as file edits/);
+    expect(p).toMatch(/never recommend an option that makes the task impossible/i);
   });
   it('parsePlan rejects a plan without a goal or usable assignments', () => {
     expect(parsePlan('{"plan":{"assignments":[]}}', ['coder']).plan).toBeUndefined();
@@ -282,20 +293,22 @@ describe('planning safety', () => {
     await expect(t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, roster: ['nonesuch'] })).rejects.toThrow(/unknown bot/);
   });
 
-  it('a hostile writes card cannot turn writes on under yes', async () => {
+  it('a hostile writes card cannot turn writes off: yes takes the server\'s recommendation, which allows edits', async () => {
     const t = team();
-    const writes = { id: 'writes', ask: 'may I write?', options: [{ id: 'yes', label: 'yes' }, { id: 'no', label: 'no' }], recommended: 'yes' };
-    const id = await t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, roster: ['coder'], yes: true, mock: { questions: [[writes]], plan: { goal: 'g', assignments: [{ bot: 'coder', goal: 'c', mode: 'write' }] } } });
+    const writes = { id: 'writes', ask: 'may I write?', options: [{ id: 'yes', label: 'yes' }, { id: 'no', label: 'no' }], recommended: 'no' };
+    const id = await t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, roster: ['coder'], yes: true, mock: { questions: [[writes]], plan: { goal: 'g', assignments: [{ bot: 'coder', goal: 'c', mode: 'write' }], limits: { allowWrites: false } } } });
     const s = t.store.state(id)!;
-    expect(s.answers).toEqual([{ question: 'writes', option: 'no', by: 'default' }]);
-    expect(s.plan!.limits.allowWrites).toBe(false);
-    expect(s.plan!.assignments[0]!.mode).toBe('read');
+    expect(s.answers).toEqual([{ question: 'writes', option: 'yes', by: 'default' }]);
+    expect(s.plan!.limits.allowWrites).toBe(true);
+    expect(s.plan!.assignments[0]!.mode).toBe('write');
   });
 
-  it('only a user answer enables writes, and API callers cannot claim maestro', async () => {
-    expect(writesAllowed([{ question: 'writes', option: 'yes', by: 'default' }])).toBe(false);
-    expect(writesAllowed([{ question: 'writes', option: 'yes', by: 'maestro' }])).toBe(false);
-    expect(writesAllowed([{ question: 'writes', option: 'yes', by: 'user' }])).toBe(true);
+  it('writes are on unless the last writes answer is no, and API callers cannot claim maestro', async () => {
+    expect(writesAllowed([])).toBe(true);
+    expect(writesAllowed([{ question: 'writes', option: 'yes', by: 'default' }])).toBe(true);
+    expect(writesAllowed([{ question: 'writes', option: 'no', by: 'user' }])).toBe(false);
+    expect(writesAllowed([{ question: 'writes', option: 'no', by: 'default' }])).toBe(false);
+    expect(writesAllowed([{ question: 'writes', option: 'no', by: 'user' }, { question: 'writes', option: 'yes', by: 'user' }])).toBe(true);
     const t = team();
     const id = await t.engine.startTeam({ task: 'x', repo: t.repo, workspace: false, mock: { questions: [[card('q1')]] } });
     await expect(t.engine.answerPlan(id, [{ question: 'q1', option: 'a', by: 'maestro' }])).rejects.toThrow(/invalid answer/);
@@ -468,8 +481,9 @@ const script = (spawned: Record<string, object>, t: object[] = [{ id: 'a' }], ex
   ...extra,
 });
 
-async function approved(mockScript: object, o: { mode?: 'live' | 'autonomous' } = {}) {
+async function approved(mockScript: object, o: { mode?: 'live' | 'autonomous'; caps?: boolean } = {}) {
   const home = tmp('home-');
+  if (o.caps) savePrefs(home, { spendingCaps: true });
   const mock = new MockAdapter();
   const store = Store.open(':memory:');
   const engine = new Engine(store, { home, registry: new AdapterRegistry().register(mock), bindings: () => ({ orchestrator: { agent: 'mock' }, manager: { agent: 'mock' } }) });
@@ -483,13 +497,13 @@ const evs = (store: Store, id: string, type: string) => store.events(id).filter(
 
 describe('team run execution', () => {
   it('approving the plan builds the manager pipeline, skips a second approval and runs to done', async () => {
-    const t = await approved(script({ a: { output: 'fine' } }));
+    const t = await approved(script({ a: { output: 'fine' } }), { caps: true });
     expect(t.engine.isLive(t.id)).toBe(true);
     const s = await t.engine.wait(t.id);
     expect(s.error ?? s.nodes.manager?.error).toBeUndefined();
     expect(s.status).toBe('done');
     expect(s.pipeline.nodes[0]).toMatchObject({ id: 'manager', manager: true });
-    expect(s.pipeline.settings).toMatchObject({ planPreapproved: true, allowWrites: false, maxCostUsd: 5 });
+    expect(s.pipeline.settings).toMatchObject({ planPreapproved: true, allowWrites: true, maxCostUsd: 5 });
     expect(s.pipeline.nodes.some((n) => n.kind === 'approval')).toBe(false);
     expect(evs(t.store, t.id, 'team.pipeline')).toHaveLength(1);
     await expect(t.engine.approveTeamPlan(t.id, true)).rejects.toThrow(/already approved|not running/);
@@ -665,7 +679,8 @@ const WRITES = { id: 'writes', ask: 'writes?', options: [{ id: 'yes', label: 'ye
 const BINDS = () => ({ orchestrator: { agent: 'mock' }, manager: { agent: 'mock' } });
 function mk(adapter: MockAdapter = new MockAdapter()) {
   const store = Store.open(':memory:');
-  return { mock: adapter, store, engine: new Engine(store, { home: tmp('home-'), registry: new AdapterRegistry().register(adapter), bindings: BINDS }) };
+  const home = tmp('home-');
+  return { mock: adapter, store, home, engine: new Engine(store, { home, registry: new AdapterRegistry().register(adapter), bindings: BINDS }) };
 }
 async function start(t: ReturnType<typeof mk>, ms: object, o: { writes?: boolean; roster?: string[] } = {}) {
   const repo = makeRepo();
@@ -722,6 +737,7 @@ describe('team run pause safety and stop', () => {
 
   it('the plan shows the default cap; free text up to 2000 characters is kept', async () => {
     const t = mk();
+    savePrefs(t.home, { spendingCaps: true });
     const id = await start(t, script({ a: { output: '@ASK user: Anything?' } }));
     expect(t.store.state(id)!.plan!.limits.maxCostUsd).toBe(5);
     await t.engine.wait(id);
@@ -997,11 +1013,11 @@ import { TEAM_DEFAULT_BUDGET_USD, MAX_ANSWER_TEXT, MAX_QUESTIONS } from '../src/
 
 describe('team runs docs', () => {
   const readme = readFileSync(new URL('../docs/reference.md', import.meta.url), 'utf8');
-  const section = readme.split(/^## /m).find((x) => x.startsWith('Team runs')) ?? '';
+  const section = readme.split(/^## /m).find((x) => x.startsWith('Squad runs')) ?? '';
   it('the team template points to aorch team', () => {
     expect(TEMPLATES.team.label).toMatch(/aorch team/);
   });
-  it('README has a Team runs section covering what exists, with the real limits', () => {
+  it('the reference has a Squad runs section covering what exists, with the real limits', () => {
     expect(section).not.toBe('');
     for (const s of ['workflow', 'planning', 'recommended', 'live', 'autonomous', '/mode', '@ASK user:', '--budget', 'tether team', 'tether answer', 'tether plan', '--reject', 'tether mode', 'tether show', '/api/runs/:id/answers', '/api/runs/:id/plan', '/api/runs/:id/mode', '/team', '/approve', '/reject', '`T`', 'explicit']) {
       expect(section, s).toContain(s);

@@ -13,7 +13,7 @@ import { fmtBytes } from './ResponseView';
 const NOT_WORKERS = new Set(['orchestrator', 'approval', 'tester', 'manager']);
 const MODES = [
   { value: 'solo', label: 'Solo' },
-  { value: 'team', label: 'Team' },
+  { value: 'team', label: 'Squad' },
 ];
 type Target = { kind: 'run'; bot: string; mode: 'solo' | 'team' } | { kind: 'tether' };
 

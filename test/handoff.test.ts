@@ -6,6 +6,7 @@ import { foldRun, type PipelineNode, type RunState, type StoredEvent } from '../
 import { briefing, buildPrompt } from '../src/prompt.js';
 import { MockAdapter } from '../src/adapters/mock.js';
 import { handNode, handoffBlock, limitsOf, parseHands, parsePlan, parseReview, planPrompt, reviewPrompt, rosterOf, stripHands, toNode, validateHand, validatePlan, PLAN_CAPS, type HandRequest, type PlanTask } from '../src/handoff.js';
+import { savePrefs } from '../src/prefs.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 import { refreshCrew, registerCrew } from '../src/bots.js';
 import { BUILTIN_BOTS, crewWarnings, loadCrew, sanitizeBot, saveBot } from '../src/crew.js';
@@ -179,16 +180,16 @@ describe('prompts', () => {
       registerCrew(BUILTIN_BOTS);
     }
   });
-  it('review prompt shows children and clips output', () => {
+  it('review prompt shows children and cuts only output past the pass-on limit', () => {
     const s = stateOf();
-    s.nodes['lead-a'] = { status: 'done', attempts: 1, costUsd: 0, loops: 0, output: 'y'.repeat(9000) };
+    s.nodes['lead-a'] = { status: 'done', attempts: 1, costUsd: 0, loops: 0, output: 'y'.repeat(30_000) };
     s.nodes['lead-b'] = { status: 'error', attempts: 1, costUsd: 0, loops: 0, error: 'boom' };
     const kids = [toNode(task('a', { expected: 'works' }), mgr, 1), toNode(task('b'), mgr, 1)];
     const p = reviewPrompt(s, mgr, kids, 1);
     expect(p).toContain('lead-a');
     expect(p).toContain('works');
     expect(p).toContain('boom');
-    expect(p.length).toBeLessThan(7000);
+    expect(p.length).toBeLessThan(20_000);
   });
 });
 
@@ -253,8 +254,9 @@ const J = (x: unknown) => JSON.stringify(x);
 const ACCEPT = J({ decision: 'accept' });
 const plan = (...tasks: Record<string, unknown>[]) => J({ tasks });
 const lead = (mock: Record<string, unknown>, o: Partial<PipelineNode> = {}) => ({ id: 'lead', role: 'planner', readOnly: true, manager: true, roster: ['coder', 'reviewer'], mock, ...o }) as Partial<PipelineNode>;
-const startRun = async (p: ReturnType<typeof pipe>, o: { autoApprove?: boolean } = {}) => {
+const startRun = async (p: ReturnType<typeof pipe>, { caps, ...o }: { autoApprove?: boolean; caps?: boolean } = {}) => {
   const env = setup();
+  if (caps) savePrefs(env.home, { spendingCaps: true });
   const id = await env.engine.start({ pipeline: p, task: 'build the thing', repo: makeRepo(), workspace: false, ...o });
   return { ...env, id, s: await env.engine.wait(id) };
 };
@@ -376,7 +378,7 @@ describe('engine: manager steps', () => {
       [],
       { maxCostUsd: 0.01 },
     );
-    const { s, mock } = await startRun(p);
+    const { s, mock } = await startRun(p, { caps: true });
     expect(s.status).toBe('error');
     expect(s.error).toMatch(/budget exhausted/);
     expect(s.nodes['lead-b']!.status).toBe('skipped');
@@ -463,7 +465,7 @@ describe('engine: manager steps', () => {
 
   it('cost cap counts the manager\'s own spend', async () => {
     const p = pipe([lead({ costUsd: 0.02, replies: { plan: [plan({ id: 'a', to: 'coder', goal: 'g' })], review: [ACCEPT] } })], [], { maxCostUsd: 0.01 });
-    const { s, mock, store, id } = await startRun(p);
+    const { s, mock, store, id } = await startRun(p, { caps: true });
     expect(s.status).toBe('error');
     expect(s.error).toMatch(/budget exhausted/);
     expect(s.costUsd).toBeCloseTo(0.02);
@@ -864,11 +866,11 @@ describe('worker @HAND lines', () => {
     expect(handNode(req({ write: true }), worker, 3).readOnly).toBeFalsy();
   });
   it('handoffBlock marks failures', () => {
-    const b = handoffBlock([{ to: 'coder', goal: 'g1', answer: 'fine', ok: true }, { to: 'tester', goal: 'g2', answer: 'boom', ok: false }, { to: 'x', goal: 'g3', answer: 'y'.repeat(9000), ok: true }]);
+    const b = handoffBlock([{ to: 'coder', goal: 'g1', answer: 'fine', ok: true }, { to: 'tester', goal: 'g2', answer: 'boom', ok: false }, { to: 'x', goal: 'g3', answer: 'y'.repeat(30_000), ok: true }], undefined);
     expect(b).toMatch(/^# Handoff results/);
     expect(b).toContain('fine');
     expect(b).toContain('failed: boom');
-    expect(b).toContain('chars omitted');
+    expect(b).toContain('characters left out');
   });
   it('briefing mentions hand-offs only when canHand is given, otherwise is unchanged', () => {
     const p = pipe([{ id: 'a' }, { id: 'b' }], [['a', 'b']]);
@@ -1122,7 +1124,8 @@ describe('engine: worker @HAND handoffs', () => {
 
   it('the follow-up call after a hand-off gets the budget left after the child and the worker\'s own spend', async () => {
     const budgets: (number | undefined)[] = [];
-    const { engine, registry } = setup();
+    const { engine, registry, home } = setup();
+    savePrefs(home, { spendingCaps: true });
     registry.register({
       id: 'cap', reportsCost: true, supportsResume: false, detect: async () => ({ ok: true }),
       run: async (req) => {
@@ -1188,7 +1191,8 @@ describe('handoff display and defaults', () => {
 
   it('a hand-off chain cannot overshoot the cost cap by the delegators\' unrecorded spend', async () => {
     const budgets: Record<string, (number | undefined)[]> = {};
-    const { engine, registry, store } = setup();
+    const { engine, registry, store, home } = setup();
+    savePrefs(home, { spendingCaps: true });
     registry.register({
       id: 'cap', reportsCost: true, supportsResume: false, detect: async () => ({ ok: true }),
       run: async (req) => {
@@ -1215,8 +1219,8 @@ describe('handoff display and defaults', () => {
     expect(calls[1]!.prompt).not.toContain('Do not add new @HAND lines');
     expect(calls[2]!.prompt).toContain('Do not add new @HAND lines');
     const r = [{ to: 'coder', goal: 'g', answer: 'a', ok: true }];
-    expect(handoffBlock(r)).toContain('Do not add new @HAND lines');
-    expect(handoffBlock(r, false)).not.toContain('Do not add new @HAND lines');
+    expect(handoffBlock(r, undefined)).toContain('Do not add new @HAND lines');
+    expect(handoffBlock(r, undefined, false)).not.toContain('Do not add new @HAND lines');
   });
 
   it('the timeline says refused for a refused hand-off and answered otherwise', () => {

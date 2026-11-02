@@ -14,7 +14,7 @@ describe('BottomBar', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(more);
     expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Goals', 'Graph', 'Triggers', 'Artifacts', 'Settings']);
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Code', 'Tickets', 'Graph', 'Triggers', 'Artifacts', 'Settings']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Graph' }));
     expect(onGo).toHaveBeenCalledWith('graph');
     expect(screen.queryByRole('menu')).toBeNull();

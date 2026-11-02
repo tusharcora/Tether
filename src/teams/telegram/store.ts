@@ -1,5 +1,5 @@
 /**
- * What Tether keeps for Telegram (spec 2026-10-30 §6.1), in <home>/teams/telegram.json (0600, written atomically): the
+ * What Tether keeps for Telegram (spec 2026-10-30 §6.1), in <home>/squads/telegram.json (0600, written atomically): the
  * update offset, the bot it polls as, the owner's Telegram user (linked by `/iam`), the one-time codes waiting for `/pair`
  * or `/iam`, and per team the pinned status message, the Telegram ids of the messages it may edit (newest 300) and a mute.
  * Never the token: that is in the secret store.
@@ -7,6 +7,7 @@
 import { randomInt } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { squadsDir } from '../store.js';
 
 export const MAX_EDITABLE = 300;
 export const CODE_MS = 10 * 60_000;
@@ -30,7 +31,7 @@ export interface TgState {
   teams: Record<string, TgTeam>;
 }
 
-const file = (home: string) => join(home, 'teams', 'telegram.json');
+const file = (home: string) => join(squadsDir(home), 'telegram.json');
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 export function loadTg(home: string): TgState {

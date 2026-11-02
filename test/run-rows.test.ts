@@ -85,7 +85,7 @@ describe('run rows for Home', () => {
 
 describe('shared run labels', () => {
   it('names runs, steps and finished statuses one way for every screen', () => {
-    expect(runTitle({ kind: 'team', pipeline: 'team' })).toBe('Team run');
+    expect(runTitle({ kind: 'team', pipeline: 'team' })).toBe('Squad run');
     expect(runTitle({ kind: 'workflow', pipeline: 'flow' })).toBe('flow');
     expect(runMeta({ kind: 'workflow', pipeline: 'flow', id: 'r1', branch: 'aorch/r1' })).toBe('flow · r1 · aorch/r1');
     expect([...FINISHED].sort()).toEqual(['done', 'error', 'stopped']);

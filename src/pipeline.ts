@@ -164,8 +164,8 @@ export function ancestorsOf(p: Pipeline, id: string): string[] {
   return order.filter((n) => set.has(n));
 }
 
-/** Everything that must be true before a run is allowed to spend money. */
-export function preflight(p: Pipeline, registry?: AdapterRegistry): Issue[] {
+/** Everything that must be true before a run is allowed to spend money. `caps`: Spending caps are on (a cap is only worth a warning then). */
+export function preflight(p: Pipeline, registry?: AdapterRegistry, caps = true): Issue[] {
   const issues: Issue[] = [];
   const err = (message: string, node?: string) => issues.push({ level: 'error', node, message });
   const warn = (message: string, node?: string) => issues.push({ level: 'warn', node, message });
@@ -198,7 +198,7 @@ export function preflight(p: Pipeline, registry?: AdapterRegistry): Issue[] {
     if (n.kind === 'agent') {
       const a = n.agent ?? 'claude';
       if (registry && !registry.has(a)) err(`unknown agent adapter "${a}" (known: ${registry.ids().join(', ')})`, n.id);
-      if (p.settings.maxCostUsd !== undefined && registry?.has(a) && !registry.get(a).reportsCost) {
+      if (caps && p.settings.maxCostUsd !== undefined && registry?.has(a) && !registry.get(a).reportsCost) {
         warn(`adapter "${a}" does not report cost, so maxCostUsd cannot be enforced for this node`, n.id);
       }
     } else if (n.verdict) {

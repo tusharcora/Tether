@@ -26,7 +26,7 @@ import { composePipeline, detectTestCommand, diagnoseFailure } from './composer.
 import { aorchSkills, claudeSkillPipeline, claudeSkills, eccSkillPipeline, eccSkills, findSkill, skillPipeline } from './skills.js';
 import { supervise } from './supervisor.js';
 import { refreshCrew } from './bots.js';
-import { loadPrefs, savePrefs } from './prefs.js';
+import { capsOn, loadPrefs, savePrefs } from './prefs.js';
 import { loadCrew, saveBot, removeBot, freshId, sanitizeBot, toFile, BOT_KINDS, LOOK_PARTS, PART_KEYS, BUILTIN_IDS, canonicalBotId, type BotDef } from './crew.js';
 import { PACKS, findPack, parseBots, reid } from './packs.js';
 import { applyEcc, discardEcc, eccInfo, gitFetch, prepareEcc, removeEcc, type Prepared } from './eccImport.js';
@@ -1690,7 +1690,7 @@ async function main() {
       } catch (e) {
         fail(`cannot load pipeline "${spec}": ${(e as Error).message}${listPipelines(ctx.cfg.home).length ? '' : ' (run `aorch init` to install examples)'}`);
       }
-      for (const i of preflight(ctx.engine.resolve(pipeline), makeRegistry(ctx.cfg))) if (i.level === 'warn') console.error(yellow(`warning: ${i.node ? `[${i.node}] ` : ''}${i.message}`));
+      for (const i of preflight(ctx.engine.resolve(pipeline), makeRegistry(ctx.cfg), capsOn(ctx.cfg.home))) if (i.level === 'warn') console.error(yellow(`warning: ${i.node ? `[${i.node}] ` : ''}${i.message}`));
       let id: string;
       try {
         id = await ctx.engine.start({ pipeline, task, repo, ref: v.ref, autoApprove: v['auto-approve'], workspace: wsOpt(v), endpoints: v['no-endpoints'] ? false : undefined });

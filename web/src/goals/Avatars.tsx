@@ -22,7 +22,7 @@ export function useWho(): (a: Assignee) => Who {
   const { crew } = useCrew();
   return (a) => {
     if (a.kind === 'team') {
-      const t = roster?.teams.find((x) => x.id === a.id);
+      const t = roster?.squads.find((x) => x.id === a.id);
       return { a, name: t?.name ?? a.id, removed: !!roster && !t };
     }
     const bot = crew[a.id];

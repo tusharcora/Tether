@@ -31,6 +31,12 @@ export interface Prefs {
   httpActiveEnv?: Record<string, string>;
   /** Tether turns asks to build, fix or do something into goal cards. Default on. */
   asksToGoals?: boolean;
+  /** Runs stop at their $ caps (workflow maxCostUsd, team defaults, teams' daily $). Default off: costs show, nothing stops. */
+  spendingCaps?: boolean;
+  /** The app server auto-fixes a failed run: diagnose and retry, then a stronger model. Default on. */
+  autoFix?: boolean;
+  /** How many auto-fix rounds before it gives up (1 to 6). Default 3. */
+  autoFixRounds?: number;
 }
 
 export function loadPrefs(home: string): Prefs {
@@ -48,6 +54,9 @@ export function loadPrefs(home: string): Prefs {
     if (typeof j.graphics === 'boolean') out.graphics = j.graphics;
     if (j.diff === 'auto' || j.diff === 'unified' || j.diff === 'split') out.diff = j.diff;
     if (typeof j.asksToGoals === 'boolean') out.asksToGoals = j.asksToGoals;
+    if (typeof j.spendingCaps === 'boolean') out.spendingCaps = j.spendingCaps;
+    if (typeof j.autoFix === 'boolean') out.autoFix = j.autoFix;
+    if (Number.isInteger(j.autoFixRounds) && (j.autoFixRounds as number) >= 1 && (j.autoFixRounds as number) <= 6) out.autoFixRounds = j.autoFixRounds as number;
     if (j.commands === 'ask' || j.commands === 'always' || j.commands === 'off') out.commands = j.commands;
     if (j.themes && typeof j.themes === 'object' && !Array.isArray(j.themes)) out.themes = j.themes as Record<string, unknown>;
     if (j.httpActiveEnv && typeof j.httpActiveEnv === 'object' && !Array.isArray(j.httpActiveEnv))
@@ -57,6 +66,13 @@ export function loadPrefs(home: string): Prefs {
     return {};
   }
 }
+
+/** Spending caps are on (read fresh: a change applies to runs started afterwards). */
+export const capsOn = (home: string): boolean => loadPrefs(home).spendingCaps === true;
+
+/** Auto-fix failed runs is on (default) and how many rounds it tries (read fresh: a change applies to the next failure). */
+export const autoFixOn = (home: string): boolean => loadPrefs(home).autoFix !== false;
+export const autoFixRounds = (home: string): number => loadPrefs(home).autoFixRounds ?? 3;
 
 export function savePrefs(home: string, patch: Prefs): Prefs {
   const next = { ...loadPrefs(home), ...patch };

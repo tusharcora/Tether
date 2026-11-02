@@ -64,7 +64,7 @@ export function Conversation(p: { chat: Assistant; project?: { id: string; name:
         <span className="chat-head-gap" />
         {p.goals && wide ? (
           <Button variant={goalsOn ? 'secondary' : 'ghost'} size="sm" aria-pressed={goalsOn} onClick={toggleGoals}>
-            Goals
+            Tickets
           </Button>
         ) : null}
         <Button variant="secondary" size="sm" onClick={p.onPopOut}>

@@ -48,7 +48,7 @@ function Track({ r }: { r: RunRow }) {
 function Row({ r, team, goal, onOpen, now }: { r: RunRow; team?: string; goal?: boolean; onOpen: () => void; now: number }) {
   const st = runState(r);
   const line = nowLine(r);
-  const where = [team && `# ${team}`, goal && 'goal'].filter(Boolean).join(' · ');
+  const where = [team && `# ${team}`, goal && 'ticket'].filter(Boolean).join(' · ');
   return (
     <button type="button" className="rl-row" aria-label={`${taskTitle(r)}, ${RUN_STATE_LABEL[st]}`} onClick={onOpen}>
       <span className={cn('rl-dot', DOT[st])} aria-hidden="true" />
@@ -103,7 +103,7 @@ function NeedsCard({ r, team, onOpen, onShip }: { r: RunRow; team?: string; onOp
       <span className="rl-dot needs" aria-hidden="true" />
       <span className="rl-t">
         <b>{taskTitle(r)}</b>
-        <span>{[line.text, r.added !== undefined ? `+${r.added} −${r.deleted ?? 0}` : '', team && `# ${team}`, r.origin?.kind === 'goal' && 'goal'].filter(Boolean).join(' · ')}</span>
+        <span>{[line.text, r.added !== undefined ? `+${r.added} −${r.deleted ?? 0}` : '', team && `# ${team}`, r.origin?.kind === 'goal' && 'ticket'].filter(Boolean).join(' · ')}</span>
       </span>
       <Track r={r} />
       {approval && onShip ? (
@@ -158,7 +158,7 @@ export function RunList(props: {
   const [q, setQ] = useState('');
   const [pages, setPages] = useState(1);
   const { crew } = useCrew();
-  const teams = usePoll<TeamsReply>(TEAMS_PATH, 60_000).data?.teams ?? [];
+  const teams = usePoll<TeamsReply>(TEAMS_PATH, 60_000).data?.squads ?? [];
   const schedules = usePoll<{ schedules: Schedule[] }>('/api/schedules', 60_000).data?.schedules;
   const { data, error, refresh } = props.poll;
   const all = data ?? [];
@@ -206,8 +206,8 @@ export function RunList(props: {
             value={tab}
             onValueChange={(v) => setTab(v as RunsTab)}
           />
-          <select className="rl-chip" aria-label="Team" value={team} onChange={(e) => setTeam(e.target.value)}>
-            <option value="">Team: any</option>
+          <select className="rl-chip" aria-label="Squad" value={team} onChange={(e) => setTeam(e.target.value)}>
+            <option value="">Squad: any</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>{`# ${t.name}`}</option>
             ))}

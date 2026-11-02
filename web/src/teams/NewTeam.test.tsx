@@ -20,11 +20,11 @@ beforeEach(() => {
 
 describe('New team (board 2)', () => {
   it('creates a Tether team with the picked agents and rules; Slack and Telegram wait for a later phase', async () => {
-    routeApi({ 'POST /api/teams': (b: Record<string, unknown>) => ({ id: 'core-1a2b', ...b }) });
+    routeApi({ 'POST /api/squads': (b: Record<string, unknown>) => ({ id: 'core-1a2b', ...b }) });
     const onCreated = vi.fn();
     const onNewAgent = vi.fn();
     renderApp(<NewTeam agents={agents} projects={projects} project={projects[0]} onCreated={onCreated} onCancel={vi.fn()} onNewAgent={onNewAgent} />);
-    const create = screen.getByRole('button', { name: 'Create team' }) as HTMLButtonElement;
+    const create = screen.getByRole('button', { name: 'Create squad' }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
     // the place was picked in the New team menu: no place radio, the form says where it lives
     expect(screen.queryByRole('radiogroup', { name: 'Where it lives' })).toBeNull();
@@ -41,6 +41,6 @@ describe('New team (board 2)', () => {
     expect(onNewAgent).toHaveBeenCalled();
     fireEvent.click(create);
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('core-1a2b'));
-    expect(calls('POST', '/api/teams')[0]![2]).toEqual({ name: 'Tether core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], approvers: ['owner'], level: 'tight', limits: { usdPerDay: 10, runsPerDay: 5 }, learn: true });
+    expect(calls('POST', '/api/squads')[0]![2]).toEqual({ name: 'Tether core', place: 'tether', project: 'app', agents: ['coder', 'reviewer'], approvers: ['owner'], level: 'tight', limits: { usdPerDay: 10, runsPerDay: 5 }, learn: true });
   });
 });

@@ -8,7 +8,6 @@ import type { AdapterRegistry } from './adapters/index.js';
 import { CREW } from './bots.js';
 import { BUILTIN_IDS, KIND_BLURB, type BotDef } from './crew.js';
 import { fence } from './fence.js';
-import { TEAM_DEFAULT_BUDGET_USD } from './team.js';
 import { NAME_RE, normalizePipeline, preflight } from './pipeline.js';
 import { buildRoster, entryFor, loadRouting, rosterLine } from './roster.js';
 import { failureBrief } from './supervisor.js';
@@ -194,7 +193,8 @@ export function teamPipeline(plan: TeamPlan, roster: string[]): Pipeline {
   const bots = roster.length ? roster : [...new Set(plan.assignments.map((a) => a.bot))];
   p.settings = {
     ...p.settings,
-    maxCostUsd: plan.limits.maxCostUsd ?? TEAM_DEFAULT_BUDGET_USD,
+    // no cap in the plan (Spending caps off): none in the run, not the blank pipeline's default
+    maxCostUsd: plan.limits.maxCostUsd,
     ...(plan.limits.wallClockMs !== undefined ? { wallClockMs: plan.limits.wallClockMs } : {}),
     planApproval: true,
     planPreapproved: true,

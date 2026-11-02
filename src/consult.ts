@@ -1,6 +1,8 @@
 // Bots asking each other. A running step may ask a step that has already finished (why did you do that? what about this bug?)
 // by ending its answer with `@ASK <step>: <question>`. The engine puts the question to that step, read-only, and gives the
 // answer back so the asker can finish. Bounded and logged; nothing here can change files.
+import { liveLines } from './protocolLines.js';
+import { passOn } from './codemode/spill.js';
 import type { PipelineNode, RunState } from './types.js';
 
 export interface Ask {
@@ -11,15 +13,18 @@ export interface Ask {
 const ASK_LINE = /^[ \t]*@ask[ \t]+([^\s:]+)[ \t]*:[ \t]*(.*)$/i;
 const MAX_Q = 1500;
 
+/** A live line that carries a question on: not blank, not fenced or quoted, not another `@ASK`. */
+const goesOn = (l: { line: string; live: boolean } | undefined) => !!l && l.live && !!l.line.trim() && !ASK_LINE.test(l.line);
+
 /** Questions a step put at the end of its answer. A question may continue on the lines after `@ASK x:` until a blank line. */
 export function parseAsks(output: string): Ask[] {
   const out: Ask[] = [];
-  const lines = output.split('\n');
+  const lines = liveLines(output);
   for (let i = 0; i < lines.length; i++) {
-    const m = ASK_LINE.exec(lines[i]!);
+    const m = lines[i]!.live ? ASK_LINE.exec(lines[i]!.line) : null;
     if (!m) continue;
     let q = m[2]!.trim();
-    while (i + 1 < lines.length && lines[i + 1]!.trim() && !ASK_LINE.test(lines[i + 1]!)) q += ' ' + lines[++i]!.trim();
+    while (goesOn(lines[i + 1])) q += ' ' + lines[++i]!.line.trim();
     // `@ASK user:` is a question for the person (parseUserAsks), never a consult of a step called "user"
     if (q && !isUserTarget(m[1]!)) out.push({ target: m[1]!.replace(/^[`'"]+|[`'",.]+$/g, ''), question: q.slice(0, MAX_Q) });
   }
@@ -29,16 +34,16 @@ export function parseAsks(output: string): Ask[] {
 const isUserTarget = (t: string) => t.toLowerCase() === 'user';
 
 export function stripAsks(output: string): string {
-  const lines = output.split('\n');
+  const lines = liveLines(output);
   const keep: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = ASK_LINE.exec(lines[i]!);
+    const m = lines[i]!.live ? ASK_LINE.exec(lines[i]!.line) : null;
     // a question for the person stays in the text until stripUserAsks takes it out
     if (m && !isUserTarget(m[1]!)) {
-      while (i + 1 < lines.length && lines[i + 1]!.trim() && !ASK_LINE.test(lines[i + 1]!)) i++;
+      while (goesOn(lines[i + 1])) i++;
       continue;
     }
-    keep.push(lines[i]!);
+    keep.push(lines[i]!.raw);
   }
   return keep.join('\n').trimEnd();
 }
@@ -58,20 +63,19 @@ export function resolveTarget(st: RunState, asker: PipelineNode, name: string): 
   return list.find((n) => n.id.toLowerCase() === q) ?? list.find((n) => (n.role ?? '').toLowerCase() === q) ?? list.find((n) => (n.title ?? '').toLowerCase() === q);
 }
 
-const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, Math.floor(max / 2))}\n[... ${s.length - max} chars omitted ...]\n${s.slice(-Math.floor(max / 2))}`);
 const label = (n: PipelineNode) => `${n.role ?? n.kind} (${n.id})`;
 
 /** What the asked step is told. It may have its own session (it remembers), or only its earlier answer. */
 export function consultPrompt(st: RunState, asker: PipelineNode, target: PipelineNode, question: string, resumed: boolean): string {
   const parts = [`# A teammate has a question for you\n${label(asker)}, a later step in the same pipeline, is asking you about the work you already finished. Answer it directly and briefly from what you know and did. Do not modify any files and do not start new work.`];
-  if (!resumed) parts.push(`# What you produced earlier\n${clip(st.nodes[target.id]?.output ?? '', 8000)}`, `# The task\n${st.task}`);
+  if (!resumed) parts.push(`# What you produced earlier\n${passOn(st.nodes[target.id]?.output ?? '', st.workdir)}`, `# The task\n${st.task}`);
   parts.push(`# Question\n${question}`);
   return parts.join('\n\n');
 }
 
-/** The follow-up the asker receives once its questions are answered. */
-export function answersBlock(items: { to: string; question: string; answer: string }[]): string {
-  const body = items.map((a, i) => `${i + 1}. You asked ${a.to}: ${a.question}\n   Answer: ${clip(a.answer, 6000).replace(/\n/g, '\n   ')}`).join('\n\n');
+/** The follow-up the asker receives once its questions are answered. `workdir`: where a long answer is saved (passOn). */
+export function answersBlock(items: { to: string; question: string; answer: string }[], workdir?: string): string {
+  const body = items.map((a, i) => `${i + 1}. You asked ${a.to}: ${a.question}\n   Answer: ${passOn(a.answer, workdir).replace(/\n/g, '\n   ')}`).join('\n\n');
   return `# Answers to your questions\n${body}\n\nNow give your complete final answer. Do not repeat the questions or add new @ASK lines unless the answer truly changes what you must do.`;
 }
 
@@ -90,17 +94,9 @@ const USER_ASK_LINE = /^@ASK[ \t]+user[ \t]*:[ \t]*(.*)$/i;
 const MAX_USER_ASKS = 4;
 const MAX_USER_OPTIONS = 6;
 
-/** Lines of the output, flagged when they are a real `@ASK user:` line: at column 0 and outside ``` fences. CRLF tolerated. */
+/** Lines of the output, flagged when they are a real `@ASK user:` line: at column 0, outside fences, quotes and indented code. */
 function scanUserAsks(output: string): { raw: string; line: string; ask: boolean }[] {
-  let fenced = false;
-  return output.split('\n').map((raw) => {
-    const line = raw.replace(/\r$/, '');
-    if (/^\s*```/.test(line)) {
-      fenced = !fenced;
-      return { raw, line, ask: false };
-    }
-    return { raw, line, ask: !fenced && USER_ASK_LINE.test(line) };
-  });
+  return liveLines(output).map(({ raw, line, live }) => ({ raw, line, ask: live && USER_ASK_LINE.test(line) }));
 }
 
 /** One line of model text for the person: control characters (terminal escapes) dropped, whitespace collapsed. */

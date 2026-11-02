@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from './components/beui/kit/overlays';
 import { SegmentedControl } from './components/beui/kit/controls';
 import { Textarea } from './components/kept/textarea/textarea';
 import { ModeToggle } from './Team';
+import { useCaps } from './caps';
 import { useNotify } from './ui/notify';
 import { AddStepBar, AddStepMenu, type EccSkill } from './builder/Palette';
 import { SettingsForm, StepForm, StepHead, type Adapters } from './builder/Inspector';
@@ -73,6 +74,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
   const [auto, setAuto] = useState(false);
   const [endpoints, setEndpoints] = useState(true);
   const [busy, setBusy] = useState(false);
+  const caps = useCaps();
   const [teamRun, setTeamRun] = useState(false);
   const [teamMode, setTeamMode] = useState<'live' | 'autonomous'>('live');
   const [pending, setPending] = useState<null | (() => void)>(null);
@@ -395,7 +397,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
         />
       </FloatBar>
       <FloatBar at="right">
-        {pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
+        {caps && pl.settings.maxCostUsd ? <span className="bl-cap">{`$${pl.settings.maxCostUsd} cap`}</span> : null}
         {phone ? null : (
           <Button variant="secondary" size="sm" aria-pressed={settingsOpen} onClick={() => (setSelected(undefined), setSettingsOpen(!settingsOpen))}>
             Settings
@@ -444,7 +446,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
       </Dialog>
 
       <Dialog open={runOpen} onOpenChange={setRunOpen}>
-        <DialogContent title={teamRun ? 'Start a team run' : fromStep ? `Run “${pl.name}” from ${fromStep}` : `Run “${pl.name}”`}>
+        <DialogContent title={teamRun ? 'Start a squad run' : fromStep ? `Run “${pl.name}” from ${fromStep}` : `Run “${pl.name}”`}>
           <form
             className="bl-form"
             onSubmit={(e) => {
@@ -457,7 +459,7 @@ export function Builder(props: { pipeline?: string; onStarted: (runId: string) =
               label="Run type"
               options={[
                 { value: 'workflow', label: 'Workflow' },
-                { value: 'team', label: 'Team' },
+                { value: 'team', label: 'Squad' },
               ]}
               value={teamRun ? 'team' : 'workflow'}
               onValueChange={(v) => (setTeamRun(v === 'team'), v === 'team' && setFromStep(undefined))}

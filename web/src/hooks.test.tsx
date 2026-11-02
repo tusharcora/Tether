@@ -82,6 +82,24 @@ const browserGoes = (hash: string) =>
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, 10)));
 
 describe('hash routes', () => {
+  it('old screens redirect (spec 2026-10-30-squads-tickets): #/goals is Tickets, #/teams is Squads; Tickets takes a squad filter', () => {
+    expect(parseHash('#/goals')).toEqual({ tab: 'tickets' });
+    expect(parseHash('#/goals/g1')).toEqual({ tab: 'tickets', id: 'g1' });
+    expect(parseHash('#/teams/core')).toEqual({ tab: 'squads', id: 'core' });
+    expect(parseHash('#/teams/new/telegram')).toEqual({ tab: 'squads', id: 'new', node: 'telegram' });
+    expect(parseHash('#/tickets?squad=web')).toEqual({ tab: 'tickets', squad: 'web' });
+    expect(hashFor({ tab: 'tickets', squad: 'web' })).toBe('#/tickets?squad=web');
+    expect(hashFor({ tab: 'squads', id: 'core' })).toBe('#/squads/core');
+  });
+
+  it('an old link shows its new address in the URL', () => {
+    location.hash = '#/teams/core';
+    const { result } = renderHook(() => useHashRoute());
+    expect(result.current[0]).toEqual({ tab: 'squads', id: 'core' });
+    expect(location.hash).toBe('#/squads/core');
+    location.hash = '';
+  });
+
   beforeEach(() => {
     vi.useRealTimers();
     history.replaceState(null, '', '#/home');
@@ -128,7 +146,7 @@ describe('hash routes', () => {
   });
 
   it('lists the screens in sidebar order', () => {
-    expect(SCREENS).toEqual(['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'goals', 'api', 'graph', 'triggers', 'artifacts']);
+    expect(SCREENS).toEqual(['home', 'inbox', 'runs', 'code', 'builder', 'crew', 'tickets', 'api', 'graph', 'triggers', 'artifacts']);
     expect(TAB_LABEL.settings).toBe('Settings');
   });
 

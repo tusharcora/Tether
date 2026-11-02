@@ -12,9 +12,9 @@ import { StatusBadge } from '../ui/studio/StatusBadge';
 import type { AccountsView } from '../settings/accountsApi';
 import { useOpenRouterConnect } from '../settings/FreeModels';
 
-export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed', free_limit: 'Free limit' };
-const ACTION_LABEL: Record<AttentionAction, string> = { answer: 'Answer', review: 'Review plan', approve: 'Approve', resume: 'Resume', retry: 'Retry', open: 'Open' };
-const PRIMARY = new Set<AttentionAction>(['answer', 'review', 'approve']);
+export const KIND_LABEL: Record<AttentionItem['kind'], string> = { plan_ready: 'Plan ready', question: 'Question', approval: 'Approval', planning_error: 'Planning failed', paused: 'Paused', interrupted: 'Interrupted', failed: 'Failed', free_limit: 'Free limit', autofix_writes: 'Allow edits?', plan_conflict: 'Plan check' };
+const ACTION_LABEL: Record<AttentionAction, string> = { answer: 'Answer', review: 'Review plan', approve: 'Approve', resume: 'Resume', retry: 'Retry', open: 'Open', allow_edits: 'Allow edits and retry' };
+const PRIMARY = new Set<AttentionAction>(['answer', 'review', 'approve', 'allow_edits']);
 
 /**
  * Where a link action goes: a worker's question or an approval opens its step, a failed run opens on its Timeline,
@@ -71,7 +71,7 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: 
   const items = data?.items ?? [];
   const setup = !!props.accounts?.data?.providers.find((p) => p.id === 'openrouter')?.setup;
 
-  async function post(item: AttentionItem, path: 'approve' | 'resume', body: unknown) {
+  async function post(item: AttentionItem, path: 'approve' | 'resume' | 'allow-edits', body: unknown) {
     if (busy.has(item.id)) return;
     mark(item.id, true);
     try {
@@ -86,6 +86,7 @@ export function NeedsYou(props: { poll: Poll<{ items: AttentionItem[] }>; onGo: 
   const act = (item: AttentionItem, a: AttentionAction) => {
     if (a === 'approve') return void post(item, 'approve', { node: item.node, approved: true });
     if (a === 'resume' || a === 'retry') return void post(item, 'resume', {});
+    if (a === 'allow_edits') return void post(item, 'allow-edits', {});
     props.onGo(linkFor(item, a));
   };
 

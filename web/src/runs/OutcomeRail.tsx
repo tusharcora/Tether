@@ -7,7 +7,7 @@ import { FileBars } from './FileBars';
 import { commitsKey } from './RunFiles';
 import { useDiff } from './useDiff';
 
-const FROM = { chat: 'Chat', goal: 'Goal', team: 'Team', trigger: 'Trigger', schedule: 'Schedule', fork: 'Fork of a run' } as const;
+const FROM = { chat: 'Chat', goal: 'Ticket', team: 'Squad', trigger: 'Trigger', schedule: 'Schedule', fork: 'Fork of a run' } as const;
 /** Cost bar colours: the crew's own hues would need a palette; the tokens keep it to four, then repeat. */
 const TONES = ['var(--warn)', 'var(--ok)', 'var(--accInk)', 'var(--mut)'];
 
@@ -21,7 +21,7 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
   const c = p.goal?.lastCheck;
   const total = p.cost.reduce((a, x) => a + x.usd, 0);
   const o = r.origin;
-  const from = o ? (o.kind === 'chat' ? { tab: 'chats', id: o.id } : o.kind === 'goal' ? { tab: 'goals', id: o.id } : o.kind === 'team' ? { tab: 'teams', id: o.id } : o.kind === 'trigger' ? { tab: 'triggers' } : o.kind === 'fork' ? { tab: 'runs', id: o.id } : undefined) : undefined;
+  const from = o ? (o.kind === 'chat' ? { tab: 'chats', id: o.id } : o.kind === 'goal' ? { tab: 'tickets', id: o.id } : o.kind === 'team' ? { tab: 'squads', id: o.id } : o.kind === 'trigger' ? { tab: 'triggers' } : o.kind === 'fork' ? { tab: 'runs', id: o.id } : undefined) : undefined;
   const link = (label: string, to?: Route) =>
     to && p.onGo ? (
       <button type="button" className="rp-link" onClick={() => p.onGo!(to)}>
@@ -53,11 +53,11 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
             </>
           ) : null}
           <dt>Started from</dt>
-          <dd>{o ? link(o.kind === 'goal' && p.goal ? `Goal: ${p.goal.title}` : FROM[o.kind], from as Route | undefined) : '—'}</dd>
+          <dd>{o ? link(o.kind === 'goal' && p.goal ? `${p.goal.key}: ${p.goal.title}` : FROM[o.kind], from as Route | undefined) : '—'}</dd>
           {o?.team ? (
             <>
-              <dt>Team</dt>
-              <dd>{link(`# ${p.teamName ?? o.team}`, { tab: 'teams', id: o.team })}</dd>
+              <dt>Squad</dt>
+              <dd>{link(`# ${p.teamName ?? o.team}`, { tab: 'squads', id: o.team })}</dd>
             </>
           ) : null}
         </dl>

@@ -11,7 +11,7 @@ import { useNotify } from '../ui/notify';
 import { InlineError } from '../ui/studio/InlineError';
 import { shortRunId } from '../ui/studio/RunGlyph';
 import { ScreenHeader } from '../ui/studio/ScreenHeader';
-import { ApproveButton } from '../goals/Goals';
+import { ApproveButton } from '../goals/GoalNode';
 import { teamsApi } from '../teams/teamsApi';
 import { goalMeta, goalsApi, type GoalView } from '../goals/goalsApi';
 import { waitingGoals } from '../goals/GoalsNeedYou';
@@ -30,7 +30,7 @@ const failedKind = (k: AttentionItem['kind']) => k === 'failed' || k === 'planni
 function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Route) => void; onChanged: () => Promise<unknown> }) {
   const notify = useNotify();
   const it = e.items[0]!;
-  const needsRun = e.kind === 'question' || e.kind === 'plan_ready';
+  const needsRun = e.kind === 'question' || e.kind === 'plan_ready' || e.kind === 'plan_conflict';
   const view = usePoll<RunView>(needsRun ? `/api/runs/${encodeURIComponent(e.runId)}` : null, INBOX_MS);
   const [busy, setBusy] = useState(false);
   const post = async (path: string, body: unknown): Promise<boolean> => {
@@ -90,6 +90,11 @@ function Detail({ entry: e, onGo, onChanged }: { entry: InboxEntry; onGo: (r: Ro
         <h2 className="inbox-title">{it.title}</h2>
         <p className="sl-meta">{it.meta}</p>
         <div className="inbox-acts">
+          {it.actions.includes('allow_edits') ? (
+            <Button variant="primary" size="sm" loading={busy} onClick={() => void post('allow-edits', {})}>
+              Allow edits and retry
+            </Button>
+          ) : null}
           {it.actions.includes('resume') || it.actions.includes('retry') ? (
             <Button variant="primary" size="sm" loading={busy} onClick={() => void post('resume', {})}>
               {it.actions.includes('retry') ? 'Retry' : 'Resume'}
@@ -124,7 +129,7 @@ function GoalDetail({ goal: g, onGo, onDone }: { goal: GoalView; onGo: (r: Route
         <Button variant="secondary" size="sm" onClick={() => void goalsApi.next(g.id, 'skip').then(onDone, notify.fail)}>
           Skip
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'goals', id: g.id })}>
+        <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'tickets', id: g.id })}>
           Open goal
         </Button>
       </div>
@@ -174,7 +179,7 @@ export function Inbox(props: { onGo: (r: Route) => void; goals?: GoalView[]; onG
                       <span className="sl-dot pulse inbox-dot" aria-hidden="true" />
                       <span className="inbox-row-main">
                         <span className="sl-row-title">{g.title}</span>
-                        <span className="sl-row-meta">Goal · next run</span>
+                        <span className="sl-row-meta">Ticket · next run</span>
                       </span>
                       <StatusBadge tone="needs" label="approve run" />
                     </button>

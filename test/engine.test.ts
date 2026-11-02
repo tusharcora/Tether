@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { savePrefs } from '../src/prefs.js';
 import { makeRepo, pipe, setup } from './helpers.js';
 
 const fullPipeline = () =>
@@ -146,7 +147,8 @@ describe('engine', () => {
   });
 
   it('stops spending once the cap is reached', async () => {
-    const { engine, mock } = setup();
+    const { engine, mock, home } = setup();
+    savePrefs(home, { spendingCaps: true });
     const p = pipe(
       [
         { id: 'a', role: 'planner', readOnly: true, mock: { costUsd: 0.6 } },

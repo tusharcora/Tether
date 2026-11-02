@@ -16,7 +16,7 @@ import { useRosterPreview } from './useRosterPreview';
 import { INIT_COMMAND, pickWorkspace, WORKSPACES_MS, WORKSPACES_PATH, type WorkspaceRow } from './workspaces';
 
 type Mode = 'live' | 'autonomous';
-const MODE_LABEL: Record<Mode, string> = { live: 'Team · live', autonomous: 'Team · autonomous' };
+const MODE_LABEL: Record<Mode, string> = { live: 'Squad · live', autonomous: 'Squad · autonomous' };
 const EXAMPLES = ['Add rate limiting to the public API', 'Fix the flaky login test', 'Write a README section for the CLI'];
 
 function PreviewRow({ preview }: { preview: RosterPreview }) {

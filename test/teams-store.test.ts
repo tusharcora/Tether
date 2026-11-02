@@ -16,7 +16,7 @@ describe('team storage', () => {
     expect(team).toMatchObject({ name: 'Tether core', place: 'tether', people: [OWNER], approvers: 'any', level: 'balanced', learn: true, limits: { usdPerDay: 10, runsPerDay: 20 } });
     saveTeams(home, { teams: [team], agents: { coder: cleanProfile({ specialty: 'code', personality: 'Direct and brief.' }) } });
     expect(loadTeams(home)).toEqual({ teams: [team], agents: { coder: { specialty: 'code', personality: 'Direct and brief.' } } });
-    expect(mode(join(home, 'teams', 'teams.json'))).toBe(0o600);
+    expect(mode(join(home, 'squads', 'teams.json'))).toBe(0o600);
   });
 
   it('refuses a Slack place, an unknown bot or project, and approvers outside the team', () => {
@@ -53,16 +53,16 @@ describe('team storage', () => {
     const s = readState(home, 'core');
     expect(s.messages).toHaveLength(MAX_MESSAGES);
     expect(s.messages[0]!.id).toBe('m5');
-    expect(mode(join(home, 'teams', 'core.json'))).toBe(0o600);
+    expect(mode(join(home, 'squads', 'core.json'))).toBe(0o600);
   });
 
   it('reads a missing or corrupt state file as empty', () => {
     const home = tmp();
     expect(readState(home, 'core')).toEqual({ messages: [], tasks: [], answers: [] });
     saveTeams(home, { teams: [], agents: {} });
-    writeFileSync(join(home, 'teams', 'core.json'), '{nope');
+    writeFileSync(join(home, 'squads', 'core.json'), '{nope');
     expect(readState(home, 'core')).toEqual({ messages: [], tasks: [], answers: [] });
-    writeFileSync(join(home, 'teams', 'teams.json'), '[]');
+    writeFileSync(join(home, 'squads', 'teams.json'), '[]');
     expect(loadTeams(home)).toEqual({ teams: [], agents: {} });
   });
 });

@@ -41,3 +41,9 @@ export async function mergePr(url: string, exec: Exec): Promise<string | undefin
   const r = await exec('gh', ['pr', 'merge', url, '--merge']);
   return r.code === 0 ? undefined : ghWhy(r);
 }
+
+/** Close a PR without merging it (Undo before it merged); the branch stays for a rework. */
+export async function closePr(url: string, exec: Exec): Promise<string | undefined> {
+  const r = await exec('gh', ['pr', 'close', url]);
+  return r.code === 0 ? undefined : ghWhy(r);
+}

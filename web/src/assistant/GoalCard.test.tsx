@@ -23,7 +23,7 @@ const draft: GoalDraft = {
   approval: 'ask',
 };
 const proposal = (o: Partial<Proposal> = {}): Proposal => ({ id: 'p1', kind: 'goal', task: 'Fix the redirect', draft, goalId: 'g1', status: 'proposed', ...o });
-const roster = { teams: [{ id: 'web-1a2b', name: 'web', place: 'tether', project: 'w', agents: ['coder', 'reviewer'], status: 'idle' }], agents: [{ id: 'coder', name: 'Bolt', specialty: 'code' }, { id: 'reviewer', name: 'Lens', specialty: 'review' }, { id: 'tester', name: 'Probe', specialty: 'tests' }] };
+const roster = { squads: [{ id: 'web-1a2b', name: 'web', place: 'tether', project: 'w', agents: ['coder', 'reviewer'], status: 'idle', needs: 0, recent: [], queue: [] }], agents: [{ id: 'coder', name: 'Bolt', specialty: 'code' }, { id: 'reviewer', name: 'Lens', specialty: 'review' }, { id: 'tester', name: 'Probe', specialty: 'tests' }] };
 
 function chat(o: Partial<Assistant> = {}): Assistant {
   return { decide: vi.fn(async (p: Proposal, d: string) => ({ ...p, status: d === 'start' ? 'started' : 'dismissed' })), send: vi.fn(async () => {}), ...o } as unknown as Assistant;
@@ -31,7 +31,7 @@ function chat(o: Partial<Assistant> = {}): Assistant {
 
 beforeEach(() => {
   vi.mocked(api).mockReset();
-  routeApi({ 'GET /api/teams': roster, 'GET /api/goals/g1': { id: 'g1', status: 'active', kind: 'loop', items: [{ id: 1, kind: 'run', runId: 'r00001abcd', runStatus: 'running', text: 'x', done: false, at: 1, goalId: 'g1' }] } });
+  routeApi({ 'GET /api/squads': roster, 'GET /api/tickets/g1': { id: 'g1', key: 'WEB-142', status: 'active', kind: 'loop', items: [{ id: 1, kind: 'run', runId: 'r00001abcd', runStatus: 'running', text: 'x', done: false, at: 1, goalId: 'g1' }] } });
 });
 
 describe('the workflow as steps', () => {
@@ -49,8 +49,8 @@ describe('the workflow as steps', () => {
 describe('the goal card', () => {
   it('shows what the goal is, who does it and how, with no limits until added', async () => {
     renderApp(<GoalCard proposal={proposal()} chat={chat()} project="acme-web" onGo={vi.fn()} />);
-    const card = screen.getByRole('article', { name: /Goal card/ });
-    expect(within(card).getByText('Bug fix · new goal in acme-web · not started')).toBeTruthy();
+    const card = screen.getByRole('article', { name: /Ticket card/ });
+    expect(await within(card).findByText('WEB-142 · Bug fix · new ticket in acme-web · not started')).toBeTruthy();
     expect(within(card).getByText('Ready to start')).toBeTruthy();
     expect(within(card).getByText('npm test -- auth')).toBeTruthy();
     expect(await within(card).findByText('# web')).toBeTruthy();
@@ -63,7 +63,7 @@ describe('the goal card', () => {
   it('Start sends the card’s edits: a swapped agent and an added limit', async () => {
     const c = chat();
     renderApp(<GoalCard proposal={proposal()} chat={c} onGo={vi.fn()} />);
-    const card = screen.getByRole('article', { name: /Goal card/ });
+    const card = screen.getByRole('article', { name: /Ticket card/ });
     fireEvent.click(await within(card).findByRole('combobox', { name: 'Swap Lens' }));
     fireEvent.click(await screen.findByRole('option', { name: /Probe/ }));
     fireEvent.click(within(card).getByRole('button', { name: '+ Add limits' }));
@@ -80,7 +80,7 @@ describe('the goal card', () => {
   it('"Just answer, no goal" drops it and asks again for a plain answer', async () => {
     const c = chat();
     renderApp(<GoalCard proposal={proposal()} chat={c} onGo={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Just answer, no goal' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just answer, no ticket' }));
     await waitFor(() => expect(c.send).toHaveBeenCalledWith(JUST_ANSWER));
     expect(vi.mocked(c.decide).mock.calls[0]![1]).toBe('dismiss');
   });
@@ -92,17 +92,17 @@ describe('the goal card', () => {
     expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r00001abcd' });
     expect(screen.getByText('Live')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open in Goals →' }));
-    expect(onGo).toHaveBeenCalledWith({ tab: 'goals', id: 'g1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Tickets →' }));
+    expect(onGo).toHaveBeenCalledWith({ tab: 'tickets', id: 'g1' });
     // a team goal plans first: no Try more ways from its card
     expect(screen.queryByRole('button', { name: 'Try 2 more ways' })).toBeNull();
   });
 
   it('a started workflow goal can try its run more ways: the picker, then Compare', async () => {
     routeApi({
-      'GET /api/teams': roster,
+      'GET /api/squads': roster,
       'GET /api/pipelines/bugfix': { pipeline: { name: 'bugfix', nodes: [], edges: [] } },
-      'GET /api/goals/g1': { id: 'g1', status: 'active', kind: 'loop', items: [{ id: 1, kind: 'run', runId: 'r00001abcd', runStatus: 'paused', text: 'x', done: false, at: 1, goalId: 'g1' }] },
+      'GET /api/tickets/g1': { id: 'g1', status: 'active', kind: 'loop', items: [{ id: 1, kind: 'run', runId: 'r00001abcd', runStatus: 'paused', text: 'x', done: false, at: 1, goalId: 'g1' }] },
       'GET /api/runs/r00001abcd/attempts?count=4': { picks: [{ agent: 'codex' }, null, null, null], choices: [{ agent: 'codex' }], original: { agent: 'claude' } },
       'POST /api/runs/r00001abcd/attempts': { ids: ['r2', 'r3'], set: 'aset9' },
     });

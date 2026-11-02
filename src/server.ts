@@ -6,7 +6,8 @@ import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config }
 import type { Engine } from './engine.js';
 import { CREW, CREW_STYLES, lookPixels, refreshCrew } from './bots.js';
 import { GLYPHS, SHAPES, initialsOf, shapeOf, symbolOf } from './marks.js';
-import { loadPrefs, savePrefs } from './prefs.js';
+import { autoFixOn, autoFixRounds, capsOn, loadPrefs, savePrefs } from './prefs.js';
+import { AutoFix } from './autofix.js';
 import { BOT_ID_RE, BUILTIN_IDS, KIND_BLURB, LOOK_PARTS, BOT_KINDS, loadCrew, removeBot, sanitizeBot, saveBot, type BotDef } from './crew.js';
 import { PACKS, findPack, reid } from './packs.js';
 import { alreadyRan, fetchPr, loadSettings, matchRule, parseComment, parseIssue, parseWebhook, pipelineFor, ruleKind, saveSettings, startIssueRun, startPrRun, verifySignature, type Exec, type WebhookIssue } from './pr.js';
@@ -20,7 +21,8 @@ import { isOpenRouter } from './openrouter.js';
 import { codemodeRoute } from './codemode/routes.js';
 import { sweepSpills } from './codemode/spill.js';
 import { Goals } from './goals/loop.js';
-import { goalsRoute } from './goals/routes.js';
+import { goalsRoute, type TicketHooks } from './goals/routes.js';
+import type { Goal } from './goals/types.js';
 import { teamsRoute } from './teams/routes.js';
 import { OWNER } from './teams/store.js';
 import { Teams } from './teams/teams.js';
@@ -228,6 +230,9 @@ function checkAnswers(body: unknown, s: RunState): Answer[] {
   return out;
 }
 
+/** `/api/goals…` → `/api/tickets…`, `/api/teams…` → `/api/squads…`: the old API names, kept as aliases for one release. */
+export const aliasPath = (p: string): string => p.replace(/^\/api\/goals(?=\/|$)/, '/api/tickets').replace(/^\/api\/teams(?=\/|$)/, '/api/squads');
+
 const isLoopback = (h: string) => h === '127.0.0.1' || h === '::1' || h === 'localhost' || h === '[::1]';
 
 /** Host header must name a loopback host: blocks DNS-rebinding against a loopback-bound server. */
@@ -271,15 +276,52 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
   const { engine, store, vault, registry, cfg } = o;
   const attention = attentionReader(store);
+  // auto-fix hears a failure before the goal loop does, so a goal waits for its rounds instead of settling on the failure
+  const autofix = new AutoFix({ home: cfg.home, store, engine, registry });
+  /** As every screen computes it, plus a failed run auto-fix is still working on (it shows under Live, not Needs you). */
+  const live = (r: { id: string; kind: RunState['kind']; status: RunState['status']; pending: number; planReady: boolean }, lastTs: number) => rowLive(engine, { ...r, lastTs }) || autofix.pending(r.id);
   // a team's loop starts its runs through its team (made just below; the hooks are only called after both exist)
-  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) } });
+  const goals: Goals = new Goals({ home: cfg.home, store, engine, registry, hooks: { start: (g, p) => teams.loopRun(g, p), blocked: (g) => teams.blocked(g), decided: (g, a) => teams.goalDecided(g, a) }, autofixing: (id) => autofix.pending(id) });
   const github = o.github ?? new GithubAccount(cfg.home, { exec: o.exec });
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
-  const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec });
+  const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec, autofixing: (id) => autofix.pending(id) });
   const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  /** A ticket's last run: what Merge PR and Send back act on. */
+  const ticketRun = (g: Goal) => {
+    const r = goals.db.items(g.id).filter((i) => i.runId && store.state(i.runId)).at(-1)?.runId;
+    if (!r) throw new HttpError(409, 'This ticket has no run yet.');
+    return r;
+  };
+  /** Tickets meet squads and runs (spec 2026-10-30-squads-tickets §2.5): hand-offs, Start on a squad agent, ship, send back. */
+  const ticketHooks: TicketHooks = {
+    hand: (g, text) => teams.handTicket(g, text),
+    start: (g) => teams.startTicket(g),
+    ship: async (g) => {
+      const r = ticketRun(g);
+      if (!teams.mayApproveRun(r, OWNER.id)) throw new HttpError(403, 'Only the squad’s chosen approvers can ship this.');
+      if (teams.owns(r)) return teams.shipRun(r, OWNER);
+      const s = store.state(r)!;
+      if (s.ship?.url && !s.ship.merged) return runShip.mergeOpen(r);
+      await runShip.decide(r, true);
+    },
+    sendBack: async (g, reason) => {
+      const r = ticketRun(g);
+      if (teams.owns(r)) return teams.sendBackRun(r, OWNER, reason);
+      const s = store.state(r)!;
+      // the run's last agent step that changes files (else its last agent step) does it again with the note
+      const agents = s.pipeline.nodes.filter((n) => n.kind === 'agent');
+      const node = [...agents].reverse().find((n) => !n.readOnly) ?? agents.at(-1);
+      if (!node) throw new HttpError(409, 'This ticket’s run has no step to send back to.');
+      try {
+        await engine.sendBack(r, node.id, reason || 'Sent back from its ticket: have another go.');
+      } catch (e) {
+        throw new HttpError(409, (e as Error).message);
+      }
+    },
+  };
   /** What needs the person: every run's items, with the team named on a team's (and a loop's ship card from its team). */
-  const needs = () => teams.inbox(attention.items((r, lastTs) => rowLive(engine, { ...r, lastTs })));
+  const needs = () => teams.inbox(attention.items(live));
   /** Terminal and Preview processes; every one ends with the server (or, at the latest, with this process). */
   const procs = new RunProcs({ home: cfg.home, store });
   /** Try more ways: siblings count toward the original's goal and team. */
@@ -364,8 +406,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    const live = rowLive(engine, { id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s), lastTs: store.lastTs(id) });
-    return { ...s, live };
+    return { ...s, live: live({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }, store.lastTs(id)) };
   };
 
 
@@ -442,25 +483,46 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   }
 
   async function route(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+    // the old names answer for one release (spec 2026-10-30-squads-tickets §6.1): /api/goals is /api/tickets, /api/teams is /api/squads
+    url.pathname = aliasPath(url.pathname);
     const p = url.pathname;
     const m = req.method ?? 'GET';
     let g: RegExpMatchArray | null;
     if (p.startsWith('/api/http/')) return httpRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p.startsWith('/api/code/')) return codeRoute({ home: cfg.home, store, engine }, req, res, url);
     if (p === '/api/accounts' || p.startsWith('/api/accounts/')) return accountsRoute({ home: cfg.home, github, openrouter, nvidia, telegram }, req, res, url);
-    if (p === '/api/telegram' || p.startsWith('/api/telegram/') || /^\/api\/teams\/[^/]+\/pair$/.test(p)) return telegramRoute({ telegram, voice }, req, res, url);
+    if (p === '/api/telegram' || p.startsWith('/api/telegram/') || /^\/api\/squads\/[^/]+\/pair$/.test(p)) return telegramRoute({ telegram, voice }, req, res, url);
     if (p === '/api/assistant' || p.startsWith('/api/assistant/'))
       return assistantRoute({ home: cfg.home, store, engine, registry, vault, needs, modelInfo, goals }, req, res, url);
     if (p.startsWith('/api/codemode/')) return codemodeRoute(cfg.home, req, res, url, github);
-    if (p === '/api/goals' || p.startsWith('/api/goals/')) return goalsRoute({ home: cfg.home, store, goals }, req, res, url);
+    if (p === '/api/tickets' || p.startsWith('/api/tickets/')) return goalsRoute({ home: cfg.home, store, goals, hooks: ticketHooks }, req, res, url);
     if (p === '/api/schedules' || p.startsWith('/api/schedules/')) return schedulesRoute({ home: cfg.home, scheduler, refs: scheduleRefs }, req, res, url);
-    if (p === '/api/teams' || p.startsWith('/api/teams/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
+    if (p === '/api/squads' || p.startsWith('/api/squads/') || p.startsWith('/api/agents/')) return teamsRoute({ home: cfg.home, teams, vault }, req, res, url);
     if (p.startsWith('/api/attempts/') || /^\/api\/runs\/[^/]+\/(rewind|fork|attempts|exec|preview)(\/|$)/.test(p))
       return runToolsRoute({ store, engine, attempts, procs, runView, mayApprove: (id) => teams.mayApproveRun(id, OWNER.id) }, req, res, url);
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
-      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home }), true;
+      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home) }), true;
+    }
+    if (p === '/api/prefs' && m === 'PUT') {
+      const b = await readJson(req);
+      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number } = {};
+      if (b.spendingCaps !== undefined) {
+        if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
+        patch.spendingCaps = b.spendingCaps;
+      }
+      if (b.autoFix !== undefined) {
+        if (typeof b.autoFix !== 'boolean') throw new HttpError(400, '"autoFix" must be true or false');
+        patch.autoFix = b.autoFix;
+      }
+      if (b.autoFixRounds !== undefined) {
+        if (!Number.isInteger(b.autoFixRounds) || b.autoFixRounds < 1 || b.autoFixRounds > 6) throw new HttpError(400, '"autoFixRounds" must be a whole number from 1 to 6');
+        patch.autoFixRounds = b.autoFixRounds;
+      }
+      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix" or "autoFixRounds"');
+      savePrefs(cfg.home, patch);
+      return send(res, 200, patch), true;
     }
     if (p === '/api/doctor' && m === 'GET') return send(res, 200, await doctor()), true;
     if (p === '/api/tools' && m === 'GET') {
@@ -864,7 +926,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/pipelines' && m === 'GET') return send(res, 200, listPipelines(cfg.home)), true;
     if (p === '/api/preflight' && m === 'POST') {
       const pl = normalizePipeline(await readJson(req));
-      return send(res, 200, { issues: preflight(engine.resolve(pl), registry) }), true;
+      return send(res, 200, { issues: preflight(engine.resolve(pl), registry, capsOn(cfg.home)) }), true;
     }
     if ((g = p.match(/^\/api\/pipelines\/([^/]+)$/))) {
       const name = decodeURIComponent(g[1]!);
@@ -872,7 +934,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (m === 'GET') {
         try {
           const pl = readPipeline(cfg.home, name);
-          return send(res, 200, { pipeline: pl, issues: preflight(engine.resolve(pl), registry) }), true;
+          return send(res, 200, { pipeline: pl, issues: preflight(engine.resolve(pl), registry, capsOn(cfg.home)) }), true;
         } catch {
           throw new HttpError(404, `no pipeline "${name}"`);
         }
@@ -898,7 +960,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const rows = store
         .listRows()
         .filter(({ summary: r }) => all || !r.probe)
-        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: rowLive(engine, { ...r, lastTs }) }));
+        .map(({ summary: r, state, lastTs }) => ({ ...r, ...rowExtras(state, lastTs), live: live(r, lastTs) }));
       return send(res, 200, rows), true;
     }
     if (p === '/api/attention' && m === 'GET') return send(res, 200, { items: needs() }), true;
@@ -1031,6 +1093,17 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       }
       return send(res, 200, runView(id)), true;
     }
+    // Allow edits: a plan that waits is planned again with writes on; a run auto-fix asked about retries with edits
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/allow-edits$/)) && m === 'POST') {
+      const id = idParam(g[1]!);
+      if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      try {
+        await autofix.allowEdits(id);
+      } catch (e) {
+        throw new HttpError(409, (e as Error).message);
+      }
+      return send(res, 200, runView(id)), true;
+    }
     if ((g = p.match(/^\/api\/runs\/([^/]+)\/(stop|resume|approve)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       const action = g[2]!;
@@ -1039,7 +1112,8 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const b = await readJson(req);
       try {
         if (action === 'stop') {
-          if (!engine.stop(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
+          // between auto-fix rounds the run is not live: Stop ends auto-fix instead
+          if (!engine.stop(id) && !autofix.cancel(id)) throw new HttpError(409, s.status === 'running' ? 'run is not live in this server (stop it where it was started)' : `this run is not active (${s.status})`);
         } else if (action === 'resume') {
           // Switch model… after the free limit: the waiting steps carry on on this agent/model (this run only)
           const model = reqString(b, 'model');

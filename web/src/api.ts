@@ -164,7 +164,21 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
     case 'approval.resolved':
       return { text: `${nameOf(e.node)} ${e.approved ? 'approved' : 'rejected'}${e.by ? ` by ${e.by}` : ''}`, tone: e.approved ? 'done' : 'error' };
     case 'node.amended':
-      return { text: `${nameOf(e.node)} now runs on ${e.agent ?? '?'}${e.model ? ' · ' + e.model : ''}`, tone: 'wait' };
+      return e.guidance ? { text: `${nameOf(e.node)} got new guidance (${e.reason})`, tone: 'wait' } : { text: `${nameOf(e.node)} now runs on ${e.agent ?? '?'}${e.model ? ' · ' + e.model : ''}`, tone: 'wait' };
+    case 'autofix.started':
+      return { text: `auto-fix took the failure on (up to ${e.rounds} round${e.rounds === 1 ? '' : 's'})`, tone: 'wait' };
+    case 'autofix.round':
+      return { text: `auto-fix round ${e.round} of ${e.of}: ${e.detail}`, tone: 'wait' };
+    case 'autofix.gave_up':
+      return { text: `auto-fix gave up after ${e.rounds} round${e.rounds === 1 ? '' : 's'}: ${e.why}`, tone: 'error' };
+    case 'autofix.needs_writes':
+      return { text: `auto-fix asks: allow edits and retry? (${e.why})`, tone: 'wait' };
+    case 'run.writes':
+      return { text: 'edits allowed', tone: 'info' };
+    case 'plan.reopened':
+      return { text: 'planning again with edits allowed', tone: 'wait' };
+    case 'run.notice':
+      return { text: `${e.node ? `${nameOf(e.node)}: ` : ''}${e.text}`, tone: 'wait' };
     case 'supervisor.action':
       return { text: `Tether ${e.action}: ${e.detail}`, tone: e.action === 'stop' ? 'error' : 'wait' };
     case 'run.coach':

@@ -143,3 +143,11 @@
 .tp-who b { font-weight: 500; color: var(--ink); }
 .tp-na { color: var(--mut); font-size: 12px; }
 @media (max-width: 560px) { .tp-row { grid-template-columns: minmax(0, 1fr) 64px 64px 32px; gap: 6px; } }
+
+/* An agent's own page (#/agents/<id>): face, name and what it is doing, then its profile */
+.agent-page { max-width: 880px; margin: 0 auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+.agent-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.agent-page-who { flex: 1 1 240px; min-width: 0; }
+.agent-page-who h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.agent-page-who p { margin: 4px 0 0; color: var(--mut); font-size: 13px; }
+.agent-page-busy { color: var(--accInk); }

@@ -74,9 +74,9 @@ describe('daily limits', () => {
     expect(spendToday(s, (id) => cost[id] ?? 0, now)).toEqual({ usd: 1.75, runs: 2 });
   });
   it('says why nothing new starts', () => {
-    expect(limitReason(team(), { usd: 1, runs: 2 })).toBeUndefined();
-    expect(limitReason(team(), { usd: 1, runs: 3 })).toMatch(/3 of 3 runs/);
-    expect(limitReason(team(), { usd: 10, runs: 0 })).toMatch(/\$10\.00 of \$10\.00/);
+    expect(limitReason(team(), { usd: 1, runs: 2 }, true)).toBeUndefined();
+    expect(limitReason(team(), { usd: 1, runs: 3 }, true)).toMatch(/3 of 3 runs/);
+    expect(limitReason(team(), { usd: 10, runs: 0 }, true)).toMatch(/\$10\.00 of \$10\.00/);
   });
 });
 

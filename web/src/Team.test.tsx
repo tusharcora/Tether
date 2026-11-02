@@ -65,6 +65,16 @@ describe('TeamPanel', () => {
     expect(send).toHaveBeenLastCalledWith('plan', { approved: false });
   });
 
+  it('a plan that cannot do its task says why before it runs and offers Allow edits', async () => {
+    const send = vi.fn().mockResolvedValue(true);
+    const plan = { goal: 'Propose the README text in the report', success: [], assignments: [{ bot: 'planner', goal: 'write it in the report', mode: 'read' as const }], limits: { allowWrites: false }, answers: [] };
+    renderApp(<TeamPanel run={teamRun({ planning: false, plan, task: 'Update README.md to match the app' })} send={send} />);
+    expect(screen.getByRole('alert').textContent).toContain('the plan is read-only, but the task changes files');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Allow edits and plan again' })));
+    expect(send).toHaveBeenLastCalledWith('allow-edits', {});
+    expect(screen.getByRole('button', { name: 'Approve and start' })).toBeTruthy();
+  });
+
   it('hides Approve while the reject question is open and offers Keep plan', () => {
     const send = vi.fn().mockResolvedValue(true);
     const plan = { goal: 'Ship rate limiting', success: [], assignments: [], limits: { allowWrites: false }, answers: [] };

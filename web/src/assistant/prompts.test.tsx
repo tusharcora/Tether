@@ -8,7 +8,7 @@ import { Thread } from './Thread';
 
 const saved: SavedPrompt[] = [{ id: 'p-aaaa1', name: 'Review a file', body: 'Review {{file}} for bugs.', variables: ['file'] }];
 
-/** /api/teams (the crew an @mention can name) and the prompt routes over a fake fetch; the calls it saw. */
+/** /api/squads (the crew an @mention can name) and the prompt routes over a fake fetch; the calls it saw. */
 function serve() {
   const calls: { method: string; path: string; body?: unknown }[] = [];
   vi.stubGlobal(
@@ -16,7 +16,7 @@ function serve() {
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
       calls.push({ method, path: url, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
-      if (url === '/api/teams') return new Response(JSON.stringify({ teams: [], agents: [{ id: 'coder', name: 'Bolt', specialty: 'code' }, { id: 'tester', name: 'Probe', specialty: 'tests' }] }));
+      if (url === '/api/squads') return new Response(JSON.stringify({ squads: [], agents: [{ id: 'coder', name: 'Bolt', specialty: 'code' }, { id: 'tester', name: 'Probe', specialty: 'tests' }] }));
       if (url.startsWith('/api/assistant/prompts') && method === 'GET') return new Response(JSON.stringify({ prompts: saved }));
       if (url === '/api/assistant/prompts' && method === 'POST') return new Response(JSON.stringify({ prompt: { id: 'p-new01', ...(JSON.parse(String(init!.body)) as object), variables: [] } }));
       return new Response(JSON.stringify({ ok: true }));

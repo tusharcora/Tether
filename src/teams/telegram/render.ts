@@ -1,9 +1,10 @@
 /**
- * Team messages as Telegram shows them (board 5), in Telegram's HTML: the speaker's name first ("<b>Bolt</b>: …", one shared
- * bot labels each agent), cards as text with inline keyboards (Approve / Reject / Diff; Start run / Edit / Dismiss), a run's
- * step track, decided cards as "✓ Approved by Maya · 14:02". Pure: the bridge sends and edits what these return.
+ * Squad messages as Telegram shows them (board 5), in Telegram's HTML: the speaker's name first ("<b>Bolt</b>: …", one
+ * shared bot labels each agent), the agent's message in its teammate voice and one line of What I did (never the raw
+ * report), cards as text with inline keyboards (Ship it / Not yet / Diff; Start run / Edit / Dismiss), a run's step track,
+ * decided cards as "✓ Approved by Maya · 14:02". Pure: the bridge sends and edits what these return.
  */
-import type { Card, TeamMessage, TeamView } from '../types.js';
+import type { Card, TeamMessage, TeamView, Work } from '../types.js';
 
 /** Telegram's limit is 4096 characters after entities; leave room for the card. */
 const TEXT_MAX = 3000;
@@ -42,10 +43,12 @@ function card(c: Card, msg: string, owner?: string): { lines: string[]; keys?: B
     return { lines: [`<b>${short(c.runId)}</b> · ${esc(cut(c.title, 80))}`, ...(track ? [track] : []), `${c.status} · ${usd(c.costUsd)}`] };
   }
   if (c.kind === 'approval') {
-    const lines = [`<b>${esc(c.title)}</b>`, ...(c.detail ? [esc(cut(c.detail, DETAIL_MAX))] : [])];
-    if (c.status !== 'pending') return { lines: [...lines, `${c.status === 'approved' ? '✓ Approved' : '✕ Rejected'} by ${esc(by(c.by))}${c.at ? ` · ${hhmm(c.at)}` : ''}${c.reason ? ` · ${esc(cut(c.reason, 200))}` : ''}`] };
+    const lines = [`<b>${esc(c.title)}</b>`, ...(c.detail ? [esc(cut(c.detail, DETAIL_MAX))] : []), ...(c.review ? [`${esc(c.review.by)} ${c.review.pass === undefined ? 'is reviewing' : c.review.pass ? 'approved' : 'asked for changes'}`] : [])];
+    if (c.status === 'superseded') return { lines: [...lines, 'Replaced by a newer run'] };
+    if (c.status !== 'pending') return { lines: [...lines, `${c.status === 'approved' ? '✓ Approved' : '✕ Sent back'} by ${esc(by(c.by))}${c.at ? ` · ${hhmm(c.at)}` : ''}${c.reason ? ` · ${esc(cut(c.reason, 200))}` : ''}`, ...(c.ship ? [shipLine(c.ship)] : [])] };
     if (c.what === 'next') return { lines, keys: [[btn('Start run', 'a', msg), btn('Skip', 'r', msg)]] };
-    return { lines, keys: [[btn('Approve', 'a', msg), btn('Reject', 'r', msg), ...(c.runId && c.what !== 'plan' ? [btn('Diff', 'f', msg)] : [])]] };
+    if (c.what === 'ship') return { lines, keys: [[btn('Ship it', 'a', msg), btn('Not yet', 'r', msg), ...(c.runId ? [btn('Diff', 'f', msg)] : [])]] };
+    return { lines, keys: [[btn('Approve', 'a', msg), btn('Reject', 'r', msg)]] };
   }
   if (c.kind === 'proposal') {
     const lines = [`${c.loop ? 'Proposed loop' : 'Proposed run'}: <b>${esc(cut(c.task, 300))}</b>`];
@@ -56,11 +59,18 @@ function card(c: Card, msg: string, owner?: string): { lines: string[]; keys?: B
   return { lines: [] };
 }
 
+const shipLine = (sh: NonNullable<Extract<Card, { kind: 'approval' }>['ship']>): string => {
+  const pr = sh.pr ? `<a href="${esc(sh.pr.url)}">PR #${sh.pr.number}</a>` : 'the PR';
+  return sh.state === 'merged' ? `${pr} merged` : sh.state === 'open' ? `${pr} open, merging once checks pass` : sh.state === 'failed' ? `Not shipped: ${esc(cut(sh.error ?? 'it failed', 200))}` : 'Opening the PR…';
+};
+/** What I did, in one line: files, size, the gates and their results. */
+export const workLine = (w: Work): string => [`${w.files.length} file${w.files.length === 1 ? '' : 's'} · +${w.plus} −${w.minus}`, ...w.ran.map((r) => `${r.command} ${r.ok ? (r.summary ?? 'passed') : `failed${r.summary ? ` (${r.summary})` : ''}`}`)].join(' · ');
+
 /** One team message, as the bot posts it. `owner`: the owner's Telegram name, for decisions made in Tether ("by you"). */
 export function renderMessage(m: TeamMessage, owner?: string): Rendered {
   const body = m.pending ? '…' : esc(cut(m.text, TEXT_MAX));
   const c = m.card ? card(m.card, m.id, owner) : { lines: [] };
-  const text = [`<b>${esc(m.from.name)}</b>: ${body}`, ...c.lines].join('\n');
+  const text = [`<b>${esc(m.from.name)}</b>: ${body}`, ...(m.work ? [`<i>${esc(workLine(m.work))}</i>`] : []), ...c.lines].join('\n');
   return { text, ...(c.keys ? { reply_markup: { inline_keyboard: c.keys } } : {}) };
 }
 

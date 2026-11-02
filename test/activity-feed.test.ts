@@ -73,7 +73,7 @@ describe('activity lines', () => {
     expect(line({ type: 'node.started', node: 'ghost', attempt: 1 })).toMatchObject({ who: 'ghost', text: 'ghost started' });
     const t = Store.open(':memory:');
     seedRun(t, 't1', { kind: 'team' });
-    expect(activityLine(ev({ type: 'run.resumed' }), namesFor(t.state('t1')))).toMatchObject({ who: 'Team run' });
+    expect(activityLine(ev({ type: 'run.resumed' }), namesFor(t.state('t1')))).toMatchObject({ who: 'Squad run' });
   });
 
   it('parses and prints cursors', () => {

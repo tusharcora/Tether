@@ -23,7 +23,7 @@ export function goalTry(g: GoalView, runId: string): string {
  * The run's head (board 4): ← Runs / its team / its short id; the task as the title with its status and its goal ("Goal ·
  * try 1 of 3"); one mono line (time · cost of its cap); Open in # team for a team's run; Stop / Resume / Retry failed.
  */
-export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, onTryMore, setSize, onCompare }: { run: RunView; onAct: RunAct; onBack: () => void; goal?: GoalView; team?: string; onGoal?: () => void; onTeam?: () => void; /** Try 2 more ways (board 6). */ onTryMore?: () => void; /** The run's attempt set: how many, and its Compare page. */ setSize?: number; onCompare?: () => void }) {
+export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, onTryMore, setSize, onCompare, autofix }: { run: RunView; onAct: RunAct; onBack: () => void; goal?: GoalView; team?: string; onGoal?: () => void; onTeam?: () => void; /** Try 2 more ways (board 6). */ onTryMore?: () => void; /** The run's attempt set: how many, and its Compare page. */ setSize?: number; onCompare?: () => void; /** Auto-fix's line ("Auto-fixing · round 2 of 3 · …"). */ autofix?: string }) {
   const ticking = r.live && r.status === 'running';
   const now = useNow(ticking);
   const ms = (r.finishedAt ?? now) - r.startedAt;
@@ -50,7 +50,7 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, o
           </>
         ) : (
           <>
-            <span>{r.kind === 'team' ? 'Team run' : r.pipeline.name}</span>
+            <span>{r.kind === 'team' ? 'Squad run' : r.pipeline.name}</span>
             <span aria-hidden="true">/</span>
           </>
         )}
@@ -60,7 +60,7 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, o
         <h1>{taskTitle({ task: r.task, kind: r.kind, pipeline: r.pipeline.name })}</h1>
         <StatusBadge desc={viewDesc(r)} />
         {goal ? (
-          <button type="button" className="rp-chip" onClick={onGoal}>{`${TYPE_GLYPH[goal.type ?? 'feature']} Goal · ${goalTry(goal, r.id)}`}</button>
+          <button type="button" className="rp-chip" onClick={onGoal}>{`${TYPE_GLYPH[goal.type ?? 'feature']} ${goal.key} · ${goalTry(goal, r.id)}`}</button>
         ) : null}
         {r.attemptLabel && onCompare ? (
           <button type="button" className="rp-chip" onClick={onCompare}>{`Attempt ${r.attemptLabel}${setSize ? ` of ${setSize}` : ''} · Compare`}</button>
@@ -83,12 +83,23 @@ export function RunHeader({ run: r, onAct, onBack, goal, team, onGoal, onTeam, o
             Stop
           </Button>
         ) : null}
+        {/* failed, and auto-fix is working out its next round: Stop ends auto-fix */}
+        {r.live && r.status === 'error' ? (
+          <Button variant="ghost" size="sm" onClick={() => void onAct('stop')}>
+            Stop auto-fix
+          </Button>
+        ) : null}
         {!r.live && ['stopped', 'running', 'error'].includes(r.status) ? (
           <Button variant="primary" size="sm" onClick={() => void onAct('resume')}>
             {r.status === 'error' ? 'Retry failed' : 'Resume'}
           </Button>
         ) : null}
       </div>
+      {autofix ? (
+        <p className="rp-head-note" role="status">
+          {autofix}
+        </p>
+      ) : null}
     </header>
   );
 }

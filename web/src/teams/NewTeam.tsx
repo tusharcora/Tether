@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../components/beui/kit/Button';
 import { SegmentedControl } from '../components/beui/kit/controls';
 import { Input, Select, Switch } from '../components/beui/kit/fields';
+import { CAPS_HINT, useCaps } from '../caps';
 import { Face } from '../Face';
 import type { WorkspaceRow } from '../home/workspaces';
 import { ConfirmButton } from '../ui/ConfirmButton';
@@ -16,6 +17,7 @@ import './teams.css';
  */
 export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onSaved: (t: Team) => void; onCancel: () => void; onNewAgent: () => void; onDeleted?: () => void }) {
   const notify = useNotify();
+  const caps = useCaps();
   const t = p.team;
   const [name, setName] = useState(t?.name ?? '');
   // a new team's place is picked in the sidebar's New team menu, and fixed once made
@@ -51,20 +53,20 @@ export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['ag
   };
 
   return (
-    <form className="tm-form" aria-label={t ? `${t.name} settings` : 'New team'} onSubmit={(e) => void submit(e)}>
+    <form className="tm-form" aria-label={t ? `${t.name} settings` : 'New squad'} onSubmit={(e) => void submit(e)}>
       <div className="tm-form-top">
-        {t ? <span className="tm-gap" /> : <h1>{telegram ? 'New Telegram team' : 'New team'}</h1>}
+        {t ? <span className="tm-gap" /> : <h1>{telegram ? 'New Telegram squad' : 'New squad'}</h1>}
         <Button type="button" variant="secondary" size="sm" onClick={p.onCancel}>
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={!ok} loading={busy}>
-          {t ? 'Save' : 'Create team'}
+          {t ? 'Save' : 'Create squad'}
         </Button>
       </div>
       <Input label="Name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
       <p className="tm-form-note">{telegram && !t ? 'Lives in a Telegram group. Once it is made, add your bot to the group and send the pairing code Tether shows.' : `Lives in ${PLACE[place]}.`}</p>
       <fieldset className="tm-fieldset" aria-describedby={ids.agents}>
-        <legend>Agents · they keep one memory across all their teams</legend>
+        <legend>Agents · they keep one memory across all their squads</legend>
         <div className="tm-agents">
           {p.agents.map((a) => (
             <label key={a.id} className="tm-agent">
@@ -106,15 +108,15 @@ export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['ag
         </fieldset>
       </div>
       <fieldset className="tm-fieldset tm-limits">
-        <legend>Limits for this team</legend>
-        <Input label="Per day ($)" type="number" min={0.01} step="any" value={usd} onChange={(e) => setUsd(e.target.value)} />
+        <legend>Limits for this squad</legend>
+        <Input label="Per day ($)" type="number" min={0.01} step="any" value={usd} description={caps ? undefined : CAPS_HINT} onChange={(e) => setUsd(e.target.value)} />
         <Input label="Runs per day" type="number" min={1} step={1} value={runs} onChange={(e) => setRuns(e.target.value)} />
         <Select label="Project" options={p.projects.map((w) => ({ value: w.id, label: w.name }))} value={project} onValueChange={setProject} disabled={!!t} />
       </fieldset>
-      <Switch label="Agents learn lessons from this team" checked={learn} onCheckedChange={setLearn} />
+      <Switch label="Agents learn lessons from this squad" checked={learn} onCheckedChange={setLearn} />
       {t && p.onDeleted ? (
         <div className="tm-form-danger">
-          <ConfirmButton label="Delete team" prompt={`Delete ${t.name} and its messages? Its open loops stop; runs already going finish.`} confirmLabel="Delete" variant="danger" onConfirm={() => teamsApi.remove(t.id).then(p.onDeleted, notify.fail)} />
+          <ConfirmButton label="Delete squad" prompt={`Delete ${t.name} and its messages? Its recurring tickets stop; runs already going finish.`} confirmLabel="Delete" variant="danger" onConfirm={() => teamsApi.remove(t.id).then(p.onDeleted, notify.fail)} />
         </div>
       ) : null}
     </form>

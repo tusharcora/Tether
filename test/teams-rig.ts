@@ -54,7 +54,7 @@ export class Writer implements AgentAdapter {
 
 export const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 
-export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; learn?: boolean; people?: Person[]; approvers?: Team['approvers'] } = {}) {
+export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; learn?: boolean; people?: Person[]; approvers?: Team['approvers']; autofixing?: (runId: string) => boolean; prView?: string } = {}) {
   const home = tmp('home-');
   const repo = makeRepo();
   const bare = tmp('bare-');
@@ -74,13 +74,13 @@ export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; 
   const exec: Exec = async (_cmd, args) => {
     calls.push(args);
     if (args[1] === 'create') return { code: 0, stdout: 'https://github.com/o/r/pull/7\n', stderr: '' };
-    if (args[1] === 'view') return { code: 0, stdout: '{"state":"OPEN","statusCheckRollup":[]}', stderr: '' };
+    if (args[1] === 'view') return { code: 0, stdout: o.prView ?? '{"state":"OPEN","statusCheckRollup":[]}', stderr: '' };
     return { code: 0, stdout: '', stderr: '' };
   };
   // eslint-disable-next-line prefer-const
   let teams: Teams;
   const goals = new Goals({ home, store, engine, registry, hooks: { start: (x, p) => teams.loopRun(x, p), blocked: (x) => teams.blocked(x), decided: (x, a) => teams.goalDecided(x, a) } });
-  teams = new Teams({ home, store, engine, registry, goals, vault, exec });
+  teams = new Teams({ home, store, engine, registry, goals, vault, exec, ...(o.autofixing ? { autofixing: o.autofixing } : {}) });
   let team = teams.create({ name: 'Core', place: o.place ?? 'tether', project: 'app', agents: ['coder', 'reviewer', 'tester', 'planner'], level: o.level ?? 'balanced', ...(o.limits ? { limits: o.limits } : {}), ...(o.learn === false ? { learn: false } : {}) });
   if (o.people || o.approvers) {
     team = { ...team, people: o.people ?? team.people, approvers: o.approvers ?? team.approvers };
@@ -115,6 +115,6 @@ export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; 
   };
   /** The team as stored now (people and approvers change). */
   const now = (): Team => loadTeams(home).teams.find((t) => t.id === team.id)!;
-  return { home, repo, bare, talk, writer, store, engine, goals, teams, team, calls, idle, msgs, tasks, until, post, card, runTask, now };
+  return { home, repo, bare, talk, writer, store, engine, goals, teams, team, calls, idle, msgs, tasks, until, post, card, runTask, now, registry };
 }
 

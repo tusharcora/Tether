@@ -5,9 +5,13 @@
  * `.tether/` holds a `.gitignore` of `*`, so git ignores the folder: spills never reach a diff, a commit or a search.
  * Spill files older than 24 hours are swept.
  */
-import { randomBytes } from 'node:crypto';
-import { lstat, mkdir, readdir, unlink, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { lstatSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstat, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { PASS_ON_MAX } from '../types.js';
+
+export { PASS_ON_MAX };
 
 export const SPILL_DIR = '.tether/spill';
 export const SPILL_MAX_AGE_MS = 24 * 3_600_000;
@@ -50,16 +54,49 @@ export async function spillText(workdir: string, text: string, max: number): Pro
 
 /** Save `text` as a spill file (owner-only, git-ignored) and return its path relative to `workdir`, or undefined when it cannot. */
 export async function saveSpill(workdir: string, text: string, rel = `${SPILL_DIR}/${randomBytes(6).toString('hex')}.txt`): Promise<string | undefined> {
+  return saveSpillSync(workdir, text, rel);
+}
+
+function saveSpillSync(workdir: string, text: string, rel: string): string | undefined {
   try {
-    await mkdir(join(workdir, SPILL_DIR), { recursive: true, mode: 0o700 });
-    await writeFile(join(workdir, '.tether', '.gitignore'), '*\n', { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
-      if (e.code !== 'EEXIST') throw e;
-    });
-    await writeFile(join(workdir, rel), text, { flag: 'wx', mode: 0o600 });
+    mkdirSync(join(workdir, SPILL_DIR), { recursive: true, mode: 0o700 });
+    try {
+      writeFileSync(join(workdir, '.tether', '.gitignore'), '*\n', { flag: 'wx' });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+    writeFileSync(join(workdir, rel), text, { flag: 'wx', mode: 0o600 });
     return rel;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Text one step hands to another (output, findings, guidance, answers; spec 2026-10-30 §3.2): whole up to `max` characters.
+ * Longer, the full text is saved under the worktree's spill folder and the reader gets its head and tail and the file's path
+ * (absolute: agents may change directory); with no worktree or a failed save, its head and tail and how much was left out.
+ * Synchronous, for the prompt builders. The file is named by the text's hash, so a prompt built twice names one file.
+ */
+export function passOn(text: string, workdir: string | undefined, max = PASS_ON_MAX): string {
+  if (text.length <= max) return text;
+  let path: string | undefined;
+  if (workdir) {
+    const rel = `${SPILL_DIR}/pass-${createHash('sha256').update(text).digest('hex').slice(0, 16)}.txt`;
+    const abs = join(workdir, rel);
+    try {
+      const st = lstatSync(abs);
+      // a regular file of the same size is this text; anything else (a step's edit, a link) is replaced
+      if (st.isFile() && st.size === Buffer.byteLength(text, 'utf8')) path = abs;
+      else rmSync(abs, { force: true });
+    } catch {
+      /* not there yet */
+    }
+    path ??= saveSpillSync(workdir, text, rel) ? abs : undefined;
+  }
+  const say = (n: number) => (path ? `[... ${n} characters not shown here. Read the full text before acting on it: ${path} ...]` : `[... ${n} characters left out ...]`);
+  const r = retain(text, Math.max(0, max - say(text.length).length - 2));
+  return `${r.head}\n${say(text.length - r.head.length - r.tail.length)}\n${r.tail}`;
 }
 
 /** Delete regular spill files under `workdir` whose mtime is strictly older than the cutoff; symlinks and other entries are left alone. Never throws. */

@@ -48,6 +48,33 @@ describe('SettingsPage', () => {
     expect(onChange).toHaveBeenCalledWith(false);
   });
 
+  it('has the Spending caps switch, off by default, saying cost never stops a run while off', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<SettingsPage {...base} />);
+    expect(screen.queryByRole('region', { name: 'Runs' })).toBeNull();
+    rerender(<SettingsPage {...base} caps={{ on: false, onChange }} />);
+    const runs = screen.getByRole('region', { name: 'Runs' });
+    expect(runs.textContent).toContain('Off: runs never stop because of cost. Costs still show everywhere.');
+    const sw = within(runs).getByRole('switch', { name: /spending caps/i });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it('has the Auto-fix switch, on by default, and its rounds, next to Spending caps', () => {
+    const onChange = vi.fn();
+    const onRounds = vi.fn();
+    render(<SettingsPage {...base} caps={{ on: false, onChange: vi.fn() }} autoFix={{ on: true, rounds: 3, onChange, onRounds }} />);
+    const runs = screen.getByRole('region', { name: 'Runs' });
+    const sw = within(runs).getByRole('switch', { name: /auto-fix failed runs/i });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(runs.textContent).toContain('A failed run is diagnosed and retried, then moved to a stronger model.');
+    fireEvent.click(sw);
+    expect(onChange).toHaveBeenCalledWith(false);
+    fireEvent.click(within(runs).getByRole('button', { name: '5' }));
+    expect(onRounds).toHaveBeenCalledWith(5);
+  });
+
   it('picks a theme', () => {
     const onChoice = vi.fn();
     render(<SettingsPage {...base} onChoice={onChoice} />);

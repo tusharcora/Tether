@@ -5,13 +5,19 @@ import { InlineError } from '../ui/studio/InlineError';
 // shortcut: dismissed Coach findings live in memory for the session only (spec §14.9: no stored state); a reload shows them again
 const dismissed = new Set<string>();
 
-/** One-line notices under the run header: the stream error (with retry), the run's error, Coach findings (two, then "and N more"). */
+/**
+ * One-line notices under the run header: the stream error (with retry), the run's error, what was refused, skipped or cut
+ * (newest first, three, then "and N more"), Coach findings (two, then "and N more").
+ */
 export function RunNotices({ run: r, streamError, onRetryStream }: { run: RunView; streamError?: string; onRetryStream: () => void }) {
   const [, setTick] = useState(0);
   const [more, setMore] = useState(false);
+  const [allNotices, setAllNotices] = useState(false);
   const coach = (r.coach ?? []).filter((f) => !dismissed.has(`${r.id}:${f.id}`));
-  if (!streamError && !r.error && !coach.length) return null;
+  const notices = [...(r.notices ?? [])].reverse();
+  if (!streamError && !r.error && !coach.length && !notices.length) return null;
   const shown = more ? coach : coach.slice(0, 2);
+  const said = allNotices ? notices : notices.slice(0, 3);
   return (
     <ul className="run-notices" aria-label="Notices">
       {streamError ? (
@@ -23,6 +29,19 @@ export function RunNotices({ run: r, streamError, onRetryStream }: { run: RunVie
         <li className="run-notice bad">
           <span className="run-notice-dot" aria-hidden="true" />
           <span>{r.error.split('\n')[0]}</span>
+        </li>
+      ) : null}
+      {said.map((n, i) => (
+        <li key={`n${n.ts}-${i}`} className="run-notice">
+          <span className="run-notice-dot" aria-hidden="true" />
+          <span>{n.text}</span>
+        </li>
+      ))}
+      {said.length < notices.length ? (
+        <li>
+          <button type="button" className="run-notice-more" onClick={() => setAllNotices(true)}>
+            and {notices.length - said.length} more
+          </button>
         </li>
       ) : null}
       {shown.map((f) => (

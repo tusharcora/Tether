@@ -22,6 +22,7 @@ import './settings-page.css';
 
 const TONE: Record<Connection, Tone> = { connecting: 'neutral', connected: 'done', reconnecting: 'needs', offline: 'failed' };
 const CHOICES: ThemeChoice[] = ['light', 'dark', 'system'];
+const ROUNDS = [1, 2, 3, 4, 5, 6];
 /** Still in the page, not hidden (`checkVisibility` where the browser has it) and not inside a layer that is leaving (beui marks it inert). */
 const focusable = (el: HTMLElement) => el.isConnected && !el.closest('[inert]') && el.checkVisibility?.() !== false;
 /** Another dialog (opened from a card), a menu or an open select owns Esc while it is up; one that is closing (inert) does not. */
@@ -53,6 +54,10 @@ export interface SettingsPageProps {
   section?: string;
   /** Tether.app's notifications switch (shown when given). */
   notifications?: { on: boolean; onChange: (on: boolean) => void };
+  /** The Spending caps switch (shown once the server answers). */
+  caps?: { on: boolean; onChange: (on: boolean) => void };
+  /** Auto-fix failed runs and its rounds (shown once the server answers). */
+  autoFix?: { on: boolean; rounds: number; onChange: (on: boolean) => void; onRounds: (n: number) => void };
   /** Where focus goes on close when the opener is gone. */
   returnFocus?: () => HTMLElement | null | undefined;
 }
@@ -71,6 +76,7 @@ export function SettingsPage(p: SettingsPageProps) {
   const sections = [
     ...(p.accounts ? [{ id: 'accounts', title: 'Accounts' }] : []),
     ...(p.tools || p.mcp || p.connectors ? [{ id: 'agents', title: 'Agents & tools' }] : []),
+    ...(p.caps ? [{ id: 'runs', title: 'Runs' }] : []),
     { id: 'appearance', title: 'Appearance' },
     { id: 'storage', title: 'Storage' },
     { id: 'server', title: 'Server' },
@@ -144,6 +150,23 @@ export function SettingsPage(p: SettingsPageProps) {
                 <section className="sl-settings-group" aria-labelledby="set-mcp">
                   <h3 id="set-mcp">MCP servers</h3>
                   <McpServers poll={p.mcp} />
+                </section>
+              ) : null}
+            </Card>
+          ) : null}
+          {p.caps ? (
+            <Card id="runs" title="Runs">
+              <section className="sl-settings-group" aria-labelledby="set-caps">
+                <h3 id="set-caps">Spending caps</h3>
+                <Switch label="Stop runs at their spending caps" checked={p.caps.on} onCheckedChange={(c) => p.caps!.onChange(c === true)} />
+                <p className="st-help">Off: runs never stop because of cost. Costs still show everywhere.</p>
+              </section>
+              {p.autoFix ? (
+                <section className="sl-settings-group" aria-labelledby="set-autofix">
+                  <h3 id="set-autofix">Auto-fix</h3>
+                  <Switch label="Auto-fix failed runs" checked={p.autoFix.on} onCheckedChange={(c) => p.autoFix!.onChange(c === true)} />
+                  <p className="st-help">A failed run is diagnosed and retried, then moved to a stronger model. Runs you stopped or rejected are left alone.</p>
+                  {p.autoFix.on ? <SegmentedControl label="Rounds before it gives up" options={ROUNDS.map((n) => ({ value: String(n), label: String(n) }))} value={String(p.autoFix.rounds)} onValueChange={(v) => p.autoFix!.onRounds(Number(v))} /> : null}
                 </section>
               ) : null}
             </Card>

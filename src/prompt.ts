@@ -3,6 +3,7 @@ import { askable } from './consult.js';
 import { rosterOf } from './handoff.js';
 import type { Answer, Pipeline, PipelineNode, Question, RunState, TeamPlan } from './types.js';
 import { fence } from './fence.js';
+import { passOn } from './codemode/spill.js';
 
 export const DEFAULT_ROLE_PROMPTS: Record<string, string> = {
   manager:
@@ -59,6 +60,7 @@ export function briefing(p: Pipeline, node: PipelineNode, canAsk: PipelineNode[]
           'You may put a question to the person in charge when a decision is theirs to make and you cannot sensibly assume it. ' +
             'Write one line at the very start of the line (column 0, outside code fences): `@ASK user: <question> | options: <a>; <b>; <c> | recommended: <the one you suggest>` ' +
             '(`options` and `recommended` are optional; at most four such lines) and stop. The answer comes back and you then finish. ' +
+            'Recommend the option that gets the task done well and fast, never one that would make the task impossible (such as not changing a file the task is about). ' +
             'Ask only what truly changes your work; otherwise state your assumption and carry on.',
         ]
       : []),
@@ -127,7 +129,7 @@ export function buildPrompt(i: PromptInput): string {
   for (const id of upstream) {
     const un = byId.get(id);
     const out = state.nodes[id]?.output;
-    if (un?.kind === 'agent' && out) blocks.push(`## ${label(un)}\n${clip(out, 12_000)}`);
+    if (un?.kind === 'agent' && out) blocks.push(`## ${label(un)}\n${passOn(out, state.workdir)}`);
   }
   if (blocks.length) parts.push(`# Upstream output\n${blocks.join('\n\n')}`);
 
@@ -136,7 +138,7 @@ export function buildPrompt(i: PromptInput): string {
   if (i.failure) {
     parts.push(
       `# A check failed — fix it\nThe check "${i.failure.check}" rejected the previous attempt. Fix the cause in the working tree ` +
-        `(do not weaken or delete the check). Its output:\n\`\`\`\n${clip(i.failure.output, 8000)}\n\`\`\``,
+        `(do not weaken or delete the check). Its output:\n\`\`\`\n${passOn(i.failure.output, state.workdir)}\n\`\`\``,
     );
   }
   if (i.resumed) {

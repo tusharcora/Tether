@@ -91,18 +91,19 @@ export function extractAny(raw: string): unknown {
 }
 
 /**
- * The writes card as the server words it. Whatever the model wrote for this card is ignored: the person's yes is the
- * only way writes turn on, so the ask, the labels behind "yes" and "no" and the recommendation are ours.
+ * The writes card as the server words it. Whatever the model wrote for this card is ignored: only the person's no turns
+ * writes off, so the ask, the labels behind "yes" and "no" and the recommendation are ours. Yes is recommended: edits
+ * stay in the run's worktree until the person approves or merges, and a read-only run cannot do a task that changes files.
  */
 export const WRITES_CARD: Question = {
   id: WRITES_QUESTION,
   ask: 'May agents change files in the worktree?',
-  why: 'Agents stay read-only unless you say yes.',
+  why: "Agents edit files in this run's own worktree; nothing reaches your branch until you approve or merge.",
   options: [
     { id: 'yes', label: 'Yes, allow edits' },
     { id: 'no', label: 'No, read-only' },
   ],
-  recommended: 'no',
+  recommended: 'yes',
 };
 
 function toQuestion(raw: unknown): Question | string {
@@ -178,9 +179,9 @@ export function recommendedAnswers(qs: Question[]): Answer[] {
   return qs.map((q) => ({ question: q.id, option: q.recommended, by: 'default' as const }));
 }
 
-/** Writes are on only when the person said yes to the writes card; the model never decides it. */
+/** Writes are on unless the latest answer to the writes card is no; the model never decides it (its card and limits are ignored). */
 export function writesAllowed(answers: Answer[]): boolean {
-  return answers.some((a) => a.question === WRITES_QUESTION && a.option === 'yes' && a.by === 'user');
+  return answers.filter((a) => a.question === WRITES_QUESTION).at(-1)?.option !== 'no';
 }
 
 /** Validate Tether's plan. Bots outside the roster are dropped; write tasks need the person's yes. */
@@ -249,13 +250,14 @@ export const TEAM_MIN_WALL_MS = 60_000;
 export const TEAM_MAX_WALL_MS = 4 * 3600_000;
 export const clampWallClock = (ms: number): number | undefined => (Number.isFinite(ms) && ms > 0 ? Math.min(TEAM_MAX_WALL_MS, Math.max(TEAM_MIN_WALL_MS, Math.round(ms))) : undefined);
 
-/** A plan Tether never produced: the task itself, handed to the first bot on the roster, read-only. */
+/** A plan Tether never produced: the task itself, handed to the first bot on the roster, editing files unless the person said no. */
 export function defaultPlan(task: string, roster: string[], answers: Answer[]): TeamPlan {
+  const allowWrites = writesAllowed(answers);
   return {
     goal: task.slice(0, 600),
     success: [],
-    assignments: roster.length ? [{ bot: roster[0]!, goal: task.slice(0, 600), mode: 'read' }] : [],
-    limits: { maxCostUsd: TEAM_DEFAULT_BUDGET_USD, allowWrites: writesAllowed(answers) },
+    assignments: roster.length ? [{ bot: roster[0]!, goal: task.slice(0, 600), mode: allowWrites ? 'write' : 'read' }] : [],
+    limits: { maxCostUsd: TEAM_DEFAULT_BUDGET_USD, allowWrites },
     answers,
   };
 }
@@ -266,6 +268,9 @@ const answerLine = (a: Answer, qs: Question[]): string => {
   const text = a.text?.replace(/\s+/g, ' ').trim();
   return `- ${a.question}: ${opt ? opt.label : ''}${text ? (opt ? ' / ' : '') + text : ''} (${a.by})`;
 };
+
+/** Each card's latest answer (a card answered again, like writes after Allow edits, shows once). */
+const latest = (answers: Answer[]): Answer[] => answers.filter((a, i) => !answers.slice(i + 1).some((b) => b.question === a.question));
 
 /** The single planning prompt. Task, answers and labels are data and fenced. */
 export function planningPrompt(task: string, roster: BotSummary[], answers: Answer[], round: number, maxRounds: number, asked: Question[] = [], hints: string[] = []): string {
@@ -279,14 +284,15 @@ ${fence('task', task)}
 Bots you may assign:
 ${roster.map(botLine).join('\n') || '(none)'}
 ${hints.length ? `\nRouting hints (who usually fits what; use only bots listed above):\n${hints.join('\n')}\n` : ''}
-${answers.length ? fence('answers', answers.map((a) => answerLine(a, asked)).join('\n')) : 'No answers yet.'}
+${answers.length ? fence('answers', latest(answers).map((a) => answerLine(a, asked)).join('\n')) : 'No answers yet.'}
 
 ${final ? 'This is the FINAL step: you must reply with the plan now, no more questions.' : `Planning round ${round} of at most ${maxRounds}.`}
 Reply with ONLY one JSON object, no prose, no code fences. Either
 {"questions":[{"id":"short-id","ask":"question","why":"why it matters","options":[{"id":"a","label":"choice","detail":"optional"}],"recommended":"a","allowOther":false}]}
-(at most ${MAX_QUESTIONS} questions, at most ${MAX_OPTIONS} options each, "recommended" must be one option id; ask only what changes the plan: scope, constraints, risky choices, acceptance criteria, budget; include once a question with id "${WRITES_QUESTION}", options "yes"/"no", recommended "no", asking whether agents may change files)
+(at most ${MAX_QUESTIONS} questions, at most ${MAX_OPTIONS} options each, "recommended" must be one option id; ask only what changes the plan: scope, constraints, risky choices, acceptance criteria, budget; include once a question with id "${WRITES_QUESTION}", options "yes"/"no", recommended "yes", asking whether agents may change files; for every question recommend the option that gets the task done well and fast, and never recommend an option that makes the task impossible, such as read-only for a task that changes files)
 or, when you know enough,
-{"plan":{"goal":"...","success":["acceptance criterion"],"assignments":[{"bot":"<bot id>","goal":"...","expected":"...","mode":"read"|"write","why":"one line on why this bot fits (max 160 characters)"}],"limits":{"maxCostUsd":5,"wallClockMs":1800000}}}`;
+{"plan":{"goal":"...","success":["acceptance criterion"],"assignments":[{"bot":"<bot id>","goal":"...","expected":"...","mode":"read"|"write","why":"one line on why this bot fits (max 160 characters)"}],"limits":{"maxCostUsd":5,"wallClockMs":1800000}}}
+When the task changes something in the repo (update, fix, add, write or refactor a file), plan it as file edits: a "write" assignment that edits the files in place and a reviewer that checks the diff. Never ask for the new text to be delivered in a report instead.`;
 }
 
 /** The free-text card's only option: used when a worker gave no options. */

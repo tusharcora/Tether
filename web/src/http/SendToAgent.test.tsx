@@ -47,7 +47,7 @@ describe('SendToAgent', () => {
     renderApp(<SendToAgent output={output} requestId="runs/list" env="local" onStarted={() => {}} onUseAsGate={onUseAsGate} />);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Ask Tether' })));
     expect(calls('POST', '/api/http/send-to-agent')[0]![2]).toEqual({ historyId: 7, target: { kind: 'tether' }, note: '' });
-    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Squad' }));
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Start run with/ })));
     expect((calls('POST', '/api/http/send-to-agent')[1]![2] as { target: unknown }).target).toEqual({ kind: 'run', bot: 'coder', mode: 'team' });
     fireEvent.click(screen.getByRole('button', { name: 'Use as gate in a workflow' }));

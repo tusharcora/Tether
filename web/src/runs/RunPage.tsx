@@ -21,7 +21,7 @@ import { StepPane, type StepTab } from './StepPane';
 import { StoryList } from './StoryList';
 import type { ProcSubscribe } from './Terminal';
 import { TryMore } from './TryMore';
-import { costParts, defaultStep, storyRows } from './storyModel';
+import { autofixLine, costParts, defaultStep, storyRows } from './storyModel';
 
 export type InspectorTarget = { mode: 'step'; node: string } | { mode: 'run'; tab: 'changes' | 'timeline' };
 /** Wide enough for Preview to open as a pane beside the step instead of a tab. */
@@ -48,7 +48,7 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
   const goal = p.goals?.find((g) => g.items.some((i) => i.runId === r.id)) ?? (r.origin?.kind === 'goal' ? p.goals?.find((g) => g.id === r.origin!.id) : undefined);
   const teamId = r.origin?.team;
   const teams = usePoll<TeamsReply>(teamId ? TEAMS_PATH : null, 60_000).data;
-  const teamName = teamId ? (teams?.teams.find((t) => t.id === teamId)?.name ?? teamId) : undefined;
+  const teamName = teamId ? (teams?.squads.find((t) => t.id === teamId)?.name ?? teamId) : undefined;
   const nodeName = (id: string) => {
     const n = r.pipeline.nodes.find((x) => x.id === id);
     return n ? nameOf(botOf(n)) : id;
@@ -82,11 +82,12 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
           onBack={p.onBack}
           goal={goal}
           team={teamName}
-          onGoal={goal && p.onGo ? () => p.onGo!({ tab: 'goals', id: goal.id }) : undefined}
-          onTeam={teamId && p.onGo ? () => p.onGo!({ tab: 'teams', id: teamId }) : undefined}
+          onGoal={goal && p.onGo ? () => p.onGo!({ tab: 'tickets', id: goal.id }) : undefined}
+          onTeam={teamId && p.onGo ? () => p.onGo!({ tab: 'squads', id: teamId }) : undefined}
           onTryMore={p.onGo ? () => setTrying(true) : undefined}
           setSize={set?.runs.length}
           onCompare={r.attemptSet && p.onGo ? () => p.onGo!({ tab: 'attempts', id: r.attemptSet }) : undefined}
+          autofix={autofixLine(r, nameOf, botOf)}
         />
         <RunNotices run={r} streamError={p.streamError} onRetryStream={p.onRetryStream} />
         <RewindBanner run={r} name={stepName} onAct={p.onAct} />
