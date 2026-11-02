@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve as resolvePath, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
+import { gitRoot } from './history.js';
 import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, headSha, isAncestor, refsUnder, removeBranch, removeWorktree, resetTo, diffAgainst, entryPaths, revertEntries, setRef, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
 import { ancestorsOf, childrenOf, normalizePipeline, parentsOf, preflight, topoLayers } from './pipeline.js';
@@ -283,10 +284,10 @@ export class Engine {
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
     if (!o.keepWork) {
-      for (const ref of await refsUnder(s.repo, `refs/tether/rewind/${runId}/`).catch(() => [])) await setRef(s.repo, ref).catch(() => {});
-      await removeWorktree(s.repo, s.workdir).catch(() => {});
+      for (const ref of await refsUnder(s.history ?? s.repo, `refs/tether/rewind/${runId}/`).catch(() => [])) await setRef(s.history ?? s.repo, ref).catch(() => {});
+      await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
       if (existsSync(s.workdir)) rmSync(s.workdir, { recursive: true, force: true });
-      if (s.branch) await removeBranch(s.repo, s.branch).catch(() => {});
+      if (s.branch) await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
     }
     this.planAbort.get(runId)?.abort();
     this.teams.delete(runId);
@@ -351,15 +352,16 @@ export class Engine {
       rmSync(marker, { force: true });
     };
     try {
-      await cloneShared(input.repo, dir);
+      await cloneShared(await gitRoot(input.repo, this.opts.home), dir);
     } catch (e) {
       drop();
       throw e;
     }
     const run: ProbeRun = { tag: probe.tag, bot: probe.bot, harness: probe.harness, nodeEstimateUsd: Math.max(0, probe.nodeEstimateUsd ?? 0), maxSeen: 0 };
     try {
+      // a sha, not HEAD: the no-checkout clone looks all-deleted, which must not be read as uncommitted work
       return await this.startRun(
-        { pipeline, task: input.task, repo: dir, ...(input.ref ? { ref: input.ref } : {}), autoApprove: true, workspace: false, reflect: false, capsOn: true },
+        { pipeline, task: input.task, repo: dir, ref: input.ref ?? (await headSha(dir)), autoApprove: true, workspace: false, reflect: false, capsOn: true },
         {
           probe: run,
           onId: (runId) => mark(runId),
@@ -420,6 +422,7 @@ export class Engine {
       workdir: wt.workdir,
       baseSha: wt.baseSha,
       branch: wt.branch,
+      ...(wt.history ? { history: wt.history } : {}),
       vault: this.opts.vault?.root,
       autoApprove: input.autoApprove,
       workspace: ws ? snapshot(ws, { endpoints: rawInput.endpoints, dir: wt.workdir }) : undefined,
@@ -429,6 +432,7 @@ export class Engine {
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
       capsOn: caps,
     });
+    this.noticeLeftOut(runId, wt.leftOut);
     for (const id of extra.inherit?.nodes ?? []) {
       const was = extra.inherit!.from.nodes[id];
       this.store.append(runId, { type: 'node.finished', node: id, status: 'done', output: `From run ${extra.inherit!.from.id}.`, durationMs: 0, attempt: 0, ...(was?.commit ? { commit: was.commit } : {}), ...(was?.stat ? { stat: was.stat } : {}) });
@@ -607,6 +611,7 @@ export class Engine {
       workdir: wt.workdir,
       baseSha: wt.baseSha,
       branch: wt.branch,
+      ...(wt.history ? { history: wt.history } : {}),
       vault: this.opts.vault?.root,
       workspace: ws ? snapshot(ws, { endpoints: i.endpoints, dir: wt.workdir }) : undefined,
       kind: 'team',
@@ -619,6 +624,7 @@ export class Engine {
       // an explicit --budget is a cap the person asked for: it holds with the setting off
       capsOn: capsOn(this.opts.home) || (i.budgetUsd !== undefined && i.budgetUsd > 0),
     });
+    this.noticeLeftOut(runId, wt.leftOut);
     if (i.background) this.continuePlanningInBackground(runId);
     else await this.planRound(runId, 1);
     return runId;
@@ -1696,6 +1702,12 @@ export class Engine {
   }
 
   /** A prompt carried long text as a spill file (passOn): say so once per file. */
+  private noticeLeftOut(runId: string, leftOut?: string[]): void {
+    if (!leftOut?.length) return;
+    const list = leftOut.slice(0, 5).join(', ') + (leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : '');
+    this.notice(runId, `Left out of undo: ${list}. A change to these can't be undone.`);
+  }
+
   private noticeSpills(runId: string, node: string, prompt: string): void {
     const seen = new Set((this.state(runId).notices ?? []).map((n) => n.text));
     for (const m of prompt.matchAll(/(\d+) characters not shown here\. Read the full text before acting on it: (\S+\.txt)/g)) {

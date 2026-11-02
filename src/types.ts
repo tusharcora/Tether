@@ -250,6 +250,7 @@ export type RunEvent =
       workdir: string;
       baseSha: string;
       branch: string;
+      history?: string;
       vault?: string;
       autoApprove?: boolean;
       workspace?: RunWorkspace;
@@ -403,6 +404,7 @@ export interface RunState {
   workdir: string;
   baseSha: string;
   branch: string;
+  history?: string;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -493,6 +495,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         workdir: e.workdir,
         baseSha: e.baseSha,
         branch: e.branch,
+        ...(e.history ? { history: e.history } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,

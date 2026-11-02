@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { gitEnv, must } from './git.js';
+import { gitEnv, gitTop, must } from './git.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_FOLDER_FILES = 100_000;
@@ -133,9 +133,26 @@ export async function snapshotFolder(home: string, folder: string, limits: { max
 export async function snapshotDirty(top: string): Promise<string> {
   const gitDirPath = resolve(top, await must(top, ['rev-parse', '--git-dir']));
   const head = await must(top, ['rev-parse', '--verify', 'HEAD^{commit}']);
+  // a clean repo is the common case: skip the throwaway index
+  if (!(await must(top, ['status', '--porcelain']))) return head;
   return withFolder(gitDirPath, top, async (env) => {
     // GIT_DIR stays the repo's own: worktrees and submodules keep their .git file
     await out(top, env, ['read-tree', head]);
     return commitTree(top, env, head);
   });
+}
+
+/** The repo's top, or a plain folder's history after a snapshot of it. */
+export async function gitRoot(repo: string, home: string): Promise<string> {
+  if (insideGit(repo)) return gitTop(repo);
+  await snapshotFolder(home, repo);
+  return historyDir(home, repo);
+}
+
+/** Link files the history leaves out (dependencies, big files, nested repos) into a run's worktree so the project still works there. */
+export function linkLeftOut(workdir: string, folder: string, leftOut: string[]): void {
+  for (const p of leftOut) {
+    mkdirSync(dirname(join(workdir, p)), { recursive: true });
+    symlinkSync(join(folder, p), join(workdir, p));
+  }
 }

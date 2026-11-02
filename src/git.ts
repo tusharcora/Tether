@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { historyDir, insideGit, linkLeftOut, snapshotDirty, snapshotFolder } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -38,17 +39,41 @@ export interface Worktree {
   workdir: string;
   baseSha: string;
   branch: string;
+  /** A plain folder's hidden history: where the branch and worktree live. */
+  history?: string;
+  leftOut?: string[];
+}
+
+/** The repo's own top, or the repo itself when it is bare (a plain folder's history has no work tree to ask for). */
+export async function gitTop(repo: string): Promise<string> {
+  const dir = resolve(repo);
+  const r = await git(dir, ['rev-parse', '--show-toplevel']);
+  if (r.code === 0) return r.stdout.trim();
+  // only a bare repo is let through; anything else keeps the error
+  return (await must(dir, ['rev-parse', '--is-bare-repository'])) === 'true' ? dir : must(dir, ['rev-parse', '--show-toplevel']);
 }
 
 /** Each run gets its own branch + worktree so agents never touch the user's checkout. */
-export async function createWorktree(repo: string, home: string, runId: string, ref = 'HEAD'): Promise<Worktree> {
-  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
-  const baseSha = await must(top, ['rev-parse', '--verify', `${ref}^{commit}`]);
+export async function createWorktree(repo: string, home: string, runId: string, ref?: string): Promise<Worktree> {
+  let top: string;
+  let baseSha: string;
+  let plain: { history: string; leftOut: string[] } | undefined;
+  if (insideGit(repo)) {
+    top = await gitTop(repo);
+    // uncommitted work comes along unless the run starts from a ref
+    baseSha = ref && ref !== 'HEAD' ? await must(top, ['rev-parse', '--verify', `${ref}^{commit}`]) : await snapshotDirty(top);
+  } else {
+    const snap = await snapshotFolder(home, repo);
+    top = historyDir(home, repo);
+    baseSha = ref && ref !== 'HEAD' ? await must(top, ['rev-parse', '--verify', `${ref}^{commit}`]) : snap.sha;
+    plain = { history: top, leftOut: snap.leftOut };
+  }
   const branch = `aorch/${runId}`;
   const workdir = join(home, 'worktrees', runId);
   mkdirSync(join(home, 'worktrees'), { recursive: true });
   await must(top, ['worktree', 'add', '-b', branch, workdir, baseSha]);
-  return { workdir, baseSha, branch };
+  if (plain) linkLeftOut(workdir, resolve(repo), plain.leftOut);
+  return { workdir, baseSha, branch, ...plain };
 }
 
 /**
@@ -56,7 +81,7 @@ export async function createWorktree(repo: string, home: string, runId: string, 
  * source to make it: no ref, branch, worktree or file of the source changes. Evolve probes run inside such a clone.
  */
 export async function cloneShared(repo: string, dest: string): Promise<void> {
-  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
+  const top = await gitTop(repo);
   await must(top, ['clone', '--quiet', '--shared', '--no-checkout', '--', top, dest]);
   // nothing that runs in the clone may push back into the user's repo (or anywhere): no origin, no push target, a pre-push hook that refuses
   await must(dest, ['remote', 'remove', 'origin']);
@@ -67,12 +92,12 @@ export async function cloneShared(repo: string, dest: string): Promise<void> {
 }
 
 export async function removeWorktree(repo: string, workdir: string): Promise<void> {
-  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
+  const top = await gitTop(repo);
   await git(top, ['worktree', 'remove', '--force', workdir]);
 }
 
 export async function removeBranch(repo: string, branch: string): Promise<void> {
-  const top = await must(resolve(repo), ['rev-parse', '--show-toplevel']);
+  const top = await gitTop(repo);
   await git(top, ['worktree', 'prune']);
   await git(top, ['branch', '-D', branch]);
 }

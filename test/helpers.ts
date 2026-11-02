@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { Engine } from '../src/engine.js';
 import { normalizePipeline } from '../src/pipeline.js';
@@ -41,4 +41,14 @@ export function pipe(nodes: Partial<PipelineNode>[], edges: [string, string][], 
     edges: edges.map(([from, to]) => ({ from, to })),
     settings,
   });
+}
+
+/** A folder with these files and no git. */
+export function plainFolder(files: Record<string, string>): string {
+  const dir = tmp('plain-');
+  for (const [f, c] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    writeFileSync(join(dir, f), c);
+  }
+  return dir;
 }

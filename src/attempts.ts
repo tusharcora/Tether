@@ -243,8 +243,8 @@ export class Attempts {
     for (const { state: s } of this.d.store.listRows()) {
       const p = s.attemptPicked;
       if (!p || p.run === s.id || now - p.at < KEEP_MS || this.d.engine.isLive(s.id) || !existsSync(s.workdir)) continue;
-      await removeWorktree(s.repo, s.workdir).catch(() => {});
-      await removeBranch(s.repo, s.branch).catch(() => {});
+      await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
+      await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
       n++;
     }
     return n;

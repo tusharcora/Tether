@@ -1,4 +1,5 @@
 import { request } from 'node:http';
+import { homedir } from 'node:os';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { Engine } from '../src/engine.js';
@@ -124,7 +125,7 @@ describe('team runs over HTTP', () => {
   it('rejects bad team start payloads', async () => {
     expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo, mode: 'wild' })).status).toBe(400);
     expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo, roster: 'nope-bot' })).status).toBe(400);
-    expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo: tmp('not-git-') })).status).toBe(422);
+    expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo: homedir() })).status).toBe(422);
     expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo, roster: [1] })).status).toBe(400);
     expect((await api('POST', '/api/runs', { kind: 'team', task: '', repo })).status).toBe(400);
     expect((await api('POST', '/api/runs', { kind: 'team', task: 'x', repo, budget: -1 })).status).toBe(400);
