@@ -9,13 +9,15 @@ import { AccountError, DEVICE_SETUP, type GithubAccount } from './github.js';
 import type { NvidiaAccount } from './nvidia.js';
 import type { OpenRouterAccount } from './openrouter.js';
 import { PROVIDERS } from './registry.js';
-import { githubClientId, setGithubClientId } from './store.js';
+import { githubClientId, setGithubClientId, type PublicAccount } from './store.js';
 
 export interface AccountsRouteCtx {
   home: string;
   github: GithubAccount;
   openrouter: OpenRouterAccount;
   nvidia: NvidiaAccount;
+  /** The Telegram bot (teams/telegram/bot.ts): a pasted token. */
+  telegram: { account(): PublicAccount | undefined; connect(token: string): Promise<PublicAccount>; disconnect(): Promise<void> };
 }
 
 const localUser = () => {
@@ -82,6 +84,12 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
     const account = await c.nvidia.connect(key).catch(asHttp);
     return send(res, 200, { account }), true;
   }
+  if (p === '/api/accounts/telegram' && m === 'POST') {
+    const token = reqObject(await readJson(req)).token;
+    if (typeof token !== 'string') throw new HttpError(400, '"token" must be a string');
+    const account = await c.telegram.connect(token).catch(asHttp);
+    return send(res, 200, { account }), true;
+  }
   if (p === '/api/accounts/nvidia/models' && m === 'GET') {
     const r = await c.nvidia.models();
     if (!r.models.length) throw new HttpError(502, r.error ?? "can't reach NVIDIA");
@@ -108,7 +116,7 @@ export async function accountsRoute(c: AccountsRouteCtx, req: IncomingMessage, r
   }
   const g = /^\/api\/accounts\/([a-z]+)$/.exec(p);
   if (g && m === 'DELETE') {
-    if (g[1] !== 'github' && g[1] !== 'openrouter' && g[1] !== 'nvidia') throw new HttpError(404, `no connection for "${g[1]}"`);
+    if (g[1] !== 'github' && g[1] !== 'openrouter' && g[1] !== 'nvidia' && g[1] !== 'telegram') throw new HttpError(404, `no connection for "${g[1]}"`);
     await c[g[1]].disconnect();
     return send(res, 200, { ok: true }), true;
   }

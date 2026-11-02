@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://tether.tusharcs0112.workers.dev">Website</a> ·
-  <a href="https://tether.tusharcs0112.workers.dev/docs">Docs</a> ·
+  <a href="https://tether.launchpaged.workers.dev">Website</a> ·
+  <a href="https://tether.launchpaged.workers.dev/docs">Docs</a> ·
   <a href="docs/reference.md">Full reference</a>
 </p>
 

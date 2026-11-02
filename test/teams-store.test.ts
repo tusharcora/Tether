@@ -21,6 +21,7 @@ describe('team storage', () => {
 
   it('refuses a Slack place, an unknown bot or project, and approvers outside the team', () => {
     expect(() => cleanTeam({ ...raw, place: 'slack' }, ctx)).toThrow(/later phase/);
+    expect(() => cleanTeam({ ...raw, place: 'irc' }, ctx)).toThrow(/place/);
     expect(() => cleanTeam({ ...raw, agents: ['ghost'] }, ctx)).toThrow(/unknown agent/);
     expect(() => cleanTeam({ ...raw, project: 'nope' }, ctx)).toThrow(/unknown project/);
     expect(() => cleanTeam({ ...raw, approvers: ['maya'] }, ctx)).toThrow(/approvers/);
@@ -28,6 +29,16 @@ describe('team storage', () => {
     expect(() => cleanTeam({ ...raw, limits: { usdPerDay: 0, runsPerDay: 20 } }, ctx)).toThrow(/usdPerDay/);
     expect(cleanTeam({ ...raw, approvers: ['owner'], level: undefined, limits: undefined }, ctx)).toMatchObject({ approvers: ['owner'], level: 'balanced', limits: { usdPerDay: 10, runsPerDay: 20 } });
     expect(() => cleanProfile({ specialty: 'x'.repeat(25) })).toThrow(/specialty/);
+  });
+
+  it('a Telegram team: approvers default to the owner, no link from the client, the owner stays an approver', () => {
+    const t = cleanTeam({ ...raw, place: 'telegram', approvers: undefined, link: '-100123' }, ctx);
+    expect(t).toMatchObject({ place: 'telegram', approvers: ['owner'], people: [OWNER] });
+    expect(t.link).toBeUndefined();
+    const team = { ...t, id: 'ops', createdAt: 1, link: '-100123', people: [OWNER, { id: 'tg42', name: 'Maya', via: 'telegram' as const, tgUserId: 42 }] };
+    expect(cleanTeam({ approvers: ['tg42'] }, ctx, team)).toMatchObject({ approvers: ['tg42', 'owner'], link: '-100123' });
+    expect(cleanTeam({ approvers: 'any' }, ctx, team).approvers).toBe('any');
+    expect(() => cleanTeam({ place: 'tether' }, ctx, team)).toThrow(/place/);
   });
 
   it('a patch keeps what it does not name', () => {

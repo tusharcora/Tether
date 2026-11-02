@@ -67,22 +67,24 @@ describe('Sidebar', () => {
     expect(p.teams.onOpen).toHaveBeenCalledWith('dev');
   });
 
-  it('New team menu: In Tether opens the form; Slack channel and Telegram group are disabled "soon"', async () => {
+  it('New team menu: In Tether or a Telegram group opens the form for that place; Slack channel is disabled "soon"', async () => {
     const p = setup();
     const trigger = screen.getByRole('button', { name: 'New team' });
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     fireEvent.click(trigger);
     const menu = await screen.findByRole('menu', { name: 'New team' });
     expect(within(menu).getAllByRole('menuitem').map((i) => i.getAttribute('aria-label'))).toEqual(['In Tether', 'Slack channel', 'Telegram group']);
-    for (const name of ['Slack channel', 'Telegram group']) {
-      const item = within(menu).getByRole('menuitem', { name });
-      expect(item.getAttribute('aria-disabled')).toBe('true');
-      expect(item.textContent).toContain('soon');
-      fireEvent.click(item);
-    }
+    const slack = within(menu).getByRole('menuitem', { name: 'Slack channel' });
+    expect(slack.getAttribute('aria-disabled')).toBe('true');
+    expect(slack.textContent).toContain('soon');
+    fireEvent.click(slack);
     expect(p.teams.onNew).not.toHaveBeenCalled();
+    expect(within(menu).getByRole('menuitem', { name: 'Telegram group' }).getAttribute('aria-disabled')).not.toBe('true');
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'In Tether' }));
-    expect(p.teams.onNew).toHaveBeenCalledWith();
+    expect(p.teams.onNew).toHaveBeenCalledWith('tether');
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole('menu', { name: 'New team' })).getByRole('menuitem', { name: 'Telegram group' }));
+    expect(p.teams.onNew).toHaveBeenLastCalledWith('telegram');
   });
 
   it('New chat menu: an empty chat, or one about a run or a file', async () => {

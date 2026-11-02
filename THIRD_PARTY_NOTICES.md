@@ -10,6 +10,7 @@ Parts of Tether are ported from deepseek-harness (re-implemented against Tether'
 - `experimental/browser-use-playwright-mcp`, `experimental/browser-use-chrome-devtools-mcp` → `MCP_PRESETS` in `src/codemode/mcpServers.ts`
 - `webhook/webhook-github` → issue and comment events in `src/pr.ts` (`parseIssue`, `parseComment`) and the webhook checks in `src/server.ts`
 - `schedule/schedule` → `src/cron.ts` (the cron dialect and next-fire walk) and the catch-up rule in `src/schedules.ts`
+- `experimental/speech-to-text-sensevoice` → `src/stt/` (`config.ts`, `download-error.ts`, `model-sources.ts`, `runtime.ts`, `inference.ts`, `worker.ts`, `recognizer.ts`): local SenseVoice transcription for Telegram voice notes; the worker talks over Node IPC instead of a loopback HTTP server
 
 ```
 MIT License

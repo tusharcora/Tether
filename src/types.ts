@@ -841,6 +841,8 @@ export interface AgentRequest {
   onToolResult?(id: string, output: string, isError: boolean): void;
   /** A lean call (the assistant): skip the user's own settings, plugins, hooks and slash commands; only the project's count. Adapters that cannot ignore it. */
   lean?: boolean;
+  /** Local image files (a teammate's photo) for a model that reads images; adapters that cannot pass them ignore them. */
+  images?: string[];
   onSession(id: string): void;
 }
 
@@ -950,6 +952,8 @@ export interface AttentionItem {
   actions: AttentionAction[];
   /** The step an approval or a worker's question belongs to. */
   node?: string;
+  /** A team's run (or a team's own card, `msg`, decided through the team): the Inbox names the team and its place. */
+  team?: { id: string; name: string; place: 'tether' | 'slack' | 'telegram'; msg?: string };
 }
 export type ActivityKind = 'working' | 'needs' | 'done' | 'failed' | 'info';
 export interface ActivityLine {
