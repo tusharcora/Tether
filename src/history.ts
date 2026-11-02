@@ -334,9 +334,9 @@ async function move(home: string, real: string, from: string, to: string, files:
 
 /**
  * Put a run's work into the folder, or name the files a person changed in the meantime and change nothing. `given`: what the folder
- * already holds of this work, for a fork of landed runs: `post` of the nearest and the files of them all.
+ * already holds of this work, for a fork of landed runs, nearest first.
  */
-export async function landBranch(home: string, folder: string, head: string, given?: Pick<Landed, 'post' | 'files'>): Promise<Landed | { conflicts: string[] }> {
+export async function landBranch(home: string, folder: string, head: string, given: Pick<Landed, 'post' | 'files'>[] = []): Promise<Landed | { conflicts: string[] }> {
   const real = here(folder);
   const pre = await snapshotFolder(home, real);
   const history = historyDir(home, real);
@@ -345,16 +345,19 @@ export async function landBranch(home: string, folder: string, head: string, giv
   // a file already as the work has it needs nothing, and isn't a clash: a fork of landed work carries its parent's files
   const differ = new Set(await changed(history, pre.sha, head));
   const own = await changed(history, base, head);
-  const gave = new Set(given?.files);
+  // each path against what the folder got for it: a later `post` already holds whatever the person did to it since
+  const gave = new Map([...given].reverse().flatMap((g) => g.files.map((p): [string, string] => [p, g.post])));
+  const differsFromGiven = async (to: string) => (await Promise.all(given.map(async (g) => (await changed(history, g.post, to)).filter((p) => (gave.get(p) ?? given[0]!.post) === g.post)))).flat();
   // `post` snapshots the whole folder: a path neither the work nor a landing touched is someone else's change, not one to take back
-  const touched = new Set([...own, ...gave]);
-  const files = (given ? await changed(history, given.post, head) : own).filter((p) => differ.has(p) && touched.has(p));
+  const touched = new Set([...own, ...gave.keys()]);
+  const files = (given.length ? await differsFromGiven(head) : own).filter((p) => differ.has(p) && touched.has(p));
   // a project the run made inside its work is stored as a bare pointer: it would land as an empty folder
   const tree = await listed(history, ['ls-tree', '-r', '-z', head]);
   const inner = tree.filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)).filter((p) => files.includes(p));
   if (inner.length) throw new Error(`The work made a separate project in ${inner.map((p) => `"${p}"`).join(', ')}, which can't be brought into your folder yet, so nothing was changed.`);
   // left-out files are in no snapshot, so a diff can't see them: they count as the person's
-  const moved = [...(await changed(history, base, pre.sha)).filter((p) => !gave.has(p)), ...(given ? await changed(history, given.post, pre.sha) : [])];
+  // from `base` too for what no run gave: the person's edit before a landing is inside that landing's `post`
+  const moved = [...(await changed(history, base, pre.sha)).filter((p) => !gave.has(p)), ...(await differsFromGiven(pre.sha))];
   const conflicts = clashes(files, [...moved, ...pre.leftOut]);
   if (conflicts.length) return { conflicts };
   // regular entries only: git brings a file the work swapped for a symlink back without its permissions, as it does a deleted one

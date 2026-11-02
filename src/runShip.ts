@@ -28,12 +28,11 @@ function inFolder<T>(folder: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** What a fork's parents still have in the folder: an undone one has nothing there. */
-function givenBy(store: Store, s: RunState): Pick<Landed, 'post' | 'files'> | undefined {
-  let given: Pick<Landed, 'post' | 'files'> | undefined;
+/** What a fork's parents still have in the folder, nearest first: an undone one has nothing there. */
+function givenBy(store: Store, s: RunState): Pick<Landed, 'post' | 'files'>[] {
+  const given: Pick<Landed, 'post' | 'files'>[] = [];
   for (let p = s.origin?.kind === 'fork' ? store.state(s.origin.id) : undefined; p; p = p.origin?.kind === 'fork' ? store.state(p.origin.id) : undefined) {
-    const l = p.ship?.landed;
-    if (l) given = { post: given?.post ?? l.post, files: [...(given?.files ?? []), ...l.files] };
+    if (p.ship?.landed) given.push(p.ship.landed);
   }
   return given;
 }

@@ -625,7 +625,9 @@ describe('shipping a run in a plain folder', () => {
         await s.engine.wait(f);
         const dir = s.store.state(f)!.workdir;
         for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
-        await commitAll(dir, 'fork');
+        const commit = await commitAll(dir, 'fork');
+        // so a fork of this fork starts after that commit, as it would after a step that made it
+        if (commit) s.store.append(f, { type: 'node.finished', node, status: 'done', output: 'done', durationMs: 0, attempt: 0, commit });
         return f;
       };
       return { ...s, folder, ship, id, land, fork };
@@ -735,12 +737,10 @@ describe('shipping a run in a plain folder', () => {
       const mid = await r.fork(r.id, 'b', { 'z.txt': 'z\n' });
       await r.land(mid);
       writeFileSync(join(r.folder, 'x.txt'), 'one\n');
-      // from step b, which comes before the commit that made z.txt, so z.txt goes
-      const last = await r.fork(mid, 'b', { 'w.txt': 'w\n' });
-      const ship = await r.land(last);
-      expect(ship.landed!.files.sort()).toEqual(['w.txt', 'z.txt']);
+      const ship = await r.land(await r.fork(mid, 'b', { 'w.txt': 'w\n' }));
+      expect(ship.landed!.files).toEqual(['w.txt']);
       expect(read(r.folder, 'x.txt')).toBe('one\n');
-      expect(here(r.folder, 'z.txt')).toBe(false);
+      expect(read(r.folder, 'z.txt')).toBe('z\n');
     });
 
     it('a fork changing a grandparent\'s file is not a false conflict', async () => {
@@ -751,6 +751,68 @@ describe('shipping a run in a plain folder', () => {
       const ship = await r.land(await r.fork(mid, 'b', { 'x.txt': 'F\n' }));
       expect(ship.error).toBeUndefined();
       expect(read(r.folder, 'x.txt')).toBe('F\n');
+    });
+
+    describe.each([2, 3])('%i hops down the chain, the person acting before the nearer runs land', (hops) => {
+      /** A lands, the person acts, then each fork lands in turn; returns the last run, a fork of them all. */
+      async function chainOf(act: (folder: string) => void, last: Record<string, string>) {
+        const r = await parent();
+        await r.land(r.id);
+        act(r.folder);
+        let run = r.id;
+        for (let i = 1; i < hops; i++) {
+          run = await r.fork(run, 'b', { [`h${i}.txt`]: 'h\n' });
+          expect((await r.land(run)).landed).toBeTruthy();
+        }
+        return { ...r, ship: await r.land(await r.fork(run, 'b', last)) };
+      }
+      const hopFiles = () => Array.from({ length: hops - 1 }, (_, i) => `h${i + 1}.txt`);
+
+      it('a fork changing a file the person edited stops, naming it, and changes nothing', async () => {
+        const r = await chainOf((f) => writeFileSync(join(f, 'x.txt'), 'mine\n'), { 'x.txt': 'F\n', 'w.txt': 'w\n' });
+        expect(r.ship.error).toContain('x.txt changed since');
+        expect(r.ship.landed).toBeUndefined();
+        expect(read(r.folder, 'x.txt')).toBe('mine\n');
+        expect(here(r.folder, 'w.txt')).toBe(false);
+      });
+
+      it('an edit to a file the fork left alone stays, and the fork\'s additions land', async () => {
+        const r = await chainOf((f) => writeFileSync(join(f, 'x.txt'), 'mine\n'), { 'w.txt': 'w\n' });
+        expect(r.ship.error).toBeUndefined();
+        expect(r.ship.landed!.files).toEqual(['w.txt']);
+        expect(read(r.folder, 'x.txt')).toBe('mine\n');
+        expect(read(r.folder, 'w.txt')).toBe('w\n');
+      });
+
+      it('a revert stays the person\'s', async () => {
+        const r = await chainOf((f) => writeFileSync(join(f, 'x.txt'), 'one\n'), { 'w.txt': 'w\n' });
+        expect(r.ship.landed!.files).toEqual(['w.txt']);
+        expect(read(r.folder, 'x.txt')).toBe('one\n');
+      });
+
+      it('a deletion stays deleted', async () => {
+        const r = await chainOf((f) => rmSync(join(f, 'y.txt')), { 'w.txt': 'w\n' });
+        expect(r.ship.landed!.files).toEqual(['w.txt']);
+        expect(here(r.folder, 'y.txt')).toBe(false);
+        for (const h of hopFiles()) expect(here(r.folder, h)).toBe(true);
+      });
+
+      it('a fork changing a file an older run gave, untouched since, lands with no false conflict', async () => {
+        const r = await chainOf(() => {}, { 'x.txt': 'F\n' });
+        expect(r.ship.error).toBeUndefined();
+        expect(read(r.folder, 'x.txt')).toBe('F\n');
+      });
+    });
+
+    it('a file both runs gave is measured from the nearer one', async () => {
+      const r = await parent();
+      await r.land(r.id);
+      const mid = await r.fork(r.id, 'b', { 'x.txt': 'M\n' });
+      await r.land(mid);
+      writeFileSync(join(r.folder, 'x.txt'), 'A\n');
+      const ship = await r.land(await r.fork(mid, 'b', { 'x.txt': 'F\n' }));
+      expect(ship.error).toContain('x.txt changed since');
+      expect(read(r.folder, 'x.txt')).toBe('A\n');
     });
 
     it('an undone parent no longer counts: the fork brings its work in again', async () => {
