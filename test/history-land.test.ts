@@ -469,6 +469,47 @@ describe('landing', () => {
       expect(mode(folder, 'a.txt')).toBe(0o600);
     });
 
+    it('a private file the run deletes comes back private on undo', async () => {
+      const { home, folder, base, head } = await run({ '.env': 'A=1', 'a.txt': '1' }, { 'a.txt': '2' }, ['.env'], (f) => chmodSync(join(f, '.env'), 0o600));
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(r.modes).toEqual({ '.env': 0o600 });
+      expect(existsSync(join(folder, '.env'))).toBe(false);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, '.env')).toBe('A=1');
+      expect(mode(folder, '.env')).toBe(0o600);
+    });
+
+    it('keeps a mode that survives being stored as JSON', async () => {
+      const { home, folder, base, head } = await run({ 'k.pem': 'x' }, {}, ['k.pem'], (f) => chmodSync(join(f, 'k.pem'), 0o400));
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(await undoLanding(home, folder, JSON.parse(JSON.stringify(r)))).toBe(true);
+      expect(mode(folder, 'k.pem')).toBe(0o400);
+    });
+
+    it('records no modes for files git brings back as they were', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1', 's.sh': '1', 'kept.txt': 'k' }, { 'kept.txt': 'k2' }, ['a.txt', 's.sh'], (f) => {
+        chmodSync(join(f, 'a.txt'), 0o644);
+        chmodSync(join(f, 's.sh'), 0o755);
+      });
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(r.modes).toBeUndefined();
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(mode(folder, 'a.txt')).toBe(0o644);
+      expect(mode(folder, 's.sh')).toBe(0o755);
+    });
+
+    it('a private file the run deletes stays private when landing fails part way', async () => {
+      const { home, folder, base, head } = await run({ '.env': 'A=1', 'sub/b.txt': '1' }, { 'sub/b.txt': '2' }, ['.env'], (f) => chmodSync(join(f, '.env'), 0o600));
+      chmodSync(join(folder, 'sub'), 0o555);
+      try {
+        await expect(landBranch(home, folder, base, head)).rejects.toThrow(/put back as it was/);
+      } finally {
+        chmodSync(join(folder, 'sub'), 0o755);
+      }
+      expect(read(folder, '.env')).toBe('A=1');
+      expect(mode(folder, '.env')).toBe(0o600);
+    });
+
     it('stays private when landing fails part way', async () => {
       const { home, folder, base, head } = await run({ '.env': 'A=1', 'sub/b.txt': '1' }, { '.env': 'A=2', 'sub/b.txt': '2' }, [], (f) => chmodSync(join(f, '.env'), 0o600));
       chmodSync(join(folder, 'sub'), 0o555);

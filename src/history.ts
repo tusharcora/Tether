@@ -25,6 +25,8 @@ export interface Landed {
   pre: string;
   post: string;
   files: string[];
+  /** Files the landing deleted whose permissions git can't bring back, as it records only the exec bit. */
+  modes?: Record<string, number>;
 }
 
 /** True when `dir` or a parent holds `.git` (a folder, or a file for worktrees and submodules). */
@@ -211,6 +213,33 @@ function keepMode(path: string, before: number): void {
   chmodSync(path, plain | (after.mode & 0o100 ? before & 0o111 || (plain & 0o444) >> 2 : 0));
 }
 
+/** Permissions of the regular files among `files` that aren't git's own 0644 or 0755. */
+function unusualModes(real: string, files: string[]): Record<string, number> {
+  return Object.fromEntries(
+    files.flatMap((p): [string, number][] => {
+      try {
+        const s = lstatSync(join(real, p));
+        const mode = s.mode & 0o777;
+        return s.isFile() && mode !== 0o644 && mode !== 0o755 ? [[p, mode]] : [];
+      } catch {
+        return [];
+      }
+    }),
+  );
+}
+
+/** Set `modes` on the regular files they name. Returns the ones that could not be set, as a thrown path would carry the folder's. */
+function setModes(real: string, modes: Record<string, number>): string[] {
+  return Object.entries(modes).flatMap(([p, mode]) => {
+    try {
+      if (lstatSync(join(real, p)).isFile()) chmodSync(join(real, p), mode);
+      return [];
+    } catch {
+      return [p];
+    }
+  });
+}
+
 /** Make `files` in the folder match commit `to`: what it holds is written, what it doesn't is removed. Tries every file before reporting a failure, so a put-back does all it can. */
 async function matchFiles(history: string, real: string, to: string, files: string[]): Promise<void> {
   const held = new Set(await listed(history, ['ls-tree', '-r', '-z', '--name-only', to]));
@@ -252,19 +281,27 @@ async function matchFiles(history: string, real: string, to: string, files: stri
   if (failure) throw failure;
 }
 
-/** Take `files` from `from` to `to` and return a snapshot of the result. On failure put them back and throw, saying what could not be. */
-async function move(home: string, real: string, from: string, to: string, files: string[]): Promise<string> {
+/**
+ * Take `files` from `from` to `to`, give `modes` back, and return a snapshot of the result.
+ * On failure put them back and throw, saying what could not be.
+ */
+async function move(home: string, real: string, from: string, to: string, files: string[], modes: Record<string, number> = {}): Promise<string> {
   const history = historyDir(home, real);
+  // a put-back recreates what this removes, and only this remembers how private it was
+  const before = unusualModes(real, files);
   try {
     await matchFiles(history, real, to, files);
+    const unset = setModes(real, modes);
+    if (unset.length) throw new Error(`Could not set permissions on: ${unset.join(', ')}`);
     return (await snapshotFolder(home, real)).sha;
   } catch (cause) {
     let left: string[];
     try {
       // checkout reports a file it could not rewrite even if that file never changed: judge by what is there now
       await matchFiles(history, real, from, files).catch(() => {});
+      const unset = setModes(real, before);
       const check = await snapshotFolder(home, real);
-      left = clashes(files, [...(await changed(history, from, check.sha)), ...check.leftOut]);
+      left = [...new Set([...clashes(files, [...(await changed(history, from, check.sha)), ...check.leftOut]), ...unset])];
     } catch {
       throw new Error('This stopped part way and Tether could not check your folder. Some files may have changed.', { cause });
     }
@@ -279,12 +316,16 @@ export async function landBranch(home: string, folder: string, base: string, hea
   const history = historyDir(home, real);
   const files = await changed(history, base, head);
   // a project the run made inside its work is stored as a bare pointer: it would land as an empty folder
-  const inner = (await listed(history, ['ls-tree', '-r', '-z', head])).filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)).filter((p) => files.includes(p));
+  const tree = await listed(history, ['ls-tree', '-r', '-z', head]);
+  const inner = tree.filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)).filter((p) => files.includes(p));
   if (inner.length) throw new Error(`The work made a separate project in ${inner.map((p) => `"${p}"`).join(', ')}, which can't be brought into your folder yet, so nothing was changed.`);
   // left-out files are in no snapshot, so a diff can't see them: they count as the person's
   const conflicts = clashes(files, [...(await changed(history, base, pre.sha)), ...pre.leftOut]);
   if (conflicts.length) return { conflicts };
-  return { pre: pre.sha, post: await move(home, real, pre.sha, head, files), files };
+  const held = new Set(tree.map((e) => e.slice(e.indexOf('\t') + 1)));
+  const modes = unusualModes(real, files.filter((p) => !held.has(p)));
+  const post = await move(home, real, pre.sha, head, files);
+  return { pre: pre.sha, post, files, ...(Object.keys(modes).length ? { modes } : {}) };
 }
 
 /** Take landed work back out, or name the landed files that changed since and change nothing. Other files are left alone. */
@@ -294,7 +335,7 @@ export async function undoLanding(home: string, folder: string, l: Landed): Prom
   // a landed file now too big for the history can't be compared, so it can't be called unchanged
   const conflicts = clashes(l.files, [...(await changed(historyDir(home, real), l.post, now.sha)), ...now.leftOut]);
   if (conflicts.length) return { conflicts };
-  await move(home, real, now.sha, l.pre, l.files);
+  await move(home, real, now.sha, l.pre, l.files, l.modes);
   return true;
 }
 
