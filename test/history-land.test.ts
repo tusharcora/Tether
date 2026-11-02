@@ -335,7 +335,22 @@ describe('landing', () => {
       expect(read(folder, mine)).toBe('mine');
     });
 
-    it.each([['straße.txt', 'STRASSE.TXT'], ['σx.txt', 'ςx.txt'], ['ﬁle.txt', 'FILE.txt']])('stops on the volume\'s fuller case folding', async (runs, mine) => {
+    it.each([
+      ['straße.txt', 'STRASSE.TXT'],
+      ['σx.txt', 'ςx.txt'],
+      ['ﬁle.txt', 'FILE.txt'],
+      ['strasse.txt', 'STRA\u1E9EE.txt'],
+      ['straße.txt', 'STRA\u1E9EE.txt'],
+      ['STRA\u1E9EE.txt', 'strasse.txt'],
+      ['\u0390.txt', '\u03AA\u0301.txt'],
+      ['\u03AA\u0301.txt', '\u0390.txt'],
+      ['\u03B0.txt', '\u03AB\u0301.txt'],
+      ['\u03AB\u0301.txt', '\u03B0.txt'],
+      ['\u1FD2.txt', '\u0399\u0308\u0300.txt'],
+      ['\u1FD7.txt', '\u0399\u0308\u0342.txt'],
+      ['\u1FE2.txt', '\u03A5\u0308\u0300.txt'],
+      ['\u1FE7.txt', '\u03A5\u0308\u0342.txt'],
+    ])('stops on the volume\'s fuller case folding: %j over %j', async (runs, mine) => {
       const { home, folder, base, head } = await run({ 'a.txt': '1' }, { [runs]: 'run' });
       writeFileSync(join(folder, mine), 'mine');
       expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: [mine] });
@@ -496,6 +511,26 @@ describe('landing', () => {
       expect(await undoLanding(home, folder, r)).toBe(true);
       expect(mode(folder, 'a.txt')).toBe(0o644);
       expect(mode(folder, 's.sh')).toBe(0o755);
+    });
+
+    it('a private file the run swaps for a symlink comes back private on undo', async () => {
+      const { home, folder, base, workdir } = await run({ '.env': 'A=1', 'shared.env': 'B=2' }, {}, [], (f) => chmodSync(join(f, '.env'), 0o600));
+      rmSync(join(workdir, '.env'));
+      symlinkSync('shared.env', join(workdir, '.env'));
+      const r = landed(await landBranch(home, folder, base, (await commitAll(workdir, 'link'))!));
+      expect(readlinkSync(join(folder, '.env'))).toBe('shared.env');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(lstatSync(join(folder, '.env')).isFile()).toBe(true);
+      expect(read(folder, '.env')).toBe('A=1');
+      expect(mode(folder, '.env')).toBe(0o600);
+    });
+
+    it('a private file the run swaps for a folder comes back private on undo', async () => {
+      const { home, folder, base, head } = await run({ key: 'x', 'a.txt': '1' }, { 'key/inner.txt': 'y' }, ['key'], (f) => chmodSync(join(f, 'key'), 0o600));
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'key')).toBe('x');
+      expect(mode(folder, 'key')).toBe(0o600);
     });
 
     it('a private file the run deletes stays private when landing fails part way', async () => {

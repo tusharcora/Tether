@@ -181,8 +181,8 @@ const changed = (history: string, from: string, to: string) => listed(history, [
 
 /** The `others` that sit on, above or below one of `paths`. Above and below count: git replaces a file or folder in a landed path's way. */
 function clashes(paths: string[], others: string[]): string[] {
-  // APFS treats these spellings as one file, and upper then lower matches its folding where lower alone misses ß, ς and ﬁ. Elsewhere this only stops more often.
-  const fold = (p: string) => p.normalize('NFC').toUpperCase().toLowerCase();
+  // APFS treats many spellings as one file: each step catches some (ẞ, ß, ς, ﬁ, accented Greek capitals). Swept against APFS for every code point to U+31FFF with no miss; elsewhere this only stops more often.
+  const fold = (p: string) => p.normalize('NFC').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
   const lineage = (p: string) => fold(p).split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
   const exact = new Set(paths.map(fold));
   const within = new Set(paths.flatMap(lineage));
@@ -322,7 +322,8 @@ export async function landBranch(home: string, folder: string, base: string, hea
   // left-out files are in no snapshot, so a diff can't see them: they count as the person's
   const conflicts = clashes(files, [...(await changed(history, base, pre.sha)), ...pre.leftOut]);
   if (conflicts.length) return { conflicts };
-  const held = new Set(tree.map((e) => e.slice(e.indexOf('\t') + 1)));
+  // regular entries only: git brings a file the work swapped for a symlink back without its permissions, as it does a deleted one
+  const held = new Set(tree.filter((e) => e.startsWith('100')).map((e) => e.slice(e.indexOf('\t') + 1)));
   const modes = unusualModes(real, files.filter((p) => !held.has(p)));
   const post = await move(home, real, pre.sha, head, files);
   return { pre: pre.sha, post, files, ...(Object.keys(modes).length ? { modes } : {}) };
