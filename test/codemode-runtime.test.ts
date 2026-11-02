@@ -244,6 +244,14 @@ describe('the Code Mode session', () => {
     expect(r.text).toMatch(/\(Omitted \d+ bytes\. Full formatted result stored at: \.tether\/spill\/[0-9a-f]+\.txt\. Read it in line ranges with repo\.read/);
   });
 
+  it('with noSpill (a plain folder) leaves nothing in the folder: the result is cut with a note', async () => {
+    const dir = tmp('plain-');
+    const r = await session({ workdir: dir, noSpill: true }).runCode('return "x".repeat(40000)');
+    expect(r.text.length).toBeLessThanOrEqual(16 * 1024 + 200);
+    expect(r.text).toMatch(/\[\.\.\. cut: \d+ more characters/);
+    expect(existsSync(join(dir, '.tether'))).toBe(false);
+  });
+
   it('describes itself by connector names and the two discovery functions, not by every method', () => {
     const d = session().description();
     expect(d).toMatch(/- repo: this run's repository/);

@@ -40,6 +40,8 @@ export interface SessionInfo {
   handoff: boolean;
   /** The workspace whose environments and secrets saved requests use. */
   workspace?: string;
+  /** Never write spill files into the workdir (a plain folder gets nothing of ours): an oversized result is cut with a note. */
+  noSpill?: boolean;
 }
 
 export interface SessionDeps {
@@ -146,7 +148,7 @@ export class CodeSession {
     if (this.asks.length || this.approvals.length) parts.push('(The person has been asked: end your answer now; this step runs again with their decision.)');
     let text = parts.join('\n\n');
     const max = this.limits.maxResultBytes;
-    if (text.length > max) text = (await spillText(this.info.workdir, text, max)) ?? `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
+    if (text.length > max) text = (this.info.noSpill ? undefined : await spillText(this.info.workdir, text, max)) ?? `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
     return { text, isError: !!r.error };
   }
 

@@ -17,6 +17,7 @@ import type { Store } from '../store.js';
 import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
+import { insideGit } from '../history.js';
 import { loadAllow, newChatId, readChat, saveChat as saveChatFile, titleOf, type Chat } from './history.js';
 import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
@@ -253,6 +254,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
       store: c.store,
       vault: c.vault,
       workdir: cwd,
+      noSpill: !!o.root && !insideGit(o.root),
       // an agent's turn in a team never borrows the owner's outside-world grants
       grants: o.ephemeral ? [] : [...loadAllow(c.home, o.ws), ...chat.once],
       workspace: o.ws,
