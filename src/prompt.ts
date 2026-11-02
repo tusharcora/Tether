@@ -82,7 +82,8 @@ export const CAREFUL = `# Working carefully
 - Make the smallest change that does the job, and don't add extras that weren't asked for.
 - Check the result (run the test, build or file) before saying it's done, and say plainly what wasn't checked.
 - Ask only what memory and the files can't answer.
-- Prefer doing it alone with a cheap model. Escalate only when the job needs it.`;
+- Prefer doing it alone with a cheap model. Escalate only when the job needs it.
+- Keep tool output small.`;
 
 export interface PromptInput {
   pipeline: Pipeline;

@@ -19,6 +19,20 @@ const UNREADABLE = "Could not read this run's history, so nothing was shipped.";
 
 export class FolderRefused extends Error {}
 
+/** Runs being put in their folder right now, however many landings at once: a rewind would pull the work out from under them. */
+const landings = new Map<string, number>();
+export const isLanding = (runId: string): boolean => landings.has(runId);
+export async function whileLanding<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+  landings.set(runId, (landings.get(runId) ?? 0) + 1);
+  try {
+    return await fn();
+  } finally {
+    const left = landings.get(runId)! - 1;
+    if (left) landings.set(runId, left);
+    else landings.delete(runId);
+  }
+}
+
 export interface Snapshot {
   sha: string;
   leftOut: string[];

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve as resolvePath, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
-import { gitRoot } from './history.js';
+import { gitRoot, isLanding } from './history.js';
 import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, headSha, isAncestor, refsUnder, removeBranch, removeWorktree, resetTo, diffAgainst, entryPaths, revertEntries, setRef, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
 import { ancestorsOf, childrenOf, normalizePipeline, parentsOf, preflight, topoLayers } from './pipeline.js';
@@ -508,6 +508,7 @@ export class Engine {
     const s = this.rewindable(runId, node, 'rewind');
     if (s.ship?.url) throw new Error(`already shipped as PR #${s.ship.number}: fork from a step instead`);
     if (s.ship?.landed) throw new Error('This work is already in the folder. Undo that first.');
+    if (isLanding(runId)) throw new Error('This work is being put in the folder. Try again in a moment.');
     this.moving.add(runId);
     try {
       const base = rewindBase(s, node);

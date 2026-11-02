@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../src/exec.js';
 import { buildPrompt, CAREFUL } from '../src/prompt.js';
 import { landRun, RunShip } from '../src/runShip.js';
@@ -9,7 +9,15 @@ import { soloPipeline } from '../src/solo.js';
 import type { MockScript, StoredEvent } from '../src/types.js';
 import { makeRepo, pipe, plainFolder, setup, tmp } from './helpers.js';
 
+/** Holds a landing open at its start, for as long as a test needs, without a huge folder. Everything else is the real thing. */
+const held = vi.hoisted(() => ({ gate: undefined as Promise<void> | undefined }));
+vi.mock('../src/history.js', async (real) => {
+  const h = await real<typeof import('../src/history.js')>();
+  return { ...h, landBranch: async (...a: Parameters<typeof h.landBranch>) => (await held.gate, h.landBranch(...a)) };
+});
+
 const read = (dir: string, f: string) => readFileSync(join(dir, f), 'utf8');
+const CONFLICT = (f: string) => `${f} changed since this work started, so nothing in the folder was changed. Keep your version, or rewind this run from its page and run it again.`;
 const GIT_WORDS = /\b(git|branch|merge|commit|repository|fatal)\b/i;
 
 /** A finished solo run. `writes` is what its one step writes; `during` runs on each event, before the landing starts (a person editing, a broken history). */
@@ -85,9 +93,34 @@ describe('a solo run', () => {
     await r.ship.idle();
     const ship = r.store.state(r.id)!.ship!;
     expect(ship.landed).toBeUndefined();
-    expect(ship.error).toContain('a.txt changed since this work started');
+    expect(ship.error).toBe(CONFLICT('a.txt'));
     expect(ship.error).not.toMatch(GIT_WORDS);
+    expect(ship.error).not.toContain(r.home);
     expect(read(r.folder, 'a.txt')).toBe('mine\n');
+  });
+
+  it('what a conflict offers works: the run rewinds from its page, and lands once the file is clear', async () => {
+    const r = await soloRun({ 'a.txt': 'two\n' }, {
+      during: (e, s) => {
+        if (e.event.type === 'node.finished' && !s.store.state(e.runId)!.rewinds) writeFileSync(join(s.store.state(e.runId)!.repo, 'a.txt'), 'mine\n');
+      },
+    });
+    await r.ship.idle();
+    await r.engine.rewind(r.id, 'work');
+    await r.engine.resume(r.id);
+    await r.engine.wait(r.id);
+    await r.ship.idle();
+    // still the person's file: it stops again, in the same words
+    expect(r.store.state(r.id)!.ship?.error).toBe(CONFLICT('a.txt'));
+    expect(read(r.folder, 'a.txt')).toBe('mine\n');
+
+    writeFileSync(join(r.folder, 'a.txt'), 'one\n');
+    await r.engine.rewind(r.id, 'work');
+    await r.engine.resume(r.id);
+    await r.engine.wait(r.id);
+    await r.ship.idle();
+    expect(read(r.folder, 'a.txt')).toBe('two\n');
+    expect(r.store.state(r.id)!.ship).toMatchObject({ landed: { files: ['a.txt'] } });
   });
 
   it('a landing that breaks says so without git words or a path, and leaves the folder alone', async () => {
@@ -110,7 +143,7 @@ describe('a solo run', () => {
     await r.ship.idle();
     const ship = r.store.state(r.id)!.ship!;
     expect(ship.landed).toBeUndefined();
-    expect(ship.error).toBe('Nothing needed changing, so nothing was put in the folder.');
+    expect(ship.error).toBe('No files came out of this run.');
   });
 
   it('a solo run in a real repo finishes on the ordinary decision and pushes nothing', async () => {
@@ -171,6 +204,29 @@ describe('a solo run', () => {
     expect(r.store.state(r.id)!.ship).toMatchObject({ merged: true, landed: { files: ['b.txt'] } });
   });
 
+  it('a run being landed refuses a rewind, and takes one again once the landing is over', async () => {
+    let release!: () => void;
+    held.gate = new Promise((res) => (release = res));
+    const r = await soloRun({ 'b.txt': 'two\n' }).finally(() => (held.gate = undefined));
+    expect(r.store.state(r.id)!.ship).toBeUndefined(); // the run let go; its landing is open
+    await expect(r.engine.rewind(r.id, 'work')).rejects.toThrow('This work is being put in the folder. Try again in a moment.');
+    expect(r.store.state(r.id)!.status).toBe('done');
+    release();
+    await r.ship.idle();
+    expect(read(r.folder, 'b.txt')).toBe('two\n');
+    await r.ship.undo(r.id);
+    await expect(r.engine.rewind(r.id, 'work')).resolves.toMatchObject({ status: 'stopped' });
+  });
+
+  it('a landing that dies lets go of the run too', async () => {
+    held.gate = Promise.reject(new Error('it broke'));
+    held.gate.catch(() => {});
+    const r = await soloRun({ 'b.txt': 'two\n' }).finally(() => (held.gate = undefined));
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship?.error).toBe('it broke');
+    await expect(r.engine.rewind(r.id, 'work')).resolves.toMatchObject({ status: 'stopped' });
+  });
+
   it('a landing that was waiting its turn lands nothing once the run has gone back', async () => {
     const r = await soloRun({ 'a.txt': 'two\n' }, {
       during: (e, s) => {
@@ -189,9 +245,10 @@ describe('the care rules', () => {
   it('writable steps get the care rules; read-only steps do not', () => {
     const p = pipe([{ id: 'write', role: 'coder' }, { id: 'look', role: 'reviewer', readOnly: true }], []);
     const state = { id: 'r', task: 't', nodes: {} } as never;
-    expect(CAREFUL.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(5);
+    expect(CAREFUL.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(6);
     expect(CAREFUL).toContain('Read the relevant files before changing them.');
     expect(CAREFUL).toContain('say plainly what wasn\'t checked');
+    expect(CAREFUL).toContain('- Keep tool output small.');
     expect(buildPrompt({ pipeline: p, node: p.nodes[0]!, state })).toContain(CAREFUL);
     expect(buildPrompt({ pipeline: p, node: p.nodes[1]!, state })).not.toContain(CAREFUL);
   });

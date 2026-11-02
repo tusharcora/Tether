@@ -7,7 +7,7 @@
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding } from './history.js';
+import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding, whileLanding } from './history.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import type { Landed } from './history.js';
@@ -45,16 +45,17 @@ function plainFailure(e: Error): string {
 }
 
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
-export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string }> {
+export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string; conflicts?: string[] }> {
   const s = d.store.state(runId)!;
-  return inFolder(s.repo, async () => {
+  // taken before the folder's queue, in the same tick as the run's finish: from there on a rewind can't reach the work
+  return whileLanding(runId, () => inFolder(s.repo, async () => {
     const now = d.store.state(runId)!;
     if (now.ship?.landed) return { error: 'This work is already in the folder.' };
     // it may have been rewound while it waited its turn: what's on it now isn't the finished work
     if (now.status !== 'done') return { error: 'This work is still changing, so nothing was put in the folder.' };
     try {
       const r = await landBranch(d.home, s.repo, s.branch, landingBase(d.store, s));
-      if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.` };
+      if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.`, conflicts: r.conflicts };
       if (!r.files.length) return { error: NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
       return { landed: r };
@@ -62,7 +63,13 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
       console.error(`[ship] ${(e as Error).message}`, (e as Error).cause ?? '');
       return { error: plainFailure(e as Error) };
     }
-  });
+  }));
+}
+
+/** A solo run has no squad to send it back to, and a done run can't be sent back: it says what's left to do on its own page. */
+function soloFailure(r: { error: string; conflicts?: string[] }): string {
+  if (r.conflicts) return `${r.conflicts.join(', ')} changed since this work started, so nothing in the folder was changed. Keep your version, or rewind this run from its page and run it again.`;
+  return r.error === NOTHING_TO_LAND ? 'No files came out of this run.' : r.error;
 }
 
 const firstLine = (t: string, n: number) => t.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, n) ?? 'Tether run';
@@ -132,7 +139,7 @@ export class RunShip {
       const s = this.d.store.state(runId)!;
       if (s.history) {
         const r = await landRun(this.d, runId);
-        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: s.solo && r.error === NOTHING_TO_LAND ? 'Nothing needed changing, so nothing was put in the folder.' : r.error });
+        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: s.solo ? soloFailure(r) : r.error });
         return;
       }
       const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha, s.dirty);
