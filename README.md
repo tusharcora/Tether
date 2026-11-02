@@ -147,12 +147,12 @@ flowchart LR
 
 ### Any folder, git or not
 
-Workflows, squads and tickets work in any folder you register, with or without git. In a folder without git, Tether keeps a hidden history under your Tether home, never in the folder, and a run works on a copy of it. Nothing is added to the folder: no `.git`, no `.aorch`, no `.tether`.
+Workflows, squads and tickets work in any folder you register, with or without git. In a folder without git, Tether keeps a hidden history under your Tether home, never in the folder, and a run works in its own worktree, where your files are copied in. Nothing is added to the folder: no `.git`, no `.aorch`, no `.tether`.
 
-- **Putting it in the folder.** When you approve, the run's files are put in the folder, and a run shows how many. If you changed one of those files since the run started, nothing is put in and the file is named.
+- **Putting it in the folder.** When you choose **Put it in the folder**, the run's files are put in the folder, and a run shows how many. If you changed one of those files since the run started, nothing is put in and the file is named.
 - **Undo.** Takes back exactly what that run put in, restoring the files as they were, and the ticket goes back to In review so you can ship it again. If you edited a file since, Undo stops, names the file and changes nothing.
-- **Left out.** Files over 25 MB, and `node_modules`, `.venv`, `venv`, `__pycache__` and `.DS_Store` at any depth. A run still sees dependencies, linked in, but they are never copied back. A git repo inside the folder is linked in and named in a notice, and it is never changed.
-- **Refused.** A folder is refused if it is your home folder or has over 100,000 files. Pick a project folder inside it.
+- **Left out.** Files over 25 MB, and `node_modules`, `.venv`, `venv`, `__pycache__` and `.DS_Store` at any depth, are not copied into the history. A run sees them linked to the real folder, so a change it makes to them lands in the folder at once and Undo can't reverse it. A git repo inside the folder is linked the same way. A run shows a notice naming everything linked.
+- **Refused.** A folder is refused if it is `/`, your home folder, a folder that holds Tether's own home, or has over 100,000 files. Pick a project folder inside it.
 - **Not yet.** Saving an API request or running `workspace init` still writes `.aorch` into the folder. The history is never pruned.
 
 ## Meet the crew
