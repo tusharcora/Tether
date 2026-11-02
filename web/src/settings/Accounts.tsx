@@ -13,6 +13,7 @@ import { KEYS_URL } from '../../../src/nvidia';
 import { FREE_DEFAULT } from '../../../src/openrouter';
 import { shortModel, type AccountsView, type DeviceState, type ProviderView } from './accountsApi';
 import { FreeCounter, useOpenRouterConnect } from './FreeModels';
+import { TelegramAccount } from './Telegram';
 import './settings.css';
 
 /** How often the panel asks the server how the device flow is going (the server itself polls GitHub). */
@@ -29,7 +30,7 @@ export function Accounts(p: { poll: Poll<AccountsView> }) {
         <ul className="acc-list">
           {(data?.providers ?? []).map((pv) => (
             <li key={pv.id} className="acc-row">
-              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : pv.id === 'openrouter' ? <OpenRouterAccount p={pv} onChanged={refresh} /> : pv.id === 'nvidia' ? <NvidiaAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
+              {pv.id === 'github' ? <GithubAccount p={pv} onChanged={refresh} /> : pv.id === 'openrouter' ? <OpenRouterAccount p={pv} onChanged={refresh} /> : pv.id === 'nvidia' ? <NvidiaAccount p={pv} onChanged={refresh} /> : pv.id === 'telegram' ? <TelegramAccount p={pv} onChanged={refresh} /> : <ComingProvider p={pv} />}
             </li>
           ))}
         </ul>

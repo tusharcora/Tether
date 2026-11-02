@@ -38,12 +38,26 @@ export async function teamsRoute(c: { home: string; teams: Teams; vault: Vault }
   }
   if (p === '/api/teams' && m === 'POST') return send(res, 201, teams.create(await readJson(req))), true;
 
+  if ((g = p.match(/^\/api\/teams\/([a-z0-9][a-z0-9_-]{0,39})\/people\/([a-z0-9]{1,40})$/))) {
+    const [, id, person] = g as unknown as [string, string, string];
+    if (m === 'DELETE') return send(res, 200, teams.removePerson(id, person)), true;
+    if (m === 'PATCH') {
+      const b = reqObject(await readJson(req));
+      const flag = (k: string) => {
+        if (b[k] !== undefined && typeof b[k] !== 'boolean') throw new HttpError(400, `"${k}" must be true or false`);
+        return b[k] as boolean | undefined;
+      };
+      return send(res, 200, teams.setPerson(id, person, { approver: flag('approver'), canStartRuns: flag('canStartRuns') })), true;
+    }
+  }
   if ((g = p.match(/^\/api\/teams\/([a-z0-9][a-z0-9_-]{0,39})(?:\/(messages|cards|diff)(?:\/([A-Za-z0-9]{1,40}))?)?$/))) {
     const [, id, sub, msg] = g as unknown as [string, string, string | undefined, string | undefined];
     if (!sub && m === 'GET') return send(res, 200, teams.view(id)), true;
     if (!sub && m === 'PATCH') return send(res, 200, teams.update(id, await readJson(req))), true;
     if (!sub && m === 'DELETE') return teams.remove(id), send(res, 200, { deleted: id }), true;
     if (sub === 'messages' && !msg && m === 'POST') {
+      // a Telegram team's room in Tether is a read-only mirror: its people talk in the group
+      if (teams.must(id).place === 'telegram') throw new HttpError(409, 'This team lives in Telegram: talk to it there.');
       const text = opt(reqObject(await readJson(req)), 'text');
       if (!text) throw new HttpError(400, '"text" is required');
       return send(res, 201, teams.post(id, { text, from: OWNER })), true;
