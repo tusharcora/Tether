@@ -175,6 +175,7 @@ export class Attempts {
           autoApprove: original.autoApprove,
           workspace: original.workspace?.id ?? false,
           ...(original.origin ? { origin: original.origin } : {}),
+          ...(original.noCommands ? { noCommands: true as const } : {}),
         });
         // the run becomes A once a sibling exists (a start that fails leaves it as it was)
         if (!ids.length && !s.attemptSet) this.d.store.append(s.id, { type: 'attempt.set', set, label: 'A' });

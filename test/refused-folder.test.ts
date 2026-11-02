@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AdapterRegistry } from '../src/adapters/index.js';
 import { MockAdapter } from '../src/adapters/mock.js';
+import { Attempts } from '../src/attempts.js';
 import { autoFixRefusal } from '../src/autofix.js';
 import { Engine } from '../src/engine.js';
 import { Goals } from '../src/goals/loop.js';
@@ -52,6 +53,23 @@ const withGate = (marker: string) =>
   );
 
 describe('a run started without commands (Not now)', () => {
+  it('Try more ways keeps Not now: the sibling runs no gate or setup, is not done, and the folder stays unknown', async () => {
+    const w = world();
+    const setupMark = join(tmp('marks-'), 'setup');
+    const p = pipe(withGate(w.marker).nodes, [['work', 'check']], { setup: `touch ${setupMark}` });
+    const id = await w.engine.start({ pipeline: p, task: 'x', repo: w.folder, noCommands: true });
+    await w.engine.wait(id);
+    const attempts = new Attempts({ home: w.home, store: w.store, engine: w.engine, registry: w.registry, ship: { decide: async () => {} } });
+    const [sib] = await attempts.start(id, { count: 1, agents: [{ agent: 'mock' }] });
+    await w.engine.wait(sib!);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(existsSync(setupMark)).toBe(false);
+    const s = w.store.state(sib!)!;
+    expect(s.noCommands).toBe(true);
+    expect(s.status).not.toBe('done');
+    expect(trustState(w.home, w.folder)).toBe('unknown');
+  });
+
   it('a gate does not run and does not pass; the folder stays unasked, and the next run is not held back', async () => {
     const w = world();
     const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder, noCommands: true });
