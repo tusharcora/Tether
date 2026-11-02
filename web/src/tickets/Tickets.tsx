@@ -297,7 +297,7 @@ export function Bars({ days, label }: { days: number[]; label: string }) {
 /** A board card (board 10): type, key, priority, title, labels, and by status: live progress, needs-you chips, a done PR. */
 function TicketCard({ t, agents, now, live, queued, onOpen }: { t: Ticket; agents: Agents; now: number; live?: Agents[number]; queued: boolean; onOpen: () => void }) {
   const met = t.criteria.filter((c) => c.done).length;
-  const pr = t.prs?.at(-1);
+  const pr = t.plain ? undefined : t.prs?.at(-1);
   return (
     <button type="button" className={cn('tk-card', `s-${t.stage}`, { needs: !!t.needs })} onClick={onOpen} aria-label={`${t.key} ${t.title}`}>
       <span className="tk-row">
@@ -423,7 +423,7 @@ function TicketPanel({ t, agents, squads, now, onClose, onTicket, onGo }: { t: T
   const refresh = () => api<GoalView>('GET', `/api/tickets/${t.id}`);
   const patch = (body: Record<string, unknown>) => void run(() => goalsApi.patch(t.id, body));
   const member = (v: string): Member | null => (!v ? null : v === 'owner' ? { kind: 'person', id: 'owner' } : { kind: 'agent', id: v });
-  const pr = t.prs?.filter((x) => !x.merged).at(-1) ?? t.prs?.at(-1);
+  const pr = t.plain ? undefined : (t.prs?.filter((x) => !x.merged).at(-1) ?? t.prs?.at(-1));
   const notStarted = t.status === 'paused' && !t.startedAt;
   const squad = squads.find((s) => s.id === t.squad);
   const send = () => {

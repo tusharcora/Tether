@@ -138,11 +138,17 @@ describe('Tickets (board 10)', () => {
     expect([key, status, assignee, squad]).toEqual(['WEB-144', 'Todo', '—', '# web']);
   });
 
-  it('a plain folder ticket says nothing of a PR or a merge', () => {
-    setup({ tickets: [{ ...review, prs: undefined, plain: true }], selected: 't142' });
-    const panel = screen.getByRole('complementary', { name: 'Ticket' });
-    expect(within(panel).getByRole('button', { name: 'Ship it' })).toBeTruthy();
-    expect(panel.textContent).not.toMatch(/\bPR\b|merge/i);
+  it('a plain folder ticket says nothing of a PR or a merge, in any stage', () => {
+    for (const t of [review, live, backlog, bug, done, canceled]) {
+      // even a stale PR on the ticket stays out of sight
+      const { container, unmount } = renderApp(<Tickets tickets={[{ ...t, plain: true }]} project={project} squads={squads} selected={t.id} onTicket={vi.fn()} onSelect={vi.fn()} onGo={vi.fn()} onSquadsChanged={vi.fn()} />);
+      expect(container.textContent, t.stage).not.toMatch(/\bPR\b|merge/i);
+      if (t.stage === 'in_review') {
+        expect(screen.getByRole('button', { name: 'Ship it' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Send back' })).toBeTruthy();
+      }
+      unmount();
+    }
   });
 
   it('the detail panel: properties, criteria (one checked automatically), the ship banner, activity and a comment', async () => {

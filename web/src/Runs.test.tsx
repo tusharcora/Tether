@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { Runs } from './Runs';
+import { StepPane } from './runs/StepPane';
 import { calls, FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
@@ -96,6 +97,13 @@ describe('Runs', () => {
     expect(screen.queryByText(/merge|branch|\bPR\b|commit|repositor/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Put it in the folder' }));
     await waitFor(() => expect(calls('POST', '/api/runs/r1/ship')).toHaveLength(1));
+  });
+
+  it('the step pane with no step selected does not show the branch of a plain folder run', async () => {
+    const { container } = renderApp(<StepPane row={{ id: 'plan', sentence: 'Planning', line: '', state: 'done' }} run={makeRun({ history: '/x' })} comments={{ list: [], markSent: () => {} } as never} onAct={async () => true} />);
+    await waitFor(() => expect(container.querySelector('.rp-step')).toBeTruthy());
+    expect(container.textContent).not.toContain('aorch/r1');
+    expect(container.textContent).toContain('working copy');
   });
 
   it('shows Undo after landing and says what stopped it', async () => {

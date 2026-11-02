@@ -204,6 +204,7 @@ export class Attempts {
       const metric = this.d.metric?.(s);
       runs.push({
         id: s.id,
+        ...(s.history ? { plain: true as const } : {}),
         label: s.attemptLabel ?? '?',
         status: s.status,
         live: this.d.engine.isLive(s.id),

@@ -51,6 +51,7 @@ export function Compare({ set, onGo }: { set: string; onGo: (r: Route) => void }
   const total = d.runs.reduce((s, a) => s + a.costUsd, 0);
   const longest = Math.max(0, ...d.runs.map((a) => a.durationMs));
   const first = d.runs[0]!;
+  const plain = !!first.plain;
   const pickedLabel = d.picked ? d.runs.find((a) => a.id === d.picked!.run)?.label : undefined;
   const nameOf = (bot: string) => crew[bot]?.name ?? bot;
   return (
@@ -74,7 +75,7 @@ export function Compare({ set, onGo }: { set: string; onGo: (r: Route) => void }
           </Button>
         ) : null}
       </header>
-      <p className="cmp-note">{pickedLabel ? `You picked ${pickedLabel}. The others are kept for a week, then cleaned up.` : `Same task, ${d.runs.length} ways, each on its own branch. Pick the one to ship; the others are kept for a week, then cleaned up.`}</p>
+      <p className="cmp-note">{pickedLabel ? `You picked ${pickedLabel}. The others are kept for a week, then cleaned up.` : `Same task, ${d.runs.length} ways${plain ? '' : ', each on its own branch'}. Pick the one to ${plain ? 'put in the folder' : 'ship'}; the others are kept for a week, then cleaned up.`}</p>
       <div className="cmp-cols">
         {d.runs.map((a) => {
           const check = checkText(a);
@@ -135,8 +136,8 @@ export function Compare({ set, onGo }: { set: string; onGo: (r: Route) => void }
                     {`Retry ${a.label}`}
                   </Button>
                 ) : !d.picked ? (
-                  <Button variant={isPick ? 'primary' : 'secondary'} size="sm" loading={busy === `pick:${a.id}`} disabled={a.live || !!busy} onClick={() => void act(`pick:${a.id}`, () => api('POST', `/api/attempts/${encodeURIComponent(set)}/pick`, { run: a.id }), `Picked ${a.label}: its PR opens when it is done`)}>
-                    {`Pick ${a.label} and ship`}
+                  <Button variant={isPick ? 'primary' : 'secondary'} size="sm" loading={busy === `pick:${a.id}`} disabled={a.live || !!busy} onClick={() => void act(`pick:${a.id}`, () => api('POST', `/api/attempts/${encodeURIComponent(set)}/pick`, { run: a.id }), plain ? `Picked ${a.label}: it goes in the folder when it is done` : `Picked ${a.label}: its PR opens when it is done`)}>
+                    {`Pick ${a.label} and ${plain ? 'put it in the folder' : 'ship'}`}
                   </Button>
                 ) : null}
                 <Button variant="ghost" size="sm" onClick={() => onGo({ tab: 'runs', id: a.id })}>

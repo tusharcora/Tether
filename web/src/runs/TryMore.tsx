@@ -17,7 +17,7 @@ export const pickLabel = (a: AgentPick) => `${a.agent}${a.model ? ` · ${a.model
  * Try more ways: how many more attempts (1–4) and which agent or model each runs on, the defaults filled in (free first,
  * none twice, never the run's own). Start runs them as one set and opens Compare.
  */
-export function TryMore({ runId, onClose, onStarted }: { runId: string; onClose: () => void; onStarted: (set: string) => void }) {
+export function TryMore({ runId, plain, onClose, onStarted }: { runId: string; plain?: boolean; onClose: () => void; onStarted: (set: string) => void }) {
   const [data, setData] = useState<PicksReply>();
   const [error, setError] = useState<string>();
   const [count, setCount] = useState(2);
@@ -46,7 +46,7 @@ export function TryMore({ runId, onClose, onStarted }: { runId: string; onClose:
   };
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent title="Try more ways" description="The same task on other agents or models at once, each on its own branch. Compare them, then pick one to ship.">
+      <DialogContent title="Try more ways" description={plain ? 'The same task on other agents or models at once. Compare them, then pick one to put in the folder.' : 'The same task on other agents or models at once, each on its own branch. Compare them, then pick one to ship.'}>
         {!data && !error ? <p className="sl-meta">Loading your agents…</p> : null}
         {data ? (
           <div className="tm">

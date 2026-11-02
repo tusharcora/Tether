@@ -1098,6 +1098,8 @@ export interface AgentPick {
 /** One attempt as the Compare page shows it. */
 export interface AttemptView {
   id: string;
+  /** Its run is in a plain folder: the page says folder, not PR. Never the path. */
+  plain?: true;
   label: string;
   status: RunState['status'];
   live: boolean;
