@@ -18,7 +18,6 @@ import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
 import { insideGit } from '../history.js';
-import { fence } from '../fence.js';
 import { loadAllow, newChatId, readChat, saveChat as saveChatFile, titleOf, type Chat } from './history.js';
 import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
@@ -150,8 +149,7 @@ export async function startRoute(c: AssistantCtx, o: { ws: string; root: string;
   const chose: RouteCard = { ...card, chose: choice };
   try {
     const context = recentChat(c.home, o.ws, o.messages);
-    const draft = card.draft && { ...card.draft, description: [card.draft.description, fence('chat', context)].filter(Boolean).join('\n\n') };
-    if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws) })).id };
+    if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(card.draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws), context })).id };
     if (trust !== undefined) setTrust(c.home, o.root, trust);
     const runId =
       choice === 'team'

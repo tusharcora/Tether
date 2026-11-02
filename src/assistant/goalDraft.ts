@@ -120,7 +120,7 @@ function people(d: GoalDraft, ctx: DraftCtx): Pick<Goal, 'assignees' | 'team' | 
 }
 
 /** The goal a draft makes: paused ("not started") until the person's Start. */
-export function goalFromDraft(d: GoalDraft, o: { workspace: string; origin: GoalOrigin; ctx: DraftCtx }): Goal {
+export function goalFromDraft(d: GoalDraft, o: { workspace: string; origin: GoalOrigin; ctx: DraftCtx; context?: string }): Goal {
   const p = people(d, o.ctx);
   return {
     id: `g${Date.now().toString(36)}${randomBytes(3).toString('hex')}`,
@@ -136,6 +136,7 @@ export function goalFromDraft(d: GoalDraft, o: { workspace: string; origin: Goal
     spentUsd: 0,
     type: d.type,
     ...(d.description ? { description: d.description } : {}),
+    ...(o.context ? { context: o.context } : {}),
     ...(p.assignees ? { assignees: p.assignees } : {}),
     ...(p.team ? { team: p.team, agent: p.agent } : {}),
     origin: o.origin,

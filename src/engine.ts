@@ -485,7 +485,9 @@ export class Engine {
       if (o.switchTo) this.amend(runId, id, o.switchTo, 'switched model after the free limit');
       if (n.status === 'awaiting') this.store.append(runId, { type: 'node.requeued', node: id, reason: 'resumed after the free limit' });
     }
-    this.store.append(runId, { type: 'run.resumed', retryFailed: o.retryFailed ?? s.status === 'error' });
+    // a step the folder's answer stopped goes again once the answer changed; nothing else could have changed it
+    const answered = Object.values(s.nodes).some((n) => n.error === NOT_TRUSTED) && trustState(this.opts.home, s.repo) !== 'refused';
+    this.store.append(runId, { type: 'run.resumed', retryFailed: (o.retryFailed ?? s.status === 'error') || answered });
     this.launch(runId);
   }
 

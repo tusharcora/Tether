@@ -3,6 +3,7 @@ import { RunShip } from '../src/runShip.js';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addTeamLessons, loadLessons } from '../src/lessons.js';
+import type { Goal } from '../src/goals/types.js';
 import { OWNER } from '../src/teams/store.js';
 import { g, rig } from './teams-rig.js';
 import { savePrefs } from '../src/prefs.js';
@@ -42,6 +43,33 @@ describe('a ping', () => {
     const done = await r.teams.decide(r.team.id, m.id, { action: 'start', by: OWNER });
     expect(done.card).toMatchObject({ status: 'started', runId: expect.any(String) });
     expect(r.store.state((done.card as { runId: string }).runId)!.pipeline.nodes.map((n) => n.id)).toEqual(['work']);
+  });
+});
+
+describe('a ticket from a chat', () => {
+  const made = (r: ReturnType<typeof rig>, o: Partial<Goal> = {}): Goal =>
+    r.goals.create({ id: 'gchat', workspace: 'app', title: 'Fix the thing', description: 'Keep ?next=.', kind: 'tracker', status: 'paused', approval: 'ask', workflow: 'team', createdAt: 1, spentUsd: 0, context: 'The person: SECRET WORDS', ...o });
+
+  it('handed to an agent, its run has the chat as context, and the squad channel never shows it', async () => {
+    const r = rig();
+    const g = made(r, { assignee: { kind: 'agent', id: 'coder' } });
+    expect(await r.teams.startTicket(g)).toBe(true);
+    const runId = await r.until(() => r.tasks()[0]?.runId);
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(r.store.state(runId)!.context).toBe('The person: SECRET WORDS');
+    expect(r.store.state(runId)!.task).not.toContain('SECRET');
+    expect(r.writer.prompts[0]).toContain('<chat>\nThe person: SECRET WORDS\n</chat>');
+    expect(r.msgs().some((m) => m.text.includes('SECRET'))).toBe(false);
+  });
+
+  it('a squad’s loop run has it too', async () => {
+    const r = rig();
+    const g = made(r, { kind: 'loop', team: r.team.id, agent: 'coder', approval: 'auto', check: { kind: 'tests', command: 'false' } });
+    const runId = await r.teams.loopRun(g, { task: 'Go', why: 'x' });
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(r.store.state(runId)!.context).toBe('The person: SECRET WORDS');
   });
 });
 

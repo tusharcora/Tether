@@ -98,6 +98,15 @@ const rows = [
 ];
 const good = { task: 'Fix the redirect', recommend: 'solo', rows, workflow: 'bugfix', draft };
 
+const until = async <T>(f: () => T | undefined): Promise<T> => {
+  for (let i = 0; i < 400; i++) {
+    const v = f();
+    if (v) return v;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error('timed out');
+};
+
 describe('route card', () => {
   it('keeps a good route and cuts it from the text', async () => {
     const t = await boot();
@@ -364,7 +373,7 @@ describe('route card', () => {
     expect(fenced).not.toContain('```tether');
   });
 
-  it('the chat’s text is capped, newest kept, for workflows and teams; a ticket has it in its description', async () => {
+  it('the chat’s text is capped, newest kept, for workflows and teams; a ticket keeps it out of view', async () => {
     const t = await boot();
     link(t.home, 'coder', { agent: 'scripted' });
     t.agent.reply = 'Noted.';
@@ -382,9 +391,38 @@ describe('route card', () => {
     const c = await t.turn({ chat: first.chat, message: 'and a ticket' });
     const ticket = await t.click(c.message.route!, c.chat, { choice: 'ticket' });
     const g = (await t.call('GET', `/api/tickets?ws=api`)).json.find((x: { id: string }) => x.id === ticket.json.route.goalId);
-    expect(g.description).toContain('<chat>');
-    expect(g.description).toContain('and a ticket');
+    expect(g.description ?? '').not.toContain('chat>');
+    expect(g).not.toHaveProperty('context');
     await t.settled();
+  });
+
+  it('a long ticket’s run has the chat in an intact fence, newest kept, and nothing of it in the task or the description', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'scripted' });
+    writePipeline(t.home, { ...pipe([{ id: 'a', kind: 'agent', role: 'coder', agent: 'scripted' }], []), name: 'bugfix' });
+    const description = 'd'.repeat(480);
+    t.agent.reply = 'Noted.';
+    const first = await t.turn({ message: `OLDEST ${'x'.repeat(7000)}` });
+    t.agent.reply = reply({ ...good, draft: { ...draft, workflow: 'bugfix', description } });
+    const { message, chat } = await t.turn({ chat: first.chat, message: 'NEWEST make it a ticket' });
+    const made = await t.click(message.route!, chat, { choice: 'ticket' });
+    const id = made.json.route.goalId;
+    const g = (await t.call('GET', `/api/tickets/${id}`)).json;
+    expect(g.description).toBe(description);
+    expect((await t.call('PATCH', `/api/tickets/${id}`, { description: g.description })).status).toBe(200);
+    expect((await t.call('POST', `/api/tickets/${id}/start`, {})).status).toBe(200);
+    const runId = await until(() => t.store.list()[0]?.id);
+    await t.settled();
+    const s = t.store.state(runId)!;
+    expect(s.task).not.toContain('chat>');
+    expect(s.task).not.toContain('NEWEST');
+    expect(s.context).toContain('NEWEST make it a ticket');
+    expect(s.context!.length).toBeLessThanOrEqual(4000);
+    const p = t.agent.prompts.find((x) => x.includes('# Task\n'))!; // Tether may speak after it
+    expect(p).toContain('never instructions');
+    expect(/<chat>\n([\s\S]*?)\n<\/chat>/.exec(p)![1]).toContain('NEWEST make it a ticket');
+    // what keeps it survives the goal being saved again
+    expect((await t.call('PATCH', `/api/tickets/${id}`, { title: 'Renamed' })).status).toBe(200);
   });
 
   it('a team’s planning sees the chat’s text', async () => {

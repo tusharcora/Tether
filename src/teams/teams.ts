@@ -602,7 +602,9 @@ export class Teams {
     let runId: string;
     try {
       const pipeline = taskPipeline({ bot: def, level: team.level, gates: this.gates(team), budgetUsd: this.budget(team), ship: true });
-      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(prev ? { ref: prev.branch } : {}), workspace: team.project, origin: { kind: 'team', id: team.id, team: team.id } });
+      const handed = o.ticket ?? o.ref?.ticket;
+      const context = handed ? this.d.goals.db.get(handed)?.context : undefined;
+      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(context ? { context } : {}), ...(prev ? { ref: prev.branch } : {}), workspace: team.project, origin: { kind: 'team', id: team.id, team: team.id } });
     } catch (e) {
       return void this.say(team.id, this.agentFrom(bot), template({ kind: 'failed', reason: `I could not start a run: ${firstLine((e as Error).message, 160)}` }), where);
     }
@@ -966,7 +968,7 @@ export class Teams {
     // caps off: a goal's own $ limit is the only cap its runs get (an explicit cap, so the run enforces it)
     const budgetUsd = caps ? this.budget(team, left ?? Infinity) : left === undefined ? undefined : Math.min(Math.max(left, 0.01), TEAM_MAX_BUDGET_USD);
     const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd, ship: false });
-    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id }, capsOn: caps || left !== undefined });
+    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(g.context ? { context: g.context } : {}), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id }, capsOn: caps || left !== undefined });
     const s = this.d.store.state(runId)!;
     // a goal made elsewhere (a chat's goal card) gets its card in the channel on its first run, so the team sees it
     const msg = this.loopMsg(team.id, g.id)?.id ?? this.say(team.id, TETHER, `Goal: ${g.title}`, { card: { kind: 'loop', goalId: g.id } }).id;

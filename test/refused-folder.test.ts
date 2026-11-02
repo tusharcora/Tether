@@ -8,7 +8,7 @@ import { Engine } from '../src/engine.js';
 import { Goals } from '../src/goals/loop.js';
 import type { Goal } from '../src/goals/types.js';
 import { Store } from '../src/store.js';
-import { setTrust } from '../src/trust.js';
+import { clearTrust, setTrust } from '../src/trust.js';
 import type { AgentAdapter, AgentRequest, AgentResult } from '../src/types.js';
 import { initWorkspace } from '../src/workspace.js';
 import { pipe, plainFolder, tmp } from './helpers.js';
@@ -66,6 +66,56 @@ describe('a folder that said no', () => {
     expect(s.nodes.work!.attempts).toBe(1);
     expect(w.store.events(id).some((e) => e.event.type === 'loop')).toBe(false);
     expect(autoFixRefusal(s)).toBeTruthy();
+  });
+
+  it('after a yes, a plain resume runs the gate and the run finishes', async () => {
+    const w = world();
+    setTrust(w.home, w.folder, false);
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder });
+    await w.engine.wait(id);
+    setTrust(w.home, w.folder, true);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(w.store.state(id)).toMatchObject({ status: 'done', error: undefined });
+    expect(w.store.state(id)!.nodes.work!.attempts).toBe(1);
+  });
+
+  it('a resume that withdrew the answer runs too; one that did not stops again with the same text and runs nothing', async () => {
+    const w = world();
+    setTrust(w.home, w.folder, false);
+    const id = await w.engine.start({ pipeline: withGate(w.marker), task: 'x', repo: w.folder });
+    await w.engine.wait(id);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(w.store.state(id)).toMatchObject({ status: 'stopped', error: SAID });
+    expect(w.store.state(id)!.nodes.work!.attempts).toBe(1);
+    clearTrust(w.home, w.folder);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(w.store.state(id)!.status).toBe('done');
+  });
+
+  it('after a yes, a plain resume runs the setup that was skipped; still refused, it stays skipped', async () => {
+    const w = world();
+    const gate = join(tmp('marks-'), 'gate');
+    setTrust(w.home, w.folder, false);
+    const pipeline = { ...withGate(gate), settings: { ...withGate(gate).settings, setup: `touch ${w.marker}` } };
+    const id = await w.engine.start({ pipeline, task: 'x', repo: w.folder });
+    await w.engine.wait(id);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(false);
+    expect(w.store.state(id)!.status).toBe('stopped');
+    setTrust(w.home, w.folder, true);
+    await w.engine.resume(id);
+    await w.engine.wait(id);
+    expect(existsSync(w.marker)).toBe(true);
+    expect(existsSync(gate)).toBe(true);
+    expect(w.store.state(id)).toMatchObject({ status: 'done', setupDone: true });
+    expect(w.store.state(id)!.setupSkipped).toBeFalsy();
   });
 
   it('an unknown folder’s gate and a trusted folder’s gate still run', async () => {
