@@ -43,6 +43,14 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 ## Next steps (in order)
 
+0. **Work anywhere** (branch `feature/agent-first`, stage 1 of `docs/superpowers/specs/2026-11-01-agent-first-design.md`; no PR yet): workflows, squads and tickets work in a plain folder, git or not. Checked in tests only (`test/plain-flow.test.ts` drives a ticket on `Masters HW` through run, Ship, Undo and Ship again). Check in the app on a copy of your home first (copy it without `accounts.json`, `mcp.json` and `squads/telegram.json`, and register a copy of `Masters HW` in place of the real folder):
+   - Run HW3's ticket: it runs, Ship puts `hw3.py` in the folder, Undo restores it, the ticket goes Done then back to In review.
+   - `ls -a` on the folder shows no `.git`, `.aorch` or `.tether` at any point.
+   - No branch, merge, PR, commit or repository words anywhere for that folder (step pane, tickets, Compare, Try more ways, chat).
+   - Edit a file during a run, then Ship: it stops and names the file. Edit a landed file, then Undo: it stops, names it, changes nothing.
+   - Register your home folder or a folder with over 100,000 files: refused in plain words.
+   - Deferred: `.aorch/http` and `workspace init` still write into a plain folder until stage 4; the hidden history is never pruned.
+   - Stages 2 to 6 follow `docs/superpowers/specs/2026-11-01-agent-first-design.md` §8.
 0. **Squads and Tickets** (branch `feature/squads-tickets`; it has #30 Teams on Telegram, #31 optional run budgets and #32 runs fix themselves merged in; spec `docs/superpowers/specs/2026-10-30-squads-tickets-design.md`, plan `docs/superpowers/plans/2026-10-30-squads-tickets.md`, boards `docs/design/squads-tickets/`): built and checked in tests only (no real model, no network). Squads replace Teams and team runs, Tickets replace Goals; the old screens are gone from the sidebar and `#/goals…`, `#/teams…` links redirect; `/api/goals…` and `/api/teams…` answer as aliases for one release. Open its PR once #30, #31 and #32 are in `main` (retarget it then). Check in the app, on a copy of your home first if you want a way back (the first start moves `<home>/teams/` to `<home>/squads/` and numbers every goal as a ticket):
    - **Migration**: your teams show under **Squads** with their messages; your goals show on **Tickets** (G K) with keys like `ORCH-1` in creation order and the status map (paused not started → Todo, paused → Backlog, active → In progress, needs you → In review, met → Done, stopped → Canceled). A Telegram squad still answers in its group.
    - **A squad ask**: in a Tether squad, `@Bolt fix …`. Bolt says "On it."; a ticket appears In progress with Bolt as assignee and the squad's reviewer (Lens) as reviewer; Right now shows Bolt's card with a live line and timer; Lens's card filters the channel.

@@ -145,6 +145,16 @@ flowchart LR
 - In **live** mode you see every report and question. In **autonomous** mode Tether answers with the recommended options and reports once at the end.
 - Budgets and time limits cover the whole run. Team runs default to a `$5` cap.
 
+### Any folder, git or not
+
+Workflows, squads and tickets work in any folder you register, with or without git. In a folder without git, Tether keeps a hidden history under your Tether home, never in the folder, and a run works on a copy of it. Nothing is added to the folder: no `.git`, no `.aorch`, no `.tether`.
+
+- **Putting it in the folder.** When you approve, the run's files are put in the folder, and a run shows how many. If you changed one of those files since the run started, nothing is put in and the file is named.
+- **Undo.** Takes back exactly what that run put in, restoring the files as they were, and the ticket goes back to In review so you can ship it again. If you edited a file since, Undo stops, names the file and changes nothing.
+- **Left out.** Files over 25 MB, and `node_modules`, `.venv`, `venv`, `__pycache__` and `.DS_Store` at any depth. A run still sees dependencies, linked in, but they are never copied back. A git repo inside the folder is linked in and named in a notice, and it is never changed.
+- **Refused.** A folder is refused if it is your home folder or has over 100,000 files. Pick a project folder inside it.
+- **Not yet.** Saving an API request or running `workspace init` still writes `.aorch` into the folder. The history is never pruned.
+
 ## Meet the crew
 
 | Bot | Role | What it does |
