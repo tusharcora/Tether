@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addTeamLessons, loadLessons } from '../src/lessons.js';
+import { savePrefs } from '../src/prefs.js';
 import { OWNER } from '../src/teams/store.js';
 import { g, rig } from './teams-rig.js';
-import { savePrefs } from '../src/prefs.js';
 
 describe('a ping', () => {
   it('gets one answer from the agent, as itself, with its memory and the message fenced; nothing runs', async () => {
