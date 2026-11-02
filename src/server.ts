@@ -504,7 +504,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
-      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home) }), true;
+      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home), soloWithoutAsking: loadPrefs(cfg.home).soloWithoutAsking === true }), true;
     }
     if (p === '/api/prefs' && m === 'PUT') {
       const b = await readJson(req);

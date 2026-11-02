@@ -55,6 +55,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The reply's JSON, for a refusal that says more than `error` (a route card's needsTrust). */
+    readonly body?: unknown,
   ) {
     super(message);
   }
@@ -73,7 +75,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   } catch {
     /* non-JSON error body */
   }
-  if (!res.ok) throw new ApiError(json?.error ?? (text.slice(0, 200) || `HTTP ${res.status}`), res.status);
+  if (!res.ok) throw new ApiError(json?.error ?? (text.slice(0, 200) || `HTTP ${res.status}`), res.status, json);
   return json as T;
 }
 

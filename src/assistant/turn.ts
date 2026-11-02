@@ -157,7 +157,7 @@ export async function startRoute(c: AssistantCtx, o: { ws: string; root: string;
         : choice === 'workflow'
           ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin, context })
           : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, context, solo: true });
-    return { ...chose, status: 'started', runId };
+    return { ...chose, status: 'started', runId, ...(trustState(c.home, o.root) === 'refused' ? { noCommands: true } : {}) };
   } catch {
     // the error can carry paths under <home> and git words: the card says neither
     return { ...chose, status: 'failed', note: START_FAILED };

@@ -4,7 +4,7 @@
  */
 import { fmtDur, fmtUsd, type RunView } from '../api';
 import type { PipelineNode } from '../../../src/types';
-import { planConflict } from '../../../src/runLabels';
+import { NO_FILES, planConflict } from '../../../src/runLabels';
 import { stepOrder } from './graphModel';
 
 export type StoryState = 'done' | 'working' | 'waiting' | 'failed' | 'queued' | 'skipped';
@@ -124,6 +124,9 @@ export function decisionOf(r: RunView): { node: string; title: string; final: bo
   const final = [...after].every((id) => r.pipeline.nodes.find((x) => x.id === id)?.kind === 'approval');
   return { node: n.id, title: n.title ?? 'Approve', final };
 }
+
+/** A done solo run nobody has decided on: it has no approval step to wait at, so the banner is how it finishes. */
+export const soloUnshipped = (r: RunView): boolean => !!r.solo && r.status === 'done' && !r.ship?.landed && !r.ship?.url && r.ship?.error !== NO_FILES;
 
 /** "Checks pass and Lens approved. Ship it?": what the gates and reviewers say before the person ships. */
 export function decisionLine(r: RunView, nameOf: (n: PipelineNode) => string): string {

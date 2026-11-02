@@ -527,6 +527,19 @@ describe('shipping a run in a plain folder', () => {
     await expect(r.ship.undo(r.id)).rejects.toMatchObject({ status: 409 });
   });
 
+  it('a run remembers it was undone, until it lands again', async () => {
+    const r = await plainRun();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    await r.ship.undo(r.id);
+    expect(r.store.state(r.id)).toMatchObject({ undone: true });
+    expect(r.store.state(r.id)!.ship).toBeUndefined();
+    await r.ship.decide(r.id, true);
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship?.landed).toBeTruthy();
+    expect(r.store.state(r.id)!.undone).toBeUndefined();
+  });
+
   it('undo takes out what is landed when its turn comes, not what was landed when it was asked', async () => {
     const r = await plainRun();
     await r.ship.decide(r.id, true);

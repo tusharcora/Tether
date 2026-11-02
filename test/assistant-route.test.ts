@@ -266,13 +266,14 @@ describe('route card', () => {
     expect(t.agent.prompts.at(-1)).not.toContain("You can't run commands here");
     const b = await t.offer(good);
     const no = await t.click(b.card!, b.chat, { choice: 'solo', trust: false });
-    expect(no.json.route.status).toBe('started');
+    expect(no.json.route).toMatchObject({ status: 'started', noCommands: true });
+    expect(yes.json.route.noCommands).toBeUndefined();
     expect(trustState(t.home, t.dir)).toBe('refused');
     await t.settled();
     expect(t.agent.prompts.at(-1)).toContain("You can't run commands here");
     // a folder that said no is not asked again
     const c = await t.offer(good);
-    expect((await t.click(c.card!, c.chat, { choice: 'solo' })).json.route.status).toBe('started');
+    expect((await t.click(c.card!, c.chat, { choice: 'solo' })).json.route).toMatchObject({ status: 'started', noCommands: true });
     await t.settled();
   });
 

@@ -6,7 +6,7 @@ import type { RunAct } from '../Runs';
 import { useNotify } from '../ui/notify';
 import { gateSummary } from './ApprovalBar';
 import { sendBackNote, sendBackTarget, type useComments } from './comments';
-import { decisionLine, decisionOf } from './storyModel';
+import { decisionLine, decisionOf, soloUnshipped } from './storyModel';
 
 /**
  * What the run waits on, as one banner (board 4). The last approval before shipping: Merge to main (a PR, merged when its
@@ -20,10 +20,12 @@ export function DecisionBanner(p: { run: RunView; goal?: GoalView; team?: boolea
   const [busy, setBusy] = useState<string>();
   const r = p.run;
   const plain = !!r.history;
-  const d = decisionOf(r);
+  const solo = !p.team && soloUnshipped(r);
+  const d = decisionOf(r) ?? (solo ? { node: '', title: '', final: true } : undefined);
   const unsent = p.comments.list.filter((c) => !c.sent);
   if (!d) return null;
-  const target = sendBackTarget(r, unsent, p.open);
+  // a done run can't be sent back
+  const target = solo ? undefined : sendBackTarget(r, unsent, p.open);
   const act = async (label: string, path: string, body: unknown, done?: string) => {
     setBusy(label);
     const ok = await p.onAct(path, body);
@@ -43,12 +45,12 @@ export function DecisionBanner(p: { run: RunView; goal?: GoalView; team?: boolea
   const g = p.goal;
   const check = g?.check ? `Done when: ${g.check.command}${g.lastCheck ? ` ${g.lastCheck.ok ? '✓' : '✕'}${g.lastCheck.summary ? ` ${g.lastCheck.summary}` : ''}` : ''}` : gateSummary(r);
   const sentCount = p.comments.list.filter((c) => c.sent).length;
-  const line = [check, unsent.length ? `${unsent.length} comment${unsent.length === 1 ? '' : 's'} of yours not sent yet` : sentCount ? `${sentCount} comment${sentCount === 1 ? '' : 's'} of yours went back` : ''].filter(Boolean).join(' · ');
+  const line = solo && plain ? r.ship?.error : [check, unsent.length ? `${unsent.length} comment${unsent.length === 1 ? '' : 's'} of yours not sent yet` : sentCount ? `${sentCount} comment${sentCount === 1 ? '' : 's'} of yours went back` : ''].filter(Boolean).join(' · ');
   return (
     <div className="rp-decide" role="region" aria-label="Decision">
       <span className="rp-you" aria-hidden="true">✓</span>
       <div className="rp-decide-t">
-        <b>{d.final ? decisionLine(r, (n) => p.nameOf(n.id)) : `Approve “${d.title}”?`}</b>
+        <b>{solo && plain ? "This work isn't in your folder yet." : d.final ? decisionLine(r, (n) => p.nameOf(n.id)) : `Approve “${d.title}”?`}</b>
         <span>{line}</span>
       </div>
       {d.final ? (

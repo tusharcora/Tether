@@ -467,6 +467,8 @@ export interface RunState {
   origin?: RunOrigin;
   /** Its PR, once shipped (merged when merged), or why shipping failed. */
   ship?: { url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed };
+  /** Its landing was taken back out of the folder. */
+  undone?: true;
   /** The last rewind, while it can still be undone (nothing has run since): what to put back. */
   rewind?: { node: string; ref: string; base: string; status: RunStatus; finishedAt?: number; error?: string; nodes: Record<string, NodeState> };
   /** Rewinds made so far (names the next rewind ref). */
@@ -766,8 +768,10 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'run.shipped': {
         const { type: _, ...ship } = e;
+        delete s.undone;
         if (ship.undone) {
           delete s.ship; // taken back out of the folder: it can land again
+          s.undone = true;
           break;
         }
         // an error clears once a later ship goes through, and a merge keeps the PR it merged

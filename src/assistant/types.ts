@@ -70,6 +70,8 @@ export interface RouteCard {
   goalId?: string;
   /** What went wrong when it could not start. */
   note?: string;
+  /** Started in a folder that said no: its agents can't run commands. */
+  noCommands?: true;
 }
 
 /** Questions before Tether goes on: one card, several steps; a single choice moves on by itself. */

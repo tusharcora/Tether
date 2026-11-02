@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NO_FILES } from '../../../src/runLabels';
 import { fmtUsd, type RunView } from '../api';
 import type { GoalView } from '../goals/goalsApi';
 import type { Route } from '../hooks';
@@ -68,7 +69,7 @@ export function OutcomeRail(p: { run: RunView; goal?: GoalView; teamName?: strin
           ) : r.ship?.error ? (
             <>
               <dt>{plain ? 'Folder' : 'PR'}</dt>
-              <dd className="bad">{r.ship.error}</dd>
+              <dd className={cn(r.ship.error !== NO_FILES && 'bad')}>{r.ship.error}</dd>
             </>
           ) : null}
           <dt>Started from</dt>

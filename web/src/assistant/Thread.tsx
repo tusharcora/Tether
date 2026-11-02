@@ -22,6 +22,7 @@ import { assistantApi, type ArtifactRef, type ChatMessage, type Cite } from './a
 import type { Assistant } from './useAssistant';
 import { Markdown } from './Markdown';
 import { AskCardView, DiagramCard, ProposalCard, ToolAskCard } from './cards';
+import { RouteCardView } from './RouteCard';
 import { Face } from '../Face';
 import { promptFrom } from './Prompts';
 import { Thinking } from './Thinking';
@@ -216,6 +217,7 @@ function TetherMessage({ m, asked, query, chat, onGo, dim, project, onArtifact }
       {m.ask ? <AskCardView message={m} chat={chat} /> : null}
       {m.toolAsks?.map((a) => <ToolAskCard key={a.id} ask={a} onDecide={(d) => chat.tool(m.id, a.id, d)} />)}
       {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} chat={chat} onGo={onGo} project={project} />)}
+      {m.route ? <RouteCardView card={m.route} chat={chat} onGo={onGo} /> : null}
       {(text || m.artifacts?.length) && !m.error ? <ReplyActions m={m} text={text} chat={chat} /> : null}
     </div>
   );

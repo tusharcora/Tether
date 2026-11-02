@@ -8,6 +8,7 @@ import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
 import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding, whileLanding } from './history.js';
+import { NO_FILES } from './runLabels.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
 import type { Landed } from './history.js';
@@ -69,7 +70,7 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
 /** A solo run has no squad to send it back to, and a done run can't be sent back: it says what's left to do on its own page. */
 function soloFailure(r: { error: string; conflicts?: string[] }): string {
   if (r.conflicts) return `${r.conflicts.join(', ')} changed since this work started, so nothing in the folder was changed. Keep your version, or rewind this run from its page and run it again.`;
-  return r.error === NOTHING_TO_LAND ? 'No files came out of this run.' : r.error;
+  return r.error === NOTHING_TO_LAND ? NO_FILES : r.error;
 }
 
 const firstLine = (t: string, n: number) => t.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, n) ?? 'Tether run';
