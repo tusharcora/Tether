@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { git, gitEnv, gitTop, must } from './git.js';
@@ -108,6 +108,16 @@ async function commitTree(cwd: string, env: Record<string, string>, parent: stri
   return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
 }
 
+/** Store a folder's names and bytes untouched. Without this a folder's .gitattributes rewrites line endings, and undo restores the altered bytes. */
+async function keepExact(history: string): Promise<void> {
+  // macOS sets precompose on, then `add` from stdin silently drops decomposed names (é as e + accent)
+  await must(history, ['config', 'core.precomposeunicode', 'false']);
+  await must(history, ['config', 'core.autocrlf', 'false']);
+  mkdirSync(join(history, 'info'), { recursive: true });
+  // written last: its presence means this history is done
+  writeFileSync(join(history, 'info', 'attributes'), '* -text -filter -ident -eol -working-tree-encoding\n');
+}
+
 /** Commit the folder's current files into its hidden history. Nothing is written inside the folder. */
 export async function snapshotFolder(home: string, folder: string, limits: { maxFiles?: number } = {}): Promise<Snapshot> {
   const real = realpathSync(folder);
@@ -116,9 +126,17 @@ export async function snapshotFolder(home: string, folder: string, limits: { max
   const history = historyDir(home, real);
   if (!existsSync(join(history, 'HEAD'))) {
     mkdirSync(dirname(history), { recursive: true });
-    await must(dirname(history), ['init', '-q', '--bare', '-b', 'main', history]);
-    // macOS sets this on, then `add` from stdin silently drops decomposed names (é as e + accent): keep every name byte for byte
-    await must(history, ['config', 'core.precomposeunicode', 'false']);
+    // made beside its place and renamed in: overlapping first snapshots of a folder would otherwise trip over a half-made history
+    const fresh = `${history}.${randomBytes(4).toString('hex')}`;
+    await must(dirname(history), ['init', '-q', '--bare', '-b', 'main', fresh]);
+    await keepExact(fresh);
+    try {
+      renameSync(fresh, history);
+    } catch {
+      rmSync(fresh, { recursive: true, force: true });
+    }
+  } else if (!existsSync(join(history, 'info', 'attributes'))) {
+    await keepExact(history);
   }
   mkdirSync(join(history, 'info'), { recursive: true });
   // rename so a concurrent snapshot never reads a half-written file
@@ -147,21 +165,26 @@ function here(folder: string): string {
   return realpathSync(folder);
 }
 
-/** Paths that differ between two commits. Not `out`: its trim would eat a name's leading space, and -z keeps odd names whole. */
-async function changed(history: string, from: string, to: string, filter?: string): Promise<string[]> {
-  const r = await git(history, ['diff', '--no-renames', '--name-only', '-z', ...(filter ? [`--diff-filter=${filter}`] : []), from, to]);
-  if (r.code !== 0) throw new Error(`git diff failed: ${r.stderr.trim()}`);
+/** A NUL-separated list from git. Not `out`: its trim would eat a name's leading space. A commit it can't find means the history is not this folder's any more. */
+async function listed(history: string, args: string[]): Promise<string[]> {
+  const r = await git(history, args);
+  if (r.code !== 0) throw new Error("Tether's undo history for this folder is gone, so nothing was changed.", { cause: new Error(`git ${args[0]} failed: ${r.stderr.trim()}`) });
   // gitEnv keeps only the tail past this size: a shortened list could hide a conflict
   if (r.stdout.length >= 20_000_000) throw new Error('Too many files changed at once to do this safely.');
   return r.stdout.split('\0').filter(Boolean);
 }
 
+/** Paths that differ between two commits. */
+const changed = (history: string, from: string, to: string) => listed(history, ['diff', '--no-renames', '--name-only', '-z', from, to]);
+
 /** The `others` that sit on, above or below one of `paths`. Above and below count: git replaces a file or folder in a landed path's way. */
 function clashes(paths: string[], others: string[]): string[] {
-  const lineage = (p: string) => p.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
-  const exact = new Set(paths);
+  // APFS treats these spellings as one file, and upper then lower matches its folding where lower alone misses ß, ς and ﬁ. Elsewhere this only stops more often.
+  const fold = (p: string) => p.normalize('NFC').toUpperCase().toLowerCase();
+  const lineage = (p: string) => fold(p).split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
+  const exact = new Set(paths.map(fold));
   const within = new Set(paths.flatMap(lineage));
-  return [...new Set(others)].filter((o) => within.has(o) || lineage(o).some((a) => exact.has(a)));
+  return [...new Set(others)].filter((o) => within.has(fold(o)) || lineage(o).some((a) => exact.has(a)));
 }
 
 /** Remove one file and any folders that leaves empty, refusing a path that resolves outside `real`. */
@@ -180,19 +203,36 @@ function removeFile(real: string, rel: string): void {
   }
 }
 
-/** Make `files` in the folder match `to`, coming from `from`. Tries every file before reporting a failure, so a put-back does all it can. */
-async function matchFiles(history: string, real: string, from: string, to: string, files: string[]): Promise<void> {
-  const absent = new Set(await changed(history, from, to, 'D'));
+/** Give a file git just wrote its old permissions back. Git records only the exec bit, so that alone comes from what was written. */
+function keepMode(path: string, before: number): void {
+  const after = lstatSync(path, { throwIfNoEntry: false });
+  if (!after?.isFile()) return;
+  const plain = before & 0o666;
+  chmodSync(path, plain | (after.mode & 0o100 ? before & 0o111 || (plain & 0o444) >> 2 : 0));
+}
+
+/** Make `files` in the folder match commit `to`: what it holds is written, what it doesn't is removed. Tries every file before reporting a failure, so a put-back does all it can. */
+async function matchFiles(history: string, real: string, to: string, files: string[]): Promise<void> {
+  const held = new Set(await listed(history, ['ls-tree', '-r', '-z', '--name-only', to]));
+  const present = files.filter((p) => held.has(p));
+  // read before removals: on a case-only rename the old file is the one this finds
+  const modes = present.flatMap((p): [string, number][] => {
+    try {
+      const s = lstatSync(join(real, p));
+      return s.isFile() ? [[p, s.mode]] : [];
+    } catch {
+      return []; // new here, or a file stands where this path needs a folder
+    }
+  });
   let failure: unknown;
   // removals first: a case-only rename or a file swapped for a folder needs the old path gone before the new one is written
-  for (const f of files.filter((p) => absent.has(p))) {
+  for (const f of files.filter((p) => !held.has(p))) {
     try {
       removeFile(real, f);
     } catch (e) {
       failure ??= e;
     }
   }
-  const present = files.filter((p) => !absent.has(p));
   if (present.length) {
     await withFolder(history, real, async (env) => {
       await out(real, env, ['read-tree', to]);
@@ -200,6 +240,14 @@ async function matchFiles(history: string, real: string, from: string, to: strin
       const r = await gitEnv(real, ['-c', 'core.hooksPath=/dev/null', 'checkout', to, '--pathspec-from-file=-', '--pathspec-file-nul'], { ...env, GIT_LITERAL_PATHSPECS: '1' }, present.join('\0'));
       if (r.code !== 0) failure ??= new Error(`git checkout failed: ${r.stderr.trim()}`);
     });
+    // after a failed checkout too: a private file it did rewrite must not stay wider than it was
+    for (const [p, mode] of modes) {
+      try {
+        keepMode(join(real, p), mode);
+      } catch (e) {
+        failure ??= e;
+      }
+    }
   }
   if (failure) throw failure;
 }
@@ -208,13 +256,13 @@ async function matchFiles(history: string, real: string, from: string, to: strin
 async function move(home: string, real: string, from: string, to: string, files: string[]): Promise<string> {
   const history = historyDir(home, real);
   try {
-    await matchFiles(history, real, from, to, files);
+    await matchFiles(history, real, to, files);
     return (await snapshotFolder(home, real)).sha;
   } catch (cause) {
     let left: string[];
     try {
       // checkout reports a file it could not rewrite even if that file never changed: judge by what is there now
-      await matchFiles(history, real, to, from, files).catch(() => {});
+      await matchFiles(history, real, from, files).catch(() => {});
       const check = await snapshotFolder(home, real);
       left = clashes(files, [...(await changed(history, from, check.sha)), ...check.leftOut]);
     } catch {
@@ -230,6 +278,9 @@ export async function landBranch(home: string, folder: string, base: string, hea
   const pre = await snapshotFolder(home, real);
   const history = historyDir(home, real);
   const files = await changed(history, base, head);
+  // a project the run made inside its work is stored as a bare pointer: it would land as an empty folder
+  const inner = (await listed(history, ['ls-tree', '-r', '-z', head])).filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)).filter((p) => files.includes(p));
+  if (inner.length) throw new Error(`The work made a separate project in ${inner.map((p) => `"${p}"`).join(', ')}, which can't be brought into your folder yet, so nothing was changed.`);
   // left-out files are in no snapshot, so a diff can't see them: they count as the person's
   const conflicts = clashes(files, [...(await changed(history, base, pre.sha)), ...pre.leftOut]);
   if (conflicts.length) return { conflicts };

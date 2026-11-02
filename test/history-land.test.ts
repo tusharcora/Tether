@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { commitAll, createWorktree } from '../src/git.js';
-import { historyDir, landBranch, MAX_FILE_BYTES, undoLanding, type Landed } from '../src/history.js';
+import { historyDir, landBranch, MAX_FILE_BYTES, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
 import { plainFolder, tmp } from './helpers.js';
 
 const read = (folder: string, f: string) => readFileSync(join(folder, f), 'utf8');
@@ -315,5 +315,219 @@ describe('landing', () => {
       expect(e.message).not.toContain(home);
       expect(e.message).not.toContain(folder);
     }
+  });
+
+  describe('names the volume treats as one file', () => {
+    const nfc = 'café.txt';
+    const nfd = 'café.txt';
+
+    it('stops when a person made the same name in another case', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'notes.txt': 'run' });
+      writeFileSync(join(folder, 'NOTES.txt'), 'mine');
+      expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: ['NOTES.txt'] });
+      expect(read(folder, 'NOTES.txt')).toBe('mine');
+    });
+
+    it.each([[nfc, nfd], [nfd, nfc]])('stops when a person made the same name in another Unicode form', async (runs, mine) => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { [runs]: 'run' });
+      writeFileSync(join(folder, mine), 'mine');
+      expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: [mine] });
+      expect(read(folder, mine)).toBe('mine');
+    });
+
+    it.each([['straße.txt', 'STRASSE.TXT'], ['σx.txt', 'ςx.txt'], ['ﬁle.txt', 'FILE.txt']])('stops on the volume\'s fuller case folding', async (runs, mine) => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { [runs]: 'run' });
+      writeFileSync(join(folder, mine), 'mine');
+      expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: [mine] });
+      expect(read(folder, mine)).toBe('mine');
+    });
+
+    it('stops when the folded name is a folder above the file', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'docs/x.txt': 'run' });
+      writeFileSync(join(folder, 'DOCS'), 'mine');
+      expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: ['DOCS'] });
+      expect(read(folder, 'DOCS')).toBe('mine');
+    });
+
+    it('stops on a left-out file in another case', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'big.bin': 'small' });
+      put(folder, 'BIG.bin', '');
+      truncateSync(join(folder, 'BIG.bin'), MAX_FILE_BYTES + 1);
+      expect(await landBranch(home, folder, base, head)).toEqual({ conflicts: ['BIG.bin'] });
+      expect(lstatSync(join(folder, 'BIG.bin')).size).toBe(MAX_FILE_BYTES + 1);
+    });
+
+    it('undo stops when a person remade a removed file in another case', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1', 'gone.txt': 'old' }, { 'a.txt': '2' }, ['gone.txt']);
+      const r = landed(await landBranch(home, folder, base, head));
+      writeFileSync(join(folder, 'GONE.txt'), 'mine');
+      expect(await undoLanding(home, folder, r)).toEqual({ conflicts: ['GONE.txt'] });
+      expect(read(folder, 'GONE.txt')).toBe('mine');
+      expect(read(folder, 'a.txt')).toBe('2');
+    });
+  });
+
+  describe('a project the run made inside its work', () => {
+    async function nested() {
+      const r = await run({ 'a.txt': '1' });
+      writeFileSync(join(r.workdir, 'a.txt'), '2');
+      put(r.workdir, 'app/index.js', 'x');
+      const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: join(r.workdir, 'app'), stdio: 'ignore' });
+      g('init', '-q');
+      g('add', '-A');
+      g('commit', '-qm', 'x');
+      return { ...r, head: (await commitAll(r.workdir, 'nested'))! };
+    }
+
+    it('is refused by name before anything is written', async () => {
+      const { home, folder, base, head } = await nested();
+      await expect(landBranch(home, folder, base, head)).rejects.toThrow(/"app"/);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(readdirSync(folder)).toEqual(['a.txt']);
+    });
+
+    it('is refused in words a person can read', async () => {
+      const { home, folder, base, head } = await nested();
+      const e: Error = await landBranch(home, folder, base, head).then(() => { throw new Error('should have failed'); }, (x) => x);
+      expect(e.message).not.toMatch(/git|repo|commit|submodule|branch/i);
+      expect(e.message).not.toContain(home);
+    });
+  });
+
+  it('undo goes through when a person deleted a landed file too big for the history', async () => {
+    const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2', 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
+    const r = landed(await landBranch(home, folder, base, head));
+    rmSync(join(folder, 'data.bin'));
+    expect(await undoLanding(home, folder, r)).toBe(true);
+    expect(read(folder, 'a.txt')).toBe('1');
+    expect(existsSync(join(folder, 'data.bin'))).toBe(false);
+  });
+
+  describe('a folder that moved', () => {
+    const plainly = (e: Error, home: string) => {
+      expect(e.message).toMatch(/history for this folder is gone/);
+      expect(e.message).not.toMatch(/git|fatal|bad object/i);
+      expect(e.message).not.toContain(home);
+      expect(String((e.cause as Error).message)).toMatch(/bad object|fatal|failed/);
+    };
+
+    it('undo says so plainly and changes nothing', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2' });
+      const r = landed(await landBranch(home, folder, base, head));
+      const moved = `${folder}-moved`;
+      renameSync(folder, moved);
+      plainly(await undoLanding(home, moved, r).then(() => { throw new Error('should have failed'); }, (x) => x), home);
+      expect(read(moved, 'a.txt')).toBe('2');
+    });
+
+    it('landing says so plainly and changes nothing', async () => {
+      const { home, folder, base, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2' });
+      const moved = `${folder}-moved`;
+      renameSync(folder, moved);
+      plainly(await landBranch(home, moved, base, head).then(() => { throw new Error('should have failed'); }, (x) => x), home);
+      expect(read(moved, 'a.txt')).toBe('1');
+    });
+  });
+
+  describe('file permissions', () => {
+    const mode = (folder: string, f: string) => statSync(join(folder, f)).mode & 0o777;
+
+    it('keeps a private file private through landing and undo', async () => {
+      const { home, folder, base, head } = await run({ '.env': 'A=1' }, { '.env': 'A=2' }, [], (f) => chmodSync(join(f, '.env'), 0o600));
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(read(folder, '.env')).toBe('A=2');
+      expect(mode(folder, '.env')).toBe(0o600);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, '.env')).toBe('A=1');
+      expect(mode(folder, '.env')).toBe(0o600);
+    });
+
+    it('keeps a private script private and runnable', async () => {
+      const { home, folder, base, head } = await run({ 's.sh': '1' }, { 's.sh': '2' }, [], (f) => chmodSync(join(f, 's.sh'), 0o700));
+      const r = landed(await landBranch(home, folder, base, head));
+      expect(mode(folder, 's.sh')).toBe(0o700);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(mode(folder, 's.sh')).toBe(0o700);
+    });
+
+    it('takes the exec bit from the work and keeps the private bits', async () => {
+      const { home, folder, base, workdir } = await run({ 's.sh': '1' }, {}, [], (f) => chmodSync(join(f, 's.sh'), 0o600));
+      chmodSync(join(workdir, 's.sh'), 0o755);
+      const head = await commitAll(workdir, 'work');
+      const r = landed(await landBranch(home, folder, base, head!));
+      expect(mode(folder, 's.sh')).toBe(0o700);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(mode(folder, 's.sh')).toBe(0o600);
+    });
+
+    it('stays private through a rename that only changes case', async () => {
+      const { home, folder, base, workdir } = await run({ 'a.txt': '1' }, {}, [], (f) => chmodSync(join(f, 'a.txt'), 0o600));
+      execFileSync('git', ['mv', '-f', 'a.txt', 'A.txt'], { cwd: workdir });
+      const r = landed(await landBranch(home, folder, base, (await commitAll(workdir, 'rename'))!));
+      expect(mode(folder, 'A.txt')).toBe(0o600);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(mode(folder, 'a.txt')).toBe(0o600);
+    });
+
+    it('stays private when landing fails part way', async () => {
+      const { home, folder, base, head } = await run({ '.env': 'A=1', 'sub/b.txt': '1' }, { '.env': 'A=2', 'sub/b.txt': '2' }, [], (f) => chmodSync(join(f, '.env'), 0o600));
+      chmodSync(join(folder, 'sub'), 0o555);
+      try {
+        await expect(landBranch(home, folder, base, head)).rejects.toThrow(/put back as it was/);
+      } finally {
+        chmodSync(join(folder, 'sub'), 0o755);
+      }
+      expect(read(folder, '.env')).toBe('A=1');
+      expect(mode(folder, '.env')).toBe(0o600);
+    });
+  });
+
+  describe('exact bytes', () => {
+    const bytes = (folder: string, f: string) => readFileSync(join(folder, f));
+    const binary = Buffer.from([0x00, 0x0d, 0x0a, 0x0d, 0xff, 0x0d]);
+
+    it.each(['* text\n', '* text=auto\n', '* text eol=lf\n', '* ident\n', '* working-tree-encoding=UTF-16\n'])('undo restores them under a .gitattributes of %j', async (attributes) => {
+      const csv = Buffer.from('a,b\r\n$Id$\r\n');
+      const { home, folder, base, workdir } = await run({ '.gitattributes': attributes, 'keep.txt': 'k' }, {}, [], (f) => {
+        writeFileSync(join(f, 'data.csv'), csv);
+        writeFileSync(join(f, 'p.bin'), binary);
+      });
+      writeFileSync(join(workdir, 'data.csv'), 'x,y\r\n');
+      writeFileSync(join(workdir, 'p.bin'), Buffer.from([0x0d, 0x0a]));
+      const r = landed(await landBranch(home, folder, base, (await commitAll(workdir, 'work'))!));
+      expect(bytes(folder, 'data.csv').equals(Buffer.from('x,y\r\n'))).toBe(true);
+      expect(bytes(folder, 'p.bin').equals(Buffer.from([0x0d, 0x0a]))).toBe(true);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(bytes(folder, 'data.csv').equals(csv)).toBe(true);
+      expect(bytes(folder, 'p.bin').equals(binary)).toBe(true);
+    });
+
+    it('a run sees and keeps a folder\'s bytes', async () => {
+      const { home, folder, base, head, workdir } = await run({ '.gitattributes': '* text\n', 'data.csv': 'a\r\n', 'b.txt': '1' }, { 'b.txt': '2' });
+      expect(bytes(workdir, 'data.csv').equals(Buffer.from('a\r\n'))).toBe(true);
+      landed(await landBranch(home, folder, base, head));
+      expect(bytes(folder, 'data.csv').equals(Buffer.from('a\r\n'))).toBe(true);
+    });
+
+    it('an older history is brought up to date by the next snapshot', async () => {
+      const home = tmp('home-');
+      const folder = plainFolder({ '.gitattributes': '* text\n', 'data.csv': 'a\r\n' });
+      await snapshotFolder(home, folder);
+      const history = historyDir(home, folder);
+      rmSync(join(history, 'info', 'attributes'), { force: true });
+      execFileSync('git', ['config', 'core.precomposeunicode', 'true'], { cwd: history });
+      await snapshotFolder(home, folder);
+      expect(existsSync(join(history, 'info', 'attributes'))).toBe(true);
+      expect(execFileSync('git', ['config', 'core.precomposeunicode'], { cwd: history, encoding: 'utf8' }).trim()).toBe('false');
+    });
+
+    it('sets the history up once when two first snapshots overlap', async () => {
+      for (let i = 0; i < 10; i++) {
+        const home = tmp('home-');
+        const folder = plainFolder({ 'a.txt': '1' });
+        await Promise.all([snapshotFolder(home, folder), snapshotFolder(home, folder), snapshotFolder(home, folder)]);
+        expect(execFileSync('git', ['config', 'core.autocrlf'], { cwd: historyDir(home, folder), encoding: 'utf8' }).trim()).toBe('false');
+      }
+    }, 30_000);
   });
 });
