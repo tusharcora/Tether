@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_BOTS } from '../src/crew.js';
-import { approverNames, intentOf, instructionOf, limitReason, loopSpec, mayApprove, mentionsOf, runRefOf, spendToday, taskPipeline } from '../src/teams/rules.js';
+import { approverNames, intentOf, instructionOf, limitReason, loopSpec, mayApprove, mayStart, mentionsOf, runRefOf, spendToday, taskPipeline } from '../src/teams/rules.js';
 import { OWNER } from '../src/teams/store.js';
 import type { Team, TeamState, TeamTask } from '../src/teams/types.js';
 
@@ -54,6 +54,14 @@ describe('who may approve', () => {
     expect(mayApprove(team({ approvers: ['maya'] }), 'maya')).toBe(true);
     expect(approverNames(team())).toBe('Any teammate');
     expect(approverNames(team({ approvers: ['maya', 'owner'] }))).toBe('Maya and you');
+  });
+
+  it('starting runs: the owner always, a person only with the switch on, nobody outside the team', () => {
+    const t = team({ people: [OWNER, { id: 'maya', name: 'Maya', canStartRuns: true }, { id: 'jon', name: 'Jon' }] });
+    expect(mayStart(t, 'owner')).toBe(true);
+    expect(mayStart(t, 'maya')).toBe(true);
+    expect(mayStart(t, 'jon')).toBe(false);
+    expect(mayStart(t, 'stranger')).toBe(false);
   });
 });
 

@@ -11,6 +11,13 @@ export type Level = 'tight' | 'balanced' | 'loose';
 export interface Person {
   id: string;
   name: string;
+  /** A teammate who came in from a Telegram group (spec 2026-10-30 §6.1): their Telegram user id and @username. */
+  via?: 'telegram';
+  tgUserId?: number;
+  username?: string;
+  /** May start runs, loops and goals (board 7); off for new people, the owner always may. */
+  canStartRuns?: boolean;
+  joinedAt?: number;
 }
 export interface Limits {
   usdPerDay: number;
@@ -20,14 +27,14 @@ export interface Team {
   id: string;
   name: string;
   place: Place;
-  /** Slack channel id or Telegram chat id (later phases). */
+  /** The linked Telegram chat id (set by `/pair`, never by the client); Slack's channel id later. */
   link?: string;
   /** The project (workspace id) its runs work in. */
   project: string;
   /** Crew bot ids. */
   agents: string[];
   people: Person[];
-  /** Who may approve, reject and ask for a merge: anyone in the team, or these person ids. */
+  /** Who may approve, reject and ask for a merge: any person in the team (never an agent), or these person ids. */
   approvers: 'any' | string[];
   level: Level;
   limits: Limits;
@@ -54,7 +61,8 @@ export type Card =
   /** `said`: what the channel last said about the loop, "<runs posted>|<status>", so each change is posted once. */
   | { kind: 'loop'; goalId: string; said?: string }
   | { kind: 'approval'; what: ApprovalWhat; title: string; detail?: string; runId?: string; node?: string; goalId?: string; status: 'pending' | 'approved' | 'rejected'; by?: string; at?: number; reason?: string }
-  | { kind: 'proposal'; agent: string; task: string; status: 'proposed' | 'started' | 'dismissed'; runId?: string }
+  /** `loop`: Start makes it a loop. `asker`: the person whose ask needs someone allowed to start it. */
+  | { kind: 'proposal'; agent: string; task: string; status: 'proposed' | 'started' | 'dismissed'; runId?: string; loop?: boolean; asker?: string; by?: string }
   | { kind: 'pr'; url: string; number: number; title: string; merged?: boolean };
 
 export interface TeamMessage {
@@ -88,12 +96,16 @@ export interface TeamTask {
   reworked?: boolean;
   startedAt: number;
   pr?: { url: string; number: number };
+  /** The person behind the chain (who asked, or who started the proposal): hand-offs from it need their permission. */
+  by?: string;
 }
 export interface TeamState {
   messages: TeamMessage[];
   tasks: TeamTask[];
   /** Today's answer turns and what each cost (runs are costed from the run store). */
   answers: { at: number; usd: number }[];
+  /** People already told why their ask became a proposal (told once). */
+  told?: string[];
 }
 
 export type TeamStatus = 'idle' | 'live' | 'needs';

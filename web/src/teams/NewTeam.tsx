@@ -14,12 +14,13 @@ import './teams.css';
  * approve, how much needs sign-off, its daily limits and its project. New team and a team's settings share it; a team's
  * place is picked in the New team menu and fixed once made.
  */
-export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onSaved: (t: Team) => void; onCancel: () => void; onNewAgent: () => void; onDeleted?: () => void }) {
+export function TeamForm(p: { team?: Team; place?: Place; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onSaved: (t: Team) => void; onCancel: () => void; onNewAgent: () => void; onDeleted?: () => void }) {
   const notify = useNotify();
   const t = p.team;
   const [name, setName] = useState(t?.name ?? '');
-  // a new team's place is picked in the sidebar's New team menu, where only Tether is open for now
-  const place: Place = t?.place ?? 'tether';
+  // a new team's place is picked in the sidebar's New team menu, and fixed once made
+  const place: Place = t?.place ?? p.place ?? 'tether';
+  const telegram = place === 'telegram';
   const [agents, setAgents] = useState<string[]>(t?.agents ?? []);
   const [chosen, setChosen] = useState(t ? t.approvers !== 'any' : false);
   const [level, setLevel] = useState<Level>(t?.level ?? 'balanced');
@@ -38,8 +39,8 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
     e.preventDefault();
     if (!ok || busy) return;
     setBusy(true);
-    // a Tether team's only person is you: "chosen people" means you
-    const body = { name: name.trim(), place, project, agents, approvers: chosen ? ['owner'] : 'any', level, limits: { usdPerDay: Number(usd), runsPerDay: Number(runs) }, learn };
+    // a Tether team's only person is you: "chosen people" means you. A Telegram team's approvers are set per person (board 7)
+    const body = { name: name.trim(), place, project, agents, ...(telegram ? {} : { approvers: chosen ? ['owner'] : 'any' }), level, limits: { usdPerDay: Number(usd), runsPerDay: Number(runs) }, learn };
     try {
       p.onSaved(t ? await teamsApi.patch(t.id, body) : await teamsApi.create(body));
     } catch (err) {
@@ -52,7 +53,7 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
   return (
     <form className="tm-form" aria-label={t ? `${t.name} settings` : 'New team'} onSubmit={(e) => void submit(e)}>
       <div className="tm-form-top">
-        {t ? <span className="tm-gap" /> : <h1>New team</h1>}
+        {t ? <span className="tm-gap" /> : <h1>{telegram ? 'New Telegram team' : 'New team'}</h1>}
         <Button type="button" variant="secondary" size="sm" onClick={p.onCancel}>
           Cancel
         </Button>
@@ -61,7 +62,7 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
         </Button>
       </div>
       <Input label="Name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
-      <p className="tm-form-note">Lives in {PLACE[place]}.</p>
+      <p className="tm-form-note">{telegram && !t ? 'Lives in a Telegram group. Once it is made, add your bot to the group and send the pairing code Tether shows.' : `Lives in ${PLACE[place]}.`}</p>
       <fieldset className="tm-fieldset" aria-describedby={ids.agents}>
         <legend>Agents · they keep one memory across all their teams</legend>
         <div className="tm-agents">
@@ -81,6 +82,12 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
         </button>
       </fieldset>
       <div className="tm-form-pair">
+        {telegram ? (
+          <fieldset className="tm-fieldset">
+            <legend>Who can approve</legend>
+            <span className="tm-form-note">You, and the people you switch on in People and permissions as they join the group. Agents never approve.</span>
+          </fieldset>
+        ) : (
         <fieldset className="tm-fieldset">
           <legend>Who can approve</legend>
           <label className="tm-radio">
@@ -91,6 +98,7 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
           </label>
           <span className="tm-form-note">Tether checks who pressed the button.</span>
         </fieldset>
+        )}
         <fieldset className="tm-fieldset">
           <legend>How much needs sign-off</legend>
           <SegmentedControl label="Approval level" options={LEVELS.map((l) => ({ value: l.id, label: l.label }))} value={level} onValueChange={(v) => setLevel(v as Level)} />
@@ -113,11 +121,11 @@ export function TeamForm(p: { team?: Team; agents: TeamsReply['agents']; project
   );
 }
 
-/** New team (board 2), as its own screen. */
-export function NewTeam(p: { agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onCreated: (id: string) => void; onCancel: () => void; onNewAgent: () => void }) {
+/** New team (board 2), as its own screen. A Telegram team pairs with its group on its own screen once made. */
+export function NewTeam(p: { place?: Place; agents: TeamsReply['agents']; projects: WorkspaceRow[]; project?: WorkspaceRow; onCreated: (id: string) => void; onCancel: () => void; onNewAgent: () => void }) {
   return (
     <div className="tm-new">
-      <TeamForm agents={p.agents} projects={p.projects} project={p.project} onSaved={(t) => p.onCreated(t.id)} onCancel={p.onCancel} onNewAgent={p.onNewAgent} />
+      <TeamForm place={p.place} agents={p.agents} projects={p.projects} project={p.project} onSaved={(t) => p.onCreated(t.id)} onCancel={p.onCancel} onNewAgent={p.onNewAgent} />
     </div>
   );
 }

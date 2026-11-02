@@ -23,6 +23,7 @@ The full manual: every command, setting and limit. New here? Start with the [REA
   - [Usage and spend (Experiential Labs)](#usage-and-spend-experiential-labs)
 - [Rewind, fork and try more ways](#rewind-fork-and-try-more-ways)
 - [Terminal and Preview](#terminal-and-preview)
+- [Telegram teams](#telegram-teams)
 - [Deleting runs](#deleting-runs)
 
 ## Terminal UI tips
@@ -366,6 +367,34 @@ A run's page has two more tabs for checking its work without leaving Tether.
 - **Preview** starts the project's dev command in the worktree (`npm run dev`, else `npm run start`, else the command you type) with `PORT` set to a free port, and shows the page in a sandboxed frame once it prints a `localhost` or `127.0.0.1` address (or on its `PORT` after 20 seconds). On a wide window it opens beside the step. Reload, Open in browser and Stop are in its bar.
 
 Commands get your `PATH` and a few basics (`HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TMPDIR`, `TZ`), none of Tether's keys or tokens. Every process is ended by Stop, by deleting the run, and when Tether quits; ones a crash left behind are ended the next time it starts. The routes answer loopback only, like the rest of the API: `GET|POST /api/runs/:id/exec { command }`, `POST /api/runs/:id/exec/stop`, `GET|POST|DELETE /api/runs/:id/preview { command? }`; the output rides the run's stream (`/api/runs/:id/stream`) as `proc` events.
+
+## Telegram teams
+
+A team can live in a Telegram group: people talk to Tether's agents there, get live progress, and approve ships from their phone. Everything runs on your Mac while Tether runs (long polling, no server, no public URL).
+
+**Set up once:**
+
+1. In Telegram, open @BotFather, send `/newbot`, and copy the token it gives you.
+2. Settings → Accounts → **Telegram**: paste the token and press Connect. Tether checks it with Telegram and keeps it in your Keychain; nothing else stores it.
+3. Press **Link my Telegram** and send the `/iam <code>` it shows to your bot in a private chat (within 10 minutes). From then on your Telegram account is you: you can approve and start runs in every Telegram team.
+4. Optional, for voice notes: **Voice notes: download model (~241 MB)**. The model (SenseVoice, INT8) is checked against pinned hashes and kept in `<home>/models/sensevoice/`. Voice notes are decoded with the Mac's own `afconvert` (`ffmpeg` elsewhere) and transcribed on this machine: the audio never leaves it.
+
+**Make a team:** New team (+ beside Teams) → **Telegram group**. Once it is made, the team shows a one-time pairing code. Add the bot to your group, make it an **admin** (it needs that to pin the live status and to see every message; or turn privacy off with BotFather's `/setprivacy`), and send `/pair <code>` in the group.
+
+**In the group:**
+
+- @mention an agent (`@Bolt fix the Back button`) or reply to an agent's message: the same team rules as a Tether team (an answer, a run, a loop, a review, a merge), within the team's daily limits. Replies come labelled with the agent's name.
+- Run progress and decisions are edited in place (at most one edit every 3 s per message). One pinned message shows what is running, what needs you and today's spend.
+- Cards have buttons: **Approve / Reject / Diff** on approvals, **Start run / Edit / Dismiss** on proposals (Edit asks you to reply with the task as it should run).
+- `/status`, `/runs` (the last 5, with their PR links), `/new <task>` (a run on the agent it names, else the team's first), `/mute 1h` (or `30m`, up to 24 h, or `off`: holds back everything but approvals and proposals).
+- A photo goes to the agent when its model reads images (Claude, or an OpenRouter model tagged for images); otherwise the agent gets the caption and the group is told.
+- A voice note is transcribed, echoed as "Voice: …", then handled like typed text. Until the model is downloaded the group is told so.
+
+**People and permissions** (the team's header): everyone in the group can chat and @mention agents and appears as they speak or join. Per person, two switches, both off for new people: **Approver** (approve, reject, ask for a merge) and **Can start runs** (runs, loops and `/new`). Without it, an ask becomes a proposal card that an allowed person starts, and the asker is told why once. You always have both. Agents and other Telegram bots never approve; an agent starts runs only through a person who may.
+
+**Safety:** Tether acts only on the linked group (an unlinked group may only `/pair`, a private chat only `/iam`); every other update is dropped and logged by id only. Every approval asked in a Telegram team also lands in your Inbox and Home "Needs you"; deciding in either place settles both, and a second press is told who decided first. The Tether room of a Telegram team is a read-only mirror. Disconnecting removes the token from the Keychain and stops listening; teams keep their group link for later.
+
+API (loopback): `POST /api/accounts/telegram { token }`, `DELETE /api/accounts/telegram`, `GET /api/telegram`, `POST /api/telegram/iam`, `POST /api/telegram/voice`, `POST /api/teams/:id/pair`, `PATCH /api/teams/:id/people/:person { approver?, canStartRuns? }`, `DELETE /api/teams/:id/people/:person`.
 
 ## Deleting runs
 

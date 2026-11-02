@@ -108,3 +108,25 @@ describe('429 on a free model', () => {
     expect(res.error).toMatch(/^openrouter: HTTP 429/);
   });
 });
+
+describe('images (a teammate’s photo)', () => {
+  it('go to the model as data URLs after the prompt; a request without images stays plain text', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const home = tmp();
+    setAccountKey(home, 'openrouter', KEY);
+    const bodies: { messages: { role: string; content: unknown }[] }[] = [];
+    vi.stubGlobal('fetch', async (url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/chat/completions')) bodies.push(JSON.parse(String(init?.body)));
+      return answer('a red badge');
+    });
+    const dir = tmp();
+    const png = join(dir, 'photo.png');
+    writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const a = new OpenAICompatAdapter('openrouter', OR, home);
+    await a.run(req({ prompt: 'why is this red?', images: [png] }));
+    expect(bodies[0]!.messages[1]).toEqual({ role: 'user', content: [{ type: 'text', text: 'why is this red?' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } }] });
+    await a.run(req({ prompt: 'plain' }));
+    expect(bodies[1]!.messages[1]).toEqual({ role: 'user', content: 'plain' });
+  });
+});

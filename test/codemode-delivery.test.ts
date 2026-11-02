@@ -112,7 +112,7 @@ function fakeClaude(): { dir: string; log: string } {
 const fs = require('fs');
 const a = process.argv.slice(2);
 const i = a.indexOf('--mcp-config');
-fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: a, config: i >= 0 ? fs.readFileSync(a[i + 1], 'utf8') : null }));
+fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: a, config: i >= 0 ? fs.readFileSync(a[i + 1], 'utf8') : null, stdin: fs.readFileSync(0, 'utf8') }));
 console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's1', tools: ['Read', 'Edit', '${CLAUDE_TOOL}'] }));
 console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: '${CLAUDE_TOOL}', input: { code: 'return 1' } }] } }));
 console.log(JSON.stringify({ type: 'result', result: 'done', total_cost_usd: 0.01, num_turns: 2, usage: { input_tokens: 100, cache_read_input_tokens: 50, output_tokens: 20 } }));
@@ -155,6 +155,22 @@ describe('claude.ts per-run MCP config', () => {
     await new ClaudeAdapter().run(baseReq({}));
     argv = (JSON.parse(readFileSync(log, 'utf8')) as { argv: string[] }).argv;
     for (const f of ['--mcp-config', '--strict-mcp-config', '--allowedTools', '--append-system-prompt', '--disallowedTools']) expect(argv).not.toContain(f);
+  });
+});
+
+describe('claude.ts images', () => {
+  it('a teammate’s photo: its folder is added for reading and the prompt names the file for the Read tool', async () => {
+    const { dir, log } = fakeClaude();
+    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`);
+    const photos = tmp('tether-img-');
+    const photo = join(photos, 'photo.jpg');
+    writeFileSync(photo, 'jpeg');
+    await new ClaudeAdapter().run(baseReq({ prompt: 'why is this red?', images: [photo] }));
+    const { argv, stdin } = JSON.parse(readFileSync(log, 'utf8')) as { argv: string[]; stdin: string };
+    expect(argv.slice(argv.indexOf('--add-dir'), argv.indexOf('--add-dir') + 2)).toEqual(['--add-dir', photos]);
+    expect(stdin).toBe(`why is this red?\n\nThe person attached an image. Look at it with your Read tool before you answer:\n- ${photo}`);
+    await new ClaudeAdapter().run(baseReq({}));
+    expect((JSON.parse(readFileSync(log, 'utf8')) as { argv: string[] }).argv).not.toContain('--add-dir');
   });
 });
 

@@ -313,7 +313,7 @@ function Shell() {
               onCreate={createNew}
               counts={{ needs: attention.data?.items.length ?? 0, live: runs.data?.filter((r) => r.live).length ?? 0, goals: inProject(goals.goals, projects.current?.id).filter(isOpen).length }}
               chats={{ list: chats.data?.chats ?? [], current: screen.tab === 'chats' ? (screen.id ?? '') : undefined, onNew: newChat, onStarter: newChatAbout, onOpen: (id) => go({ tab: 'chats', id }), onAll: () => go({ tab: 'chats' }), onRename: renameFromSide, onDelete: deleteFromSide }}
-              teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: () => go({ tab: 'teams', id: 'new' }), onOpen: (id) => go({ tab: 'teams', id }) }}
+              teams={{ list: teams.data?.teams ?? [], current: screen.tab === 'teams' ? (screen.id ?? 'new') : undefined, onNew: (place) => go({ tab: 'teams', id: 'new', ...(place === 'telegram' ? { node: 'telegram' } : {}) }), onOpen: (id) => go({ tab: 'teams', id }) }}
               runs={{ list: projectRuns, current: screen.tab === 'runs' ? screen.id : undefined, onOpen: (id) => go({ tab: 'runs', id }) }}
               account={{ ...accountChip(accounts.data), onOpen: () => go({ tab: 'settings', id: 'accounts' }) }}
               projects={{
@@ -398,7 +398,7 @@ function Shell() {
             {screen.tab === 'chats' && screen.id === 'new' ? <NewChat key={screen.node ?? ''} chat={chat} project={projects.current} context={contextOf(screen)} runs={projectRuns} lastFile={lastFile} starter={screen.node === 'run' || screen.node === 'file' ? screen.node : undefined} /> : null}
             {onChatScreen && screen.id !== 'new' ? <Conversation chat={chat} project={projects.current} context={contextOf(screen)} onGo={go} onPopOut={popOut} onRenamed={() => void chats.refresh()} onDelete={() => deleteChat(screen.id!)} onNewChat={newChat} goals={goals.goals} teamName={(id) => teams.data?.teams.find((t) => t.id === id)?.name ?? id} /> : null}
             {screen.tab === 'teams' && (!screen.id || screen.id === 'new') ? (
-              <NewTeam agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
+              <NewTeam key={screen.node ?? 'tether'} place={screen.node === 'telegram' ? 'telegram' : 'tether'} agents={teams.data?.agents ?? []} projects={list} project={projects.current} onCreated={(id) => (void teams.refresh(), go({ tab: 'teams', id }))} onCancel={() => go({ tab: 'home' })} onNewAgent={() => createNew('bot')} />
             ) : null}
             {screen.tab === 'teams' && screen.id && screen.id !== 'new' ? (
               <TeamScreen key={screen.id} id={screen.id} goals={goals.goals} agents={teams.data?.agents ?? []} projects={list} onGo={go} onChanged={() => void teams.refresh()} onNewAgent={() => createNew('bot')} />

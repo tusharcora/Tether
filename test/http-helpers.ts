@@ -5,14 +5,14 @@ import type { OpenRouterDeps } from '../src/accounts/openrouter.js';
 import { link, loadBindings } from '../src/bindings.js';
 import { AdapterRegistry, MockAdapter } from '../src/adapters/index.js';
 import { Engine } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { startServer, type ServerOptions } from '../src/server.js';
 import { Store } from '../src/store.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace } from '../src/workspace.js';
 import { makeRepo, tmp } from './helpers.js';
 
 /** A real server on port 0 with a registered workspace (a git repo) whose bots run on the mock adapter. */
-export async function startHttpTestServer(o: { register?: boolean; home?: string; github?: (home: string) => GithubAccount; openrouter?: OpenRouterDeps; nvidia?: NvidiaDeps } = {}) {
+export async function startHttpTestServer(o: { register?: boolean; home?: string; github?: (home: string) => GithubAccount; openrouter?: OpenRouterDeps; nvidia?: NvidiaDeps; telegram?: ServerOptions['telegram'] } = {}) {
   const home = o.home ?? tmp('home-');
   const dir = makeRepo();
   if (o.register !== false) initWorkspace(home, dir, { id: 'api', name: 'API' });
@@ -22,7 +22,7 @@ export async function startHttpTestServer(o: { register?: boolean; home?: string
   const store = Store.open(':memory:');
   const vault = new Vault(tmp('vault-'));
   const engine = new Engine(store, { home, registry, vault, bindings: () => loadBindings(home) });
-  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, ...(o.github ? { github: o.github(home) } : {}), ...(o.openrouter ? { openrouter: o.openrouter } : {}), ...(o.nvidia ? { nvidia: o.nvidia } : {}) });
+  const s = await startServer({ engine, store, vault, registry, cfg: { home, vault: vault.root, adapters: {}, endpoints: {} }, port: 0, ...(o.github ? { github: o.github(home) } : {}), ...(o.openrouter ? { openrouter: o.openrouter } : {}), ...(o.nvidia ? { nvidia: o.nvidia } : {}), ...(o.telegram ? { telegram: o.telegram } : {}) });
   const api = (method: string, path: string, body?: unknown) =>
     new Promise<{ status: number; json: any; text: string }>((resolve, reject) => {
       const u = new URL(s.url);
