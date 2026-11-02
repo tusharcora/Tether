@@ -41,6 +41,15 @@ describe('commandRule', () => {
   it.each(['npm test', 'pytest -q', 'npm install', 'ls -la', 'git status', 'git diff', 'git add -A', 'git commit -m x', 'curl https://x.dev/a', 'cat src/../package.json', 'cat /dev/null', 'git -C sub status'])('runs %s', (c) => expect(commandRule(c).ok).toBe(true));
   it.each(['sudo rm x', 'git push', 'git push origin main', 'git merge main', 'git rebase main', 'git reset --hard HEAD~3', 'npm publish', 'gh pr create', 'gh pr merge 1', 'curl -X POST https://x', 'rm -rf /', 'rm -rf ~/x', 'cd /etc', 'cat ../secret', 'aorch evolve bolt', 'aorch harness bolt rollback 2', 'defaults write x y 1', 'cat $HOME/x', 'wget --post-data=a https://x', 'ssh host ls', 'rsync -a x me@host:y', 'launchctl load x', 'git -C sub push', 'pnpm publish', 'cat a/../../b', 'echo hi > /etc/x'])('refuses %s', (c) => expect(commandRule(c).ok).toBe(false));
   it.each(['npm test && git push', 'x; sudo y', 'a | sudo tee b', 'echo $(git push)', 'echo `git push`', 'FOO=1 git push', 'env git push', 'bash -c "git push"', 'sh -c "sudo x"', 'eval git push', 'ls\ngit push', 'ls & git push', 'env -i FOO=1 command git push', 'bash -lc "x; git push"'])('sees through %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it.each(['pkill node', 'killall node', '/usr/bin/pkill -f x', 'kill -9 -1', 'kill -- -1', 'kill -TERM -1234', 'kill -s KILL -1', 'kill -n 9 -5', 'kill -9 -- -1', 'npm test; kill -1 -1'])('refuses the process killer %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it.each(['kill 1234', 'kill -9 1234', 'kill -TERM 1 2', 'kill -s KILL 1234', 'kill -n 9 1234', 'kill -- 1234', 'kill -l'])('leaves one process alone: %s', (c) => expect(commandRule(c)).toEqual({ ok: true }));
+  it.each(['cargo publish', 'cargo +nightly publish --dry-run', 'twine upload dist/x', 'python -m build && twine upload dist/x', 'docker push me/app', 'npx gh pr create', 'npx -y gh pr create', 'defaults delete com.apple.dock'])('refuses what publishes or changes settings: %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it.each(['cargo test publish', 'cargo build', 'twine check dist/x', 'docker build .', 'docker ps', 'npx vitest run', 'defaults read com.apple.dock'])('leaves the neighbours alone: %s', (c) => expect(commandRule(c)).toEqual({ ok: true }));
+  it('judges a heredoc piped into a shell, wherever the shell is named', () => {
+    for (const c of ['cat <<EOF | bash\ngit push\nEOF', "cat <<'EOF' | sh\nsudo x\nEOF", 'cat <<EOF | /bin/zsh -s\ngit push\nEOF', 'cat <<EOF | tee log | bash\ngit push\nEOF', 'bash <<EOF\ngit push\nEOF']) expect(commandRule(c).ok, c).toBe(false);
+    // text written to a file, or read by a tool, stays data
+    for (const c of ['cat <<EOF > run.sh\ngit push\nEOF', 'cat <<EOF | tee run.sh\ngit push\nEOF', 'cat <<EOF | grep sh\ngit push\nEOF']) expect(commandRule(c), c).toEqual({ ok: true });
+  });
   it('says why in plain words', () => {
     const r = commandRule('git push');
     expect(r.ok === false && r.why).toMatch(/push/);
@@ -84,8 +93,10 @@ describe('secrets and commands', () => {
 
   it('refuses a secrets file as an argument, as isSecretPath names one', () => {
     for (const c of ['cat .env', 'cat secrets/.env', 'cp .env x', 'cat .env.local', 'cat < .env', 'head -1 ./.env', 'node --env-file=.env x.js', 'cat server.pem', 'cat /tmp/x.key', 'cat ssh/id_rsa', 'echo "$(cat .env)"', 'grep API .env', 'x && cat .env', 'source .env']) no(c);
-    expect(isSecretPath('.env.example')).toBe(true);
-    no('cat .env.example');
+    for (const f of ['.env', '.env.local', '.env.production', 'id_rsa', 'id_rsa.pub', 'id_dsa', 'id_ecdsa', '.ssh/id_ed25519']) expect(isSecretPath(f), f).toBe(true);
+    for (const f of ['.env.example', '.env.sample', '.env.template', 'api/.env.local.example', 'id_token.test.ts', 'id_card.png']) expect(isSecretPath(f), f).toBe(false);
+    for (const c of ['cat .env.example', 'git add .env.example', 'cp .env.template .env.sample', 'cat id_token.test.ts']) yes(c);
+    no('cp .env.example .env');
     for (const c of ['cat env.ts', 'cat src/environment.ts', 'npm test', 'git commit -m "ignore .env"', 'grep .env README.md', 'curl https://example.com/id_card']) yes(c);
   });
 
@@ -104,5 +115,14 @@ describe('secrets and commands', () => {
     vi.stubEnv('SITE_URL', 'https://example.com:8080/a@b');
     const r = await runCommand('echo "$GITHUB_PAT|$NPM_AUTH|$SENTRY_DSN|$DATABASE_URL|$AUTHORIZATION|$GIT_AUTHOR_NAME|$SITE_URL|$PATH"', tmpdir());
     expect(r.output.trim()).toBe(`|||||kept1|https://example.com:8080/a@b|${process.env.PATH}`);
+  });
+
+  it('keeps the ssh agent socket, which is a path and not a secret, and still drops real secrets', async () => {
+    vi.stubEnv('SSH_AUTH_SOCK', '/tmp/agent.sock');
+    vi.stubEnv('NPM_AUTH', 'gone1');
+    vi.stubEnv('API_KEY', 'gone2');
+    vi.stubEnv('MY_AUTH_TOKEN', 'gone3');
+    const r = await runCommand('echo "$SSH_AUTH_SOCK|$NPM_AUTH|$API_KEY|$MY_AUTH_TOKEN"', tmpdir());
+    expect(r.output.trim()).toBe('/tmp/agent.sock|||');
   });
 });

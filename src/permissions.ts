@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SECRET = [/^\.env(\..*)?$/, /\.pem$/i, /\.key$/i, /^id_/];
+const SECRET = [/^(?!.*\.(example|sample|template)$)\.env(\..*)?$/, /\.pem$/i, /\.key$/i, /^id_(rsa|dsa|ecdsa|ed25519)/];
 /** Secrets files open read-only, are left out of search and never go into an agent's prompt. Here, not in code.ts, so the command hook stays light. */
 export const isSecretPath = (rel: string): boolean => SECRET.some((re) => re.test(rel.split('/').pop() ?? ''));
 
@@ -86,7 +86,7 @@ export const MAX_COMMAND_MS = 120_000;
 /** Characters of output kept, from the end: that is where a failure shows. */
 export const MAX_COMMAND_OUTPUT = 20_000;
 
-// PAT, AUTH and DSN only as a whole part of the name: PATH and GIT_AUTHOR_NAME stay
+// PAT, AUTH and DSN only as a whole part of the name: PATH and GIT_AUTHOR_NAME stay. SSH_AUTH_SOCK is a path, and ssh needs it
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|(^|_)(PAT|AUTH|AUTHORIZATION|DSN)(_|$)/i;
 const SECRET_VALUE = /:\/\/[^/\s@]*:[^/\s]*@/; // a URL holding a user and password
 
@@ -97,7 +97,7 @@ export function runCommand(command: string, cwd: string, o: { timeoutMs?: number
 
 function spawnCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number; signal?: AbortSignal; /** Kill what the shell left in the background. */ reap?: boolean }): Promise<CommandResult> {
   const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(process.env)) if (!SECRET_NAME.test(k) && !SECRET_VALUE.test(v ?? '')) env[k] = v;
+  for (const [k, v] of Object.entries(process.env)) if ((k === 'SSH_AUTH_SOCK' || !SECRET_NAME.test(k)) && !SECRET_VALUE.test(v ?? '')) env[k] = v;
   const max = o.maxBytes ?? 20_000;
   const t0 = Date.now();
   return new Promise((resolve) => {
@@ -149,12 +149,20 @@ const SENDS = /^(-[a-zA-Z]*[dFTX]|--(data|data-\w+|form|upload-file|json|request
 type W = { s: string; q: boolean }; // a word, and whether any of it was quoted
 
 const ENV_SHOWN = 'it prints the environment, which can hold secrets';
+const PUBLISH: Record<string, string> = { cargo: 'publish', twine: 'upload', docker: 'push' };
+
+/** `kill`'s targets: what follows its signal. A lone `-N` is the signal, as in `kill -1 123`. */
+function killTargets(rest: string[]): string[] {
+  const skip = rest[0] === '-s' || rest[0] === '-n' ? 2 : rest[0]?.startsWith('-') && rest[0] !== '--' ? 1 : 0;
+  const a = rest.slice(skip);
+  return a[0] === '--' ? a.slice(1) : a;
+}
 
 /** Why this one simple command is refused, or undefined. `t` is its words, wrappers already stripped. */
 function whyRefused(t: string[]): string | undefined {
   const cmd = (t[0] ?? '').replace(/^.*\//, '');
   const rest = t.slice(1);
-  const sub = rest.filter((w) => !w.startsWith('-'))[0];
+  const sub = rest.filter((w) => !/^[-+]/.test(w))[0]; // + is cargo's toolchain
   if (cmd === 'git') {
     let i = 0;
     while (i < rest.length && rest[i]!.startsWith('-')) i += OPTS_WITH_ARG.has(rest[i]!) ? 2 : 1;
@@ -165,15 +173,16 @@ function whyRefused(t: string[]): string | undefined {
     if (g === 'commit' && args.includes('--amend')) return 'amending a commit rewrites history, so it is left to you';
     if ((g === 'checkout' && args.includes('-B')) || (g === 'switch' && args.includes('-C')) || (g === 'branch' && args.some((a) => /^-[a-zA-Z]*[fD]|^--force$/.test(a)))) return 'it moves a branch over existing work, so it is left to you';
   }
-  if (cmd === 'gh') return 'gh acts on GitHub, outside this folder';
-  if (['npm', 'yarn', 'pnpm'].includes(cmd) && rest.includes('publish')) return 'publishing sends your work to the public';
+  if (cmd === 'gh' || (cmd === 'npx' && sub === 'gh')) return 'gh acts on GitHub, outside this folder';
+  if ((['npm', 'yarn', 'pnpm'].includes(cmd) && rest.includes('publish')) || (sub && PUBLISH[cmd] === sub)) return 'publishing sends your work to the public';
   if (cmd === 'curl' && rest.some((a) => SENDS.test(a))) return 'it sends data out of this folder';
   if (cmd === 'wget' && rest.some((a) => /^--(post-data|post-file|method|body-data|body-file)\b/.test(a))) return 'it sends data out of this folder';
   if (cmd === 'ssh' || cmd === 'scp') return `${cmd} reaches another machine`;
   if (cmd === 'rsync' && rest.some((a) => /^([\w.-]+@|[\w.-]+:)/.test(a))) return 'rsync to another machine sends files out of this folder';
-  if (cmd === 'defaults' && sub === 'write') return 'it changes system settings';
+  if (cmd === 'defaults' && (sub === 'write' || sub === 'delete')) return 'it changes system settings';
   if (cmd === 'systemsetup' || cmd === 'launchctl') return 'it changes system settings';
   if (cmd === 'sudo' || cmd === 'doas' || cmd === 'su') return 'needs administrator rights';
+  if (cmd === 'pkill' || cmd === 'killall' || (cmd === 'kill' && killTargets(rest).some((a) => a.startsWith('-')))) return 'it can stop programs outside this folder';
   if (cmd === 'printenv' || ((cmd === 'set' || cmd === 'export') && !rest.length) || (cmd === 'export' && rest[0] === '-p')) return ENV_SHOWN;
   return undefined;
 }
@@ -300,11 +309,12 @@ function judge(t: W[], root?: string): string | undefined {
 }
 
 const QUOTED = /"(?:\\.|[^"\\])*"|'[^']*'/g;
-// a heredoc body is data for the command that reads it, unless that command is a shell
+// a heredoc body is data for the command that reads it, unless that command is a shell: before the marker, or piped to after it
 const HEREDOC = /([^\n]*)<<-?\s*(['"]?)(\w+)\2([^\n]*)\n[\s\S]*?\n[ \t]*\3\b/g;
+const PIPED_TO_SHELL = /\|\s*(?:\S*\/)?(?:(?:ba|z)?sh|eval)(?![\w.-])/;
 
 function check(command: string, root?: string): string | undefined {
-  const text = command.replace(/\\\n/g, ' ').replace(HEREDOC, (m, pre: string, _q: string, tag: string, post: string) => (/\b(ba|z)?sh\b|\beval\b/.test(pre) ? m : `${pre}<<${tag}${post}`));
+  const text = command.replace(/\\\n/g, ' ').replace(HEREDOC, (m, pre: string, _q: string, tag: string, post: string) => (/\b(ba|z)?sh\b|\beval\b/.test(pre) || PIPED_TO_SHELL.test(post) ? m : `${pre}<<${tag}${post}`));
   const c = normalizeCommand(text);
   if (!c) return 'it is empty';
   if (c.length > 1000) return 'it is too long';

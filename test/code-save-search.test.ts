@@ -42,6 +42,8 @@ describe('saveCode', () => {
   it('refuses secrets (403), missing files (404) and unsafe paths', () => {
     writeFileSync(join(root, '.env'), 'K=1');
     expect(status(() => saveCode(root, '.env', 'K=2'))?.status).toBe(403);
+    writeFileSync(join(root, '.env.example'), 'K=');
+    expect(status(() => saveCode(root, '.env.example', 'K=2'))).toBeUndefined();
     expect(readFileSync(join(root, '.env'), 'utf8')).toBe('K=1');
     expect(status(() => saveCode(root, 'nope.ts', 'x'))?.status).toBe(404);
     expect(status(() => saveCode(root, '../x', 'x'))?.status).toBe(400);
@@ -95,12 +97,14 @@ describe('search', () => {
   writeFileSync(join(root, 'src', 'server.ts'), 'import { limit } from "./http/limit.js";\n');
   writeFileSync(join(root, 'README.md'), '# Limits\n');
   writeFileSync(join(root, '.env'), 'LIMIT_KEY=secret\n');
+  writeFileSync(join(root, '.env.example'), 'LIMIT_KEY=\n');
   writeFileSync(join(root, 'many.txt'), 'limit\n'.repeat(250));
 
   it('finds files by a fuzzy name, best first, never secrets', async () => {
     const r = await searchNames(root, 'limit');
     expect(r.hits[0]).toEqual({ path: 'src/http/limit.ts' });
     expect(r.hits.map((h) => h.path)).not.toContain('.env');
+    expect((await searchNames(root, 'env')).hits.map((h) => h.path)).toContain('.env.example');
     expect((await searchNames(root, 'shtl')).hits.map((h) => h.path)).toContain('src/http/limit.ts');
     expect((await searchNames(root, 'zzz')).hits).toEqual([]);
   });
