@@ -114,7 +114,7 @@ export function describeEvent(e: StoredEvent['event'], nameOf: (id: string) => s
     case 'run.resumed':
       return { text: 'run resumed', tone: 'info' };
     case 'setup.result':
-      return { text: `setup ${e.ok ? 'finished' : 'failed'}`, tone: e.ok ? 'done' : 'error' };
+      return e.skipped ? { text: "setup didn't run", tone: 'info' } : { text: `setup ${e.ok ? 'finished' : 'failed'}`, tone: e.ok ? 'done' : 'error' };
     case 'plan.question':
       return { text: `the team asks ${e.questions.length} question${e.questions.length === 1 ? '' : 's'}`, tone: 'wait' };
     case 'plan.answer':

@@ -29,7 +29,7 @@ export interface Prefs {
   commands?: 'ask' | 'always' | 'off';
   /** API client: the active environment per workspace id (not in the repo, so teammates don't fight over it). */
   httpActiveEnv?: Record<string, string>;
-  /** Tether turns asks to build, fix or do something into goal cards. Default on. */
+  /** The old "Turn asks into tickets" switch: route cards replaced it, and they don't read it. Default on. */
   asksToGoals?: boolean;
   /** Do it myself starts at once when it is recommended and the folder is trusted. Default off: the card asks. */
   soloWithoutAsking?: boolean;

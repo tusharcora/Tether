@@ -394,17 +394,15 @@ describe('asks become goals', () => {
     expect(t.store.list()).toHaveLength(0);
   });
 
-  it('the composer’s switch turns it off: no instruction, and a goal block is dropped', async () => {
+  it('the composer’s switch still saves, and no longer turns the instruction off', async () => {
     const t = await boot();
     expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(true);
     expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: 'no' })).status).toBe(400);
     expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: false })).json).toEqual({ asksToGoals: false });
     expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(false);
-    t.agent.reply = card('');
-    const { done } = await t.turn({ message: 'fix it' });
-    expect(t.agent.prompts[0]).not.toContain('Routes: when the person asks you');
-    expect(done!.message.proposals).toBeUndefined();
-    expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
+    t.agent.reply = 'Sure.';
+    await t.turn({ message: 'fix it' });
+    expect(t.agent.prompts[0]).toContain('Routes: when the person asks you');
   });
 });
 

@@ -272,6 +272,8 @@ export type RunEvent =
       capsOn?: boolean;
       /** "Do it myself": one step, and in a plain folder it lands by itself when it finishes. */
       solo?: true;
+      /** The chat this run came from, recent text, untrusted: the prompt fences it. */
+      context?: string;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
   | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed; undone?: true }
@@ -291,7 +293,7 @@ export type RunEvent =
   | { type: 'team.pipeline'; pipeline: Pipeline }
   | { type: 'node.spawned'; node: PipelineNode; parent: string; depth: number; after: string[] }
   | { type: 'run.resumed'; retryFailed?: boolean }
-  | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
+  | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[]; /** The folder said no to commands, so it never ran. */ skipped?: true }
   | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef; /** The worktree's HEAD when it started (runs before 2026-10-30: none). */ base?: string }
   | { type: 'node.session'; node: string; sessionId: string }
   | { type: 'node.chunk'; node: string; text: string }
@@ -414,6 +416,8 @@ export interface RunState {
   dirty?: string;
   /** "Do it myself" (run.started.solo). */
   solo?: true;
+  /** run.started.context. */
+  context?: string;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -437,6 +441,8 @@ export interface RunState {
   /** Worker questions to the person: who asked, whether the step waits, and the answer once given. */
   userAsks?: { node: string; question: Question; wait: boolean; answer?: Answer }[];
   setupDone: boolean;
+  /** The setup command never ran (setup.result.skipped). */
+  setupSkipped?: boolean;
   /** Paths the setup command left in the worktree; kept out of agent commits and diffs. */
   setupArtifacts: string[];
   nodes: Record<string, NodeState>;
@@ -507,6 +513,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         ...(e.history ? { history: e.history } : {}),
         ...(e.dirty ? { dirty: e.dirty } : {}),
         ...(e.solo ? { solo: true as const } : {}),
+        ...(e.context ? { context: e.context } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,
@@ -629,6 +636,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'setup.result':
         s.setupDone = e.ok;
+        s.setupSkipped = e.skipped;
         s.setupArtifacts = e.artifacts ?? [];
         break;
       case 'node.started':

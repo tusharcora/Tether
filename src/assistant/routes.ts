@@ -17,7 +17,7 @@ import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } fr
 import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, setRoute, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
-import { assistantAgent, mid, runTurn, startRoute, type AssistantCtx, type TurnBody } from './turn.js';
+import { assistantAgent, mid, runTurn, START_FAILED, startRoute, type AssistantCtx, type TurnBody } from './turn.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, ROUTE_KINDS, type ChatMessage, type ChatView, type Proposal, type RouteCard, type RouteKind, type StreamEvent } from './types.js';
 
 const wsOf = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
@@ -59,7 +59,24 @@ function chatIn(c: AssistantCtx, ws: string | undefined, v: unknown): Chat {
   if (!isChatId(v)) throw new HttpError(400, '"chat" must be a chat id');
   const chat = readChat(c.home, ws, v);
   if (!chat) throw new HttpError(404, 'unknown chat');
+  settleRoutes(c, ws, chat);
   return chat;
+}
+
+/**
+ * A card saved as started with no result and no start going: the server died mid-start, or the result could not be saved.
+ * What did start is found again; anything else reads as failed and stays failed, so it never starts a second run.
+ */
+function settleRoutes(c: AssistantCtx, ws: string | undefined, chat: Chat): void {
+  for (const m of chat.messages) {
+    const r = m.route;
+    if (r?.status !== 'started' || r.runId || r.goalId || starting.has(r.id)) continue;
+    const taken = chat.messages.map((x) => x.route?.runId);
+    const runId = c.store.list().find((x) => r.chose !== 'ticket' && x.origin?.kind === 'chat' && x.origin.id === chat.id && x.task === r.task && !taken.includes(x.id))?.id;
+    const goalId = c.goals?.db.list().find((g) => r.chose === 'ticket' && g.origin?.kind === 'chat' && g.origin.message === m.id)?.id;
+    m.route = runId ? { ...r, runId } : goalId ? { ...r, goalId } : { ...r, status: 'failed', note: START_FAILED };
+    setRoute(c.home, ws, chat.id, m.id, m.route);
+  }
 }
 
 /**
@@ -267,7 +284,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     if (choice !== 'ticket' && b.trust === undefined && trustState(c.home, root) === 'unknown') return send(res, 409, { needsTrust: true, folder: root }), true;
     // saved before the run exists: a crash in between leaves a card that won't start a second run
     save({ ...route, status: 'started', chose: choice });
-    const run = startRoute(c, { ws, root, chat: chat.id, message: msg.id, ...(msg.by ? { bot: msg.by.bot } : {}) }, route, choice, b.trust as boolean | undefined)
+    const run = startRoute(c, { ws, root, chat: chat.id, message: msg.id, messages: chat.messages, ...(msg.by ? { bot: msg.by.bot } : {}) }, route, choice, b.trust as boolean | undefined)
       .then(save)
       .finally(() => starting.delete(route.id));
     starting.set(route.id, run);

@@ -18,6 +18,7 @@ import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } fr
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
+import { NOT_TRUSTED, trustState } from './trust.js';
 import { planWaiting, type StoredEvent, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
@@ -73,6 +74,8 @@ export interface StartInput {
   capsOn?: boolean;
   /** "Do it myself": in a plain folder the run lands by itself when it finishes (see `soloPipeline`). */
   solo?: boolean;
+  /** Recent text of the chat it came from, untrusted: the prompt fences it. `task` stays the short title. */
+  context?: string;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -147,6 +150,8 @@ export interface TeamStartInput {
   yes?: boolean;
   /** Spend cap in USD; replaces the plan's own cap. */
   budgetUsd?: number;
+  /** Recent text of the chat it came from, untrusted: the prompts fence it. */
+  context?: string;
   /** Planning rounds before Tether must plan (default 3, 1..6). */
   maxRounds?: number;
   workspace?: string | false;
@@ -439,6 +444,7 @@ export class Engine {
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
       ...(rawInput.solo ? { solo: true as const } : {}),
+      ...(rawInput.context ? { context: rawInput.context } : {}),
       capsOn: caps,
     });
     this.noticeLeftOut(runId, wt.leftOut);
@@ -559,7 +565,7 @@ export class Engine {
     if (!start.nodes.some((n) => n.id === node)) throw new Error(`"${node}" was handed out by a manager: fork from one of the run's own steps`);
     const inherit = [...ancestorsOf(start, node), node];
     return this.startRun(
-      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), dirty: s.dirty, autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node } },
+      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), dirty: s.dirty, autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node }, ...(s.context ? { context: s.context } : {}) },
       { inherit: { from: s, nodes: inherit } },
     );
   }
@@ -633,6 +639,7 @@ export class Engine {
       yes: !!i.yes,
       ...(i.budgetUsd !== undefined && i.budgetUsd > 0 ? { budgetUsd: Math.min(TEAM_MAX_BUDGET_USD, i.budgetUsd) } : {}),
       ...(i.origin ? { origin: i.origin } : {}),
+      ...(i.context ? { context: i.context } : {}),
       // an explicit --budget is a cap the person asked for: it holds with the setting off
       capsOn: capsOn(this.opts.home) || (i.budgetUsd !== undefined && i.budgetUsd > 0),
     });
@@ -893,7 +900,7 @@ export class Engine {
     const hints = routingHints(routing, entries);
     const final = round > maxRounds;
     const asked = this.store.events(runId).flatMap((e) => (e.event.type === 'plan.question' ? e.event.questions : []));
-    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints);
+    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints, s.context);
     let raw = '';
     let questions: Question[] = [];
     let plan: ReturnType<typeof parseTeamPlan>['plan'];
@@ -1085,7 +1092,9 @@ export class Engine {
     // Defence in depth: preflight already refused this, but the engine is callable without it.
     if (pipe.mode !== 'pipeline') throw new Error(`mode "${pipe.mode}" has no scheduler in this build`);
 
-    if (st.setup && !state.setupDone) {
+    if (st.setup && !state.setupDone && trustState(this.opts.home, state.repo) === 'refused') {
+      this.store.append(runId, { type: 'setup.result', ok: false, skipped: true, output: '', durationMs: 0 });
+    } else if (st.setup && !state.setupDone) {
       const t0 = Date.now();
       const r = await runProcess({ cmd: '/bin/sh', args: ['-c', st.setup], cwd: state.workdir, signal, env: { ...process.env, CI: '1' } });
       if (signal.aborted) return this.finish(runId, 'stopped');
@@ -1134,6 +1143,8 @@ export class Engine {
       this.armLimit(runId);
       return this.finish(runId, 'paused');
     }
+    // not a failure to fix: only the person can change this answer, so nothing here retries it
+    if (nodes.some((n) => n.error === NOT_TRUSTED)) return this.finish(runId, 'stopped', NOT_TRUSTED);
     if (nodes.some((n) => n.status === 'error' || n.status === 'skipped')) {
       const failed = state.pipeline.nodes.find((n) => !ignored.has(n.id) && state.nodes[n.id]?.status === 'error');
       return this.finish(runId, 'error', failed ? `node "${failed.id}" failed: ${state.nodes[failed.id]?.error ?? 'unknown error'}` : undefined);
@@ -1407,6 +1418,10 @@ export class Engine {
           out = tail(r.output, 20_000);
           exitCode = ok ? 0 : 1;
           failureText = out;
+        } else if (trustState(this.opts.home, st.repo) === 'refused') {
+          this.store.append(runId, { type: 'gate.result', node: node.id, ok: false, exitCode: null, output: NOT_TRUSTED, durationMs: 0 });
+          finishGate(false, NOT_TRUSTED, NOT_TRUSTED);
+          return { ok: false };
         } else {
           const r = await runProcess({ cmd: '/bin/sh', args: ['-c', node.command!], cwd: st.workdir, signal: gateSignal, env: { ...process.env, CI: '1' } });
           if (signal.aborted) return { ok: false, aborted: true };

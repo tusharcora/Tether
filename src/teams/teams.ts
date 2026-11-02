@@ -807,7 +807,7 @@ export class Teams {
     }
     if (rejected('approve-plan')) return void this.say(team.id, from, `The plan was rejected, so I stopped. Tell me what to change and I'll plan again.`, { run: runId, ...where });
     if (this.d.autofixing?.(runId)) return; // its rounds speak for it, and it says so if it gives up
-    const reason = s.status === 'stopped' ? 'the run was stopped' : (s.error ?? 'a step failed');
+    const reason = s.status === 'stopped' ? (s.error ?? 'the run was stopped') : (s.error ?? 'a step failed');
     const report = [s.error, s.nodes.work?.output].filter(Boolean).join('\n\n').slice(-REPORT_MAX);
     await this.speak(team, task.agent, { kind: 'failed', reason }, { run: runId, ...where, ...(report ? { report } : {}) });
     await this.learn(team, task, 'failed', s.error ?? '');

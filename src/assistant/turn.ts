@@ -18,6 +18,7 @@ import type { AttentionItem, CodeModeRequest } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
 import { insideGit } from '../history.js';
+import { fence } from '../fence.js';
 import { loadAllow, newChatId, readChat, saveChat as saveChatFile, titleOf, type Chat } from './history.js';
 import { compactChat } from './compact.js';
 import { knownSize, latestContext, overflows } from './context.js';
@@ -131,28 +132,37 @@ const secretsFor = (home: string, ws: string | undefined): Map<string, string> =
   return m;
 };
 
+/** The chat's recent text for the work a card starts, newest kept. Cut after redacting, so a cut can't hide half a secret. */
+export const CHAT_CONTEXT_MAX = 4000;
+const recentChat = (home: string, ws: string, messages: ChatMessage[]): string =>
+  redactText(messages.filter((m) => m.text && !m.compact && !m.compactedBy).map((m) => `${m.role === 'you' ? 'The person' : (m.by?.name ?? 'Tether')}: ${m.text}`).join('\n\n'), secretsFor(home, ws)).slice(-CHAT_CONTEXT_MAX);
+
+export const START_FAILED = "This couldn't start, and nothing in the folder changed.";
+
 /**
  * Do what a route card's row says, in the chat's folder, and return the card as it now stands. Never throws: a start that
  * fails is a failed card. `trust` is the person's answer to the trust question, saved first; a ticket starts nothing, so it has none.
  */
-export async function startRoute(c: AssistantCtx, o: { ws: string; root: string; chat: string; message: string; bot?: string }, card: RouteCard, choice: RouteKind, trust?: boolean): Promise<RouteCard> {
+export async function startRoute(c: AssistantCtx, o: { ws: string; root: string; chat: string; message: string; messages: ChatMessage[]; bot?: string }, card: RouteCard, choice: RouteKind, trust?: boolean): Promise<RouteCard> {
   const { task } = card;
   const repo = resolve(o.root);
   const origin = { kind: 'chat' as const, id: o.chat };
   const chose: RouteCard = { ...card, chose: choice };
   try {
-    if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(card.draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws) })).id };
+    const context = recentChat(c.home, o.ws, o.messages);
+    const draft = card.draft && { ...card.draft, description: [card.draft.description, fence('chat', context)].filter(Boolean).join('\n\n') };
+    if (choice === 'ticket') return { ...chose, status: 'started', goalId: c.goals!.create(goalFromDraft(draft!, { workspace: o.ws, origin: { kind: 'chat', chat: o.chat, message: o.message }, ctx: draftContext(c.home, o.ws) })).id };
     if (trust !== undefined) setTrust(c.home, o.root, trust);
     const runId =
       choice === 'team'
-        ? await c.engine.startTeam({ task, repo, background: true, origin })
+        ? await c.engine.startTeam({ task, repo, background: true, origin, context })
         : choice === 'workflow'
-          ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin })
-          : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, solo: true });
+          ? await c.engine.start({ pipeline: readPipeline(c.home, card.workflow!), task, repo, origin, context })
+          : await c.engine.start({ pipeline: soloPipeline({ task, ...(o.bot ? { bot: o.bot } : {}) }), task, repo, origin, context, solo: true });
     return { ...chose, status: 'started', runId };
   } catch {
     // the error can carry paths under <home> and git words: the card says neither
-    return { ...chose, status: 'failed', note: "This couldn't start, and nothing in the folder changed." };
+    return { ...chose, status: 'failed', note: START_FAILED };
   }
 }
 
@@ -223,8 +233,8 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     }
   }
 
-  // asks get a route card: any agent's turn in the person's own chat in a project, with the switch on
-  const drafts = c.goals && o.ws && o.root && !o.ephemeral && loadPrefs(c.home).asksToGoals !== false ? draftContext(c.home, o.ws) : undefined;
+  // asks get a route card: any agent's turn in the person's own chat in a project
+  const drafts = c.goals && o.ws && o.root && !o.ephemeral ? draftContext(c.home, o.ws) : undefined;
   const scratch = o.root ? undefined : mkdtempSync(join(tmpdir(), 'tether-assistant-'));
   const cwd = o.root ?? scratch!;
   const ws = o.ws ? getWorkspace(c.home, o.ws) : undefined;
@@ -351,7 +361,7 @@ export async function runTurn(c: AssistantCtx, o: { ws?: string; root?: string; 
     // a goal card's goal exists as soon as the card does (paused, "not started"), so it shows on Goals at once
     for (const p of checked.proposals) if (p.kind === 'goal' && p.draft && drafts) p.goalId = c.goals!.create(goalFromDraft(p.draft, { workspace: o.ws!, origin: { kind: 'chat', chat: chat.id, message: id }, ctx: drafts })).id;
     const offered = checked.route;
-    const route = offered?.recommend === 'solo' && loadPrefs(c.home).soloWithoutAsking === true && trustState(c.home, o.root!) === 'trusted' ? await startRoute(c, { ws: o.ws!, root: o.root!, chat: chat.id, message: id, ...(as ? { bot: as.id } : {}) }, offered, 'solo') : offered;
+    const route = offered?.recommend === 'solo' && loadPrefs(c.home).soloWithoutAsking === true && trustState(c.home, o.root!) === 'trusted' ? await startRoute(c, { ws: o.ws!, root: o.root!, chat: chat.id, message: id, messages: [...chat.messages, { id, role: 'tether', text: checked.text, at: Date.now(), ...by }], ...(as ? { bot: as.id } : {}) }, offered, 'solo') : offered;
     // a team agent's turn keeps nothing of the assistant's: its prompt has no artifact contract either
     const artifacts: ArtifactRef[] = [];
     const unsaved: string[] = [];

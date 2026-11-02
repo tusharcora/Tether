@@ -5,6 +5,9 @@ import { join, resolve } from 'node:path';
 /** dev and ino pin the folder itself: a new folder at the same path is not the one that was trusted. */
 type Entry = { trusted: boolean; dev: number; ino: number };
 type Book = Record<string, Entry>;
+
+/** What a run, a goal or a ticket says when a folder that said no stops one of Tether's own commands. */
+export const NOT_TRUSTED = "This folder isn't trusted, so the check didn't run.";
 const file = (home: string) => join(home, 'trust.json');
 
 const isEntry = (v: unknown): v is Entry => !!v && typeof v === 'object' && typeof (v as Entry).trusted === 'boolean' && typeof (v as Entry).dev === 'number' && typeof (v as Entry).ino === 'number';

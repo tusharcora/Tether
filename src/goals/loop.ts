@@ -19,6 +19,7 @@ import { runProcess } from '../proc.js';
 import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
+import { NOT_TRUSTED, trustState } from '../trust.js';
 import { TEAM_MAX_BUDGET_USD } from '../team.js';
 import type { StoredEvent } from '../types.js';
 import { GoalStore } from './store.js';
@@ -166,6 +167,7 @@ export class Goals {
   /** Run the finish check in the workspace (or `dir`, a run's worktree) and keep the result. */
   async runCheck(g: Goal, dir?: string): Promise<CheckResult> {
     if (!g.check) throw new HttpError(400, 'this goal has no finish check');
+    if (this.refused(g)) return { ok: false, at: Date.now(), tail: NOT_TRUSTED };
     const cwd = dir && existsSync(dir) ? dir : projectRoot(this.d.home, g.workspace);
     const r = await runProcess({ cmd: '/bin/sh', args: ['-c', g.check.command], cwd, signal: AbortSignal.timeout(CHECK_MS), env: { ...process.env, CI: '1' } });
     const out = `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`.trim() || r.spawnError || '';
@@ -173,10 +175,21 @@ export class Goals {
     return { ...j, at: Date.now(), ...(g.check.kind === 'tests' ? parseCounts(out) : {}), tail: tail(out) };
   }
 
+  /** The goal's folder said no to commands. A workspace that is gone has no answer: the check goes on as it always did. */
+  private refused(g: Goal): boolean {
+    try {
+      return trustState(this.d.home, projectRoot(this.d.home, g.workspace)) === 'refused';
+    } catch {
+      return false;
+    }
+  }
+
   /** Record a check result: a pass ends the goal `met`; returns the goal as it now stands. */
   private settle(id: string, r: CheckResult): Goal {
     const g = this.db.must(id);
     if (r.ok && g.kind === 'loop' && g.status !== 'met') return this.save({ ...g, lastCheck: r, status: 'met', pending: undefined, reason: undefined });
+    // a loop would only try again and again: only the person can change this answer
+    if (r.tail === NOT_TRUSTED && g.kind === 'loop' && g.status === 'active') return this.save({ ...g, lastCheck: r, status: 'stopped', reason: NOT_TRUSTED, pending: undefined });
     return this.save({ ...g, lastCheck: r });
   }
 
