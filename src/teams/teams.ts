@@ -574,7 +574,7 @@ export class Teams {
   /** A review hand-off: a read-only answer over the run chain's diff, ending in a verdict. No run starts. */
   private async review(team: Team, bot: string, task: TeamTask, m: TeamMessage, hops: number, asker?: string, thread?: string): Promise<void> {
     const s = this.d.store.state(task.runId);
-    const text = s ? (await git(projectRoot(this.d.home, team.project), ['diff', '--no-color', task.base, s.branch])).stdout : '';
+    const text = s ? (await git(this.repoOf(team, task.runId), ['diff', '--no-color', task.base, s.branch])).stdout : '';
     return this.answer(team, bot, `Review ${short(task.runId)}.`, m, { hops, ...(asker ? { asker } : {}), diff: { task, text: text.slice(0, DIFF_MAX) || '(no changes)' }, ...(thread ? { thread } : {}) });
   }
 
@@ -650,7 +650,14 @@ export class Teams {
     } else if (t === 'run.shipped' && e.event.undone) {
       // taken back out of the folder: the card waits for Ship it again
       const card = this.shipCard(teamId, e.runId);
-      if (card?.card?.kind === 'approval' && card.card.ship?.landed) this.patch(teamId, card.id, (x) => void (x.card?.kind === 'approval' && (delete x.card.ship, (x.card.status = 'pending'))));
+      if (card?.card?.kind === 'approval' && card.card.ship?.landed) {
+        // the same reset as undoShip: without node, by and at, approving again takes the path that ships a finished run
+        this.patch(teamId, card.id, (x) => {
+          if (x.card?.kind !== 'approval') return;
+          const { by: _by, at: _at, ship: _ship, node: _node, ...rest } = x.card;
+          x.card = { ...rest, status: 'pending' };
+        });
+      }
     } else if (t === 'run.finished') {
       this.syncCard(teamId, e.runId);
       // a run waiting on an approval also "finishes" its pass, as paused: that is not its end
@@ -684,8 +691,12 @@ export class Teams {
     });
   }
 
+  /** Where the run's commits live: its history for a plain folder, else the project's repo. */
+  private repoOf(team: Team, runId: string): string {
+    return this.d.store.state(runId)?.history ?? projectRoot(this.d.home, team.project);
+  }
   private async stat(team: Team, task: TeamTask, branch: string): Promise<{ files: number; plus: number; minus: number }> {
-    const r = await git(projectRoot(this.d.home, team.project), ['diff', '--shortstat', task.base, branch]).catch(() => undefined);
+    const r = await git(this.repoOf(team, task.runId), ['diff', '--shortstat', task.base, branch]).catch(() => undefined);
     const m = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(r?.stdout ?? '');
     return { files: Number(m?.[1] ?? 0), plus: Number(m?.[2] ?? 0), minus: Number(m?.[3] ?? 0) };
   }
@@ -695,7 +706,7 @@ export class Teams {
   }
   /** What I did (board 9): the files the chain changed, its size, the gates with their results, how long, on what model. */
   private async workOf(team: Team, task: TeamTask, s: RunState): Promise<{ work: Work; facts: Facts; tests?: { ok: boolean; line: string } }> {
-    const names = (await git(projectRoot(this.d.home, team.project), ['diff', '--name-only', task.base, s.branch]).catch(() => undefined))?.stdout.split('\n').map((l) => l.trim()).filter(Boolean) ?? [];
+    const names = (await git(this.repoOf(team, task.runId), ['diff', '--name-only', task.base, s.branch]).catch(() => undefined))?.stdout.split('\n').map((l) => l.trim()).filter(Boolean) ?? [];
     const st = await this.stat(team, task, s.branch);
     const ran = s.pipeline.nodes.flatMap((n) => {
       const g = s.nodes[n.id]?.gate;
@@ -865,6 +876,7 @@ export class Teams {
     const m = readState(this.d.home, teamId).messages.find((x) => x.id === msgId);
     const c = m?.card;
     if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, 'There is nothing to undo here: it is already merged, or it never shipped.');
+    if (c.ship.state === 'shipping' && this.d.store.state(c.runId)?.history) throw new HttpError(409, "It's being put in the folder. Try Undo in a moment.");
     const pr = c.ship.pr;
     if (pr) {
       const why = await closePr(pr.url, this.d.exec);
@@ -1099,7 +1111,7 @@ export class Teams {
     const task = st.tasks.find((k) => k.runId === runId);
     const s = runId ? this.d.store.state(runId) : undefined;
     if (!task || !s) throw new HttpError(404, 'no run behind this message');
-    return (await git(projectRoot(this.d.home, team.project), ['diff', '--no-color', task.base, s.branch])).stdout;
+    return (await git(this.repoOf(team, task.runId), ['diff', '--no-color', task.base, s.branch])).stdout;
   }
 
   // ---------- memory ----------

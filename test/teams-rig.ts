@@ -62,7 +62,12 @@ export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; 
   if (!o.plain) g(repo, 'remote', 'add', 'origin', bare);
   // a plain folder gets nothing written into it
   initWorkspace(home, repo, { id: 'app', name: 'App', ...(o.plain ? { write: false } : {}) });
-  if (!o.plain) updateMeta(repo, { test: 'test -f fix.txt' });
+  if (!o.plain) {
+    updateMeta(repo, { test: 'test -f fix.txt' });
+    // committed, so the repo is clean and a run ships as its own branch
+    g(repo, 'add', '-A');
+    g(repo, 'commit', '-q', '-m', 'workspace');
+  }
   const talk = new Talk();
   const writer = new Writer();
   for (const b of ['coder', 'tester']) link(home, b, { agent: 'writer' });

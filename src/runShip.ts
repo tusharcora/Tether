@@ -88,6 +88,7 @@ export class RunShip {
     const waiting = s.pipeline.nodes.filter((n) => n.kind === 'approval' && s.nodes[n.id]?.status === 'awaiting');
     if (!waiting.length && s.status !== 'done') throw new HttpError(409, 'nothing in this run waits on you');
     const team = this.d.teamOwns(runId);
+    if (team && s.history && !waiting.length) throw new HttpError(409, 'Ship this from its squad.');
     if (!team) this.want.set(runId, merge);
     for (const n of waiting) this.d.engine.approve(runId, n.id, true, 'dashboard');
     const now = this.d.store.state(runId)!;

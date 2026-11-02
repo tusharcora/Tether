@@ -91,6 +91,31 @@ describe('a task', () => {
     expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
     expect(r.card('approval')!.card).toMatchObject({ status: 'pending' });
     expect((r.card('approval')!.card as { ship?: unknown }).ship).toBeUndefined();
+    // and Ship it works again from that card
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.idle();
+    expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'merged', landed: true } });
+  });
+
+  it('plain folder: the ship card counts the files, a Loose squad lands on its own, and Undo is refused while landing', async () => {
+    const r = rig({ plain: true });
+    await r.runTask('@Bolt fix the thing');
+    expect(r.card('approval')!.card).toMatchObject({ files: 1, plus: 1 });
+    expect(r.msgs().find((m) => m.work)!.work).toMatchObject({ files: ['fix.txt'] });
+    const card = r.card('approval')!;
+    (r.teams as any).setShip(r.team.id, card.id, { state: 'shipping' });
+    await expect(r.teams.undoShip(r.team.id, card.id, OWNER)).rejects.toThrow(/being put in the folder/);
+    // a done team run whose landing was undone: the run page cannot ship it, only its squad can
+    const stuck = rig({ plain: true, level: 'loose' });
+    const id = await stuck.runTask('@Bolt fix the thing');
+    const ship = new RunShip({ store: stuck.store, engine: stuck.engine, exec: stuck.exec, home: stuck.home, teamOwns: () => true });
+    await ship.undo(id);
+    await expect(ship.decide(id, true)).rejects.toThrow(/Ship this from its squad/);
+    const loose = rig({ plain: true, level: 'loose' });
+    await loose.runTask('@Bolt fix the thing');
+    expect(readFileSync(join(loose.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(loose.msgs().some((m) => /nothing needed changing/.test(m.text))).toBe(false);
   });
 
   it('tight: a plan to approve comes first', async () => {
