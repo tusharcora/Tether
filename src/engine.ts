@@ -2235,7 +2235,7 @@ export class Engine {
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
     // out of free requests: the step waits (the run pauses); a writing step's edits so far are committed, so they show and stay
     if (res.limit) {
-      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit`, state.setupArtifacts).catch(() => undefined);
+      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit\n\nrun ${runId}`, state.setupArtifacts).catch(() => undefined);
       this.store.append(runId, { type: 'node.limited', node: node.id, resetsAt: res.limit.resetsAt });
       return { ok: false, paused: true, output: res.output };
     }
@@ -2256,7 +2256,8 @@ export class Engine {
           error = `read-only node modified files (${entryPaths(touched).slice(0, 3).join(', ')}); changes were reverted`;
         }
       } else {
-        commit = await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) attempt ${attempt}`, state.setupArtifacts);
+        // the run id keeps a fork's re-run its own commit: same parent, tree and message in the same second would be the same sha, and landing would start too high
+        commit = await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) attempt ${attempt}\n\nrun ${runId}`, state.setupArtifacts);
         if (commit) stat = await commitStat(state.workdir, commit).catch(() => undefined);
       }
     } catch (err) {

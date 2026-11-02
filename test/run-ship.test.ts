@@ -733,6 +733,14 @@ describe('shipping a run in a plain folder', () => {
       expect(read(r.folder, 'mine.txt')).toBe('mine\n');
     });
 
+    it('a step a fork runs again is its own commit, whatever the second, and its subject is unchanged', async () => {
+      const r = await parent();
+      const f = await r.fork(r.id, 'a', {});
+      const c = r.store.state(f)!;
+      expect(git(c.workdir, 'log', '-1', '--format=%b', c.nodes.b!.commit!)).toBe(`run ${f}`);
+      expect(git(c.workdir, 'log', '-1', '--format=%s', c.nodes.b!.commit!)).toBe('aorch: b (coder) attempt 1');
+    });
+
     it('leaves another run\'s landed file', async () => {
       const r = await parent();
       const q = await r.engine.start({ pipeline: pipe([{ id: 'q', role: 'coder', mock: { writeFile: { path: 'q.txt', content: 'q\n' } } }, { id: 'ok', kind: 'approval', title: 'You approve' }], [['q', 'ok']]), task: 'q', repo: r.folder });

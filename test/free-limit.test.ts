@@ -51,6 +51,7 @@ describe('free daily limit', () => {
     expect(existsSync(join(s.workdir, 'half.txt'))).toBe(true);
     const sh = (...args: string[]) => execFileSync('git', args, { cwd: s.workdir, encoding: 'utf8' });
     expect(sh('log', '-1', '--format=%s')).toMatch(/code \(coder\) paused on the free limit/);
+    expect(sh('log', '-1', '--format=%b')).toMatch(/^run r/);
     expect(sh('status', '--porcelain')).toBe('');
     const items = attentionFor({ state: s, events: store.eventsNoChunks(id), live: false, lastTs: store.lastTs(id) });
     expect(items.map((i) => [i.kind, i.title, i.node])).toEqual([['free_limit', 'Out of free requests for today', 'code']]);
