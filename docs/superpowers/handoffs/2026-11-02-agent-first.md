@@ -17,7 +17,7 @@ Six stages, from the design's §8:
 | Stage | What | State |
 |---|---|---|
 | 1 | Work anywhere: hidden history, landing, Undo | **Built**, local only |
-| 2 | Agents do the work from chat, commands, trust | **Planned, waiting for the owner's OK** |
+| 2 | Agents do the work from chat, commands, trust | **Built**, local only; check it in the app |
 | 3 | Memory: About you, briefs | Not started |
 | 4 | Agent-first shell: leads, specialists, agent chats, sidebar, first run | Not started |
 | 5 | One job at a time, queue across projects | Not started |
@@ -32,14 +32,7 @@ Six stages, from the design's §8:
 
 ## Next step
 
-Ask the owner to confirm the stage 2 plan, `docs/superpowers/plans/2026-11-02-agents-do-the-work.md`, including its four differences from the design:
-
-1. Do it myself works on a hidden copy and lands at the end, not live in the folder.
-2. In a real git repo, Do it myself stays in a worktree and ends on the usual Merge or Open PR choice.
-3. The always-ask commands are refused for now, with no approve button during a run.
-4. Each job starts fresh, instead of continuing the chat's session.
-
-Then build it with `superpowers:subagent-driven-development`, the method the owner chose. Commit the plan and this file first, on `feature/agent-first`. Write each later stage's plan only when the stage before it lands.
+Stage 2 is built (see `docs/HANDOFF.md` for what to check in the app, and its limits). Write stage 3's plan next: memory, About you and briefs, from the design's §8. Write it only after the owner has checked stage 2, or says to go ahead. Still open from stage 2: the four differences from the design (Do it myself on a hidden copy, a real repo ending on Merge or Open PR, always-ask commands refused, each job starting fresh) need the owner's yes.
 
 ## Rules that bit us
 
