@@ -211,6 +211,7 @@ describe('run page', () => {
       ['when the folder already has the work', { history: '/h', ship: { error: 'Nothing to put in the folder: it already has this work.' } }],
       ['for a probe replay', { history: '/h', probe: true }],
       ['for a squad', { history: '/h', origin: { kind: 'team', id: 't1', team: 't1' } }],
+      ['for a ticket, which finishes from the ticket', { history: '/h', origin: { kind: 'goal', id: 'g1' } }],
     ] as [string, Partial<RunView>][])('no banner %s', async (_, o) => {
       open(done(o));
       await screen.findByRole('complementary', { name: 'Outcome' });

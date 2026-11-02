@@ -304,7 +304,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (teams.owns(r)) return teams.shipRun(r, OWNER);
       const s = store.state(r)!;
       if (s.ship?.url && !s.ship.merged) return runShip.mergeOpen(r);
-      await runShip.decide(r, true);
+      await runShip.decide(r, true, true);
     },
     sendBack: async (g, reason) => {
       const r = ticketRun(g);

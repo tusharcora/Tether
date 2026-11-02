@@ -67,10 +67,10 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
   }));
 }
 
-/** A solo run has no squad to send it back to, and a done run can't be sent back: it says what's left to do on its own page. */
-function soloFailure(r: { error: string; conflicts?: string[] }): string {
+/** Only a squad can still send work back (it lands through `landRun` itself), and a done run can't be: this says what's left to do on its own page. */
+function doneFailure(r: { error: string; conflicts?: string[] }, solo: boolean): string {
   if (r.conflicts) return `${r.conflicts.join(', ')} changed since this work started, so nothing in the folder was changed. Keep your version, or rewind this run from its page and run it again.`;
-  return r.error === NOTHING_TO_LAND ? NO_FILES : r.error;
+  return solo && r.error === NOTHING_TO_LAND ? NO_FILES : r.error;
 }
 
 const firstLine = (t: string, n: number) => t.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, n) ?? 'Tether run';
@@ -114,8 +114,8 @@ export class RunShip {
     this.jobs.add(j);
   }
 
-  /** The person's Merge to main (`merge`) or Open PR instead. 409 when nothing waits on them and the run is not done. */
-  async decide(runId: string, merge: boolean): Promise<void> {
+  /** The person's Merge to main (`merge`) or Open PR instead. 409 when nothing waits on them and the run is not done. `fromTicket`: its ticket's own approval. */
+  async decide(runId: string, merge: boolean, fromTicket = false): Promise<void> {
     const s = this.d.store.state(runId);
     if (!s) throw new HttpError(404, `unknown run ${runId}`);
     if (s.ship?.landed) throw new HttpError(409, 'This work is already in the folder.');
@@ -124,6 +124,7 @@ export class RunShip {
     if (!waiting.length && s.status !== 'done') throw new HttpError(409, 'nothing in this run waits on you');
     const team = this.d.teamOwns(runId);
     if (team && s.history && !waiting.length) throw new HttpError(409, 'Ship this from its squad.');
+    if (s.origin?.kind === 'goal' && s.history && !waiting.length && !fromTicket) throw new HttpError(409, 'Finish this from its ticket.');
     if (!team) this.want.set(runId, merge);
     for (const n of waiting) this.d.engine.approve(runId, n.id, true, 'dashboard');
     const now = this.d.store.state(runId)!;
@@ -140,7 +141,7 @@ export class RunShip {
       const s = this.d.store.state(runId)!;
       if (s.history) {
         const r = await landRun(this.d, runId);
-        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: s.solo ? soloFailure(r) : r.error });
+        if ('error' in r) this.d.store.append(runId, { type: 'run.shipped', error: doneFailure(r, !!s.solo) });
         return;
       }
       const out = await shippable(await gitTop(s.repo), this.d.home, runId, s.branch, s.baseSha, s.dirty);

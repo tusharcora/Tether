@@ -128,8 +128,8 @@ export function decisionOf(r: RunView): { node: string; title: string; final: bo
 export const NOT_IN_FOLDER = "This work isn't in your folder yet.";
 /** The run left the folder as it was: `ship.error` holds that, but nothing went wrong. */
 export const nothingToLand = (r: RunView): boolean => r.ship?.error === NO_FILES || r.ship?.error === NOTHING_TO_LAND;
-/** A done run with no approval left to wait at and its work not out yet, so the banner is how it finishes: anything in a plain folder, or a solo run. */
-export const unshipped = (r: RunView): boolean => (!!r.history || !!r.solo) && !r.probe && r.status === 'done' && !r.ship?.landed && !r.ship?.url && !nothingToLand(r);
+/** A done run with no approval left to wait at and its work not out yet, so the banner is how it finishes: anything in a plain folder, or a solo run. A ticket's run finishes from its ticket. */
+export const unshipped = (r: RunView): boolean => (!!r.history || !!r.solo) && !r.probe && r.origin?.kind !== 'goal' && r.status === 'done' && !r.ship?.landed && !r.ship?.url && !nothingToLand(r);
 
 /** "Checks pass and Lens approved. Ship it?": what the gates and reviewers say before the person ships. */
 export function decisionLine(r: RunView, nameOf: (n: PipelineNode) => string): string {

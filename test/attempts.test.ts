@@ -123,7 +123,7 @@ describe('try more ways', () => {
     const set = r.store.state(r.id)!.attemptSet!;
     // B is still going (or waiting on you): either way it is stopped
     await r.attempts.pick(set, r.id);
-    expect(r.ship.decide).toHaveBeenCalledWith(r.id, false);
+    expect(r.ship.decide).toHaveBeenCalledWith(r.id, false, true);
     await r.engine.wait(b!);
     expect(r.store.state(b!)!.status).toBe('stopped');
     expect(r.store.state(r.id)!.attemptPicked).toMatchObject({ run: r.id });

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { Exec } from '../src/exec.js';
 import { commitAll } from '../src/git.js';
 import { realOr, shippable, snapshotDirty } from '../src/history.js';
-import { RunShip } from '../src/runShip.js';
+import { landRun, RunShip } from '../src/runShip.js';
 import { startServer } from '../src/server.js';
 import { shipBranch } from '../src/teams/ship.js';
 import { Vault } from '../src/vault.js';
@@ -418,9 +418,33 @@ describe('shipping a run in a plain folder', () => {
     await r.ship.decide(r.id, true);
     await r.ship.idle();
     const ship = r.store.state(r.id)!.ship!;
-    expect(ship.error).toBe('b.txt changed since this work started, so nothing was put in the folder. Keep your version, or send this back.');
+    // the run is done by now, so it can't be sent back
+    expect(ship.error).toBe('b.txt changed since this work started, so nothing in the folder was changed. Keep your version, or rewind this run from its page and run it again.');
     expect(ship.landed).toBeUndefined();
     expect(read(r.folder, 'b.txt')).toBe('mine\n');
+  });
+
+  it('a squad, which can send it back, keeps its words', async () => {
+    const r = await plainRun();
+    r.engine.approve(r.id, 'ok', true, 'dashboard');
+    if (!r.engine.isLive(r.id)) await r.engine.resume(r.id);
+    await r.engine.wait(r.id);
+    writeFileSync(join(r.folder, 'b.txt'), 'mine\n');
+    expect(await landRun(r, r.id)).toMatchObject({ error: 'b.txt changed since this work started, so nothing was put in the folder. Keep your version, or send this back.' });
+  });
+
+  it("a ticket's done run is refused by hand, and lands from its ticket", async () => {
+    const s = setup();
+    const folder = plainFolder({ 'a.txt': 'one\n' });
+    const ship = new RunShip({ store: s.store, engine: s.engine, exec, home: s.home, teamOwns: () => false });
+    const id = await s.engine.start({ pipeline: pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'b.txt', content: 'two\n' } } }], []), task: 'Write b', repo: folder, origin: { kind: 'goal', id: 'g1' } });
+    await s.engine.wait(id);
+    await expect(ship.decide(id, true)).rejects.toMatchObject({ status: 409, message: 'Finish this from its ticket.' });
+    await ship.idle();
+    expect(s.store.state(id)!.ship).toBeUndefined();
+    await ship.decide(id, true, true);
+    await ship.idle();
+    expect(read(folder, 'b.txt')).toBe('two\n');
   });
 
   it('undo takes it back out, keeps the run, and lets it land again', async () => {
