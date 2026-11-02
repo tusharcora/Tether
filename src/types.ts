@@ -834,6 +834,8 @@ export interface AgentRequest {
   model?: string;
   readOnly: boolean;
   permissionMode?: string;
+  /** The step may run commands: a trusted folder and a writable step, under `commandRule`. */
+  commands?: boolean;
   attempt: number;
   timeoutMs: number;
   /** Remaining budget in USD, if the run has a cap. */

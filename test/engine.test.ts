@@ -1,8 +1,15 @@
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { claudeArgs } from '../src/adapters/claude.js';
+import { CLAUDE_TOOL } from '../src/codemode/delivery.js';
+import { commandHookLine } from '../src/codemode/launch.js';
 import { savePrefs } from '../src/prefs.js';
-import { makeRepo, pipe, setup } from './helpers.js';
+import { setTrust } from '../src/trust.js';
+import type { CodeModeRequest } from '../src/types.js';
+import { makeRepo, pipe, setup, tmp } from './helpers.js';
 
 const fullPipeline = () =>
   pipe(
@@ -228,5 +235,103 @@ describe('deleting runs', () => {
     expect(store.runIds()).not.toContain(id);
     expect(existsSync(s.workdir)).toBe(false);
     await expect(engine.deleteRun(id)).rejects.toThrow(/unknown run/);
+  });
+});
+
+const NO_COMMANDS = "You can't run commands here, so end by saying what you did not check.";
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
+const source = { execPath: process.execPath, electron: false, execArgv: ['--import', 'tsx'], cliPath: join(REPO_ROOT, 'src/cli.ts') };
+const runLine = (line: string, input: string) => spawnSync('sh', ['-c', line], { input, cwd: REPO_ROOT, encoding: 'utf8' });
+const hookRaw = (input: string) => runLine(commandHookLine(source), input);
+const hook = (v: unknown) => hookRaw(JSON.stringify(v));
+const hookOf = (args: string[]) => JSON.parse(args[args.indexOf('--settings') + 1]!).hooks.PreToolUse[0];
+
+describe('commands', () => {
+  it('Claude gets Bash, guarded by the command hook, only with commands', () => {
+    const args = claudeArgs({ commands: true, readOnly: false });
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('Bash');
+    expect(args[args.indexOf('--settings') + 1]).toContain('PreToolUse');
+    expect(hookOf(args).matcher).toBe('Bash');
+    expect(JSON.parse(args[args.indexOf('--settings') + 1]!).disableAllHooks).toBe(false); // a project's own settings cannot turn the guard off
+    expect(claudeArgs({ readOnly: false }).join(' ')).not.toContain('Bash');
+    expect(claudeArgs({ readOnly: false })).not.toContain('--settings');
+  });
+
+  it('a read-only step gets neither, even if asked', () => {
+    const args = claudeArgs({ commands: true, readOnly: true });
+    expect(args.join(' ')).not.toContain('Bash');
+    expect(args).not.toContain('--settings');
+  });
+
+  it('keeps one --allowedTools, with Code Mode', () => {
+    const dir = tmp();
+    const codeMode = { note: 'n', runner: {}, mcp: { command: 'x', args: [], dir } } as unknown as CodeModeRequest;
+    const args = claudeArgs({ commands: true, readOnly: false, codeMode });
+    expect(args.filter((a) => a === '--allowedTools')).toHaveLength(1);
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe(`${CLAUDE_TOOL},Bash`);
+    const off = claudeArgs({ readOnly: false, codeMode });
+    expect(off[off.indexOf('--allowedTools') + 1]).toBe(CLAUDE_TOOL);
+  });
+
+  it('keeps the hook on, whatever permission mode the step sets', () => {
+    const args = claudeArgs({ commands: true, readOnly: false, permissionMode: 'bypassPermissions' });
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('bypassPermissions');
+    expect(hookOf(args).hooks[0]).toMatchObject({ command: expect.stringMatching(/\|\| exit 2$/), onFailure: 'block' });
+  });
+
+  it('the command hook refuses what commandRule refuses, and refuses if it breaks', () => {
+    expect(hook({ tool_input: { command: 'npm test' } }).status).toBe(0);
+    const no = hook({ tool_input: { command: 'cd /etc' } });
+    expect(no.status).toBe(2);
+    expect(no.stderr).toMatch(/not run/i);
+    expect(hookRaw('not json').status).toBe(2);
+    expect(hook({ tool_input: {} }).status).toBe(2);
+    expect(hookRaw('null').status).toBe(2);
+  });
+
+  it('the command hook takes the step folder from its cwd', () => {
+    const root = tmp();
+    expect(hook({ cwd: root, tool_input: { command: `cat ${root}/a.txt` } }).status).toBe(0);
+    expect(hook({ tool_input: { command: `cat ${root}/a.txt` } }).status).toBe(2);
+    expect(hook({ cwd: `${root}/a/b`, tool_input: { command: 'echo hi > ../../../marker' } }).status).toBe(2);
+  });
+
+  it('a hook file that is missing refuses, in a path with spaces and quotes', () => {
+    const dir = join(tmp(), "Tether's App", 'dist');
+    mkdirSync(dir, { recursive: true });
+    const line = commandHookLine({ execPath: process.execPath, electron: false, execArgv: [], cliPath: join(dir, 'cli.js') });
+    expect(line).toContain("Tether'\\''s App");
+    expect(runLine(line, '{"tool_input":{"command":"npm test"}}').status).toBe(2);
+    expect(runLine(`'/no such/node' 'x.js' || exit 2`, '{}').status).toBe(2);
+  });
+
+  it('runs the app\'s own binary as Node, and only passes loader flags for TypeScript', () => {
+    const line = commandHookLine({ execPath: '/Applications/My Apps/Tether', electron: true, execArgv: ['--import', 'tsx', '--inspect'], cliPath: '/App Dir/dist/cli.js' });
+    expect(line).toBe("ELECTRON_RUN_AS_NODE=1 '/Applications/My Apps/Tether' '/App Dir/dist/commandHook.js' || exit 2");
+    expect(commandHookLine(source)).toBe(`'${process.execPath}' '--import' 'tsx' '${join(REPO_ROOT, 'src/commandHook.ts')}' || exit 2`);
+  });
+
+  it('a run in a trusted folder sends commands; an untrusted one does not', async () => {
+    const { engine, mock, home } = setup();
+    const repo = makeRepo();
+    const p = () => pipe([{ id: 'look', role: 'planner', readOnly: true, mock: { output: 'ok' } }, { id: 'code', role: 'coder', mock: { output: 'ok' } }], [['look', 'code']]);
+    await engine.wait(await engine.start({ pipeline: p(), task: 't', repo }));
+    expect(mock.calls.map((c) => [c.nodeId, c.commands])).toEqual([['look', false], ['code', false]]);
+    expect(mock.calls[1]!.prompt).toContain(NO_COMMANDS);
+    expect(mock.calls[0]!.prompt).not.toContain(NO_COMMANDS);
+
+    mock.calls.length = 0;
+    setTrust(home, repo, true);
+    await engine.wait(await engine.start({ pipeline: p(), task: 't', repo }));
+    expect(mock.calls.map((c) => [c.nodeId, c.commands])).toEqual([['look', false], ['code', true]]);
+    expect(mock.calls[1]!.prompt).not.toContain(NO_COMMANDS);
+  });
+
+  it('a verdict still ends the answer', async () => {
+    const { engine, mock } = setup();
+    await engine.wait(await engine.start({ pipeline: pipe([{ id: 'r', role: 'reviewer', verdict: true, prompt: 'Look.', mock: { verdicts: ['PASS'] } }], []), task: 't', repo: makeRepo() }));
+    const prompt = mock.calls[0]!.prompt;
+    expect(prompt.indexOf(NO_COMMANDS)).toBeGreaterThan(-1);
+    expect(prompt.indexOf(NO_COMMANDS)).toBeLessThan(prompt.indexOf('End your answer with exactly one line'));
   });
 });

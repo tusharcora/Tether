@@ -14,6 +14,7 @@ import { codeModeMcpCommand, launchContext } from '../src/codemode/launch.js';
 import { CODE_MODE_NOTE } from '../src/codemode/prompt.js';
 import { CodeSession } from '../src/codemode/session.js';
 import { approvedUpstream, openStepCodeMode } from '../src/codemode/step.js';
+import { setTrust } from '../src/trust.js';
 import { Engine } from '../src/engine.js';
 import { Store } from '../src/store.js';
 import type { AgentAdapter, AgentRequest, AgentResult, CodeModeRequest, RunState } from '../src/types.js';
@@ -278,6 +279,21 @@ describe('a step’s Code Mode session', () => {
     const r = cm.record({ output: 'Waiting on the region.', exitCode: 0 });
     expect(r.output).toBe('Waiting on the region.\n@ASK user: Which region? | options: eu; us');
     expect(cm.record({ output: 'again', exitCode: 0 }).output).toBe('again');
+  });
+
+  it('gives repo.run to a writable step in a trusted folder, and to no other', async () => {
+    const home = tmp('home-');
+    const repo = tmp('folder-');
+    const open = async (trusted: boolean, readOnly = false) => {
+      if (trusted) setTrust(home, repo, true);
+      const st = state({ repo } as Partial<RunState>);
+      const cm = await openStepCodeMode({ host: new CodeModeHost(), adapter: new ScriptAdapter(''), node: { ...st.pipeline.nodes[1]!, readOnly }, state: st, home, store: Store.open(':memory:'), onNote: () => {} });
+      cleanups.push(() => cm.close());
+      return [cm.commands, (await cm.request!.runner.runCode('return await repo.run("echo hi")')).isError];
+    };
+    expect(await open(false)).toEqual([false, true]);
+    expect(await open(true)).toEqual([true, false]);
+    expect(await open(true, true)).toEqual([false, true]);
   });
 
   it('counts an approved approval step before this one as approval, and an unanswered or later one not', () => {

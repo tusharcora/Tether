@@ -335,3 +335,41 @@ describe('MCP server settings (<home>/mcp.json)', () => {
     }
   });
 });
+
+describe('repo.run', () => {
+  it('Code Mode has repo.run only with commands', async () => {
+    const off = await session({ writable: true }).runCode('return await repo.run("echo hi")');
+    expect(off.isError).toBe(true);
+    const on = session({ writable: true, commands: true });
+    const r = await on.runCode('return await repo.run("echo hi > made.txt && cat made.txt")');
+    expect([r.isError, r.text.trim()]).toEqual([false, 'hi']);
+    expect(existsSync(join(on.info.workdir, 'made.txt'))).toBe(true);
+    expect(on.catalog.summary()).toMatch(/run/);
+  });
+
+  it('is never there on a read-only step, even with commands', async () => {
+    const s = session({ writable: false, commands: true });
+    const r = await s.runCode('return await repo.run("echo hi > made.txt")');
+    expect(r.isError).toBe(true);
+    expect(existsSync(join(s.info.workdir, 'made.txt'))).toBe(false);
+  });
+
+  it('a refused command comes back as text, not an error in the script', async () => {
+    const r = await session({ writable: true, commands: true }).runCode('return await repo.run("npm test && git push")');
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/not run/i);
+  });
+
+  it('gives a script time for a whole command, and only with commands', () => {
+    expect(session({ writable: true, commands: true }).description()).toContain('130 s');
+    expect(session({ writable: true }).description()).toContain('10 s');
+  });
+
+  it('closing the session stops a command still running', async () => {
+    const s = new CodeSession({ home: tmp('home-'), runId: 'r1', nodeId: 'code', bot: 'Bolt', workdir: makeRepo(), writable: true, commands: true, kind: 'workflow', approved: false, grants: [], handoff: false }, { exec: fakeGh().exec });
+    const run = s.runCode('return await repo.run("sleep 30")');
+    await new Promise((r) => setTimeout(r, 300));
+    await s.close();
+    expect((await run).text).toMatch(/stopped/i);
+  });
+});

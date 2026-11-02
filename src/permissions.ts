@@ -78,8 +78,16 @@ export interface CommandResult {
   timedOut: boolean;
 }
 
+export const MAX_COMMAND_MS = 120_000;
+/** Characters of output kept, from the end: that is where a failure shows. */
+export const MAX_COMMAND_OUTPUT = 20_000;
+
 /** Run one command in `cwd` with a timeout and a size cap, without secrets from the environment. */
 export function runCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number } = {}): Promise<CommandResult> {
+  return spawnCommand(command, cwd, o);
+}
+
+function spawnCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number; signal?: AbortSignal }): Promise<CommandResult> {
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env)) if (!/KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL/i.test(k)) env[k] = v;
   const max = o.maxBytes ?? 20_000;
@@ -94,20 +102,28 @@ export function runCommand(command: string, cwd: string, o: { timeoutMs?: number
     };
     child.stdout.on('data', add);
     child.stderr.on('data', add);
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const kill = () => {
       try {
         process.kill(-child.pid!, 'SIGKILL'); // the whole group, so a child of the shell cannot keep it open
       } catch {
         child.kill('SIGKILL');
       }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
     }, o.timeoutMs ?? 120_000);
-    child.on('error', (e) => {
+    o.signal?.addEventListener('abort', kill, { once: true });
+    const done = () => {
       clearTimeout(timer);
+      o.signal?.removeEventListener('abort', kill);
+    };
+    child.on('error', (e) => {
+      done();
       resolve({ exit: null, output: `could not start: ${e.message}`, ms: Date.now() - t0, timedOut: false });
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
+      done();
       resolve({ exit: code, output: out.slice(-max), ms: Date.now() - t0, timedOut });
     });
   });
@@ -299,4 +315,22 @@ export function commandRule(command: string, root?: string): { ok: true } | { ok
   // shortcut: this matches text, so it stops mistakes, not a hostile project; the macOS Seatbelt port is the real boundary
   const why = check(command, root?.replace(/\/+$/, ''));
   return why ? { ok: false, why: `Not run: ${why}.` } : { ok: true };
+}
+
+/** What an agent reads when `commandRule` says no, from any model. */
+export const refusal = (why: string) => `${why} Tell the person it did not run and why, and do not try to get around it.`;
+
+/** One command from an agent's step, in its folder. Always text for the model: a refusal or a failure is an answer, never a throw. */
+export async function runStepCommand(root: string, command: string, signal: AbortSignal): Promise<string> {
+  const rule = commandRule(command, root);
+  if (!rule.ok) return refusal(rule.why);
+  if (signal.aborted) return 'Not run: this step was stopped.';
+  try {
+    const r = await spawnCommand(command, root, { timeoutMs: MAX_COMMAND_MS, maxBytes: MAX_COMMAND_OUTPUT, signal });
+    const head = r.timedOut ? `Stopped: it ran past ${MAX_COMMAND_MS / 1000} s.` : signal.aborted ? 'Stopped: this step was stopped.' : r.exit ? `Exit code ${r.exit}.` : '';
+    const cut = r.output.length >= MAX_COMMAND_OUTPUT ? '[output cut: this is the end of it]' : '';
+    return [head, cut, r.output].filter(Boolean).join('\n') || '(no output)';
+  } catch (e) {
+    return `Not run: ${(e as Error).message}`; // spawn refuses some text outright, like a NUL byte
+  }
 }

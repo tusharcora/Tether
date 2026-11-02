@@ -1937,6 +1937,7 @@ export class Engine {
       home: this.opts.home,
       store: this.store,
       vault: this.opts.vault,
+      signal: runSignal,
       onNote: (text) => this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[note] ${text}\n` }),
     });
     try {
@@ -2024,7 +2025,7 @@ export class Engine {
     const diff = node.includeDiff ? await diffAgainst(state.workdir, state.baseSha, state.setupArtifacts) : undefined;
     // What was already dirty when this node began (setup output, a gate's artifacts): not this node's doing.
     const dirtyBefore = new Set(await statusEntries(state.workdir));
-    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona });
+    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona, commands: cm.commands });
     this.noticeSpills(runId, node.id, prompt);
 
     let buf = '';
@@ -2074,6 +2075,7 @@ export class Engine {
           model: node.model,
           readOnly: !!node.readOnly,
           permissionMode: node.permissionMode,
+          commands: cm.commands,
           attempt,
           timeoutMs,
           budgetUsd,
