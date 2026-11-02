@@ -39,9 +39,19 @@ describe('trust', () => {
     renameSync(folder, join(root, 'moved'));
     expect(trustState(home, folder)).toBe('unknown');
     expect(listTrust(home)[0]?.exists).toBe(false);
-    mkdirSync(folder);
+  });
+  it('a folder recreated at the old path is not the trusted one', () => {
+    const { root, home, folder } = rig();
+    setTrust(home, folder, true);
     rmSync(folder, { recursive: true });
+    mkdirSync(folder); // asserted while it exists
     expect(trustState(home, folder)).toBe('unknown');
+    expect(listTrust(home)[0]?.exists).toBe(false);
+    const { home: h2, folder: f2 } = rig();
+    setTrust(h2, f2, true);
+    renameSync(f2, join(root, 'away'));
+    mkdirSync(f2);
+    expect(trustState(h2, f2)).toBe('unknown');
   });
   it('a corrupt file trusts nothing', () => {
     const { home, folder } = rig();

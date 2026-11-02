@@ -113,12 +113,17 @@ export function runCommand(command: string, cwd: string, o: { timeoutMs?: number
   });
 }
 
-const REFUSED_GIT = new Set(['push', 'pull', 'merge', 'rebase', 'filter-branch', 'filter-repo', 'update-ref', 'replace']);
+const REFUSED_GIT = new Set(['push', 'pull', 'merge', 'rebase', 'filter-branch', 'filter-repo', 'update-ref', 'replace', 'reflog', 'gc']);
 const OPTS_WITH_ARG = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
-const WRAPPERS = new Set(['env', 'command', 'exec', 'nohup', 'time']);
-const SENDS = /^(-[dFTX]|-X.+|--(data|data-\w+|form|upload-file|json|request|post-data|post-file|method)\b)/;
+const WRAPPERS = new Set(['env', 'command', 'exec', 'nohup', 'time', 'nice', 'timeout', 'xargs']);
+const LEAD = new Set(['{', '!', 'if', 'then', 'elif', 'else', 'do', 'while', 'until']); // shell keywords that start a command
+const WRAP_ARGS: Record<string, string[]> = { nice: ['-n'], timeout: ['-s', '-k'], env: ['-u', '-C'], xargs: ['-I', '-n', '-P', '-L', '-d', '-E', '-s', '-a'] };
+const BIN = /^\/(?:bin|usr\/bin|usr\/local\/bin|opt\/homebrew\/bin)\/([^/]+)$/; // an executable here is judged by its name
+const SENDS = /^(-[a-zA-Z]*[dFTX]|--(data|data-\w+|form|upload-file|json|request|post-data|post-file|method)\b)/;
 
-/** Why this one simple command (no chaining) is refused, or undefined. `t` is its words, wrappers already stripped. */
+type W = { s: string; q: boolean }; // a word, and whether any of it was quoted
+
+/** Why this one simple command is refused, or undefined. `t` is its words, wrappers already stripped. */
 function whyRefused(t: string[]): string | undefined {
   const cmd = (t[0] ?? '').replace(/^.*\//, '');
   const rest = t.slice(1);
@@ -129,29 +134,32 @@ function whyRefused(t: string[]): string | undefined {
     const g = rest[i];
     const args = rest.slice(i + 1);
     if (g && REFUSED_GIT.has(g)) return `git ${g} sends or rewrites history, so it is left to you`;
-    if (g === 'reset' && args.some((a) => /^--(hard|keep|merge)$/.test(a))) return 'git reset --hard throws work away, so it is left to you';
+    if (g === 'reset' && args.some((a) => /^--(hard|soft|keep|merge)$|[~^]|^@/.test(a))) return 'git reset moves or throws away work, so it is left to you';
     if (g === 'commit' && args.includes('--amend')) return 'amending a commit rewrites history, so it is left to you';
-    if (g === 'reflog' || g === 'gc') return `git ${g} can destroy history, so it is left to you`;
+    if ((g === 'checkout' && args.includes('-B')) || (g === 'switch' && args.includes('-C')) || (g === 'branch' && args.some((a) => /^-[a-zA-Z]*[fD]|^--force$/.test(a)))) return 'it moves a branch over existing work, so it is left to you';
   }
   if (cmd === 'gh') return 'gh acts on GitHub, outside this folder';
-  if (['npm', 'yarn', 'pnpm'].includes(cmd) && sub === 'publish') return 'publishing sends your work to the public';
+  if (['npm', 'yarn', 'pnpm'].includes(cmd) && rest.includes('publish')) return 'publishing sends your work to the public';
   if (cmd === 'curl' && rest.some((a) => SENDS.test(a))) return 'it sends data out of this folder';
   if (cmd === 'wget' && rest.some((a) => /^--(post-data|post-file|method|body-data|body-file)\b/.test(a))) return 'it sends data out of this folder';
   if (cmd === 'ssh' || cmd === 'scp') return `${cmd} reaches another machine`;
   if (cmd === 'rsync' && rest.some((a) => /^([\w.-]+@|[\w.-]+:)/.test(a))) return 'rsync to another machine sends files out of this folder';
   if (cmd === 'defaults' && sub === 'write') return 'it changes system settings';
   if (cmd === 'systemsetup' || cmd === 'launchctl') return 'it changes system settings';
-  if (cmd === 'sudo' || cmd === 'doas') return 'needs administrator rights';
+  if (cmd === 'sudo' || cmd === 'doas' || cmd === 'su') return 'needs administrator rights';
   return undefined;
 }
 
 /** A reason this word points outside the folder, or undefined. Judged from the text alone: `..` by depth. */
-function outside(word: string): string | undefined {
-  let w = word.replace(/^[<>&]+/, '');
+function outside(word: string, root?: string): string | undefined {
+  let w = word;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) return undefined; // a URL is not a path
   if (w.includes('=')) w = w.slice(w.indexOf('=') + 1); // --out=/etc/x, FOO=../x
   if (/^~|\$\{?HOME\b/.test(w)) return 'it reaches outside this folder (your home)';
-  if (w.startsWith('/')) return w === '/dev/null' || w === '/usr/bin/env' || w === '/tmp' || w.startsWith('/tmp/') ? undefined : 'it reaches outside this folder';
+  if (w.startsWith('/')) {
+    if (root && (w === root || w.startsWith(`${root}/`))) w = w.slice(root.length);
+    else return w === '/dev/null' || w === '/usr/bin/env' || w === '/tmp' || w.startsWith('/tmp/') ? undefined : 'it reaches outside this folder';
+  }
   let depth = 0;
   for (const seg of w.split('/')) {
     if (seg === '..' && --depth < 0) return 'it climbs out of this folder';
@@ -160,41 +168,135 @@ function outside(word: string): string | undefined {
   return undefined;
 }
 
+/** Split into simple commands of words. Quotes keep a word whole; `;` `&` `|` newline, parens and backticks end a command. */
+function scan(text: string): W[][] {
+  const out: W[][] = [];
+  let cmd: W[] = [];
+  let cur = '';
+  let has = false;
+  let isq = false;
+  let q = '';
+  const word = () => {
+    if (has) cmd.push({ s: cur, q: isq });
+    cur = '';
+    has = isq = false;
+  };
+  const end = () => {
+    word();
+    if (cmd.length) out.push(cmd);
+    cmd = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '\\' && q !== "'") (cur += text[++i] ?? ''), (has = true);
+    else if (q) c === q ? (q = '') : (cur += c);
+    else if (c === '"' || c === "'") (q = c), (has = isq = true);
+    else if (c !== '\n' && /\s/.test(c)) word();
+    else if (';&|\n()`'.includes(c)) end();
+    else (cur += c), (has = true);
+  }
+  end();
+  return out;
+}
+
+/** Texts inside `$(…)` and backticks, which run even inside double quotes. */
+function subs(text: string): string[] {
+  const out: string[] = [];
+  let q = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '\\') i++;
+    else if (q === "'") q = c === "'" ? '' : q;
+    else if (c === '"') q = q ? '' : '"';
+    else if (c === "'" && !q) q = c;
+    else if (c === '`') {
+      const j = text.indexOf('`', i + 1) < 0 ? text.length : text.indexOf('`', i + 1);
+      out.push(text.slice(i + 1, j));
+      i = j;
+    } else if (c === '$' && text[i + 1] === '(') {
+      let d = 1;
+      let j = i + 2;
+      while (j < text.length && d) d += text[j] === '(' ? 1 : text[j] === ')' ? -1 : 0, j++;
+      out.push(text.slice(i + 2, j - 1));
+      i = j - 1;
+    }
+  }
+  return out;
+}
+
+/** Why one simple command is refused: wrappers peeled off, then shells, find -exec, paths and the refused list. */
+function judge(t: W[], root?: string): string | undefined {
+  const all = [...t];
+  while (t[0]) {
+    const w = t[0];
+    const bin = BIN.exec(w.s);
+    if (bin) w.s = bin[1]!;
+    if (/^\w+=/.test(w.s) || LEAD.has(w.s)) t.shift();
+    else if (!WRAPPERS.has(w.s)) break;
+    else {
+      t.shift();
+      while (t[0]?.s.startsWith('-')) t.splice(0, WRAP_ARGS[w.s]?.includes(t[0].s) ? 2 : 1);
+      if (w.s === 'timeout' && /^\d/.test(t[0]?.s ?? '')) t.shift();
+    }
+  }
+  const cmd = (t[0]?.s ?? '').replace(/^.*\//, '');
+  const rest = t.slice(1);
+  const exempt = new Set<W>(); // text a command only reads: a commit message, a search pattern
+  if (cmd === 'git' && rest.some((w) => w.s === 'commit')) rest.forEach((w, i) => (/^(-m|--message)$/.test(w.s) && rest[i + 1] ? exempt.add(rest[i + 1]!) : /^(-m.|--message=)/.test(w.s) && exempt.add(w)));
+  if (/^(sed|awk|gawk|grep|egrep|fgrep|rg)$/.test(cmd)) rest.filter((w) => !w.s.startsWith('-'))[0] && exempt.add(rest.filter((w) => !w.s.startsWith('-'))[0]!);
+  for (const w of all) {
+    if (exempt.has(w)) continue;
+    for (const p of w.q ? [w.s] : w.s.split(/[<>&]+/)) {
+      const why = outside(p, root);
+      if (why) return why;
+    }
+  }
+  const inner = /^(ba|z)?sh$/.test(cmd) ? rest[rest.findIndex((w) => /^-\w*c$/.test(w.s)) + 1]?.s : cmd === 'eval' ? rest.map((w) => w.s).join(' ') : undefined;
+  if (inner) {
+    const why = check(inner, root);
+    if (why) return why;
+  }
+  if (cmd === 'find')
+    for (const [i, w] of rest.entries()) {
+      if (!/^-(exec|execdir|ok|okdir)$/.test(w.s)) continue;
+      const sub = rest.slice(i + 1);
+      const stop = sub.findIndex((x) => x.s === ';' || x.s === '+');
+      const why = judge(stop < 0 ? sub : sub.slice(0, stop), root);
+      if (why) return why;
+    }
+  return whyRefused(t.map((w) => w.s));
+}
+
+const QUOTED = /"(?:\\.|[^"\\])*"|'[^']*'/g;
+// a heredoc body is data for the command that reads it, unless that command is a shell
+const HEREDOC = /([^\n]*)<<-?\s*(['"]?)(\w+)\2([^\n]*)\n[\s\S]*?\n[ \t]*\3\b/g;
+
+function check(command: string, root?: string): string | undefined {
+  const text = command.replace(/\\\n/g, ' ').replace(HEREDOC, (m, pre: string, _q: string, tag: string, post: string) => (/\b(ba|z)?sh\b|\beval\b/.test(pre) ? m : `${pre}<<${tag}${post}`));
+  const c = normalizeCommand(text);
+  if (!c) return 'it is empty';
+  if (c.length > 1000) return 'it is too long';
+  const blank = c.replace(QUOTED, '""');
+  for (const [re, why] of BLOCKED.slice(1)) if (re.test(blank)) return why; // [0] is sudo, judged by command position instead
+  const na = needsApproval(blank);
+  if (na) return na;
+  for (const s of subs(text)) {
+    const why = check(s, root);
+    if (why) return why;
+  }
+  for (const cmd of scan(text)) {
+    const why = judge(cmd, root);
+    if (why) return why;
+  }
+  return undefined;
+}
+
 /**
  * Whether an agent may run this command in a folder the person trusted. Pure text, so it is cheap to import from a hook.
- * Chained, nested and wrapped commands are each judged as if run alone.
+ * Chained, nested and wrapped commands are each judged as if run alone. `root`, when given, is the folder: absolute paths inside it are fine.
  */
-export function commandRule(command: string): { ok: true } | { ok: false; why: string } {
-  const no = (why: string) => ({ ok: false as const, why: `Not run: ${why}.` });
-  const bad = blockedReason(command) ?? needsApproval(command);
-  if (bad) return no(bad);
+export function commandRule(command: string, root?: string): { ok: true } | { ok: false; why: string } {
   // shortcut: this matches text, so it stops mistakes, not a hostile project; the macOS Seatbelt port is the real boundary
-  const parts = command.replace(/\$\(|[`()]/g, ';').split(/;|&|\||\n/);
-  for (const part of parts) {
-    const all = part.replace(/["']/g, '').split(/\s+/).filter(Boolean);
-    if (!all.length) continue;
-    for (const w of all) {
-      const why = outside(w);
-      if (why) return no(why);
-    }
-    const t = [...all];
-    for (;;) {
-      if (/^\w+=/.test(t[0] ?? '')) t.shift();
-      else if (WRAPPERS.has(t[0]!)) {
-        t.shift();
-        while (t[0]?.startsWith('-') || /^\w+=/.test(t[0] ?? '')) t.shift();
-      } else break;
-      if (!t.length) break;
-    }
-    if (!t.length) continue;
-    const cmd = (t[0] ?? '').replace(/^.*\//, '');
-    const inner = (['bash', 'sh', 'zsh'].includes(cmd) && t.findIndex((w) => /^-\w*c$/.test(w)) + 1) || (cmd === 'eval' ? 1 : 0);
-    if (inner) {
-      const r = commandRule(t.slice(inner).join(' '));
-      if (!r.ok) return r;
-    }
-    const why = whyRefused(t);
-    if (why) return no(why);
-  }
-  return { ok: true };
+  const why = check(command, root?.replace(/\/+$/, ''));
+  return why ? { ok: false, why: `Not run: ${why}.` } : { ok: true };
 }

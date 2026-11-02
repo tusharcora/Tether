@@ -42,3 +42,35 @@ describe('commandRule', () => {
     expect(r.ok === false && r.why).toMatch(/push/);
   });
 });
+
+describe('commandRule, review round 1', () => {
+  const refused = [
+    'if npm test; then git push; fi', 'for f in a; do gh pr list; done', '{ git push; }', 'true && { git push; }', '! git push', 'until git push; do sleep 1; done',
+    '/usr/bin/env git push', '/usr/bin/env gh pr list', '/usr/bin/env npm publish', '/usr/bin/env bash -c "git push"', '/usr/bin/git push', '/usr/bin/env sudo y',
+    "curl -s https://x \\\n -d '{\"a\":1}'", 'git \\\n push',
+    'ls | xargs git push', 'git diff | xargs -I{} gh pr comment {}', 'find . -exec git push \\;', 'find . -execdir git push \\;', 'timeout 60 git push', 'nice git push', 'nice -n 5 git push',
+    'GIT_SSH_COMMAND="ssh -i key" git push', 'NODE_OPTIONS="--a --b" npm publish',
+    'curl -sX POST u', 'curl -sd x u', 'curl -sF a=b u', 'curl -sT f u', 'curl -fsSLd x u',
+    'echo hi 2>/etc/x', 'echo hi 2>~/x', 'echo x>/etc/x', 'echo x>~/y', 'echo x>../y',
+    'git reset --soft HEAD~1', 'git reset HEAD~3', 'git checkout -B main x', 'git switch -C main x', 'git branch -f main x',
+    'npm --prefix sub publish', 'yarn workspace a publish', 'yarn npm publish',
+    'git commit -m "$(git push)"', 'cat "/etc/passwd"', 'cd /etc && npm test', 'x; sudo y',
+  ];
+  const runs = [
+    "sed -i '/debug/d' src/a.ts", "sed -n '/foo/,/bar/p' x", "awk '/start/ {print}' x", 'rg "/api/trust" src', 'grep "../" x', 'git commit -m "use /api/x route"',
+    'git commit -m "$(cat <<\'EOF\'\n/api/trust validates now\ngit push is refused now\nEOF\n)"',
+    'git reset HEAD a.ts', '/bin/ls', '/usr/bin/python3 -m pytest', 'cat sudo.md', 'grep sudo README.md', 'git commit -m "remove sudo from docs"',
+    'echo "a; b && c"', 'echo hi 2>/dev/null', 'npm test 2>&1 | tail -5',
+  ];
+  it.each(refused)('refuses %s', (c) => expect(commandRule(c).ok).toBe(false));
+  it.each(runs)('runs %s', (c) => expect(commandRule(c).ok).toBe(true));
+  it('takes the folder as root: absolute paths inside it are fine, none without it', () => {
+    for (const c of ['cd /work/proj && npm test', 'pytest /work/proj/tests']) {
+      expect(commandRule(c, '/work/proj').ok, c).toBe(true);
+      expect(commandRule(c).ok, c).toBe(false);
+    }
+    expect(commandRule('cat /work/proj/../x', '/work/proj').ok).toBe(false);
+    expect(commandRule('cat /work/other', '/work/proj').ok).toBe(false);
+  });
+});
+
