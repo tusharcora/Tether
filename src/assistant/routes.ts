@@ -245,6 +245,9 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
       else if (!root) {
         prop.status = 'failed';
         prop.note = 'Open a project first: a run needs a project folder.';
+      } else if (trustState(c.home, root) !== 'trusted' && runsOwnShell(c, { task: prop.task, workflow: prop.workflow } as RouteCard, prop.kind === 'workflow' ? 'workflow' : 'team')) {
+        // same gate as a route card: an agent with its own shell starts only in a trusted folder; nothing is decided, so the card stays
+        return send(res, 409, { needsTrust: true, folder: root, ownShell: true, ...(trustState(c.home, root) === 'refused' ? { refused: true } : {}) }), true;
       } else {
         try {
           prop.runId =

@@ -142,20 +142,24 @@ export const START_FAILED = "This couldn't start, and nothing in the folder chan
 
 /**
  * Does this route put an agent with its own shell (not Codex, which keeps its folder sandbox) to work? Each step's agent is
- * resolved from its bot binding as the engine would; one that can't be resolved counts as own-shell. A team's workers are
- * not known yet, so every bot on its roster counts.
+ * resolved from its bot binding as the engine would; one that can't be resolved counts as own-shell. A manager's (and a team's)
+ * workers count too, each by its bot's binding or else the manager's agent.
  */
 export function runsOwnShell(c: AssistantCtx, card: RouteCard, choice: RouteKind, bot?: string): boolean {
   let pipeline: Pipeline;
   try {
-    pipeline = choice === 'team' ? normalizePipeline({ name: 'team', nodes: rosterOf({} as PipelineNode).map((id) => ({ id, kind: 'agent' as const, role: id })), edges: [], settings: {} }) : choice === 'workflow' ? readPipeline(c.home, card.workflow!) : soloPipeline({ task: card.task, ...(bot ? { bot } : {}) });
+    // a team is its manager, which follows the orchestrator's binding
+    pipeline = choice === 'team' ? normalizePipeline({ name: 'team', nodes: [{ id: 'boss', kind: 'agent', role: 'orchestrator', manager: true, x: 0, y: 0 }], edges: [], settings: {} }) : choice === 'workflow' ? readPipeline(c.home, card.workflow!) : soloPipeline({ task: card.task, ...(bot ? { bot } : {}) });
   } catch {
     return false; // a workflow that can't be read fails to start by itself
   }
+  const own = (id: string) => id !== 'codex' && (!c.registry.has(id) || !!c.registry.get(id).ownShell);
   return c.engine.resolve(pipeline).nodes.some((n) => {
     if (n.kind !== 'agent') return false;
-    const id = n.agent ?? 'claude';
-    return id !== 'codex' && (!c.registry.has(id) || !!c.registry.get(id).ownShell);
+    const agent = n.agent ?? 'claude';
+    if (own(agent)) return true;
+    // a manager's workers take their bot's binding, else follow the manager
+    return !!n.manager && c.engine.resolve({ ...pipeline, nodes: rosterOf(n).map((id) => ({ id, kind: 'agent' as const, role: id, x: 0, y: 0 })) }).nodes.some((w) => own(w.agent ?? agent));
   });
 }
 

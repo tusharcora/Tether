@@ -296,6 +296,39 @@ describe('route card', () => {
     await t.settled();
   });
 
+  it('a team whose orchestrator is OpenCode asks for trust, though no roster bot is bound to it', async () => {
+    const t = await boot();
+    const a = await t.offer(good);
+    link(t.home, 'orchestrator', { agent: 'opencode' });
+    const r = await t.click(a.card!, a.chat, { choice: 'team', trust: false });
+    expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+    expect(t.store.list()).toHaveLength(0);
+  });
+
+  it('a workflow manager whose workers would follow it onto OpenCode asks for trust', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'mock' });
+    writePipeline(t.home, { ...pipe([{ id: 'm', kind: 'agent', role: 'orchestrator', manager: true, agent: 'opencode', roster: ['reviewer'] }], []), name: 'bugfix' });
+    const a = await t.offer(good);
+    expect((await t.click(a.card!, a.chat, { choice: 'workflow', trust: false })).json).toMatchObject({ needsTrust: true, ownShell: true });
+    // the same manager on a plain agent, with its worker bound to OpenCode
+    link(t.home, 'reviewer', { agent: 'opencode' });
+    writePipeline(t.home, { ...pipe([{ id: 'm', kind: 'agent', role: 'orchestrator', manager: true, agent: 'mock', roster: ['reviewer'] }], []), name: 'bugfix' });
+    expect((await t.click(a.card!, a.chat, { choice: 'workflow', trust: false })).json).toMatchObject({ needsTrust: true, ownShell: true });
+  });
+
+  it('the old proposal card is gated the same way', async () => {
+    const t = await boot();
+    t.agent.reply = 'x\n```tether\n{"proposals":[{"kind":"team","task":"old","why":"old"}]}\n```';
+    const { message, chat } = await t.turn({ message: 'hi' });
+    link(t.home, 'orchestrator', { agent: 'opencode' });
+    const go = await t.call('POST', `/api/assistant/proposals/${message.proposals![0]!.id}`, { ws: 'api', chat, decision: 'start' });
+    expect(go.status).toBe(409);
+    expect(go.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+    expect(t.store.list()).toHaveLength(0);
+    expect(readChat(t.home, 'api', chat)!.messages.at(-1)!.proposals![0]!.status).toBe('proposed');
+  });
+
   it('an OpenCode route in a refused folder is stopped, even with trust: true', async () => {
     const t = await boot();
     link(t.home, 'coder', { agent: 'opencode' });
