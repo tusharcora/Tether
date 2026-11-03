@@ -403,6 +403,19 @@ describe('the route card', () => {
     expect(screen.getByText('Small jobs then start without asking in folders you trust.')).toBeTruthy();
   });
 
+  it('an old proposal refused for trust says it plainly, with no JSON or path', async () => {
+    const msg = 'This agent runs commands on its own, so it needs this folder trusted. Trust it in Settings.';
+    routeApi({
+      'GET /api/assistant': { messages: [{ id: 'm1', role: 'tether', text: 'Old.', at: 1, proposals: [{ id: 'p', kind: 'team', task: 'x', status: 'proposed' }] }], agent: 'claude', models: [], asksToGoals: true },
+      'POST /api/assistant/proposals/p': new ApiError(msg, 409, { needsTrust: true, folder: '/home/me/secret', error: msg }),
+    });
+    renderApp(<Host />);
+    await click('Start run');
+    expect(await screen.findByText(msg)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('/home/me/secret');
+    expect(document.body.textContent).not.toContain('needsTrust');
+  });
+
   it('an old chat with a run proposal and no route card still renders', async () => {
     routeApi({ 'GET /api/assistant': { messages: [{ id: 'm1', role: 'tether', text: 'Old.', at: 1, proposals: [{ id: 'p', kind: 'team', task: 'x', status: 'dismissed' }] }], agent: 'claude', models: [], asksToGoals: true } });
     renderApp(<Host />);

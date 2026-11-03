@@ -9,6 +9,7 @@ import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
 import { trustState } from '../trust.js';
+import { OWN_SHELL_NEEDS_TRUST } from '../runLabels.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { checkDraft, draftContext, draftPatch, firstTask } from './goalDraft.js';
 import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
@@ -247,7 +248,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
         prop.note = 'Open a project first: a run needs a project folder.';
       } else if (trustState(c.home, root) !== 'trusted' && runsOwnShell(c, { task: prop.task, workflow: prop.workflow } as RouteCard, prop.kind === 'workflow' ? 'workflow' : 'team')) {
         // same gate as a route card: an agent with its own shell starts only in a trusted folder; nothing is decided, so the card stays
-        return send(res, 409, { needsTrust: true, folder: root, ownShell: true, ...(trustState(c.home, root) === 'refused' ? { refused: true } : {}) }), true;
+        return send(res, 409, { needsTrust: true, folder: root, ownShell: true, error: OWN_SHELL_NEEDS_TRUST, ...(trustState(c.home, root) === 'refused' ? { refused: true } : {}) }), true;
       } else {
         try {
           prop.runId =
@@ -288,7 +289,7 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
       const state = trustState(c.home, root);
       // an agent with its own shell can't be told to hold off, so only a trusted folder (or a yes right now, in an unasked one) lets it start
       if (state !== 'trusted' && runsOwnShell(c, route, choice, msg.by?.bot)) {
-        if (state !== 'unknown' || b.trust !== true) return send(res, 409, { needsTrust: true, folder: root, ownShell: true, ...(state === 'refused' ? { refused: true } : {}) }), true;
+        if (state !== 'unknown' || b.trust !== true) return send(res, 409, { needsTrust: true, folder: root, ownShell: true, error: OWN_SHELL_NEEDS_TRUST, ...(state === 'refused' ? { refused: true } : {}) }), true;
       } else if (b.trust === undefined && state === 'unknown') return send(res, 409, { needsTrust: true, folder: root }), true;
     }
     // saved before the run exists: a crash in between leaves a card that won't start a second run

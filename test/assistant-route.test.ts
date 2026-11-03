@@ -11,6 +11,7 @@ import type { ChatMessage, RouteCard, StreamEvent } from '../src/assistant/types
 import { link, loadBindings } from '../src/bindings.js';
 import { pipelinesDir, writePipeline } from '../src/config.js';
 import { Engine } from '../src/engine.js';
+import { OWN_SHELL_NEEDS_TRUST } from '../src/runLabels.js';
 import { loadPrefs } from '../src/prefs.js';
 import { startServer } from '../src/server.js';
 import { Store } from '../src/store.js';
@@ -278,7 +279,7 @@ describe('route card', () => {
     for (const trust of [undefined, false]) {
       const r = await t.click(a.card!, a.chat, { choice: 'solo', ...(trust === undefined ? {} : { trust }) });
       expect(r.status).toBe(409);
-      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, error: OWN_SHELL_NEEDS_TRUST });
     }
     expect(t.store.list()).toHaveLength(0);
     // an agent bound to nothing that exists counts as own-shell too
@@ -301,7 +302,7 @@ describe('route card', () => {
     const a = await t.offer(good);
     link(t.home, 'orchestrator', { agent: 'opencode' });
     const r = await t.click(a.card!, a.chat, { choice: 'team', trust: false });
-    expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+    expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, error: OWN_SHELL_NEEDS_TRUST });
     expect(t.store.list()).toHaveLength(0);
   });
 
@@ -324,9 +325,24 @@ describe('route card', () => {
     link(t.home, 'orchestrator', { agent: 'opencode' });
     const go = await t.call('POST', `/api/assistant/proposals/${message.proposals![0]!.id}`, { ws: 'api', chat, decision: 'start' });
     expect(go.status).toBe(409);
-    expect(go.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+    expect(go.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, error: OWN_SHELL_NEEDS_TRUST });
     expect(t.store.list()).toHaveLength(0);
     expect(readChat(t.home, 'api', chat)!.messages.at(-1)!.proposals![0]!.status).toBe('proposed');
+  });
+
+  it('a worker bound to OpenCode under a Claude manager asks for trust; a Codex manager\'s unbound workers don\'t', async () => {
+    const t = await boot();
+    const a = await t.offer(good);
+    const b = await t.offer(good);
+    link(t.home, 'orchestrator', { agent: 'claude' });
+    link(t.home, 'reviewer', { agent: 'opencode' });
+    expect((await t.click(a.card!, a.chat, { choice: 'team', trust: false })).json).toMatchObject({ needsTrust: true, ownShell: true });
+    // unbound workers follow a Codex manager, which keeps its folder sandbox
+    link(t.home, 'reviewer', { agent: 'claude' });
+    for (const bot of ['planner', 'architect', 'coder', 'manager', 'tester']) link(t.home, bot, { agent: 'claude' });
+    link(t.home, 'orchestrator', { agent: 'codex' });
+    expect((await t.click(b.card!, b.chat, { choice: 'team', trust: false })).json.route.status).toBe('started');
+    await t.settled();
   });
 
   it('an OpenCode route in a refused folder is stopped, even with trust: true', async () => {
@@ -336,7 +352,7 @@ describe('route card', () => {
     const a = await t.offer(good);
     for (const trust of [undefined, true, false]) {
       const r = await t.click(a.card!, a.chat, { choice: 'solo', ...(trust === undefined ? {} : { trust }) });
-      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, refused: true });
+      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, error: OWN_SHELL_NEEDS_TRUST, refused: true });
     }
     expect(t.store.list()).toHaveLength(0);
   });
