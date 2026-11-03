@@ -173,6 +173,25 @@ describe('the route card', () => {
     expect(await screen.findByRole('button', { name: button })).toBeTruthy();
   });
 
+  it('an own-shell agent needs the folder trusted: Trust only, no Not now', async () => {
+    open(card(), {}, () => new ApiError('{}', 409, { needsTrust: true, folder: '/x', ownShell: true }));
+    await click('Do it myself');
+    const d = await screen.findByRole('dialog', { name: 'Trust this folder?' });
+    expect(d.textContent).toContain('This agent runs commands on its own, so it needs this folder trusted.');
+    expect(screen.getByRole('button', { name: 'Trust' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+  });
+
+  it('in a folder already refused, it says to change that in Settings and offers no Trust', async () => {
+    open(card(), {}, () => new ApiError('{}', 409, { needsTrust: true, folder: '/x', ownShell: true, refused: true }));
+    await click('Do it myself');
+    const d = await screen.findByRole('dialog');
+    expect(d.textContent).toContain('This agent runs commands on its own, so it needs this folder trusted.');
+    expect(d.textContent).toContain('Change it in Settings.');
+    expect(screen.queryByRole('button', { name: 'Trust' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+  });
+
   it('a ticket never asks, and opens the ticket it made', async () => {
     open(card(), {}, () => ({ route: card({ status: 'started', chose: 'ticket', goalId: 'g1' }) }));
     await click('Make a ticket');

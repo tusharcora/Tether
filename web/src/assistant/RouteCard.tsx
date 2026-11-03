@@ -128,7 +128,7 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
 function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
   const notify = useNotify();
   const [busy, setBusy] = useState<RouteKind>();
-  const [ask, setAsk] = useState<{ choice: RouteKind; folder?: string }>();
+  const [ask, setAsk] = useState<{ choice: RouteKind; folder?: string; ownShell?: boolean; refused?: boolean }>();
   const prefs = usePoll<{ soloWithoutAsking?: boolean }>('/api/health', 60_000);
   // a ref: the closing dialog keeps its buttons, with their old props, until it has animated out
   const going = useRef(false);
@@ -140,8 +140,8 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
     try {
       await chat.route(card, choice, trust);
     } catch (e) {
-      const b = e instanceof ApiError ? (e.body as { needsTrust?: boolean; folder?: string } | undefined) : undefined;
-      if (b?.needsTrust) setAsk({ choice, folder: b.folder });
+      const b = e instanceof ApiError ? (e.body as { needsTrust?: boolean; folder?: string; ownShell?: boolean; refused?: boolean } | undefined) : undefined;
+      if (b?.needsTrust) setAsk({ choice, folder: b.folder, ownShell: b.ownShell, refused: b.refused });
       else notify.fail(e as Error);
     } finally {
       going.current = false;
@@ -179,15 +179,21 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
       <p className="m-0 mt-0.5 text-xs text-muted-foreground">Small jobs then start without asking in folders you trust.</p>
       <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(undefined)}>
         <DialogContent title="Trust this folder?">
+          {ask?.ownShell ? <p className="m-0 mb-2 font-medium">This agent runs commands on its own, so it needs this folder trusted.</p> : null}
           <p className="m-0">{TRUST_BODY}</p>
           {ask?.folder ? <code className="mt-2 block truncate text-xs text-muted-foreground">{ask.folder}</code> : null}
+          {ask?.refused ? <p className="m-0 mt-2">You said no to this folder before. Change it in Settings.</p> : null}
           <div className="row end mt-4">
-            <Button variant="secondary" onClick={() => ask && void start(ask.choice, false)}>
-              Not now
-            </Button>
-            <Button variant="primary" onClick={() => ask && void start(ask.choice, true)}>
-              Trust
-            </Button>
+            {ask?.ownShell ? null : (
+              <Button variant="secondary" onClick={() => ask && void start(ask.choice, false)}>
+                Not now
+              </Button>
+            )}
+            {ask?.refused ? null : (
+              <Button variant="primary" onClick={() => ask && void start(ask.choice, true)}>
+                Trust
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

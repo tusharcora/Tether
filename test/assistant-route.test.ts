@@ -22,7 +22,7 @@ import { initWorkspace } from '../src/workspace.js';
 import { pipe, plainFolder, tmp } from './helpers.js';
 
 class Scripted implements AgentAdapter {
-  readonly id = 'scripted';
+  readonly id: string = 'scripted';
   readonly reportsCost = false;
   readonly supportsResume = false;
   readonly codeMode = 'native' as const;
@@ -34,6 +34,21 @@ class Scripted implements AgentAdapter {
   async run(req: AgentRequest): Promise<AgentResult> {
     this.prompts.push(req.prompt);
     return { output: this.reply, exitCode: 0 };
+  }
+}
+
+class Shelly extends Scripted {
+  readonly ownShell = true;
+  constructor(id: string) {
+    super();
+    this.id = id;
+  }
+}
+/** Stands in for Claude Code, which the unbound bots follow. */
+class Plain extends Scripted {
+  constructor() {
+    super();
+    this.id = 'claude';
   }
 }
 
@@ -50,7 +65,7 @@ async function boot() {
   link(home, 'coder', { agent: 'mock' });
   writePipeline(home, { ...pipe([{ id: 'a', kind: 'agent', role: 'coder', agent: 'mock' }], []), name: 'bugfix' });
   const agent = new Scripted();
-  const registry = new AdapterRegistry().register(agent).register(new MockAdapter());
+  const registry = new AdapterRegistry().register(agent).register(new MockAdapter()).register(new Plain()).register(new Shelly('opencode')).register(new Shelly('codex'));
   const store = Store.open(':memory:');
   const vault = new Vault(tmp('vault-'));
   const engine = new Engine(store, { home, registry, vault, bindings: () => loadBindings(home) });
@@ -254,6 +269,53 @@ describe('route card', () => {
     expect(t.store.list()).toHaveLength(0);
     expect(trustState(t.home, t.dir)).toBe('unknown');
     expect(readChat(t.home, 'api', chat)!.messages.at(-1)!.route!.status).toBe('proposed');
+  });
+
+  it('an OpenCode route in an unknown folder asks for trust and Not now doesn\'t start it', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'opencode' });
+    const a = await t.offer(good);
+    for (const trust of [undefined, false]) {
+      const r = await t.click(a.card!, a.chat, { choice: 'solo', ...(trust === undefined ? {} : { trust }) });
+      expect(r.status).toBe(409);
+      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true });
+    }
+    expect(t.store.list()).toHaveLength(0);
+    // an agent bound to nothing that exists counts as own-shell too
+    link(t.home, 'coder', { agent: 'nowhere' });
+    expect((await t.click(a.card!, a.chat, { choice: 'solo', trust: false })).status).toBe(409);
+    // a workflow with an own-shell step, and a team whose roster could use one
+    writePipeline(t.home, { ...pipe([{ id: 'a', kind: 'agent', role: 'coder', agent: 'opencode' }], []), name: 'bugfix' });
+    const w = await t.click(a.card!, a.chat, { choice: 'workflow', trust: false });
+    expect(w.status).toBe(409);
+    expect((await t.click(a.card!, a.chat, { choice: 'team', trust: false })).status).toBe(409);
+    // yes still works
+    link(t.home, 'coder', { agent: 'opencode' });
+    expect((await t.click(a.card!, a.chat, { choice: 'solo', trust: true })).json.route.status).toBe('started');
+    expect(trustState(t.home, t.dir)).toBe('trusted');
+    await t.settled();
+  });
+
+  it('an OpenCode route in a refused folder is stopped, even with trust: true', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'opencode' });
+    setTrust(t.home, t.dir, false);
+    const a = await t.offer(good);
+    for (const trust of [undefined, true, false]) {
+      const r = await t.click(a.card!, a.chat, { choice: 'solo', ...(trust === undefined ? {} : { trust }) });
+      expect(r.json).toEqual({ needsTrust: true, folder: t.dir, ownShell: true, refused: true });
+    }
+    expect(t.store.list()).toHaveLength(0);
+  });
+
+  it('a Codex route keeps today\'s Not now', async () => {
+    const t = await boot();
+    link(t.home, 'coder', { agent: 'codex' });
+    const a = await t.offer(good);
+    expect((await t.click(a.card!, a.chat, { choice: 'solo' })).json).toEqual({ needsTrust: true, folder: t.dir });
+    const no = await t.click(a.card!, a.chat, { choice: 'solo', trust: false });
+    expect(no.json.route).toMatchObject({ status: 'started', noCommands: true });
+    await t.settled();
   });
 
   it('solo with trust: true saves it and starts with commands', async () => {

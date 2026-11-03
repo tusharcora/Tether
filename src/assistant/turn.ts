@@ -14,7 +14,9 @@ import { redactText } from '../http/redact.js';
 import { loadSecrets } from '../http/secrets.js';
 import type { Engine } from '../engine.js';
 import type { Store } from '../store.js';
-import type { AttentionItem, CodeModeRequest } from '../types.js';
+import { normalizePipeline } from '../pipeline.js';
+import { rosterOf } from '../handoff.js';
+import type { AttentionItem, CodeModeRequest, Pipeline, PipelineNode } from '../types.js';
 import type { Vault } from '../vault.js';
 import { getWorkspace, contextOf } from '../workspace.js';
 import { insideGit } from '../history.js';
@@ -137,6 +139,25 @@ const recentChat = (home: string, ws: string, messages: ChatMessage[]): string =
   redactText(messages.filter((m) => m.text && !m.compact && !m.compactedBy).map((m) => `${m.role === 'you' ? 'The person' : (m.by?.name ?? 'Tether')}: ${m.text}`).join('\n\n'), secretsFor(home, ws)).slice(-CHAT_CONTEXT_MAX);
 
 export const START_FAILED = "This couldn't start, and nothing in the folder changed.";
+
+/**
+ * Does this route put an agent with its own shell (not Codex, which keeps its folder sandbox) to work? Each step's agent is
+ * resolved from its bot binding as the engine would; one that can't be resolved counts as own-shell. A team's workers are
+ * not known yet, so every bot on its roster counts.
+ */
+export function runsOwnShell(c: AssistantCtx, card: RouteCard, choice: RouteKind, bot?: string): boolean {
+  let pipeline: Pipeline;
+  try {
+    pipeline = choice === 'team' ? normalizePipeline({ name: 'team', nodes: rosterOf({} as PipelineNode).map((id) => ({ id, kind: 'agent' as const, role: id })), edges: [], settings: {} }) : choice === 'workflow' ? readPipeline(c.home, card.workflow!) : soloPipeline({ task: card.task, ...(bot ? { bot } : {}) });
+  } catch {
+    return false; // a workflow that can't be read fails to start by itself
+  }
+  return c.engine.resolve(pipeline).nodes.some((n) => {
+    if (n.kind !== 'agent') return false;
+    const id = n.agent ?? 'claude';
+    return id !== 'codex' && (!c.registry.has(id) || !!c.registry.get(id).ownShell);
+  });
+}
 
 /**
  * Do what a route card's row says, in the chat's folder, and return the card as it now stands. Never throws: a start that
