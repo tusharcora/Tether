@@ -289,19 +289,28 @@ function setModes(real: string, modes: Record<string, number>): string[] {
 
 /** Make `files` in the folder match commit `to`: what it holds is written, what it doesn't is removed. Tries every file before reporting a failure, so a put-back does all it can. */
 async function matchFiles(history: string, real: string, since: string, to: string, files: string[]): Promise<void> {
-  const held = new Set(await listed(history, ['ls-tree', '-r', '-z', '--name-only', to]));
+  const [before, after] = await Promise.all([blobs(history, since), blobs(history, to)]);
+  const held = new Set(after.keys());
   const present = files.filter((p) => held.has(p));
-  // shortcut: a rename is what git can see, about half the content kept, so a file rewritten further under a new name, or a second copy of it, comes out at git's mode; upgrade if a run's private files ever need more than a rename
-  // from `since`, not the folder, and only among `files`, so a person's own files lend no mode; -B finds a rename onto a file that stays, or off one a new file then took the name of (git calls that a copy), and -l0 outranks any limit in git config
-  const moved = await listed(history, ['diff-tree', '-r', '-z', '-B', '-M', '-l0', '--diff-filter=RC', '--name-status', since, to]);
+  // shortcut: a file keeps a mode only from the same content or a rename git can see, so these come out at their own or git's mode: one rewritten past about half under a new name, an edited swap of two similar files, a private file two runs each moved, and past the cap any rename that isn't exact; upgrade if a run's private files ever need more
+  // from `since`, not the folder, and only among `files`, so a person's own files lend no mode; -B finds a rename onto a file that stays, or off one a new file then took the name of (git calls that a copy), but never for a file under 400 bytes, so the same content is matched by blob below; -l2000 outranks git config, and caps a quadratic search that runs with the folder at risk of a person's save
+  const moved = await listed(history, ['diff-tree', '-r', '-z', '-B', '-M', '-l2000', '--diff-filter=RC', '--name-status', since, to]);
   const touched = new Set(files);
   const was = new Map(moved.flatMap((_, i): [string, string][] => (i % 3 === 0 && touched.has(moved[i + 1]!) ? [[moved[i + 2]!, moved[i + 1]!]] : [])));
-  // read before removals: a renamed file keeps its permissions from the old name, and landing on another file takes what both allow, so its content is never wider than it was; where the filesystem ignores case the two can be one file
+  // read before removals: old content's path may be gone after them. One entry per blob, not per path, so many files with the same content stay cheap
+  const heldBy = new Map<string, number>();
+  for (const p of files) {
+    const blob = before.get(p);
+    const mode = fileMode(join(real, p));
+    if (blob !== undefined && mode !== undefined) heldBy.set(blob, (heldBy.get(blob) ?? 0o777) & mode);
+  }
+  // everything this file's content or name had takes part, so an ambiguous match lands the narrowest; where the filesystem ignores case its two names can be one file
   const modes = present.flatMap((p): [string, number][] => {
     const own = fileMode(join(real, p));
-    const old = fileMode(join(real, was.get(p) ?? p));
-    const mode = own !== undefined && old !== undefined ? own & old : own ?? (old === undefined ? undefined : old & 0o755); // a new name never starts wider than git would write it
-    return mode === undefined ? [] : [[p, mode]];
+    const seen = [own, heldBy.get(after.get(p)!), fileMode(join(real, was.get(p) ?? p))].filter((m) => m !== undefined);
+    if (!seen.length) return [];
+    const mode = seen.reduce((a, b) => a & b);
+    return [[p, own === undefined ? mode & 0o755 : mode]]; // a new name drops group and world write, so a similar scratch file can't hand it those
   });
   let failure: unknown;
   // removals first: a case-only rename or a file swapped for a folder needs the old path gone before the new one is written

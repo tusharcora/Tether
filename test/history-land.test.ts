@@ -594,6 +594,76 @@ describe('landing', () => {
         expect(mode(folder, 'A.txt')).toBe(0o600);
       });
 
+      // git never breaks a pair under 400 bytes, so these rest on matching the content itself
+      for (const size of [98, 263, 397]) {
+        const small = (c: string) => c.padEnd(size, `${c} `);
+        const [secret, open, plain] = [small('secret'), small('public'), small('zzz')];
+
+        it(`of ${size} bytes onto a public file stays private`, async () => {
+          const { home, folder, r } = await land({ s: secret, pub: open }, ['s'], (w) => mv(w, 's', 'pub'));
+          expect(read(folder, 'pub')).toBe(secret);
+          expect(mode(folder, 'pub')).toBe(0o600);
+          expect(await undoLanding(home, folder, r)).toBe(true);
+          expect(read(folder, 's')).toBe(secret);
+          expect(mode(folder, 's')).toBe(0o600);
+        });
+
+        it(`of ${size} bytes in a swap stays private`, async () => {
+          const { home, folder, r } = await land({ a: secret, b: open }, ['a'], (w) => (mv(w, 'a', 't'), mv(w, 'b', 'a'), mv(w, 't', 'b')));
+          expect(read(folder, 'b')).toBe(secret);
+          expect(mode(folder, 'b')).toBe(0o600);
+          expect(await undoLanding(home, folder, r)).toBe(true);
+          expect(read(folder, 'a')).toBe(secret);
+          expect(mode(folder, 'a')).toBe(0o600);
+        });
+
+        it(`of ${size} bytes in a rotation follows the content`, async () => {
+          const { home, folder, r } = await land({ a: secret, b: open, c: plain }, ['a'], (w) => (mv(w, 'c', 't'), mv(w, 'b', 'c'), mv(w, 'a', 'b'), mv(w, 't', 'a')));
+          expect(read(folder, 'b')).toBe(secret);
+          expect(mode(folder, 'b')).toBe(0o600);
+          expect(mode(folder, 'c')).toBe(0o644);
+          expect(await undoLanding(home, folder, r)).toBe(true);
+          expect(read(folder, 'a')).toBe(secret);
+          expect(mode(folder, 'a')).toBe(0o600);
+        });
+
+        it(`of ${size} bytes to a backup, while a new file takes the name`, async () => {
+          const { home, folder, r } = await land({ key: secret }, ['key'], (w) => (mv(w, 'key', 'key.old'), writeFileSync(join(w, 'key'), plain)));
+          expect(read(folder, 'key.old')).toBe(secret);
+          expect(mode(folder, 'key.old')).toBe(0o600);
+          expect(await undoLanding(home, folder, r)).toBe(true);
+          expect(read(folder, 'key')).toBe(secret);
+          expect(mode(folder, 'key')).toBe(0o600);
+        });
+      }
+
+      it('takes the narrowest mode when the same content had two names', async () => {
+        const { folder } = await land({ a: 'same', b: 'same' }, ['a'], (w) => (rmSync(join(w, 'a')), rmSync(join(w, 'b')), writeFileSync(join(w, 'c'), 'same')));
+        expect(mode(folder, 'c')).toBe(0o600);
+      });
+
+      it('takes no mode from a small file with the same content outside the work', async () => {
+        const { folder } = await land({ o: 'other' }, [], (w) => writeFileSync(join(w, 'new.txt'), 'token'), (f) => {
+          writeFileSync(join(f, 'mine.txt'), 'token');
+          chmodSync(join(f, 'mine.txt'), 0o600);
+        });
+        expect(mode(folder, 'new.txt')).toBe(0o644);
+      });
+
+      it('past the search cap keeps exact matches and lets inexact ones go', async () => {
+        const names = Array.from({ length: 2100 }, (_, i) => `f${i}`);
+        const body = (n: string) => Array.from({ length: 12 }, (_, i) => `${n} ${i} ${n.repeat(4)}`).join('\n');
+        const start = { ...Object.fromEntries(names.map((n) => [n, body(n)])), s: 'token', pub: 'open', edited: text('edited') };
+        const { folder } = await land(start, ['s', 'edited'], (w) => {
+          for (const n of names) (writeFileSync(join(w, n), `${body(n)}\nmore`), mv(w, n, `${n}.new`));
+          mv(w, 's', 'pub');
+          writeFileSync(join(w, 'edited'), `${text('edited')}\nmore`);
+          mv(w, 'edited', 'edited.new');
+        });
+        expect(mode(folder, 'pub')).toBe(0o600);
+        expect(mode(folder, 'edited.new')).toBe(0o644);
+      });
+
       it('is seen past a rename limit set in git config', async () => {
         const names = ['a', 'b', 'c', 'd'];
         const start = Object.fromEntries(names.map((n) => [n, text(n)]));
