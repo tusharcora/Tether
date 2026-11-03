@@ -147,9 +147,10 @@ const entries = (lines: string[], blobAt: number) => new Map(lines.map((l) => [l
 /** Which of `paths` the folder's .gitignore names, tracked or not. */
 async function ignored(workdir: string, paths: string[]): Promise<string[]> {
   if (!paths.length) return [];
-  const r = await gitEnv(workdir, ['check-ignore', '--no-index', '-z', '--stdin'], {}, paths.join('\0') + '\0');
+  const r = await gitEnv(workdir, ['check-ignore', '--no-index', '-z', '--stdin'], {}, paths.map((p) => './' + p).join('\0') + '\0');
   if (r.code > 1) throw new Error(`git check-ignore failed: ${r.stderr.trim()}`);
-  return r.stdout.split('\0').filter(Boolean);
+  // './' keeps a name like ':(x)y' from being read as a pathspec
+  return r.stdout.split('\0').filter(Boolean).map((p) => p.replace(/^\.\//, ''));
 }
 
 /**

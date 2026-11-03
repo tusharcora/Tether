@@ -52,6 +52,17 @@ describe('landing', () => {
     for (const n of names) expect(read(folder, n)).toBe('1');
   });
 
+  it('lands names git would read as pathspecs, and Undo is exact', async () => {
+    const names = [':(x)y', ':out'];
+    const { home, folder, head } = await run({ 'keep.txt': 'k' }, Object.fromEntries(names.map((n) => [n, '2'])));
+    const r = landed(await landBranch(home, folder, head));
+    expect([...r.files].sort()).toEqual([...names].sort());
+    for (const n of names) expect(read(folder, n)).toBe('2');
+    expect(await undoLanding(home, folder, r)).toBe(true);
+    for (const n of names) expect(existsSync(join(folder, n))).toBe(false);
+    expect(read(folder, 'keep.txt')).toBe('k');
+  });
+
   it('deletes and restores a file whose name has a newline', async () => {
     const { home, folder, head } = await run({ 'odd\nname.txt': '1', 'x.txt': '1' }, {}, ['odd\nname.txt']);
     const r = landed(await landBranch(home, folder, head));
