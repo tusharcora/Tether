@@ -160,8 +160,8 @@ export function workFiles(root: string): { files: string[]; made: string[] } {
 export const NOT_LANDED = 'tether-not-landed';
 
 /**
- * What a step left out: left-out names it made (dependencies, caches), ignored files too big or too many to keep, projects inside,
- * and files the run removed that were kept because they may have moved into something left out.
+ * What a step left out: left-out names it made (dependencies, caches), ignored folders (or files elsewhere) whose changes were too big
+ * or too many to keep, projects inside, and files the run removed that were kept because they may have moved into something left out.
  */
 export interface NotLanded {
   made: string[];

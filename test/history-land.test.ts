@@ -169,7 +169,7 @@ describe('landing', () => {
       put(workdir, 'out/model.bin', '');
       truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
       expect(await commitAll(workdir, 'big')).toBeUndefined();
-      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out/model.bin'], nested: [], kept: [] });
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
       const r = landed(await landBranch(home, folder, head));
       expect(r.files).toEqual(['out/report.txt']);
       expect(existsSync(join(folder, 'out/model.bin'))).toBe(false);
@@ -177,43 +177,39 @@ describe('landing', () => {
       expect(existsSync(join(folder, 'out'))).toBe(false);
     });
 
-    it('leaves out an ignored folder of more files than undo can keep, names it, lands the rest and every re-spelling, and undo works', async () => {
-      const start = { '.gitignore': 'target/\nout/\n', 'a.txt': '1', 'empty.txt': '', 'twin.md': 'tw', 'Readme.md': 'r', 'out/Readme.md': 'o', 'out/Guide.md': 'g', 'out/notes.md': 'n', 'target/Keep.md': 'k' };
+    it('leaves out every ignored-path change when one folder has more files than undo can keep, names the folders, lands the rest, and undo works', async () => {
+      const start = { '.gitignore': 'target/\nout/\n', 'a.txt': '1', 'empty.txt': '', 'twin.md': 'abcd', 'Readme.md': 'r', 'out/Readme.md': 'o', 'out/Guide.md': 'g', 'out/notes.md': 'n', 'target/Keep.md': 'k' };
       const { home, folder, workdir } = await run(start, { 'a.txt': '2' });
-      // case-only renames at the top, under an ignored path and inside the folder past the count: each lands, or its old name would go with nothing in its place
+      // a case-only rename outside the ignored paths lands with its old spelling; under them, nothing lands this step
       renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
       renameSync(join(workdir, 'out/Readme.md'), join(workdir, 'out/README.md'));
       renameSync(join(workdir, 'target/Keep.md'), join(workdir, 'target/KEEP.md'));
-      // a plain move under an ignored path stays out past the count, so its old name is kept and named
       renameSync(join(workdir, 'out/notes.md'), join(workdir, 'out/notes2.md'));
-      // a case-only rename whose new file is too big: its old name stays as it was
       renameSync(join(workdir, 'out/Guide.md'), join(workdir, 'out/GUIDE.md'));
       truncateSync(join(workdir, 'out/GUIDE.md'), MAX_FILE_BYTES + 1);
-      // a deleted empty file beside a hundred thousand empty build files lands, and pairing them costs nothing; a deleted file of a left-out file's size is kept
+      // a deleted empty file lands; a deleted 4-byte file beside a hundred thousand 4-byte build files is kept, and finding that costs nothing
       rmSync(join(workdir, 'empty.txt'));
       rmSync(join(workdir, 'twin.md'));
       for (let d = 0; d * 1000 <= MAX_FOLDER_FILES; d++) {
         mkdirSync(join(workdir, `target/d${d}`), { recursive: true });
-        for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), '');
+        for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), 'abcd');
       }
-      writeFileSync(join(workdir, 'target/d0/0'), 'xy');
       const t = Date.now();
       const head = await commitAll(workdir, 'many');
       const took = Date.now() - t;
-      console.log(`commitAll with ${MAX_FOLDER_FILES + 1000} ignored files: ${took} ms`);
+      console.log(`commitAll with ${MAX_FOLDER_FILES + 1000} ignored 4-byte files and a ${MAX_FILE_BYTES + 1}-byte one: ${took} ms`);
       expect(took).toBeLessThan(10_000);
-      const n = await notLanded(workdir);
-      expect({ ...n, tooMuch: [...n.tooMuch].sort() }).toEqual({ made: [], tooMuch: ['out/GUIDE.md', 'out/notes2.md', 'target'], nested: [], kept: ['out/Guide.md', 'out/notes.md', 'twin.md'] });
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out', 'target'], nested: [], kept: ['twin.md'] });
       const r = landed(await landBranch(home, folder, head!));
-      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt', 'empty.txt', 'out/README.md', 'out/Readme.md', 'target/KEEP.md', 'target/Keep.md']);
+      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt', 'empty.txt']);
       expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'README.md', 'a.txt', 'out', 'target', 'twin.md']);
-      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'README.md', 'notes.md']);
-      expect(readdirSync(join(folder, 'target'))).toEqual(['KEEP.md']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'Readme.md', 'notes.md']);
+      expect(readdirSync(join(folder, 'target'))).toEqual(['Keep.md']);
       expect(read(folder, 'README.md')).toBe('r');
-      expect(read(folder, 'out/README.md')).toBe('o');
+      expect(read(folder, 'out/Readme.md')).toBe('o');
       expect(read(folder, 'out/Guide.md')).toBe('g');
       expect(read(folder, 'out/notes.md')).toBe('n');
-      expect(read(folder, 'target/KEEP.md')).toBe('k');
+      expect(read(folder, 'target/Keep.md')).toBe('k');
       expect(await undoLanding(home, folder, r)).toBe(true);
       expect(read(folder, 'a.txt')).toBe('1');
       expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'Readme.md', 'a.txt', 'empty.txt', 'out', 'target', 'twin.md']);
@@ -222,6 +218,48 @@ describe('landing', () => {
       rmSync(join(workdir, 'target'), { recursive: true, force: true });
     }, 600_000);
 
+    it('a move with an edit under an ignored path waits while a file there is too big, then lands whole, and undo is exact', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'out/notes.md': 'n' }, { 'a.txt': '2' });
+      renameSync(join(workdir, 'out/notes.md'), join(workdir, 'out/notes2.md'));
+      writeFileSync(join(workdir, 'out/notes2.md'), 'edited');
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'big')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
+      let r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes.md']);
+      expect(read(folder, 'out/notes.md')).toBe('n');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      // once the big file is gone, the move lands as the agent made it
+      rmSync(join(workdir, 'out/model.bin'));
+      const head = await commitAll(workdir, 'move');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [], nested: [], kept: [] });
+      r = landed(await landBranch(home, folder, head!));
+      expect([...r.files].sort()).toEqual(['a.txt', 'out/notes.md', 'out/notes2.md']);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes2.md']);
+      expect(read(folder, 'out/notes2.md')).toBe('edited');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes.md']);
+      expect(read(folder, 'out/notes.md')).toBe('n');
+    });
+
+    it('a rename chain under an ignored path keeps every file the person had while a file there is too big', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'out/a': 'A', 'out/b': 'B', 'out/c': 'C' }, { 'a.txt': '2' });
+      renameSync(join(workdir, 'out/b'), join(workdir, 'out/c'));
+      renameSync(join(workdir, 'out/a'), join(workdir, 'out/b'));
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'chain')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
+      const r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['a', 'b', 'c']);
+      expect([read(folder, 'out/a'), read(folder, 'out/b'), read(folder, 'out/c')]).toEqual(['A', 'B', 'C']);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect([read(folder, 'a.txt'), read(folder, 'out/a'), read(folder, 'out/b'), read(folder, 'out/c')]).toEqual(['1', 'A', 'B', 'C']);
+    });
+
     it('lands a deletion beside a file too big to keep, but keeps and names one that may have moved into it', async () => {
       const { home, folder, workdir } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'notes.md': 'n', 'model.bin': 'm' });
       rmSync(join(workdir, 'notes.md'));
@@ -229,7 +267,7 @@ describe('landing', () => {
       put(workdir, 'out/model.bin', '');
       truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
       const head = await commitAll(workdir, 'big');
-      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out/model.bin'], nested: [], kept: ['model.bin'] });
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: ['model.bin'] });
       const r = landed(await landBranch(home, folder, head!));
       expect(r.files).toEqual(['notes.md']);
       expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'a.txt', 'model.bin']);

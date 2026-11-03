@@ -166,7 +166,7 @@ describe('a solo run', () => {
   });
 
   it('a solo run that also made a file too big to undo lands the rest and says what it left out', async () => {
-    const r = await soloRun({ 'out/report.txt': 'r\n' }, {
+    const r = await soloRun({ 'b.txt': 'two\n' }, {
       folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n', 'model.bin': 'old\n' }),
       during: (e, s) => {
         if (e.event.type !== 'node.started') return;
@@ -180,8 +180,8 @@ describe('a solo run', () => {
     });
     await r.ship.idle();
     const s = r.store.state(r.id)!;
-    expect(s.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
-    expect(s.notices?.map((n) => n.text)).toContain("out/model.bin was too big or too many to keep, so it wasn't put in your folder. model.bin was removed by the agent but kept in your folder, because it may have moved into something too big to keep.");
+    expect(s.ship).toMatchObject({ merged: true, landed: { files: ['b.txt'] } });
+    expect(s.notices?.map((n) => n.text)).toContain("Changes in out were too big or too many to keep, so they weren't put in your folder. model.bin was removed by the agent but kept in your folder, because it may have moved into something too big to keep.");
     expect(existsSync(join(r.folder, 'out/model.bin'))).toBe(false);
     expect(read(r.folder, 'model.bin')).toBe('old\n');
     await r.ship.undo(r.id);
