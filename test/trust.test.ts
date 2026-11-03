@@ -77,6 +77,19 @@ describe('trust', () => {
     renameSync(join(root, 'away'), folder);
     expect(trustState(home, folder)).toBe('trusted');
   });
+  it('a date older than birth keeps a no, and a yes asks again only where it moved birth', () => {
+    const { home, folder } = rig();
+    const long = new Date('2001-01-01');
+    setTrust(home, folder, false);
+    utimesSync(folder, long, long); // on macOS this moves birth back
+    expect(trustState(home, folder)).toBe('refused');
+    expect(listTrust(home)[0]?.exists).toBe(true);
+    const { home: h2, folder: f2 } = rig();
+    const born = statSync(f2).birthtimeMs;
+    setTrust(h2, f2, true);
+    utimesSync(f2, long, long);
+    expect(trustState(h2, f2)).toBe(statSync(f2).birthtimeMs === born ? 'trusted' : 'unknown');
+  });
   it('a record from before birth times can prove no yes, and keeps its no', () => {
     const { home, folder } = rig();
     const old = (trusted: boolean) => {

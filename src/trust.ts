@@ -41,8 +41,8 @@ const same = (folder: string, e: Entry) => {
   try {
     const st = statSync(folder);
     // shortcut: birth ticks every few ms, so a folder deleted and remade within one tick of its own creation passes; nobody says yes that fast, and commandRule stops mistakes, not a hostile project
-    // birth is 0 on a filesystem without one, so there dev and ino decide. A record from before birth was kept can't prove a yes, but its no still stands.
-    return st.dev === e.dev && st.ino === e.ino && (e.birth === undefined ? !e.trusted : st.birthtimeMs === e.birth);
+    // birth is 0 on a filesystem without one, so there dev and ino decide. Only a yes needs proving: a no must outlive anything that moves birth, like setting an older mtime on macOS, and a record from before birth was kept can't prove a yes.
+    return st.dev === e.dev && st.ino === e.ino && (!e.trusted || st.birthtimeMs === e.birth);
   } catch {
     return false;
   }

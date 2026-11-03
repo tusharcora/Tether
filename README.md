@@ -169,6 +169,7 @@ Limits, plainly:
 
 - Codex, OpenCode and custom CLI agents keep their own shells, outside the command rule and outside trust, including in a folder you refused. Codex is sandboxed to the folder. OpenCode and custom agents aren't.
 - The command rule matches text. It stops mistakes, not a hostile project.
+- A folder's trust rests on its device, inode and birth time. On a filesystem with no real birth time it rests on device and inode alone, so on Linux a folder recreated at the same path can keep the old answer.
 - A folder you refused runs no gates, setup or checks, and neither does a job you said Not now to, until the folder is trusted: it stops and says so, and resuming after a yes picks it up. Not now saves nothing, so a folder counts as refused only through a saved no: an earlier version's Not now, or `PUT /api/trust`. **Ask again** in Settings clears one.
 - A folder you were never asked about keeps today's gates, setup and checks for runs started outside chat, but Claude has no Bash there, so a workflow that ran `npm test` through it now says "not checked". Trust the folder in Settings to give it back.
 - Files an agent writes under ignored paths or `node_modules`, and case-only renames, don't land. If that leaves nothing, the run says no files came out.
