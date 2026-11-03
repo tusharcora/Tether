@@ -18,7 +18,7 @@ Six stages, from the design's §8:
 |---|---|---|
 | 1 | Work anywhere: hidden history, landing, Undo | **Built**, local only |
 | 2 | Agents do the work from chat, commands, trust | **Built**, local only; check it in the app |
-| 3 | Memory: About you, briefs | Not started |
+| 3 | Memory: About you, briefs | Not started; comes next, on top of hardening |
 | 4 | Agent-first shell: leads, specialists, agent chats, sidebar, first run | Not started |
 | 5 | One job at a time, queue across projects | Not started |
 | 6 | Generative UI, scraping with Crawlee | Not started |
@@ -31,6 +31,10 @@ Six stages, from the design's §8:
 - **Nothing is pushed for agent-first.** `feature/agent-first` exists only on this Mac.
 - **`main` moved.** PRs 31-33 merged at `54b3035` on `origin/main`, separately from this work. `feature/agent-first` merges onto it with one conflict, as of `efcbc2d` and after the fixes: two import lines at the top of `test/teams.test.ts`, keep both. No other file conflicts (`git merge-tree`).
 - **Tether.app** at `/Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app` is built from `abc8a93` and was running on the owner's real home. It looks mostly unchanged, because stage 1 is behind the scenes. Its visible changes need a finished run in a plain folder, and `Masters HW` has none yet.
+
+## Hardening
+
+`feature/hardening` is the bottom PR of the stack; stage 3, memory, comes next on top of it. It fixes: OpenCode and custom agents need a trusted folder; Claude's process gets no Tether secrets (cloud keys only in Bedrock, Vertex or Foundry mode); ignored-path work and case or Unicode renames land, and changes in an ignored folder land whole or not at all past 25 MB or 100,000 files, and are named; Preview asks Trust this folder?; cards stop saying "not checked" once a check ran; tests clean up their temp folders and leave the real checkout alone. Known limits: a rename outside ignored paths that grows past 25 MB holds the new file but lands the deletion (Undo restores it); Codex keeps its own shell in its folder sandbox; landing a one-file change takes about 1 minute at 50,000 files and 4 at 100,000 on macOS (predates this branch); old temp leftovers and 50 stray worktrees remain until the owner clears them.
 
 ## Next step
 
