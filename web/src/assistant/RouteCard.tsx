@@ -74,7 +74,11 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
       {label}
     </Button>
   );
-  const unchecked = card.noCommands ? <p className="m-0 mt-1 text-xs text-muted-foreground">{UNCHECKED}</p> : null;
+  const trust = usePoll<{ folders: { folder: string; trusted: boolean; exists: boolean }[] }>(card.noCommands ? '/api/trust' : null, 15_000);
+  // shortcut: no trust list (still loading or unreadable) reads as not trusted, so the card errs toward "not checked"
+  const trusted = !!run && !!trust.data?.folders.some((f) => f.trusted && f.exists && f.folder === run.repo);
+  const unrun = !!run && Object.values(run.nodes).some((n) => n.error === NOT_TRUSTED);
+  const unchecked = card.noCommands && (!trusted || unrun) ? <p className="m-0 mt-1 text-xs text-muted-foreground">{UNCHECKED}</p> : null;
   const ending = (say: ReactNode, bad?: boolean) => (
     <Card>
       <Say bad={bad}>{say}</Say>
@@ -119,7 +123,7 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
   return (
     <Card title={WORKING[chose]}>
       {line ? <p className="m-0 mt-1 truncate text-sm">{line}</p> : null}
-      {card.noCommands ? <p className="m-0 mt-1 text-xs text-muted-foreground">It can't run commands here, because this folder isn't trusted.</p> : null}
+      {card.noCommands && !trusted ? <p className="m-0 mt-1 text-xs text-muted-foreground">It can't run commands here, because this folder isn't trusted.</p> : null}
     </Card>
   );
 }

@@ -230,6 +230,19 @@ describe('the route card', () => {
     expect(screen.queryByText(line)).toBeNull();
   });
 
+  it('after a yes and a resume with a passing gate, the card no longer says it wasn\'t checked', async () => {
+    const started = () => card({ status: 'started', chose: 'solo', runId: 'r1', noCommands: true });
+    const line = 'It ran without commands, so this wasn\'t checked.';
+    const yes = { 'GET /api/trust': { folders: [{ folder: '/repo', trusted: true, exists: true }] } };
+    const a = open(started(), { ...yes, 'GET /api/runs/r1': running() });
+    await screen.findByText('Doing it myself · saved a checkpoint first');
+    expect(screen.queryByText("It can't run commands here, because this folder isn't trusted.")).toBeNull();
+    a.unmount();
+    open(started(), { ...yes, 'GET /api/runs/r1': landed() });
+    await screen.findByText('hw3.py · +12 −3');
+    expect(screen.queryByText(line)).toBeNull();
+  });
+
   it('moves through working to landed and undoes', async () => {
     let run = running();
     open(card({ status: 'started', chose: 'solo', runId: 'r1' }), { 'GET /api/runs/r1': () => run, 'POST /api/runs/r1/undo-land': () => ((run = plainRun({ undone: true } as Partial<RunView>)), run) });
