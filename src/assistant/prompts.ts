@@ -6,6 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { folderState, insideGit } from '../history.js';
 import { HttpError } from '../serverkit.js';
 import type { SavedPrompt } from './types.js';
 
@@ -23,9 +24,10 @@ const isLink = (p: string): boolean => {
   }
 };
 
-/** The prompts file: the project's, or with no project Tether's home's. */
+/** The prompts file: a git project's, or with no project Tether's home's. A plain folder's lives under home unless it already has one. */
 export function promptsFile(home: string, root?: string): string {
-  const file = root ? join(root, '.aorch', 'prompts.json') : join(home, 'prompts.json');
+  const mine = root ? join(root, '.aorch', 'prompts.json') : '';
+  const file = !root ? join(home, 'prompts.json') : insideGit(root) || existsSync(mine) || isLink(mine) ? mine : join(folderState(home, root), 'prompts.json');
   if ((root && isLink(join(root, '.aorch'))) || isLink(file)) throw new HttpError(400, 'refusing a symlinked prompts file');
   return file;
 }

@@ -7,6 +7,8 @@ import { dirname } from 'node:path';
 import { isSecretPath, looksBinary, resolveInWorkspace } from '../../code.js';
 import { searchText } from '../../codeSearch.js';
 import { git } from '../../git.js';
+import { insideGit } from '../../history.js';
+import { runStepCommand } from '../../permissions.js';
 import type { Connector, Method } from '../types.js';
 
 const MAX_READ = 64_000;
@@ -24,7 +26,8 @@ function gate(root: string, rel: unknown): { abs: string; rel: string } {
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : d);
 
-export function repoConnector(o: { workdir: string; writable: boolean; base?: string }): Connector {
+/** `commands`, on a writable step, gives repo.run; aborting it stops what is running. */
+export function repoConnector(o: { workdir: string; writable: boolean; base?: string; commands?: AbortSignal }): Connector {
   const root = o.workdir;
   const methods: Method[] = [
     {
@@ -89,8 +92,8 @@ export function repoConnector(o: { workdir: string; writable: boolean; base?: st
       summary: o.base ? 'The changes in this run so far (a unified diff against where the run started).' : 'Uncommitted changes (a unified diff against HEAD).',
       returns: 'string',
       async run() {
-        const r = await git(root, ['diff', o.base ?? 'HEAD', '--']);
-        const text = r.stdout;
+        // a plain folder under a home-folder repo: git would answer for that repo
+        const text = insideGit(root) ? (await git(root, ['diff', o.base ?? 'HEAD', '--'])).stdout : '';
         return text.length > MAX_READ ? `${text.slice(0, MAX_READ)}\n[... diff cut at ${MAX_READ} characters]` : text || '(no changes)';
       },
     },
@@ -127,5 +130,15 @@ export function repoConnector(o: { workdir: string; writable: boolean; base?: st
         throw new Error('this step is read-only: repo.write is not available');
       },
     });
-  return { name: 'repo', summary: `this run's repository: list, read, search, diff${o.writable ? ', write' : ' (read-only step)'}`, methods: async () => methods };
+  const commands = o.writable ? o.commands : undefined;
+  if (commands)
+    methods.push({
+      name: 'run',
+      summary: 'Run a shell command in the repository root, like tests or an install, and get its output. A refused command returns text saying why.',
+      params: [{ name: 'command', schema: { type: 'string' } }],
+      returns: 'string',
+      write: true,
+      run: async ([command]) => runStepCommand(root, String(command ?? ''), commands),
+    });
+  return { name: 'repo', summary: `this run's repository: list, read, search, diff${o.writable ? ', write' : ' (read-only step)'}${commands ? ', run' : ''}`, methods: async () => methods };
 }

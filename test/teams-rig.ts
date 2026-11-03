@@ -14,7 +14,7 @@ import type { Level, Person, Place, Team, TeamMessage } from '../src/teams/types
 import type { AgentAdapter, AgentRequest, AgentResult } from '../src/types.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace, updateMeta } from '../src/workspace.js';
-import { makeRepo, tmp } from './helpers.js';
+import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 export const LESSONS = '{"lessons":["The README is the only doc","Maya said use tabs"]}';
 
@@ -54,14 +54,20 @@ export class Writer implements AgentAdapter {
 
 export const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 
-export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; learn?: boolean; people?: Person[]; approvers?: Team['approvers']; autofixing?: (runId: string) => boolean; prView?: string } = {}) {
+export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; learn?: boolean; people?: Person[]; approvers?: Team['approvers']; autofixing?: (runId: string) => boolean; prView?: string; plain?: boolean } = {}) {
   const home = tmp('home-');
-  const repo = makeRepo();
+  const repo = o.plain ? plainFolder({ 'a.txt': 'one\n' }) : makeRepo();
   const bare = tmp('bare-');
   g(bare, 'init', '-q', '--bare');
-  g(repo, 'remote', 'add', 'origin', bare);
-  initWorkspace(home, repo, { id: 'app', name: 'App' });
-  updateMeta(repo, { test: 'test -f fix.txt' });
+  if (!o.plain) g(repo, 'remote', 'add', 'origin', bare);
+  // a plain folder gets nothing written into it
+  initWorkspace(home, repo, { id: 'app', name: 'App', ...(o.plain ? { write: false } : {}) });
+  if (!o.plain) {
+    updateMeta(repo, { test: 'test -f fix.txt' });
+    // committed, so the repo is clean and a run ships as its own branch
+    g(repo, 'add', '-A');
+    g(repo, 'commit', '-q', '-m', 'workspace');
+  }
   const talk = new Talk();
   const writer = new Writer();
   for (const b of ['coder', 'tester']) link(home, b, { agent: 'writer' });
@@ -115,6 +121,6 @@ export function rig(o: { place?: Place; level?: Level; limits?: Team['limits']; 
   };
   /** The team as stored now (people and approvers change). */
   const now = (): Team => loadTeams(home).teams.find((t) => t.id === team.id)!;
-  return { home, repo, bare, talk, writer, store, engine, goals, teams, team, calls, idle, msgs, tasks, until, post, card, runTask, now, registry };
+  return { exec, home, repo, bare, talk, writer, store, engine, goals, teams, team, calls, idle, msgs, tasks, until, post, card, runTask, now, registry };
 }
 

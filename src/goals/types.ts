@@ -103,6 +103,8 @@ export interface Goal {
   type?: GoalType;
   /** One or two sentences, at most 500 characters. */
   description?: string;
+  /** The chat a route card made it from, recent text, capped there. Untrusted: its runs get it as their context, never in `task`. */
+  context?: string;
   /** Who is responsible; they do not change how runs start (the Owner, `team`/`agent`, does). */
   assignees?: Assignee[];
   /** When the goal became met or stopped. */
@@ -154,5 +156,7 @@ export interface GoalView extends Goal {
   stage: Stage;
   criteria: Criterion[];
   needs?: string;
+  /** One of its runs is in a plain folder: no PR, no merge. */
+  plain?: true;
 }
 export type TicketView = GoalView;

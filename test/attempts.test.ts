@@ -37,6 +37,18 @@ async function rig(o: { delayMs?: number; refusal?: string } = {}) {
 }
 
 describe('try more ways', () => {
+  it('a sibling of a run that began from uncommitted work carries its snapshot', async () => {
+    const s = setup();
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'wip.txt'), 'token\n');
+    const id = await s.engine.start({ pipeline: flow(), task: 'Faster search', repo });
+    await s.engine.wait(id);
+    const attempts = new Attempts({ home: s.home, store: s.store, engine: s.engine, registry: s.registry, ship: { decide: vi.fn(async () => {}) } });
+    const [sibling] = await attempts.start(id, { count: 1, agents: [{ agent: 'mock' }] });
+    await s.engine.wait(sibling!);
+    expect(s.store.state(sibling!)!.dirty).toBe(s.store.state(id)!.baseSha);
+  });
+
   it('starts siblings from the original’s base on other agents, the original A and the siblings B, C', async () => {
     const r = await rig();
     const ids = await r.attempts.start(r.id, { count: 2, agents: [{ agent: 'other', model: 'm1' }, { agent: 'mock' }] });
@@ -111,7 +123,7 @@ describe('try more ways', () => {
     const set = r.store.state(r.id)!.attemptSet!;
     // B is still going (or waiting on you): either way it is stopped
     await r.attempts.pick(set, r.id);
-    expect(r.ship.decide).toHaveBeenCalledWith(r.id, false);
+    expect(r.ship.decide).toHaveBeenCalledWith(r.id, false, true);
     await r.engine.wait(b!);
     expect(r.store.state(b!)!.status).toBe('stopped');
     expect(r.store.state(r.id)!.attemptPicked).toMatchObject({ run: r.id });

@@ -25,7 +25,7 @@ export interface PromptInput {
   /** The artifacts this chat made, each at its latest version, and the newest one's content (cut to ARTIFACT_PROMPT_MAX). */
   artifacts?: ArtifactRef[];
   artifact?: { ref: ArtifactRef; content: string };
-  /** Asks become goals: the instruction and what a goal card may name (goalDraft.ts). */
+  /** Asks get a route card: the instruction and what a card may name (goalDraft.ts). Without it, a turn can't offer routes. */
   goals?: string;
 }
 
@@ -74,7 +74,7 @@ export function buildPrompt(i: PromptInput): string {
   const { hist, summary, needs, files, artifacts } = pieces(i);
   const page = `The person is on the ${i.context?.page ?? 'home'} page${sel ? `, looking at ${SEL[sel.kind]} "${sel.id}"${sel.line ? ` line ${sel.line}` : ''}` : ''}.
 ${needs ? `Needs the person right now:\n${needs}\n` : 'Nothing needs the person right now.\n'}`;
-  return `${i.who ?? 'You are Tether, the assistant inside the Tether dashboard. You help the person understand their project and its runs.'} Answer in plain, short prose (a few sentences; a short list when it helps). You are read-only: you never change files and you never start a run yourself.
+  return `${i.who ?? 'You are Tether, the assistant inside the Tether dashboard. You help the person understand their project and its runs.'} Answer in plain, short prose (a few sentences; a short list when it helps). You don't change files in this reply.${i.goals ? " When the person asks you to do something, say in a sentence what you'd do, and offer the routes in a `route` block. Do it yourself is the default for one job in one place." : ''} Git isn't needed: work runs in any folder. Never tell the person to use another tool, or to set up git, for work Tether can do. If something truly can't be done, say what would make it possible inside Tether.
 
 Tools: you have run_code (Code Mode) with typed connectors. Use it to read the project (repo.*), look at runs and notes (tether.*), and GitHub (github.*). Prefer ONE script that gathers what you need. Outside-world calls that change something need the person's approval: when run_code reports it needs approval, say so briefly; an approval card appears in this chat.
 
@@ -95,12 +95,16 @@ kind "html" is one complete, self-contained HTML document (inline CSS and JS; it
 When you finish, you MAY end your answer with ONE fenced block, language "tether", holding JSON (omit what does not apply):
 \`\`\`tether
 {"sources":[{"file":"src/a.ts","line":12,"label":"short name"},{"run":"<run id>"},{"note":"<vault path.md>"}],
- "proposals":[{"kind":"workflow","workflow":"<saved workflow name>","task":"what to do","why":"one line"},{"kind":"team","task":"what to do","mode":"live","why":"one line"}],
- "questions":[{"title":"question","options":[{"label":"A","desc":"detail"}],"multi":false}],
+${
+   i.goals
+     ? ''
+     : ` "proposals":[{"kind":"workflow","workflow":"<saved workflow name>","task":"what to do","why":"one line"},{"kind":"team","task":"what to do","mode":"live","why":"one line"}],
+`
+ } "questions":[{"title":"question","options":[{"label":"A","desc":"detail"}],"multi":false}],
  "compare":{"title":"…","columns":["A","B"],"rows":[{"label":"Cost","cells":["$1","$2"]}]},
  "choice":{"traits":["Tests"],"options":[{"name":"A","headline":"…","traits":["pass",false]}],"pick":"A","reason":"…"},"spec":{"title":"…","rows":[{"label":"Node","value":"22"}]},
  "report":{"title":"…","sections":[{"heading":"…","summary":"…","cites":[1]}]},"timeline":[{"time":"10:42","title":"…","when":"past|now|future"}],
  "diagram":{"title":"…","nodes":[{"id":"a","label":"…"}],"edges":[{"from":"a","to":"b","label":"…"}]}}
 \`\`\`
-${i.goals ?? ''}"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. "proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. "questions": only when you cannot go on without an answer. "choice", "spec", "report", "timeline" and "diagram" are cards: add one only when it shows the answer better than prose. Do not mention this block in your prose.`;
+${i.goals ?? ''}"sources" are what you actually read: cite them in the text as [1], [2] in that order. Only real files, runs and notes count. ${i.goals ? '' : '"proposals" are runs you suggest: they start only if the person clicks Start, so propose when the person asks for work to be done; never claim a run has started. '}"questions": only when you cannot go on without an answer. "choice", "spec", "report", "timeline" and "diagram" are cards: add one only when it shows the answer better than prose. Do not mention this block in your prose.`;
 }

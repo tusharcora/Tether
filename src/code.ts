@@ -5,8 +5,12 @@
 import { accessSync, chmodSync, closeSync, constants, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { git } from './git.js';
+import { insideGit } from './history.js';
+import { isSecretPath } from './permissions.js';
 import { HttpError } from './serverkit.js';
 import type { CodeFile, CodeLang, GitBadge, TreeEntry } from './types.js';
+
+export { isSecretPath };
 
 /** Text files up to this size open in the editor; bigger ones get a panel instead. */
 export const MAX_TEXT = 2 * 1024 * 1024;
@@ -45,10 +49,6 @@ export function resolveInWorkspace(root: string, rel: string): { abs: string; re
   return { abs, rel: clean };
 }
 
-const SECRET = [/^\.env(\..*)?$/, /\.pem$/i, /\.key$/i, /^id_/];
-/** Secrets files open read-only, are left out of search and never go into an agent's prompt. */
-export const isSecretPath = (rel: string): boolean => SECRET.some((re) => re.test(rel.split('/').pop() ?? ''));
-
 const LANG: Record<string, CodeLang> = {
   '.ts': 'typescript', '.mts': 'typescript', '.cts': 'typescript', '.tsx': 'tsx',
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'jsx',
@@ -59,6 +59,7 @@ export const langOf = (rel: string): CodeLang => LANG[extname(rel).toLowerCase()
 
 /** Whether the folder is in a git work tree, and where it sits under the repo's top ('' or 'sub/dir/'). */
 export async function gitInfo(root: string): Promise<{ git: boolean; prefix: string }> {
+  if (!insideGit(root)) return { git: false, prefix: '' };
   const r = await git(root, ['rev-parse', '--show-prefix']).catch(() => undefined);
   return r?.code === 0 ? { git: true, prefix: r.stdout.trim() } : { git: false, prefix: '' };
 }

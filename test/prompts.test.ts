@@ -2,14 +2,25 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt, variablesOf } from '../src/assistant/prompts.js';
-import { tmp } from './helpers.js';
+import { folderState } from '../src/history.js';
+import { makeRepo, tmp } from './helpers.js';
 
 describe('saved prompts', () => {
   it('live in the project at .aorch/prompts.json, or in Tether’s home with no project', () => {
     const home = tmp('home-');
-    const root = tmp('proj-');
+    const root = makeRepo();
     expect(promptsFile(home, root)).toBe(join(root, '.aorch', 'prompts.json'));
     expect(promptsFile(home)).toBe(join(home, 'prompts.json'));
+  });
+
+  it('keeps a plain folder’s under home, and uses the one it already has', () => {
+    const home = tmp('home-');
+    const folder = tmp('proj-');
+    expect(promptsFile(home, folder)).toBe(join(folderState(home, folder), 'prompts.json'));
+    const had = tmp('proj-');
+    mkdirSync(join(had, '.aorch'));
+    writeFileSync(join(had, '.aorch', 'prompts.json'), '{}');
+    expect(promptsFile(home, had)).toBe(join(had, '.aorch', 'prompts.json'));
   });
 
   it('creates, lists, edits and deletes, reading {{variables}} from the body on every save', () => {

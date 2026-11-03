@@ -345,29 +345,40 @@ describe('POST /api/assistant', () => {
 
 describe('asks become goals', () => {
   const card = (team: string, o: Record<string, unknown> = {}) =>
-    `It's a bug fix, so I made it a goal.\n\`\`\`tether\n${JSON.stringify({ proposals: [{ kind: 'goal', task: 'Fix the sign-in redirect', draft: { title: 'Sign-in returns people to where they were', type: 'bugfix', team, agents: [{ id: 'coder', role: 'fixes it', why: 'code' }, { id: 'ghost', role: 'x' }], workflow: 'nope', limits: { budgetUsd: 5000 }, ...o } }] })}\n\`\`\``;
+    `It's a bug fix.\n\`\`\`tether\n${JSON.stringify({ route: { task: 'Fix the sign-in redirect', recommend: 'ticket', rows: [{ kind: 'ticket', why: 'track it' }], draft: { title: 'Sign-in returns people to where they were', type: 'bugfix', team, agents: [{ id: 'coder', role: 'fixes it', why: 'code' }, { id: 'ghost', role: 'x' }], workflow: 'nope', limits: { budgetUsd: 5000 }, ...o } } })}\n\`\`\``;
+  /** A goal card as an old chat holds it: the replies that made these are gone, the cards still decide. */
+  const oldCard = async (t: Awaited<ReturnType<typeof boot>>, reply: string) => {
+    t.agent.reply = reply;
+    const { done, chat } = await t.turn({ message: 'fix it' });
+    const route = done!.message.route!;
+    const made = await t.call('POST', `/api/assistant/routes/${route.id}`, { ws: 'api', chat, choice: 'ticket' });
+    const c = readChat(t.home, 'api', chat!)!;
+    const prop = { id: 'p1', kind: 'goal' as const, task: route.task, draft: route.draft, goalId: made.json.route.goalId as string, status: 'proposed' as const };
+    saveChatFile(t.home, 'api', { ...c, messages: c.messages.map((m) => (m.id === done!.message.id ? { ...m, proposals: [prop] } : m)) });
+    return { prop, chat };
+  };
 
-  it('an ask comes back as one goal card whose paused goal exists at once, with only real ids attached', async () => {
+  it('an ask comes back as a route whose ticket, once clicked, is paused, with only real ids attached', async () => {
     const t = await boot();
     const team = (await t.call('POST', '/api/teams', { name: 'web', place: 'tether', project: 'api', agents: ['coder', 'reviewer'] })).json.team?.id ?? (await t.call('GET', '/api/teams')).json.teams[0].id;
     t.agent.reply = card(team);
     const { done, chat } = await t.turn({ message: 'After sign-in people land on /home. Fix it.' });
-    expect(t.agent.prompts[0]).toContain('Asks become tickets');
+    expect(t.agent.prompts[0]).toContain('Routes: when the person asks you');
     expect(t.agent.prompts[0]).toContain(team);
-    const prop = done!.message.proposals![0]!;
-    expect(prop).toMatchObject({ kind: 'goal', status: 'proposed', task: 'Fix the sign-in redirect', draft: { team, agents: [{ id: 'coder', role: 'fixes it' }], workflow: 'team', limits: { budgetUsd: 1000 } } });
+    const route = done!.message.route!;
+    expect(route).toMatchObject({ status: 'proposed', task: 'Fix the sign-in redirect', draft: { team, agents: [{ id: 'coder', role: 'fixes it' }], workflow: 'team', limits: { budgetUsd: 1000 } } });
+    expect((await t.call('GET', '/api/goals?ws=api')).json).toHaveLength(0);
+    const made = await t.call('POST', `/api/assistant/routes/${route.id}`, { ws: 'api', chat, choice: 'ticket' });
     const goals = (await t.call('GET', '/api/goals?ws=api')).json;
     expect(goals).toHaveLength(1);
-    expect(goals[0]).toMatchObject({ id: prop.goalId, status: 'paused', title: 'Sign-in returns people to where they were', type: 'bugfix', team, agent: 'coder', budgetUsd: 1000, origin: { kind: 'chat', chat, message: done!.message.id } });
+    expect(goals[0]).toMatchObject({ id: made.json.route.goalId, status: 'paused', title: 'Sign-in returns people to where they were', type: 'bugfix', team, agent: 'coder', budgetUsd: 1000, origin: { kind: 'chat', chat, message: done!.message.id } });
     expect(goals[0].assignees).toEqual([{ kind: 'team', id: team }, { kind: 'agent', id: 'coder' }]);
     expect(t.store.list()).toHaveLength(0);
   });
 
   it('Start sends the card’s edits (checked strictly) and starts the goal once; its run follows', async () => {
     const t = await boot();
-    t.agent.reply = card('', { limits: {} });
-    const { done, chat } = await t.turn({ message: 'add a limit test' });
-    const prop = done!.message.proposals![0]!;
+    const { prop, chat } = await oldCard(t, card('', { limits: {} }));
     const start = (draft?: unknown) => t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'start', ...(draft ? { draft } : {}) });
     expect((await start({ ...prop.draft, agents: [{ id: 'nobody', role: 'x' }] })).status).toBe(400);
     expect((await start({ ...prop.draft, limits: { maxRuns: 99 } })).status).toBe(400);
@@ -385,26 +396,22 @@ describe('asks become goals', () => {
 
   it('"Just answer, no goal" deletes the paused goal and starts nothing', async () => {
     const t = await boot();
-    t.agent.reply = card('');
-    const { done, chat } = await t.turn({ message: 'fix it' });
-    const prop = done!.message.proposals![0]!;
+    const { prop, chat } = await oldCard(t, card(''));
     const r = await t.call('POST', `/api/assistant/proposals/${prop.id}`, { ws: 'api', chat, decision: 'dismiss' });
     expect(r.json.proposal.status).toBe('dismissed');
     expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
     expect(t.store.list()).toHaveLength(0);
   });
 
-  it('the composer’s switch turns it off: no instruction, and a goal block is dropped', async () => {
+  it('the composer’s switch still saves, and no longer turns the instruction off', async () => {
     const t = await boot();
     expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(true);
     expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: 'no' })).status).toBe(400);
     expect((await t.call('PUT', '/api/assistant/settings', { asksToGoals: false })).json).toEqual({ asksToGoals: false });
     expect((await t.call('GET', '/api/assistant?ws=api')).json.asksToGoals).toBe(false);
-    t.agent.reply = card('');
-    const { done } = await t.turn({ message: 'fix it' });
-    expect(t.agent.prompts[0]).not.toContain('Asks become tickets');
-    expect(done!.message.proposals).toBeUndefined();
-    expect((await t.call('GET', '/api/goals')).json).toHaveLength(0);
+    t.agent.reply = 'Sure.';
+    await t.turn({ message: 'fix it' });
+    expect(t.agent.prompts[0]).toContain('Routes: when the person asks you');
   });
 });
 

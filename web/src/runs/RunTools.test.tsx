@@ -171,6 +171,32 @@ describe('try more ways', () => {
     expect(onGo).toHaveBeenCalledWith({ tab: 'runs', id: 'r1' });
   });
 
+  it('a plain folder Compare and Try more ways say folder: no branch, PR, merge or commit', async () => {
+    const plainSet = { ...SET, runs: SET.runs.map((r) => ({ ...r, plain: true as const })) };
+    routeApi({ 'GET /api/attempts/aset1': plainSet, 'POST /api/attempts/aset1/pick': plainSet });
+    const { container } = renderApp(<Compare set="aset1" onGo={vi.fn()} />);
+    const b = await screen.findByRole('region', { name: 'Attempt B' });
+    expect(container.textContent).toContain('the others are kept for a week');
+    expect(container.textContent).not.toMatch(/merge|branch|\bPR\b|commit/i);
+    expect(within(b).getByRole('button', { name: 'Pick B and put it in the folder' })).toBeTruthy();
+  });
+
+  it('a real repo Compare keeps its branch and ship wording', async () => {
+    routeApi({ 'GET /api/attempts/aset1': SET });
+    const { container } = renderApp(<Compare set="aset1" onGo={vi.fn()} />);
+    await screen.findByRole('region', { name: 'Attempt B' });
+    expect(container.textContent).toContain('each on its own branch. Pick the one to ship');
+  });
+
+  it('the Try more ways picker says folder for a plain run', async () => {
+    routeApi({ ...base, 'GET /api/runs/r1/attempts?count=4': { picks: [null, null, null, null], choices: [], original: { agent: 'claude' } } });
+    page({ ...doneRun(), history: '/x' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Try 2 more ways' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Try more ways' });
+    expect(dialog.textContent).toContain('put in the folder');
+    expect(dialog.textContent).not.toMatch(/merge|branch|\bPR\b|commit/i);
+  });
+
   it('the Runs list shows a set as one "best of N" row that opens Compare', async () => {
     const t = Date.now();
     const rows = [makeRow({ id: 'r1', status: 'done', live: false, attemptSet: 'aset1', attemptLabel: 'A', startedAt: t - 9000 }), makeRow({ id: 'r2', status: 'done', live: false, attemptSet: 'aset1', attemptLabel: 'B', startedAt: t - 5000 }), makeRow({ id: 'r9', task: 'Other', status: 'done', live: false })];

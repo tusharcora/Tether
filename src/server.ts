@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { listPipelines, pipelinesDir, readPipeline, writePipeline, type Config } from './config.js';
@@ -33,6 +33,7 @@ import type { SecretStore } from './accounts/secretStore.js';
 import { LocalVoice } from './stt/voice.js';
 import { checkWorkflow, classifyFailure, dryRunVerdict, ensureIds, ensureWebhookSecret, findRule, issueRefusal, lastDelivery, matchIssueRule, parsePrTarget, refusal, readDeliveries, recordDelivery, triggerStatus, upsertRule, webhookSetupInfo } from './triggers.js';
 import { aorchHomeMessage, getWorkspace, initWorkspace, isAorchHome, listWorkspaces, removeWorkspace, type Workspace } from './workspace.js';
+import { clearTrust, listTrust, setTrust, trustState } from './trust.js';
 import { checkPins, loadPins, savePins } from './pins.js';
 import { rgVersion } from './tools.js';
 import { BundleError, applyBundle, bundleFileName, exportWorkspace, parseBundle, planBundleImport, type Bundle } from './wsexport.js';
@@ -286,7 +287,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   /** `gh` for PR triggers, with the connected account applied (GH_TOKEN for a device-flow sign-in). */
   const exec = o.exec ?? ghExec(cfg.home);
   const teams: Teams = new Teams({ home: cfg.home, store, engine, registry, goals, vault, exec, autofixing: (id) => autofix.pending(id) });
-  const runShip = new RunShip({ store, engine, exec, teamOwns: (id) => teams.owns(id) });
+  const runShip = new RunShip({ store, engine, exec, home: cfg.home, teamOwns: (id) => teams.owns(id) });
   /** A ticket's last run: what Merge PR and Send back act on. */
   const ticketRun = (g: Goal) => {
     const r = goals.db.items(g.id).filter((i) => i.runId && store.state(i.runId)).at(-1)?.runId;
@@ -303,7 +304,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       if (teams.owns(r)) return teams.shipRun(r, OWNER);
       const s = store.state(r)!;
       if (s.ship?.url && !s.ship.merged) return runShip.mergeOpen(r);
-      await runShip.decide(r, true);
+      await runShip.decide(r, true, true);
     },
     sendBack: async (g, reason) => {
       const r = ticketRun(g);
@@ -503,11 +504,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
     if (p === '/api/runs' && m === 'POST') refreshCrew(cfg.home);
 
     if (p === '/api/health' && m === 'GET') {
-      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home) }), true;
+      return send(res, 200, { ok: true, adapters: registry.ids(), vault: vault.root, home: cfg.home, spendingCaps: capsOn(cfg.home), autoFix: autoFixOn(cfg.home), autoFixRounds: autoFixRounds(cfg.home), soloWithoutAsking: loadPrefs(cfg.home).soloWithoutAsking === true }), true;
     }
     if (p === '/api/prefs' && m === 'PUT') {
       const b = await readJson(req);
-      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number } = {};
+      const patch: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number; soloWithoutAsking?: boolean } = {};
       if (b.spendingCaps !== undefined) {
         if (typeof b.spendingCaps !== 'boolean') throw new HttpError(400, '"spendingCaps" must be true or false');
         patch.spendingCaps = b.spendingCaps;
@@ -520,7 +521,11 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
         if (!Number.isInteger(b.autoFixRounds) || b.autoFixRounds < 1 || b.autoFixRounds > 6) throw new HttpError(400, '"autoFixRounds" must be a whole number from 1 to 6');
         patch.autoFixRounds = b.autoFixRounds;
       }
-      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix" or "autoFixRounds"');
+      if (b.soloWithoutAsking !== undefined) {
+        if (typeof b.soloWithoutAsking !== 'boolean') throw new HttpError(400, '"soloWithoutAsking" must be true or false');
+        patch.soloWithoutAsking = b.soloWithoutAsking;
+      }
+      if (!Object.keys(patch).length) throw new HttpError(400, 'nothing to set: "spendingCaps", "autoFix", "autoFixRounds" or "soloWithoutAsking"');
       savePrefs(cfg.home, patch);
       return send(res, 200, patch), true;
     }
@@ -538,6 +543,23 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       const pins = checkPins(await readJson(req));
       savePins(cfg.home, pins);
       return send(res, 200, { pins }), true;
+    }
+
+    // `unanswered`: the projects Settings can offer to trust
+    const trustView = () => ({ folders: listTrust(cfg.home), unanswered: listWorkspaces(cfg.home).filter((w) => w.exists && !isAorchHome(w.path, cfg.home) && trustState(cfg.home, w.path) === 'unknown').map((w) => ({ folder: realpathSync(w.path), name: w.name })) });
+    if (p === '/api/trust' && m === 'GET') return send(res, 200, trustView()), true;
+    if (p === '/api/trust' && (m === 'PUT' || m === 'DELETE')) {
+      const b = reqObject(await readJson(req));
+      if (typeof b.folder !== 'string' || !isAbsolute(b.folder)) throw new HttpError(400, 'folder must be an absolute path');
+      if (m === 'DELETE') return clearTrust(cfg.home, b.folder), send(res, 200, trustView()), true;
+      if (typeof b.trusted !== 'boolean') throw new HttpError(400, 'trusted must be true or false');
+      let dir = false;
+      try {
+        dir = statSync(b.folder).isDirectory();
+      } catch {}
+      if (!dir) throw new HttpError(400, 'that folder does not exist');
+      setTrust(cfg.home, b.folder, b.trusted);
+      return send(res, 200, trustView()), true;
     }
 
     // ---- crew: bot <-> agent/model links (read live by the engine at every run start) ----
@@ -1134,9 +1156,14 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
       return send(res, 200, runView(id)), true;
     }
     // the run page's decision banner: Merge to main / Open PR instead, and Send back with comments
-    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback)$/)) && m === 'POST') {
+    if ((g = p.match(/^\/api\/runs\/([^/]+)\/(ship|sendback|undo-land)$/)) && m === 'POST') {
       const id = idParam(g[1]!);
       if (!store.state(id)) throw new HttpError(404, `unknown run ${id}`);
+      if (g[2] === 'undo-land') {
+        if (!teams.mayApproveRun(id, OWNER.id)) throw new HttpError(403, 'Only the team’s chosen approvers can decide this run');
+        await runShip.undo(id);
+        return send(res, 200, runView(id)), true;
+      }
       const b = reqObject(await readJson(req));
       if (g[2] === 'ship') {
         if (typeof b.merge !== 'boolean') throw new HttpError(400, '"merge" must be true or false');

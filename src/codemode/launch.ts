@@ -46,6 +46,17 @@ function loaderFlags(execArgv: string[], cliPath: string): string[] {
   return out;
 }
 
+const sh = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+
+/**
+ * The shell line Claude Code runs before each Bash call: commandHook, next to the CLI entry, on this same runtime. It ends
+ * in `|| exit 2` because any other failure, like a missing file, is non-blocking to Claude Code, and the command would run.
+ */
+export function commandHookLine(ctx: LaunchContext = launchContext()): string {
+  const hook = join(dirname(ctx.cliPath), `commandHook${extname(ctx.cliPath)}`);
+  return `${ctx.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}${[ctx.execPath, ...loaderFlags(ctx.execArgv, ctx.cliPath), hook].map(sh).join(' ')} || exit 2`;
+}
+
 export function codeModeMcpCommand(sessionFile: string, ctx: LaunchContext = launchContext()): McpCommand {
   return {
     command: ctx.execPath,

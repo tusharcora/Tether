@@ -43,7 +43,27 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
 
 ## Next steps (in order)
 
-0. **Squads and Tickets** (branch `feature/squads-tickets`; it has #30 Teams on Telegram, #31 optional run budgets and #32 runs fix themselves merged in; spec `docs/superpowers/specs/2026-10-30-squads-tickets-design.md`, plan `docs/superpowers/plans/2026-10-30-squads-tickets.md`, boards `docs/design/squads-tickets/`): built and checked in tests only (no real model, no network). Squads replace Teams and team runs, Tickets replace Goals; the old screens are gone from the sidebar and `#/goals…`, `#/teams…` links redirect; `/api/goals…` and `/api/teams…` answer as aliases for one release. Open its PR once #30, #31 and #32 are in `main` (retarget it then). Check in the app, on a copy of your home first if you want a way back (the first start moves `<home>/teams/` to `<home>/squads/` and numbers every goal as a ticket):
+0. **Agents do the work** (stage 2 of the agent-first design, branch `feature/agent-first`; plan `docs/superpowers/plans/2026-11-02-agents-do-the-work.md`): built; checked in tests only, with a mock agent (`test/agent-flow.test.ts` drives chat, the route card, Trust this folder?, a run in a plain folder, landing and Undo). No push, no PR. The packaged app's command hook was run by hand against the packaged binary: `npm test` exits 0, `cd /etc` and a missing hook file exit 2. Check in the app, on a copy of your home first (see `docs/superpowers/handoffs/2026-11-02-agent-first.md`), and a copy of `Masters HW`:
+   - Ask in chat to fix `hw3.py`: a route card with Do it myself recommended and "about" costs. Click it: Trust this folder? appears once. Say yes: the run lands `hw3.py`, the card says so, Undo restores it. `ls -a` shows no `.git`, `.aorch` or `.tether`.
+   - Say Not now instead: the run goes ahead without commands, says "not checked" and keeps saying so when it ends, nothing is saved, and the next click asks again. Settings → Trusted folders lists the folder as not asked yet; Trust shows the same words first. Settings can withdraw trust too.
+   - A real repo ends on Merge or Open PR, not on a landing. Clicking the card twice, or in two tabs, starts one run.
+   - Three checks on a real model, in this order. These spend tokens, and the hook, the deny list and the scrub are unproved on a real model until they're done:
+     1. One trusted run asking Claude to `git push`: the hook refuses it, the run says so, and nothing reaches a remote.
+     2. One untrusted run (Not now) asking it to `npm test`: it doesn't run, and the card says it wasn't checked.
+     3. Confirm the env scrub: start Tether from a shell with `AWS_SECRET_ACCESS_KEY=x` set, a dummy cloud credential. In a trusted run ask Claude to run `echo "[$AWS_SECRET_ACCESS_KEY]"`, which should print `[]`, and `printenv`, which is refused. Don't use an Anthropic key here: Claude Code may authenticate with `ANTHROPIC_API_KEY`. Claude's scrub covers Anthropic and cloud credentials only, so another exported name, such as a GitHub token, still reaches its commands. Other models' commands go through Tether's own scrub.
+   - Four deliberate differences from the design, all approved: Do it myself works on a hidden copy and lands at the end, not live; a real repo stays in a worktree and ends on the usual choice; always-ask commands are refused for now, with no approve button during a run; each job starts fresh instead of continuing the chat's session.
+   - Limits: Codex, OpenCode and custom CLI agents keep their own shells, outside the command rule and trust, including in a refused folder (Codex is sandboxed to the folder; OpenCode and custom agents aren't). The command rule matches text, so it stops mistakes, not a hostile project. A folder you refused, or a run you said Not now to, runs no gates, setup or checks; a folder never asked keeps today's gates, setup and checks for runs started outside chat. A Claude step in a never-asked folder has no Bash until the folder is trusted in Settings, so a real repo's workflow that ran `npm test` through it says "not checked". A squad ticket that turns met while its last run was `stopped` now refuses to land. Files written under ignored paths or `node_modules`, and case-only renames, don't land, and the run says no files came out. Terminal and Preview still run on a click in a refused folder. The hook needs a recent Claude Code (`onFailure` was added in 2.1.295).
+1. **Work anywhere** (branch `feature/agent-first`, stage 1 of `docs/superpowers/specs/2026-11-01-agent-first-design.md`; no PR yet): workflows, squads and tickets work in a plain folder, git or not. Checked in tests only (`test/plain-flow.test.ts` drives a ticket on `Masters HW` through run, Put it in the folder, Undo and again). Check in the app on a copy of your home first (copy it without `accounts.json`, `mcp.json` and `squads/telegram.json`, and register a copy of `Masters HW` in place of the real folder):
+   - Run HW3's ticket: it runs, Put it in the folder lands `hw3.py`, Undo restores it, the ticket goes Done then back to In review.
+   - `ls -a` on the folder shows no `.git`, `.aorch` or `.tether` at any point.
+   - No branch, merge, PR, commit or repository words anywhere for that folder (step pane, tickets, Compare, Try more ways, chat).
+   - Edit a file during a run, then Put it in the folder: it stops and names the file. Edit a landed file, then Undo: it stops, names it, changes nothing.
+   - Register your home folder or a folder with over 100,000 files: refused in plain words.
+   - Deferred: `.aorch/http` and `workspace init` still write into a plain folder until stage 4; the hidden history is never pruned.
+   - Follow-up: move the commit of a real repo's uncommitted work out of the repo and into the hidden history. Today it sits in the repo's own objects, on the run's local `aorch/<run>` branch: shipping leaves it out, but a person's `git push --all` or `--mirror` would publish it. The README says so.
+   - Known limits, no code yet; Undo of that landing restores the file in both: (1) a sibling fork of an unlanded parent, after another sibling landed, can overwrite a person's revert. (2) A run started from a landed run's branch with no fork origin (squad follow-ups, goal runs) can too: only a fork of a landed run lands from its fork point, and these measure from the snapshot their work grew from.
+   - Stages 2 to 6 follow `docs/superpowers/specs/2026-11-01-agent-first-design.md` §8.
+2. **Squads and Tickets** (branch `feature/squads-tickets`; it has #30 Teams on Telegram, #31 optional run budgets and #32 runs fix themselves merged in; spec `docs/superpowers/specs/2026-10-30-squads-tickets-design.md`, plan `docs/superpowers/plans/2026-10-30-squads-tickets.md`, boards `docs/design/squads-tickets/`): built and checked in tests only (no real model, no network). Squads replace Teams and team runs, Tickets replace Goals; the old screens are gone from the sidebar and `#/goals…`, `#/teams…` links redirect; `/api/goals…` and `/api/teams…` answer as aliases for one release. Open its PR once #30, #31 and #32 are in `main` (retarget it then). Check in the app, on a copy of your home first if you want a way back (the first start moves `<home>/teams/` to `<home>/squads/` and numbers every goal as a ticket):
    - **Migration**: your teams show under **Squads** with their messages; your goals show on **Tickets** (G K) with keys like `ORCH-1` in creation order and the status map (paused not started → Todo, paused → Backlog, active → In progress, needs you → In review, met → Done, stopped → Canceled). A Telegram squad still answers in its group.
    - **A squad ask**: in a Tether squad, `@Bolt fix …`. Bolt says "On it."; a ticket appears In progress with Bolt as assignee and the squad's reviewer (Lens) as reviewer; Right now shows Bolt's card with a live line and timer; Lens's card filters the channel.
    - **The voice**: when the work is done Bolt writes one or two sentences and asks @Lens; **What I did** opens files, +/−, the test command and its result, **Full report** shows the raw output. Lens's review lands in the channel; a failed review sends Bolt back in Lens's thread (open it from "2 replies · …") and the old ship card says it was replaced.
@@ -55,20 +75,20 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - **Telegram**: a squad message in the group is the sentence plus one *What I did* line; ship cards have Ship it / Not yet / Diff.
    - **With a free model** (OpenRouter or NVIDIA bound to an agent of the squad): the done messages read in the agent's words; without one they are templates ("Done, 3 files changed, tests pass. @Lens mind reviewing it?").
    The plan's "My calls" list what to confirm: tickets on the goals table (`stage` is the status), one auto-checked criterion, keys and the prefix rule, internal names kept as `team`, the status writer's model only for reports, the review as the default ticket reviewer, the queue and when an agent counts as busy, Ship it merging, Undo until merged, threads, the board's columns, no "Read" row in What I did, This week's week starting Monday and its Todo → Done measured from creation.
-0. **Runs fix themselves** (branch `feature/runs-fix-themselves`, stacked on `feature/optional-run-budgets` / PR #31; spec `docs/superpowers/specs/2026-10-30-runs-fix-themselves-design.md`): built and checked in tests only. Merge PR #31 first, then open this one against `main` (retarget it once #31 merges). Then check in the app:
+3. **Runs fix themselves** (branch `feature/runs-fix-themselves`, stacked on `feature/optional-run-budgets` / PR #31; spec `docs/superpowers/specs/2026-10-30-runs-fix-themselves-design.md`): built and checked in tests only. Merge PR #31 first, then open this one against `main` (retarget it once #31 merges). Then check in the app:
    - A team run that changes a file: the writes card recommends yes, the plan has a write step, and the drafter edits the file.
    - A run that fails: the header says "Auto-fixing · round 1 of 3", story rows per round, the run under Live; after 3 rounds Needs you says "Auto-fix gave up after 3 rounds: …" with Retry / Open. Settings → Runs: Auto-fix failed runs and its rounds; Stop auto-fix between rounds.
    - A read-only team run whose task changes files: "Check the plan" in Needs you and the plan review, and Allow edits plans again with writes on.
    - Notices under a run's header for a refused hand-off, an ignored redo, long text passed on as a file.
    The spec's "My calls" list what to confirm (writes default, the 16,000 limit, the diagnosis prompt, the plan check heuristic, free models last in Try more ways).
-1. **Rewind, try more ways, Terminal and Preview** (branch `feature/rewind-attempts`, spec and plan dated 2026-10-30): built and checked in tests only. Open the PR against `main`, then check in the app:
+4. **Rewind, try more ways, Terminal and Preview** (branch `feature/rewind-attempts`, spec and plan dated 2026-10-30): built and checked in tests only. Open the PR against `main`, then check in the app:
    - A finished step's ⋯: Rewind to before it (the dialog, the banner's Undo and Resume), Fork from after it, Open its changes. A live run offers Stop & rewind.
    - Try 2 more ways from a run's header and from a started goal card; the picker's defaults; Compare (`#/attempts/<set>`): Tether's pick, Pick X and ship, Retry, Try 1 more way; the Runs list's best-of-N row.
    - Terminal: a command's output, Stop and Ctrl+C, ↑ history, a long output saved under `.tether/spill/`.
    - Preview: Start preview on a project with a `dev` script; the frame in Tether.app (the content policy now allows loopback frames); reload, open in browser, Stop; quitting the app ends the dev server.
    - Goals · next beside a chat on a wide window; the Goals button hides it.
    The plan's "My calls" list what to confirm (which steps a rewind requeues, the default picks, the pick ranking, the 7-day sweep, the clean env, the Preview width).
-2. **Check the merged work in the app** (#27, #26 and earlier): built but only checked in tests and a browser.
+5. **Check the merged work in the app** (#27, #26 and earlier): built but only checked in tests and a browser.
    - **Asks become goals:** a chat ask to fix something gives a goal card; Start runs it; "Just answer, no goal" deletes the goal; "+ Add limits" on New goal, Settings and the card; the sidebar chat ⋯ (Rename, Delete chat).
    - **Runs and a run's page:** Needs you cards, Approve & open PR, the week rail; comment a diff line, Send back; Merge to main on a repo with a GitHub remote (without one the push error shows: there is no local merge path).
    - **Team room:** This run / Whole team, the strip, Open run from a card.
@@ -76,7 +96,7 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - **Goals redesign (#25):** the palette, the hover arc (a second-row node's arc partly covers the strip above; widen the row gap if that bothers you), the 0.35 s hide delay, a tracker step's "+" picker, the fans on runs, triggers, All chats and Connectors.
    - **Teams Phase 1:** create a team, ping an agent, approve a ship (it opens a PR and merges only after approval).
    - **NVIDIA:** one real chat turn with an NVIDIA model.
-3. **Teams Phase 2: Telegram** (branch `feature/teams-telegram`, spec and plan dated 2026-10-30): built and checked in tests only (fake Bot API, no network). Test with a real bot:
+6. **Teams Phase 2: Telegram** (branch `feature/teams-telegram`, spec and plan dated 2026-10-30): built and checked in tests only (fake Bot API, no network). Test with a real bot:
    - @BotFather `/newbot`; Settings → Accounts → Telegram: paste the token; **Link my Telegram** and send `/iam <code>` to the bot in a private chat.
    - New team → Telegram group; add the bot to a test group as an admin; send `/pair <code>`; check the pinned status appears.
    - From your account: `@Bolt fix …` (run card edited in place, ship card with Approve / Reject / Diff), `/status`, `/runs`, `/new …`, `/mute 1h` then `/mute off`.
@@ -84,18 +104,18 @@ open /Users/tushar/dev/tether-app/Tether-darwin-arm64/Tether.app
    - Approve one ship from the Inbox and watch the Telegram card change to "Approved by …".
    - A photo replying to an agent; a voice note before and after **Voice notes: download model** (~241 MB).
    The plan's "My calls" list what to confirm (reply-to pings, the Diff reply, Edit by force-reply, /mute rules).
-4. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
-5. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
-6. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
-7. **Chat components phase B:** the PR and merge-conflict card in chat.
-8. **Small bugs:**
+7. **Later ports from deepseek-harness**, each its own spec: hooks (before and after a step or a tool call), the macOS Seatbelt sandbox for agent commands, auto-review of a finished run, LSP diagnostics fed to agents, speech-to-text for the composer.
+8. **An interactive terminal** (a PTY, `node-pty`, a native dependency): the Terminal tab is a command console for now.
+9. **Teams Phase 3: Slack.** It follows the Telegram pattern. Decide the scopes and the Home tab.
+10. **Chat components phase B:** the PR and merge-conflict card in chat.
+11. **Small bugs:**
    - Back after a new chat goes to the wrong screen.
    - ⌘J does nothing on the chat screen.
    - Search labels in the thinking timeline garble quoted text.
    - Decide whether to widen the chat history window beyond 8 messages.
    - Goals: avatars flash grey "removed" while the crew and teams lists load; the tracker add field keeps focus after "Add a step"; two fast assignee picks can drop one; a screen reader hears only "Assignees" on the compact picker; on a ticked tracker row the strike line runs across the step's avatars.
    - Try more ways: a sibling still going when the server stops is never settled on its goal (its item shows no result).
-9. **Tests that fail only on a Mac:** `test/triggers.test.ts` (2) and `test/triggers-api.test.ts` (1). macOS reports `/private/var` where the tests expect `/var`; fix with `realpathSync` in the tests. Under heavy load, `evolve.test.ts` and `team-cli.test.ts` time out; they pass when run alone and pass in CI.
+12. **Tests that fail only on a Mac:** `test/triggers.test.ts` (2) and `test/triggers-api.test.ts` (1). macOS reports `/private/var` where the tests expect `/var`; fix with `realpathSync` in the tests. Under heavy load, `evolve.test.ts` and `team-cli.test.ts` time out; they pass when run alone and pass in CI.
 
 ## Where the designs live
 

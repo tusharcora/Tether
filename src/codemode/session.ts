@@ -6,6 +6,7 @@
  */
 import { ghExec } from '../accounts/github.js';
 import type { Exec } from '../exec.js';
+import { MAX_COMMAND_MS } from '../permissions.js';
 import type { Db } from '../http/history.js';
 import type { Store } from '../store.js';
 import type { Answer, Question } from '../types.js';
@@ -29,6 +30,8 @@ export interface SessionInfo {
   bot: string;
   workdir: string;
   writable: boolean;
+  /** The step may run commands (repo.run). */
+  commands?: boolean;
   /** The run's base commit: repo.diff() shows the run's changes since. */
   base?: string;
   kind: 'team' | 'workflow';
@@ -40,6 +43,8 @@ export interface SessionInfo {
   handoff: boolean;
   /** The workspace whose environments and secrets saved requests use. */
   workspace?: string;
+  /** Never write spill files into the workdir (a plain folder gets nothing of ours): an oversized result is cut with a note. */
+  noSpill?: boolean;
 }
 
 export interface SessionDeps {
@@ -51,6 +56,8 @@ export interface SessionDeps {
   mcpServers?: McpServer[];
   onNote?: (text: string) => void;
   limits?: Limits;
+  /** The run's own stop: a command in a script ends with it. */
+  signal?: AbortSignal;
   /** More connectors (tests). */
   connectors?: Connector[];
 }
@@ -75,14 +82,17 @@ export class CodeSession {
   readonly hands: { to: string; goal: string; expect?: string }[] = [];
   readonly catalog: Catalog;
   private readonly limits: Limits;
+  private readonly stop = new AbortController();
 
   constructor(
     readonly info: SessionInfo,
     deps: SessionDeps = {},
   ) {
-    this.limits = deps.limits ?? LIMITS;
+    const limits = deps.limits ?? LIMITS;
+    // shortcut: any script in a commands session gets this long, a busy loop too; time only the host call if that ever matters
+    this.limits = info.commands ? { ...limits, wallMs: limits.wallMs + MAX_COMMAND_MS } : limits;
     this.catalog = new Catalog([
-      repoConnector({ workdir: info.workdir, writable: info.writable, base: info.base }),
+      repoConnector({ workdir: info.workdir, writable: info.writable, base: info.base, commands: info.commands ? AbortSignal.any([this.stop.signal, ...(deps.signal ? [deps.signal] : [])]) : undefined }),
       tetherConnector({
         kind: info.kind,
         handoff: info.handoff,
@@ -146,7 +156,7 @@ export class CodeSession {
     if (this.asks.length || this.approvals.length) parts.push('(The person has been asked: end your answer now; this step runs again with their decision.)');
     let text = parts.join('\n\n');
     const max = this.limits.maxResultBytes;
-    if (text.length > max) text = (await spillText(this.info.workdir, text, max)) ?? `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
+    if (text.length > max) text = (this.info.noSpill ? undefined : await spillText(this.info.workdir, text, max)) ?? `${text.slice(0, max)}\n[... cut: ${text.length - max} more characters. Return less: filter, slice or summarise inside the script.]`;
     return { text, isError: !!r.error };
   }
 
@@ -159,6 +169,7 @@ export class CodeSession {
   }
 
   async close(): Promise<void> {
+    this.stop.abort();
     await this.catalog.close();
     await sweepSpills(this.info.workdir);
   }

@@ -1,5 +1,9 @@
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { RunShip } from '../src/runShip.js';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addTeamLessons, loadLessons } from '../src/lessons.js';
+import type { Goal } from '../src/goals/types.js';
 import { savePrefs } from '../src/prefs.js';
 import { OWNER } from '../src/teams/store.js';
 import { g, rig } from './teams-rig.js';
@@ -42,6 +46,33 @@ describe('a ping', () => {
   });
 });
 
+describe('a ticket from a chat', () => {
+  const made = (r: ReturnType<typeof rig>, o: Partial<Goal> = {}): Goal =>
+    r.goals.create({ id: 'gchat', workspace: 'app', title: 'Fix the thing', description: 'Keep ?next=.', kind: 'tracker', status: 'paused', approval: 'ask', workflow: 'team', createdAt: 1, spentUsd: 0, context: 'The person: SECRET WORDS', ...o });
+
+  it('handed to an agent, its run has the chat as context, and the squad channel never shows it', async () => {
+    const r = rig();
+    const g = made(r, { assignee: { kind: 'agent', id: 'coder' } });
+    expect(await r.teams.startTicket(g)).toBe(true);
+    const runId = await r.until(() => r.tasks()[0]?.runId);
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(r.store.state(runId)!.context).toBe('The person: SECRET WORDS');
+    expect(r.store.state(runId)!.task).not.toContain('SECRET');
+    expect(r.writer.prompts[0]).toContain('<chat>\nThe person: SECRET WORDS\n</chat>');
+    expect(r.msgs().some((m) => m.text.includes('SECRET'))).toBe(false);
+  });
+
+  it('a squad’s loop run has it too', async () => {
+    const r = rig();
+    const g = made(r, { kind: 'loop', team: r.team.id, agent: 'coder', approval: 'auto', check: { kind: 'tests', command: 'false' } });
+    const runId = await r.teams.loopRun(g, { task: 'Go', why: 'x' });
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(r.store.state(runId)!.context).toBe('The person: SECRET WORDS');
+  });
+});
+
 describe('a task', () => {
   it('balanced: runs on the agent’s binding, then the gates; its done message, then a ship card; Ship it opens the PR and merges it', async () => {
     const r = rig();
@@ -69,6 +100,81 @@ describe('a task', () => {
     expect(r.card('approval')!.card).toMatchObject({ status: 'approved', by: 'you', ship: { state: 'merged', pr: { number: 7, url: 'https://github.com/o/r/pull/7' } } });
     expect(r.card('pr')).toBeUndefined();
     expect(r.msgs()[1]!.card).toMatchObject({ status: 'done', steps: [{ id: 'work', status: 'done' }, { id: 'tests', status: 'done' }, { id: 'ship', status: 'done' }] });
+  });
+
+  it('a squad run in a plain folder lands, and the ship card says it is in the folder', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    const ship = r.card('approval')!;
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(r.calls).toEqual([]);
+    expect(r.store.state(runId)!.ship).toMatchObject({ merged: true, landed: { files: ['fix.txt'] } });
+    expect(r.card('approval')!.card).toMatchObject({ status: 'approved', plain: true, ship: { state: 'merged', landed: true } });
+    expect(r.card('pr')).toBeUndefined();
+    // no PR or merge words for a folder, in the refusals either
+    await expect(r.teams.shipRun(runId, OWNER)).rejects.toThrow('This work is already in the folder.');
+    await expect(r.teams.undoShip(r.team.id, ship.id, OWNER)).rejects.toThrow("It's in the folder: use Undo on its run to take it back out.");
+    // Undo from the run's own route: the card waits for Ship it again and the folder is as it was
+    await new RunShip({ store: r.store, engine: r.engine, exec: r.exec, home: r.home, teamOwns: () => true }).undo(runId);
+    expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
+    expect(r.card('approval')!.card).toMatchObject({ status: 'pending' });
+    expect((r.card('approval')!.card as { ship?: unknown }).ship).toBeUndefined();
+    // and Ship it works again from that card
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.idle();
+    expect(readFileSync(join(r.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'merged', landed: true } });
+  });
+
+  it('plain folder: Ship it with nothing to change says so, and the run records no landing', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    writeFileSync(join(r.repo, 'fix.txt'), 'fix 1\n');
+    await r.teams.decide(r.team.id, r.card('approval')!.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    const said = 'Nothing to put in the folder: it already has this work.';
+    expect(r.store.state(runId)!.ship?.landed).toBeUndefined();
+    expect(r.card('approval')!.card).toMatchObject({ ship: { state: 'failed', error: said } });
+    expect(r.msgs().at(-1)!.text).toBe(said);
+  });
+
+  it('plain folder: a run rewound after its Undo is not finished, so Ship it is refused and the card still waits', async () => {
+    const r = rig({ plain: true });
+    const runId = await r.runTask('@Bolt fix the thing');
+    const ship = r.card('approval')!;
+    await r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER });
+    await r.engine.wait(runId);
+    await r.idle();
+    await new RunShip({ store: r.store, engine: r.engine, exec: r.exec, home: r.home, teamOwns: () => true }).undo(runId);
+    await r.engine.rewind(runId, 'work');
+    await expect(r.teams.decide(r.team.id, ship.id, { action: 'approve', by: OWNER })).rejects.toThrow("This work isn't finished, so it can't go in the folder yet.");
+    await r.idle();
+    expect(r.card('approval')!.card).toMatchObject({ status: 'pending' });
+    expect(existsSync(join(r.repo, 'fix.txt'))).toBe(false);
+  });
+
+  it('plain folder: the ship card counts the files, a Loose squad lands on its own, and Undo is refused while landing', async () => {
+    const r = rig({ plain: true });
+    await r.runTask('@Bolt fix the thing');
+    expect(r.card('approval')!.card).toMatchObject({ files: 1, plus: 1 });
+    expect(r.msgs().find((m) => m.work)!.work).toMatchObject({ files: ['fix.txt'] });
+    const card = r.card('approval')!;
+    (r.teams as any).setShip(r.team.id, card.id, { state: 'shipping' });
+    await expect(r.teams.undoShip(r.team.id, card.id, OWNER)).rejects.toThrow(/being put in the folder/);
+    // a done team run whose landing was undone: the run page cannot ship it, only its squad can
+    const stuck = rig({ plain: true, level: 'loose' });
+    const id = await stuck.runTask('@Bolt fix the thing');
+    const ship = new RunShip({ store: stuck.store, engine: stuck.engine, exec: stuck.exec, home: stuck.home, teamOwns: () => true });
+    await ship.undo(id);
+    await expect(ship.decide(id, true)).rejects.toThrow(/Ship this from its squad/);
+    const loose = rig({ plain: true, level: 'loose' });
+    await loose.runTask('@Bolt fix the thing');
+    expect(readFileSync(join(loose.repo, 'fix.txt'), 'utf8')).toBe('fix 1\n');
+    expect(loose.msgs().some((m) => /nothing needed changing/.test(m.text))).toBe(false);
   });
 
   it('tight: a plan to approve comes first', async () => {

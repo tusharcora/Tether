@@ -55,6 +55,59 @@ describe('shipping a run', () => {
   });
 });
 
+describe('pushing over what is on the remote', () => {
+  it('a run branch is never forced: a rewritten one is refused and the remote keeps its commit', async () => {
+    const r = rig();
+    const gh = fakeGh({ 'gh pr create': { code: 0, stdout: 'https://github.com/o/r/pull/7\n' } });
+    await ship(r, gh.exec);
+    const pushed = g(r.bare, 'rev-parse', 'aorch/r1');
+    g(r.repo, 'checkout', '-q', 'aorch/r1');
+    g(r.repo, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '--amend', '-m', 'other');
+    g(r.repo, 'checkout', '-q', 'main');
+    expect(await ship(r, gh.exec)).toMatchObject({ error: expect.stringMatching(/^Could not push aorch\/r1/) });
+    expect(g(r.bare, 'rev-parse', 'aorch/r1')).toBe(pushed);
+  });
+
+  it('a run\'s -pr branch replaces its older push, with no remote-tracking ref to start from', async () => {
+    const r = rig();
+    g(r.repo, 'branch', 'aorch/r1-pr', 'aorch/r1');
+    const gh = fakeGh({ 'gh pr create': { code: 0, stdout: 'https://github.com/o/r/pull/7\n' } });
+    await ship(r, gh.exec, 'aorch/r1-pr');
+    g(r.repo, 'checkout', '-q', 'aorch/r1-pr');
+    g(r.repo, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '--amend', '-m', 'other');
+    g(r.repo, 'checkout', '-q', 'main');
+    g(r.repo, 'update-ref', '-d', 'refs/remotes/origin/aorch/r1-pr');
+    expect(await ship(r, gh.exec, 'aorch/r1-pr')).toEqual({ url: 'https://github.com/o/r/pull/7', number: 7 });
+    expect(g(r.bare, 'rev-parse', 'aorch/r1-pr')).toBe(g(r.repo, 'rev-parse', 'aorch/r1-pr'));
+  });
+});
+
+describe('a single-branch clone', () => {
+  it('replaces a run\'s -pr branch: its fetch refspec names no tracking ref to lease from', async () => {
+    const r = rig();
+    g(r.repo, 'push', '-q', 'origin', 'main');
+    const repo = tmp('clone-');
+    g(repo, 'clone', '-q', '--single-branch', '--branch', 'main', r.bare, '.');
+    g(repo, 'checkout', '-q', '-b', 'aorch/r1-pr');
+    const commit = (text: string) => {
+      writeFileSync(join(repo, 'fix.txt'), text);
+      g(repo, 'add', '-A');
+      g(repo, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-q', '-m', 'fix');
+    };
+    commit('one\n');
+    g(repo, 'checkout', '-q', 'main');
+    const gh = fakeGh({ 'gh pr create': { code: 0, stdout: 'https://github.com/o/r/pull/7\n' } });
+    const send = () => shipBranch({ repo, branch: 'aorch/r1-pr', base: r.base, title: 't', body: 'b', exec: gh.exec });
+    expect(await send()).toEqual({ url: 'https://github.com/o/r/pull/7', number: 7 });
+    g(repo, 'checkout', '-q', 'aorch/r1-pr');
+    g(repo, 'reset', '-q', '--hard', 'main');
+    commit('two\n');
+    g(repo, 'checkout', '-q', 'main');
+    expect(await send()).toEqual({ url: 'https://github.com/o/r/pull/7', number: 7 });
+    expect(g(r.bare, 'rev-parse', 'aorch/r1-pr')).toBe(g(repo, 'rev-parse', 'aorch/r1-pr'));
+  });
+});
+
 describe('checks and merge', () => {
   const view = (rollup: unknown[], state = 'OPEN') => fakeGh({ 'gh pr view': { code: 0, stdout: JSON.stringify({ state, statusCheckRollup: rollup }) } }).exec;
   it('reads the PR checks as pass, pending, fail or merged', async () => {

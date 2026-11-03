@@ -261,7 +261,7 @@ export function Code(p: CodeProps) {
           <SegmentedControl label="Show" options={[{ value: 'all', label: 'All files' }, { value: 'changed', label: 'Changed by runs' }]} value={filter} onValueChange={(v) => setFilter(v as 'all' | 'changed')} />
         </div>
       ) : null}
-      {git === false ? <p className="code-note">Not a git repository: git badges and changes by runs are hidden.</p> : null}
+      {git === false ? <p className="code-note">Tether keeps the undo history for this folder.</p> : null}
       <div className="code-pane">
         {search ? (
           <SearchResults q={search.q} result={search.result} error={search.error} onRetry={() => setSearchSeq((n) => n + 1)} onOpen={(path, line) => openAt(path, line)} />

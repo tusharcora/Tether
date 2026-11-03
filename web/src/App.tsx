@@ -46,6 +46,7 @@ import { TOOLS_PATH, type Tools } from './welcome/ToolsStrip';
 import { Welcome } from './welcome/Welcome';
 import { MCP_PATH, type McpServerView } from './settings/McpServers';
 import { CONNECTORS_PATH, type ConnectorView } from './settings/Connectors';
+import { TRUST_PATH, type TrustView } from './settings/TrustedFolders';
 import { ACCOUNTS_MS, ACCOUNTS_PATH, accountChip, type AccountsView } from './settings/accountsApi';
 import { BottomBar } from './ui/studio/BottomBar';
 import { useConnection } from './ui/studio/connection';
@@ -107,11 +108,12 @@ function Shell() {
   const [removing, setRemoving] = useState<WorkspaceRow>();
   /** A request gate handed over by the API tab, waiting for the Builder to place it (cleared once used). */
   const [gateDraft, setGateDraft] = useState<{ run: string; env?: string }>();
-  const health = usePoll<{ ok: boolean; vault?: string; home?: string; spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number }>('/api/health', 5000);
+  const health = usePoll<{ ok: boolean; vault?: string; home?: string; spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number; soloWithoutAsking?: boolean }>('/api/health', 5000);
   const caps = health.data?.spendingCaps === true;
-  const setPrefs = (b: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number }) => void api('PUT', '/api/prefs', b).then(() => health.refresh(), notify.fail);
+  const setPrefs = (b: { spendingCaps?: boolean; autoFix?: boolean; autoFixRounds?: number; soloWithoutAsking?: boolean }) => void api('PUT', '/api/prefs', b).then(() => health.refresh(), notify.fail);
   const setCaps = (on: boolean) => setPrefs({ spendingCaps: on });
   const autoFix = health.data ? { on: health.data.autoFix !== false, rounds: health.data.autoFixRounds ?? 3, onChange: (on: boolean) => setPrefs({ autoFix: on }), onRounds: (n: number) => setPrefs({ autoFixRounds: n }) } : undefined;
+  const solo = health.data ? { on: health.data.soloWithoutAsking === true, onChange: (on: boolean) => setPrefs({ soloWithoutAsking: on }) } : undefined;
   const connection = useConnection(health);
   const phone = useMediaQuery(PHONE);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -178,6 +180,7 @@ function Shell() {
   const accounts = usePoll<AccountsView>(ACCOUNTS_PATH, ACCOUNTS_MS);
   const mcp = usePoll<{ servers: McpServerView[] }>(route.tab === 'settings' ? MCP_PATH : null, 60_000);
   const connectors = usePoll<{ connectors: ConnectorView[] }>(route.tab === 'settings' ? CONNECTORS_PATH : null, 15_000);
+  const trust = usePoll<TrustView>(route.tab === 'settings' ? TRUST_PATH : null, 15_000);
   /** First launch shows the welcome screen until a folder is opened or the person continues without one (this session); File → Welcome reopens it. */
   const [skipWelcome, setSkipWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -291,7 +294,7 @@ function Shell() {
   const list = projects.list.data ?? [];
   /** Settings as a page over the content area (the screen under it stays mounted); over the Welcome screen it covers the window. */
   const settingsPage = settingsOpen ? (
-    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} caps={health.data ? { on: caps, onChange: setCaps } : undefined} autoFix={autoFix} returnFocus={settingsHome} />
+    <SettingsPage onClose={() => goNow(screen)} choice={choice} onChoice={setChoice} vault={health.data?.vault} home={health.data?.home} connection={connection} tools={tools} accounts={accounts} mcp={mcp} connectors={connectors} trust={trust} solo={solo} section={route.tab === 'settings' ? route.id : undefined} notifications={bridge() ? { on: notifyOn, onChange: setNotifyOn } : undefined} caps={health.data ? { on: caps, onChange: setCaps } : undefined} autoFix={autoFix} returnFocus={settingsHome} />
   ) : null;
   /** The sidebar's Runs section: the current project's runs (every run when no project is open). */
   const projectRuns = (runs.data ?? []).filter((r) => !projects.current || runProject(list, r)?.id === projects.current.id);

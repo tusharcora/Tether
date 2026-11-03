@@ -1,4 +1,5 @@
 import type { HttpGate } from './http/types.js';
+import type { Landed } from './history.js';
 export type { HttpGate };
 
 // Shared types. The pipeline file is the visual builder's document; RunEvent is the
@@ -250,6 +251,9 @@ export type RunEvent =
       workdir: string;
       baseSha: string;
       branch: string;
+      history?: string;
+      /** The snapshot of a person's uncommitted work below this run, by starting on it or from a run that did. */
+      dirty?: string;
       vault?: string;
       autoApprove?: boolean;
       workspace?: RunWorkspace;
@@ -266,9 +270,15 @@ export type RunEvent =
       origin?: RunOrigin;
       /** Spending caps were on when the run started (the setting, or an explicit cap). Absent in logs from before the setting: on. */
       capsOn?: boolean;
+      /** "Do it myself": one step, and in a plain folder it lands by itself when it finishes. */
+      solo?: true;
+      /** The chat this run came from, recent text, untrusted: the prompt fences it. */
+      context?: string;
+      /** The person said Not now: gates, setup and commands stay off until the folder is trusted. Nothing is saved about the folder. */
+      noCommands?: true;
     }
   /** The run's branch shipped as a PR (the run page's Merge or Open PR, or its team), merged later, or why it could not. */
-  | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string }
+  | { type: 'run.shipped'; url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed; undone?: true }
   | { type: 'plan.question'; round: number; questions: Question[] }
   | { type: 'plan.answer'; answers: Answer[] }
   | { type: 'plan.ready'; plan: TeamPlan }
@@ -285,7 +295,7 @@ export type RunEvent =
   | { type: 'team.pipeline'; pipeline: Pipeline }
   | { type: 'node.spawned'; node: PipelineNode; parent: string; depth: number; after: string[] }
   | { type: 'run.resumed'; retryFailed?: boolean }
-  | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[] }
+  | { type: 'setup.result'; ok: boolean; output: string; durationMs: number; artifacts?: string[]; /** The folder said no to commands, so it never ran. */ skipped?: true }
   | { type: 'node.started'; node: string; attempt: number; /** Which version of the bot's harness this attempt ran with. */ harness?: HarnessRef; /** The worktree's HEAD when it started (runs before 2026-10-30: none). */ base?: string }
   | { type: 'node.session'; node: string; sessionId: string }
   | { type: 'node.chunk'; node: string; text: string }
@@ -403,6 +413,15 @@ export interface RunState {
   workdir: string;
   baseSha: string;
   branch: string;
+  history?: string;
+  /** The snapshot of a person's uncommitted work below this run, which must never be pushed. */
+  dirty?: string;
+  /** "Do it myself" (run.started.solo). */
+  solo?: true;
+  /** run.started.context. */
+  context?: string;
+  /** run.started.noCommands. */
+  noCommands?: true;
   vault?: string;
   /** The project this run works on (its context is in every agent's prompt). */
   workspace?: RunWorkspace;
@@ -426,6 +445,8 @@ export interface RunState {
   /** Worker questions to the person: who asked, whether the step waits, and the answer once given. */
   userAsks?: { node: string; question: Question; wait: boolean; answer?: Answer }[];
   setupDone: boolean;
+  /** The setup command never ran (setup.result.skipped). */
+  setupSkipped?: boolean;
   /** Paths the setup command left in the worktree; kept out of agent commits and diffs. */
   setupArtifacts: string[];
   nodes: Record<string, NodeState>;
@@ -449,7 +470,9 @@ export interface RunState {
   capsOn?: boolean;
   origin?: RunOrigin;
   /** Its PR, once shipped (merged when merged), or why shipping failed. */
-  ship?: { url?: string; number?: number; merged?: boolean; error?: string };
+  ship?: { url?: string; number?: number; merged?: boolean; error?: string; landed?: Landed };
+  /** Its landing was taken back out of the folder. */
+  undone?: true;
   /** The last rewind, while it can still be undone (nothing has run since): what to put back. */
   rewind?: { node: string; ref: string; base: string; status: RunStatus; finishedAt?: number; error?: string; nodes: Record<string, NodeState> };
   /** Rewinds made so far (names the next rewind ref). */
@@ -493,6 +516,11 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         workdir: e.workdir,
         baseSha: e.baseSha,
         branch: e.branch,
+        ...(e.history ? { history: e.history } : {}),
+        ...(e.dirty ? { dirty: e.dirty } : {}),
+        ...(e.solo ? { solo: true as const } : {}),
+        ...(e.context ? { context: e.context } : {}),
+        ...(e.noCommands ? { noCommands: true as const } : {}),
         vault: e.vault,
         workspace: e.workspace,
         autoApprove: !!e.autoApprove,
@@ -615,6 +643,7 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'setup.result':
         s.setupDone = e.ok;
+        s.setupSkipped = e.skipped;
         s.setupArtifacts = e.artifacts ?? [];
         break;
       case 'node.started':
@@ -744,6 +773,12 @@ export function foldRun(events: StoredEvent[]): RunState | undefined {
         break;
       case 'run.shipped': {
         const { type: _, ...ship } = e;
+        delete s.undone;
+        if (ship.undone) {
+          delete s.ship; // taken back out of the folder: it can land again
+          s.undone = true;
+          break;
+        }
         // an error clears once a later ship goes through, and a merge keeps the PR it merged
         s.ship = ship.error ? { ...s.ship, error: ship.error } : { ...s.ship, ...ship, error: undefined };
         break;
@@ -821,6 +856,8 @@ export interface AgentRequest {
   model?: string;
   readOnly: boolean;
   permissionMode?: string;
+  /** The step may run commands: a trusted folder and a writable step, under `commandRule`. */
+  commands?: boolean;
   attempt: number;
   timeoutMs: number;
   /** Remaining budget in USD, if the run has a cap. */
@@ -904,6 +941,8 @@ export interface AgentAdapter {
   attachCommand?(sessionId?: string): { cmd: string; args: string[] } | undefined;
   /** How it takes Code Mode's run_code: over a per-run MCP config, natively in its own loop, or not at all (direct only). */
   codeMode?: 'mcp' | 'native';
+  /** Runs commands with a shell of its own, which Tether can't gate: `commands` doesn't reach it. */
+  ownShell?: boolean;
 }
 
 // ---------- dashboard read models (Home) ----------
@@ -929,6 +968,8 @@ export interface RunCurrent {
 export interface RunRowExtras {
   /** The repo folder's real path, so a run started on a symlinked path (/tmp) still matches its project (/private/tmp). */
   repoReal: string;
+  /** A plain folder, not a git repo: the list says folder, not PR. Never the path. */
+  plain?: true;
   branch: string;
   lastTs: number;
   steps: RunStep[];
@@ -1088,6 +1129,8 @@ export interface AgentPick {
 /** One attempt as the Compare page shows it. */
 export interface AttemptView {
   id: string;
+  /** Its run is in a plain folder: the page says folder, not PR. Never the path. */
+  plain?: true;
   label: string;
   status: RunState['status'];
   live: boolean;

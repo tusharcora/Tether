@@ -12,6 +12,7 @@ import { pipelinesDir } from '../config.js';
 import { NAME_RE } from '../pipeline.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import type { Store } from '../store.js';
+import { insideGit } from '../history.js';
 import { getWorkspace } from '../workspace.js';
 import { draftContext, goalFromDraft } from '../assistant/goalDraft.js';
 import { listChats, readChat, saveChat } from '../assistant/history.js';
@@ -93,7 +94,19 @@ export const prefixes = (home: string, goals: Goals) => {
   return (ws: string) => seen.get(ws) ?? (seen.set(ws, goals.db.prefix(ws) ?? prefixFrom(getWorkspace(home, ws)?.name ?? ws)), seen.get(ws)!);
 };
 
-export function goalView(goals: Goals, store: Store, g: Goal, prefix: (ws: string) => string = prefixFrom): GoalView {
+/** Whether a Workspace's folder is plain (not a git repo), read once per request; undefined when the Workspace is gone. */
+export const plains = (home: string) => {
+  const seen = new Map<string, boolean | undefined>();
+  return (ws: string) => {
+    if (!seen.has(ws)) {
+      const w = getWorkspace(home, ws);
+      seen.set(ws, w?.exists ? !insideGit(w.path) : undefined);
+    }
+    return seen.get(ws);
+  };
+};
+
+export function goalView(goals: Goals, store: Store, g: Goal, prefix: (ws: string) => string = prefixFrom, plain: (ws: string) => boolean | undefined = () => undefined): GoalView {
   const raw = goals.db.items(g.id);
   const items = raw.map((i) => ({ ...i, ...(i.runId ? { runStatus: store.state(i.runId)?.status } : {}) }));
   const done = (i: (typeof items)[number]) => i.done || i.runStatus === 'done';
@@ -101,7 +114,8 @@ export function goalView(goals: Goals, store: Store, g: Goal, prefix: (ws: strin
   const counts = last?.passing !== undefined || last?.failing !== undefined ? (last.passing ?? 0) / Math.max(1, (last.passing ?? 0) + (last.failing ?? 0)) : undefined;
   const progress = g.kind === 'tracker' ? (items.length ? items.filter(done).length / items.length : 0) : g.status === 'met' ? 1 : (counts ?? 0);
   const needs = needsOf(g, raw, store);
-  return { ...g, items, progress, key: keyOf(prefix(g.workspace), g.num), stage: stageOf(g), criteria: criteriaOf(g, raw), ...(needs ? { needs } : {}) };
+  const { context: _, ...shown } = g; // for its runs, not for showing
+  return { ...shown, items, progress, key: keyOf(prefix(g.workspace), g.num), stage: stageOf(g), criteria: criteriaOf(g, raw), ...(needs ? { needs } : {}), ...((plain(g.workspace) ?? items.some((i) => i.runId && store.state(i.runId)?.history)) ? { plain: true as const } : {}) };
 }
 
 const memberOf = (v: unknown, k: string): Member | null | undefined => {
@@ -156,7 +170,8 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals; 
   const p = url.pathname;
   const m = req.method ?? 'GET';
   const prefix = prefixes(c.home, goals);
-  const view = (g: Goal) => goalView(goals, c.store, g, prefix);
+  const plain = plains(c.home);
+  const view = (g: Goal) => goalView(goals, c.store, g, prefix, plain);
   let g: RegExpMatchArray | null;
 
   // a project's key prefix (spec §2.5: from the project name, editable); every key of the project follows it
@@ -203,7 +218,7 @@ export async function goalsRoute(c: { home: string; store: Store; goals: Goals; 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     const write = (event: string, data: unknown) => void (!res.destroyed && res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
     write('goals', goals.db.list().map(view));
-    const off = goals.onChange((x) => write('goal', goalView(goals, c.store, x, prefixes(c.home, goals))));
+    const off = goals.onChange((x) => write('goal', goalView(goals, c.store, x, prefixes(c.home, goals), plains(c.home))));
     const beat = setInterval(() => res.write(': hb\n\n'), 15_000);
     req.on('close', () => (off(), clearInterval(beat)));
     return true;

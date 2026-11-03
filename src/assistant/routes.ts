@@ -1,23 +1,24 @@
 /**
  * /api/assistant*: Tether's chats over the loopback server (Host and Origin are checked by server.ts first). Every route
- * that means one chat takes its id (`chat`), checked before any file is read. The one path that starts a run is
- * POST /api/assistant/proposals/:id with decision "start": a click on a card.
+ * that means one chat takes its id (`chat`), checked before any file is read. A run starts from a click on a card:
+ * POST /api/assistant/routes/:id, or POST /api/assistant/proposals/:id with decision "start" on an old chat's card.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
+import { trustState } from '../trust.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { checkDraft, draftContext, draftPatch, firstTask } from './goalDraft.js';
 import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
 import { compactChat, undoCompact } from './compact.js';
 import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } from './prompts.js';
 import { latestContext } from './context.js';
-import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, TITLE_MAX, type Chat } from './history.js';
+import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, setRoute, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
-import { assistantAgent, mid, runTurn, type AssistantCtx, type TurnBody } from './turn.js';
-import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, type ChatMessage, type ChatView, type Proposal, type StreamEvent } from './types.js';
+import { assistantAgent, mid, runTurn, START_FAILED, startRoute, type AssistantCtx, type TurnBody } from './turn.js';
+import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, ROUTE_KINDS, type ChatMessage, type ChatView, type Proposal, type RouteCard, type RouteKind, type StreamEvent } from './types.js';
 
 const wsOf = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 const rootOf = (c: AssistantCtx, ws: string | undefined) => (ws ? projectRoot(c.home, ws) : undefined);
@@ -58,7 +59,24 @@ function chatIn(c: AssistantCtx, ws: string | undefined, v: unknown): Chat {
   if (!isChatId(v)) throw new HttpError(400, '"chat" must be a chat id');
   const chat = readChat(c.home, ws, v);
   if (!chat) throw new HttpError(404, 'unknown chat');
+  settleRoutes(c, ws, chat);
   return chat;
+}
+
+/**
+ * A card saved as started with no result and no start going: the server died mid-start, or the result could not be saved.
+ * What did start is found again; anything else reads as failed and stays failed, so it never starts a second run.
+ */
+function settleRoutes(c: AssistantCtx, ws: string | undefined, chat: Chat): void {
+  for (const m of chat.messages) {
+    const r = m.route;
+    if (r?.status !== 'started' || r.runId || r.goalId || starting.has(r.id)) continue;
+    const taken = chat.messages.map((x) => x.route?.runId);
+    const runId = c.store.list().find((x) => r.chose !== 'ticket' && x.origin?.kind === 'chat' && x.origin.id === chat.id && x.task === r.task && !taken.includes(x.id))?.id;
+    const goalId = c.goals?.db.list().find((g) => r.chose === 'ticket' && g.origin?.kind === 'chat' && g.origin.message === m.id)?.id;
+    m.route = runId ? { ...r, runId } : goalId ? { ...r, goalId } : { ...r, status: 'failed', note: START_FAILED };
+    setRoute(c.home, ws, chat.id, m.id, m.route);
+  }
 }
 
 /**
@@ -94,6 +112,9 @@ async function decideGoal(c: AssistantCtx, ws: string | undefined, chat: Chat, p
   saveChat(c.home, ws, chat);
   return prop;
 }
+
+/** Route cards being started, by id: a click that arrives meanwhile (a second tab) waits for the same run. */
+const starting = new Map<string, Promise<RouteCard>>();
 
 /** Find a proposal, tool ask or message in the chat. */
 const findProposal = (messages: ChatMessage[], id: string) => messages.flatMap((m) => m.proposals ?? []).find((p) => p.id === id);
@@ -239,6 +260,35 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
       saveChat(c.home, ws, chat);
     }
     return send(res, 200, { proposal: prop }), true;
+  }
+
+  if ((g = p.match(/^\/api\/assistant\/routes\/([^/]+)$/)) && m === 'POST') {
+    const b = reqObject(await readJson(req));
+    const ws = wsOf(b.ws);
+    const root = rootOf(c, ws);
+    const choice = b.choice as RouteKind | 'dismiss';
+    if (choice !== 'dismiss' && !ROUTE_KINDS.includes(choice)) throw new HttpError(400, `"choice" must be one of ${ROUTE_KINDS.join(', ')}, dismiss`);
+    if (b.trust !== undefined && typeof b.trust !== 'boolean') throw new HttpError(400, '"trust" must be true or false');
+    const chat = chatIn(c, ws, b.chat);
+    const msg = chat.messages.find((x) => x.route?.id === decodeURIComponent(g![1]!));
+    if (!msg) throw new HttpError(404, 'unknown route');
+    // no await from here to `starting.set`, so one click claims the card; every other click gets what that one did
+    const route = msg.route!;
+    const save = (r: RouteCard) => (setRoute(c.home, ws, chat.id, msg.id, r), r);
+    const going = starting.get(route.id);
+    if (going) return send(res, 200, { route: await going }), true;
+    if (route.status !== 'proposed') return send(res, 200, { route }), true;
+    if (choice === 'dismiss') return send(res, 200, { route: save({ ...route, status: 'dismissed' }) }), true;
+    if (!route.rows.some((r) => r.kind === choice)) throw new HttpError(400, 'that route is not on this card');
+    if (!ws || !root) throw new HttpError(400, 'Open a project first.');
+    if (choice !== 'ticket' && b.trust === undefined && trustState(c.home, root) === 'unknown') return send(res, 409, { needsTrust: true, folder: root }), true;
+    // saved before the run exists: a crash in between leaves a card that won't start a second run
+    save({ ...route, status: 'started', chose: choice });
+    const run = startRoute(c, { ws, root, chat: chat.id, message: msg.id, messages: chat.messages, ...(msg.by ? { bot: msg.by.bot } : {}) }, route, choice, b.trust as boolean | undefined)
+      .then(save)
+      .finally(() => starting.delete(route.id));
+    starting.set(route.id, run);
+    return send(res, 200, { route: await run }), true;
   }
 
   if ((g = p.match(/^\/api\/assistant\/tools\/([^/]+)$/)) && m === 'POST') {

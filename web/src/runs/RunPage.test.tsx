@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
-import { api, type Question } from '../api';
+import { api, type Question, type RunView } from '../api';
 import { Runs } from '../Runs';
 import { calls, FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from '../test/fixtures';
 import { renderApp } from '../test/render';
@@ -192,6 +192,82 @@ describe('run page', () => {
     expect(within(decision).getByText('Checks pass. Ship it?')).toBeTruthy();
     await act(async () => fireEvent.click(within(decision).getByRole('button', { name: 'Merge to main' })));
     expect(calls('POST', '/api/runs/r1/ship')[0]![2]).toEqual({ merge: true });
+  });
+
+  describe('a done run with nothing left to approve', () => {
+    const done = (o: Partial<RunView> = {}) => makeRun({ status: 'done', live: false, finishedAt: Date.now(), pipeline: { ...makeRun().pipeline, nodes: [{ id: 'work', kind: 'agent', role: 'coder', x: 0, y: 0 }], edges: [] }, nodes: { work: { status: 'done', attempts: 1, costUsd: 0, loops: 0 } }, ...o });
+
+    it('in a plain folder, a workflow or team run lands from the banner, in plain words', async () => {
+      open(done({ history: '/h' }));
+      const decision = await screen.findByRole('region', { name: 'Decision' });
+      expect(decision.textContent).toContain("This work isn't in your folder yet.");
+      expect(decision.textContent).not.toMatch(/\b(git|merge|branch|PR|commit|repository)\b/i);
+      await act(async () => fireEvent.click(within(decision).getByRole('button', { name: 'Put it in the folder' })));
+      expect(calls('POST', '/api/runs/r1/ship')[0]![2]).toEqual({ merge: true });
+    });
+
+    it.each([
+      ['in a real repo', {}],
+      ['when the folder already has the work', { history: '/h', ship: { error: 'Nothing to put in the folder: it already has this work.' } }],
+      ['for a probe replay', { history: '/h', probe: true }],
+      ['for a squad', { history: '/h', origin: { kind: 'team', id: 't1', team: 't1' } }],
+      ['for a ticket, which finishes from the ticket', { history: '/h', origin: { kind: 'goal', id: 'g1' } }],
+    ] as [string, Partial<RunView>][])('no banner %s', async (_, o) => {
+      open(done(o));
+      await screen.findByRole('complementary', { name: 'Outcome' });
+      expect(screen.queryByRole('region', { name: 'Decision' })).toBeNull();
+    });
+
+    it('a folder that already has the work is not styled as a failure', async () => {
+      const said = 'Nothing to put in the folder: it already has this work.';
+      open(done({ history: '/h', ship: { error: said } }));
+      expect((await screen.findByText(said)).className).not.toContain('bad');
+    });
+  });
+
+  describe('a done solo run has no approval step, so the banner is how it finishes', () => {
+    const solo = (o: Partial<RunView> = {}) => makeRun({ solo: true, status: 'done', live: false, finishedAt: Date.now(), pipeline: { ...makeRun().pipeline, name: 'solo', nodes: [{ id: 'work', kind: 'agent', role: 'coder', x: 0, y: 0 }], edges: [] }, nodes: { work: { status: 'done', attempts: 1, costUsd: 0, loops: 0 } }, ...o });
+
+    it('a real repo gets the usual Merge or Open PR choice', async () => {
+      open(solo());
+      const decision = await screen.findByRole('region', { name: 'Decision' });
+      expect(within(decision).getByRole('button', { name: 'Open PR instead' })).toBeTruthy();
+      expect(within(decision).queryByRole('button', { name: /Send back/ })).toBeNull();
+      await act(async () => fireEvent.click(within(decision).getByRole('button', { name: 'Merge to main' })));
+      expect(calls('POST', '/api/runs/r1/ship')[0]![2]).toEqual({ merge: true });
+    });
+
+    it('a plain folder that never got the work is told so in plain words', async () => {
+      open(solo({ history: '/h' }));
+      const decision = await screen.findByRole('region', { name: 'Decision' });
+      expect(decision.textContent).toContain("This work isn't in your folder yet.");
+      expect(decision.textContent).not.toMatch(/\b(git|merge|branch|PR|commit|repository)\b/i);
+      await act(async () => fireEvent.click(within(decision).getByRole('button', { name: 'Put it in the folder' })));
+      expect(calls('POST', '/api/runs/r1/ship')[0]![2]).toEqual({ merge: true });
+    });
+
+    it.each([
+      ['landed', { history: '/h', ship: { landed: { pre: 'a', post: 'b', files: ['a.txt'] } } }],
+      ['opened a PR', { ship: { url: 'https://x/1', number: 1 } }],
+      ['had no files', { history: '/h', ship: { error: 'No files came out of this run.' } }],
+      ['belongs to a squad', { origin: { kind: 'team', id: 't1', team: 't1' } }],
+      ['failed', { status: 'error' }],
+    ] as [string, Partial<RunView>][])('no banner once it %s', async (_, o) => {
+      open(solo(o));
+      await screen.findByRole('complementary', { name: 'Outcome' });
+      expect(screen.queryByRole('region', { name: 'Decision' })).toBeNull();
+    });
+
+    it('no files is not styled as a failure', async () => {
+      open(solo({ history: '/h', ship: { error: 'No files came out of this run.' } }));
+      expect((await screen.findByText('No files came out of this run.')).className).not.toContain('bad');
+    });
+
+    it('a real landing error still is', async () => {
+      const why = "This work couldn't be put in the folder, so nothing was changed.";
+      open(solo({ history: '/h', ship: { error: why } }));
+      expect((await screen.findByText(why, { selector: 'dd' })).className).toContain('bad');
+    });
   });
 
   it('a team run’s questions open in place as a row; planning comes first', async () => {

@@ -8,7 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { TITLE_MAX, type ChatMessage } from './types.js';
+import { TITLE_MAX, type ChatMessage, type RouteCard } from './types.js';
 
 export const MAX_MESSAGES = 200;
 export { TITLE_MAX };
@@ -158,7 +158,20 @@ export function listChats(home: string, ws: string | undefined): Chat[] {
 }
 
 export function saveChat(home: string, ws: string | undefined, c: Chat): void {
-  write(chatFile(home, ws, c.id), { ...c, messages: c.messages.slice(-MAX_MESSAGES) });
+  const f = chatFile(home, ws, c.id);
+  // only setRoute changes a saved card: a slow turn or compaction holding an older copy must not bring a started one back
+  const cards = new Map(parse(f)?.messages.flatMap((m) => (m.route ? [[m.id, m.route] as const] : [])));
+  write(f, { ...c, messages: c.messages.slice(-MAX_MESSAGES).map((m) => (cards.has(m.id) ? { ...m, route: cards.get(m.id)! } : m)) });
+}
+
+/** Save a route card's new state into the chat as it is now. */
+export function setRoute(home: string, ws: string | undefined, chat: string, message: string, route: RouteCard): void {
+  const f = chatFile(home, ws, chat);
+  const c = parse(f);
+  const m = c?.messages.find((x) => x.id === message);
+  if (!m) return; // deleted or regenerated meanwhile
+  m.route = route;
+  write(f, c);
 }
 
 export function deleteChat(home: string, ws: string | undefined, id: string): boolean {

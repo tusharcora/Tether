@@ -38,5 +38,6 @@ export function rowExtras(s: RunState, lastTs: number): RunRowExtras {
     ...(cur ? { current: { node: cur.id, bot: CREW[crewFor(cur)]?.name ?? crewFor(cur), title: nodeTitle(cur) } } : {}),
     bots,
     repoReal: realRepo(s.repo),
+    ...(s.history ? { plain: true as const } : {}),
   };
 }

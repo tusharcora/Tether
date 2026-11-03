@@ -24,6 +24,8 @@ export async function openCodeModeFor(o: {
   workdir: string;
   grants: string[];
   workspace?: string;
+  /** The workdir is a plain folder: no spill files in it. */
+  noSpill?: boolean;
   /** A script is about to run; the returned function receives its result. */
   onRun(code: string): (r: RunCodeOutput) => void;
 }): Promise<TurnCodeMode> {
@@ -42,6 +44,7 @@ export async function openCodeModeFor(o: {
       grants: o.grants,
       handoff: false,
       workspace: o.workspace,
+      noSpill: o.noSpill,
     },
     { store: o.store, vault: o.vault, db: o.store.raw(), mcpServers: loadMcpServers(o.home) },
   );

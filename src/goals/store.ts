@@ -50,6 +50,8 @@ export function ensureGoals(db: Db): void {
   add('goal_items', [['assignees', 'TEXT']]);
   // squads and tickets (2026-10-30): every goal is a ticket
   add('goals', [['num', 'INTEGER'], ['stage', 'TEXT'], ['priority', 'TEXT'], ['assignee', 'TEXT'], ['reviewer', 'TEXT'], ['labels', 'TEXT'], ['prs', 'TEXT'], ['squad', 'TEXT'], ['activity', 'TEXT']]);
+  // route cards (2026-11-02): the chat a ticket came from; set once, at insert
+  add('goals', [['context', 'TEXT']]);
   // per project: the next ticket number (never reused) and the key prefix, once someone edits it
   db.exec('CREATE TABLE IF NOT EXISTS ticket_keys (workspace TEXT PRIMARY KEY, next INTEGER NOT NULL, prefix TEXT)');
   migrateTickets(db);
@@ -115,6 +117,7 @@ const toGoal = (r: Row): Goal => ({
   ...(r.agent ? { agent: r.agent as string } : {}),
   ...(r.type ? { type: r.type as GoalType } : {}),
   ...(r.description ? { description: r.description as string } : {}),
+  ...(r.context ? { context: r.context as string } : {}),
   ...(r.assignees ? { assignees: json<Assignee[]>(r.assignees) } : {}),
   ...(r.ended_at ? { endedAt: r.ended_at as number } : {}),
   ...(r.started_at ? { startedAt: r.started_at as number } : {}),
@@ -165,8 +168,8 @@ export class GoalStore {
   insert(g: Goal): Goal {
     const t: Goal = { ...g, num: g.num ?? takeNum(this.db, g.workspace), stage: g.stage ?? stageOfStatus(g.status, !!g.startedAt), ...(!g.assignee && !g.reviewer ? membersOf(g) : {}) };
     this.db
-      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent, type, description, assignees, max_minutes, started_at, origin, num, stage, priority, assignee, reviewer, labels, prs, squad, activity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(t.id, t.workspace, t.title, t.kind, t.status, t.check ? JSON.stringify(t.check) : null, t.budgetUsd ?? 0, t.maxRuns ?? 0, t.approval, t.workflow, t.dueDate ?? null, t.createdAt, t.team ?? null, t.agent ?? null, t.type ?? null, t.description ?? null, who(t.assignees), t.maxMinutes ?? null, t.startedAt ?? null, t.origin ? JSON.stringify(t.origin) : null, t.num!, t.stage!, t.priority ?? null, col(t.assignee), col(t.reviewer), col(t.labels), col(t.prs), t.squad ?? null, col(t.activity));
+      .prepare('INSERT INTO goals(id, workspace, title, kind, status, check_json, budget_usd, max_runs, approval, workflow, due_date, created_at, spent_usd, team, agent, type, description, assignees, max_minutes, started_at, origin, num, stage, priority, assignee, reviewer, labels, prs, squad, activity, context) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(t.id, t.workspace, t.title, t.kind, t.status, t.check ? JSON.stringify(t.check) : null, t.budgetUsd ?? 0, t.maxRuns ?? 0, t.approval, t.workflow, t.dueDate ?? null, t.createdAt, t.team ?? null, t.agent ?? null, t.type ?? null, t.description ?? null, who(t.assignees), t.maxMinutes ?? null, t.startedAt ?? null, t.origin ? JSON.stringify(t.origin) : null, t.num!, t.stage!, t.priority ?? null, col(t.assignee), col(t.reviewer), col(t.labels), col(t.prs), t.squad ?? null, col(t.activity), t.context ?? null);
     return t;
   }
   /** Replace the fields that change after creation. */

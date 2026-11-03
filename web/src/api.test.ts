@@ -16,6 +16,11 @@ describe('fmtDur', () => {
 });
 
 describe('api()', () => {
+  it('keeps a refusal body the route answers with, such as needsTrust', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ needsTrust: true, folder: '/x' }), { status: 409 })));
+    expect(await api('POST', '/api/x', {}).catch((e: unknown) => e)).toMatchObject({ status: 409, body: { needsTrust: true, folder: '/x' } });
+  });
+
   it('throws an ApiError with the server error text and the HTTP status', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'no workspace' }), { status: 409 })));
     const err = await api('GET', '/api/x').catch((e: unknown) => e);

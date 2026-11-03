@@ -37,7 +37,7 @@ export function summarize(c: Chat, rows: Map<string, Row>, engine: LiveProbe): C
   const replies = c.messages.filter((m) => m.role === 'tether' && !m.compact);
   const outcome: OutcomeNode[] = asked ? [{ kind: 'Asked', label: titleOf(asked.text), state: replies.length ? 'answered' : 'asked', tone: replies.length ? 'done' : 'idle' }] : [];
   const faces = new Set<string>();
-  for (const p of replies.flatMap((m) => m.proposals ?? [])) {
+  for (const p of replies.flatMap((m) => [...(m.proposals ?? []), ...(m.route ? [m.route] : [])])) {
     const [state, tone] = PROPOSAL[p.status];
     outcome.push({ kind: 'Proposal', label: firstLine(p.task, 60) || `Run ${p.workflow ?? 'a team'}`, state, tone });
     if (p.status !== 'started' || !p.runId) continue;
@@ -69,6 +69,6 @@ export function summarize(c: Chat, rows: Map<string, Row>, engine: LiveProbe): C
 export function matches(c: Chat, q: string): boolean {
   const n = q.trim().toLowerCase();
   if (!n) return true;
-  const hay = [c.title, ...c.messages.flatMap((m) => [m.text, ...(m.proposals ?? []).map((p) => p.runId ?? ''), ...(m.cites ?? []).map((x) => (x.kind === 'run' ? x.id : x.path))])];
+  const hay = [c.title, ...c.messages.flatMap((m) => [m.text, ...(m.proposals ?? []).map((p) => p.runId ?? ''), m.route?.runId ?? '', ...(m.cites ?? []).map((x) => (x.kind === 'run' ? x.id : x.path))])];
   return hay.some((h) => h.toLowerCase().includes(n));
 }

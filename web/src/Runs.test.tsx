@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: vi.fn() }));
 import { api } from './api';
 import { Runs } from './Runs';
+import { StepPane } from './runs/StepPane';
 import { calls, FakeEventSource, makeAwaitingRun, makeRow, makeRun, routeApi } from './test/fixtures';
 import { renderApp } from './test/render';
 
@@ -86,6 +87,37 @@ describe('Runs', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reject' })));
     expect(calls('POST', '/api/runs/r1/approve')[0]![2]).toEqual({ node: 'ship', approved: false });
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Decision' })).toBeNull());
+  });
+
+  it('offers Put it in the folder for a plain folder run, with no git words', async () => {
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', { ...awaitingRun, history: '/x', status: 'paused' }));
+    expect(await screen.findByRole('button', { name: 'Put it in the folder' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open PR instead' })).toBeNull();
+    expect(screen.queryByText(/merge|branch|\bPR\b|commit|repositor/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Put it in the folder' }));
+    await waitFor(() => expect(calls('POST', '/api/runs/r1/ship')).toHaveLength(1));
+  });
+
+  it('the step pane with no step selected does not show the branch of a plain folder run', async () => {
+    const { container } = renderApp(<StepPane row={{ id: 'plan', sentence: 'Planning', line: '', state: 'done' }} run={makeRun({ history: '/x' })} comments={{ list: [], markSent: () => {} } as never} onAct={async () => true} />);
+    await waitFor(() => expect(container.querySelector('.rp-step')).toBeTruthy());
+    expect(container.textContent).not.toContain('aorch/r1');
+    expect(container.textContent).toContain('working copy');
+  });
+
+  it('shows Undo after landing and says what stopped it', async () => {
+    routeApi({ 'GET /api/runs': [makeRow()], 'GET /api/runs/r1/events': [], 'GET /api/runs/r1/diff': { diff: '' }, 'POST /api/runs/r1/undo-land': new Error("These files can't be undone automatically: a.txt. Nothing was changed.") });
+    const landed = { ...makeRun({ status: 'done', live: false }), history: '/x', ship: { merged: true, landed: { pre: 'a', post: 'b', files: ['a.txt', 'b.txt'] } } };
+    renderApp(<Runs selected="r1" onSelect={() => {}} />);
+    act(() => FakeEventSource.all[0]!.emit('state', landed));
+    expect(await screen.findByText("It's in your folder · 2 files")).toBeTruthy();
+    expect(screen.queryByText(/merge|branch|\bPR\b|commit|repositor/i)).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Undo' })));
+    expect(calls('POST', '/api/runs/r1/undo-land')).toHaveLength(1);
+    expect(await screen.findByText(/can't be undone automatically: a\.txt/)).toBeTruthy();
+    act(() => FakeEventSource.all[0]!.emit('state', { ...landed, ship: { merged: true, landed: { pre: 'a', post: 'b', files: ['a.txt'] } } }));
+    expect(await screen.findByText("It's in your folder · 1 file")).toBeTruthy();
   });
 
   it('sends step feedback with its note and toasts failures', async () => {

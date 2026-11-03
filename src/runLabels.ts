@@ -4,6 +4,15 @@
  */
 import type { RunState, RunStatus, TeamPlan } from './types.js';
 
+/** What a run, a goal or a ticket says when a folder that said no stops one of Tether's own commands. */
+export const NOT_TRUSTED = "This folder isn't trusted, so the check didn't run.";
+/** The trust question's body, verbatim wherever it is asked. */
+export const TRUST_BODY = "Agents can run commands here, like tests and installs. Undo restores files, but it can't reverse everything a command does. Some things always stop and ask first. Files in a downloaded project can try to steer an agent, so only trust folders you know.";
+/** A solo run that left the folder as it was: `ship.error` holds it, but nothing went wrong. */
+export const NO_FILES = 'No files came out of this run.';
+/** The same for any other run: the folder already had this work. */
+export const NOTHING_TO_LAND = 'Nothing to put in the folder: it already has this work.';
+
 /** A task that starts by changing something in the repo: "Update README.md …", "Fix the login bug". */
 const CHANGES = /^\W*(?:please\s+)?(update|fix|add|write|rewrite|refactor|implement|change|edit|create|rename|remove|delete|replace|bump|migrate|apply|port|upgrade)\b/i;
 /** A success criterion that needs a change: "README.md is updated". */

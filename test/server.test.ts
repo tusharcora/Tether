@@ -68,6 +68,13 @@ describe('http api', () => {
     expect((await api('PUT', '/api/prefs', { spendingCaps: false })).json).toEqual({ spendingCaps: false });
   });
 
+  it("Don't ask for small jobs: off by default, read with health, set with PUT /api/prefs", async () => {
+    expect((await api('GET', '/api/health')).json.soloWithoutAsking).toBe(false);
+    expect((await api('PUT', '/api/prefs', { soloWithoutAsking: true })).status).toBe(200);
+    expect((await api('GET', '/api/health')).json.soloWithoutAsking).toBe(true);
+    expect((await api('PUT', '/api/prefs', { soloWithoutAsking: false })).status).toBe(200);
+  });
+
   it('Auto-fix failed runs: on with 3 rounds by default, set with PUT /api/prefs', async () => {
     expect((await api('GET', '/api/health')).json).toMatchObject({ autoFix: true, autoFixRounds: 3 });
     expect((await api('PUT', '/api/prefs', { autoFix: 'no' })).status).toBe(400);

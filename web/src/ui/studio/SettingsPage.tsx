@@ -8,6 +8,7 @@ import { Accounts } from '../../settings/Accounts';
 import type { AccountsView } from '../../settings/accountsApi';
 import { Connectors, type ConnectorView } from '../../settings/Connectors';
 import { McpServers, type McpServerView } from '../../settings/McpServers';
+import { TrustedFolders, type TrustView } from '../../settings/TrustedFolders';
 import { ThemeToggle } from '../../components/beui/motion/theme-toggle';
 import { resolveTheme, THEME_LABEL, type ThemeChoice } from '../../theme';
 import { ToolsStrip, type Tools } from '../../welcome/ToolsStrip';
@@ -58,6 +59,10 @@ export interface SettingsPageProps {
   caps?: { on: boolean; onChange: (on: boolean) => void };
   /** Auto-fix failed runs and its rounds (shown once the server answers). */
   autoFix?: { on: boolean; rounds: number; onChange: (on: boolean) => void; onRounds: (n: number) => void };
+  /** Don't ask for small jobs (shown with the Runs card). */
+  solo?: { on: boolean; onChange: (on: boolean) => void };
+  /** Folders asked about (shown when given). */
+  trust?: Poll<TrustView>;
   /** Where focus goes on close when the opener is gone. */
   returnFocus?: () => HTMLElement | null | undefined;
 }
@@ -77,6 +82,7 @@ export function SettingsPage(p: SettingsPageProps) {
     ...(p.accounts ? [{ id: 'accounts', title: 'Accounts' }] : []),
     ...(p.tools || p.mcp || p.connectors ? [{ id: 'agents', title: 'Agents & tools' }] : []),
     ...(p.caps ? [{ id: 'runs', title: 'Runs' }] : []),
+    ...(p.trust ? [{ id: 'trust', title: 'Trusted folders' }] : []),
     { id: 'appearance', title: 'Appearance' },
     { id: 'storage', title: 'Storage' },
     { id: 'server', title: 'Server' },
@@ -169,6 +175,18 @@ export function SettingsPage(p: SettingsPageProps) {
                   {p.autoFix.on ? <SegmentedControl label="Rounds before it gives up" options={ROUNDS.map((n) => ({ value: String(n), label: String(n) }))} value={String(p.autoFix.rounds)} onValueChange={(v) => p.autoFix!.onRounds(Number(v))} /> : null}
                 </section>
               ) : null}
+              {p.solo ? (
+                <section className="sl-settings-group" aria-labelledby="set-solo">
+                  <h3 id="set-solo">Small jobs</h3>
+                  <Switch label="Don't ask for small jobs" checked={p.solo.on} onCheckedChange={(c) => p.solo!.onChange(c === true)} />
+                  <p className="st-help">On: small jobs start without asking in folders you trust.</p>
+                </section>
+              ) : null}
+            </Card>
+          ) : null}
+          {p.trust ? (
+            <Card id="trust" title="Trusted folders">
+              <TrustedFolders poll={p.trust} />
             </Card>
           ) : null}
           <Card id="appearance" title="Appearance">

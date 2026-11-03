@@ -19,7 +19,7 @@ export class MockAdapter implements AgentAdapter {
   /** Off by default; `new MockAdapter({ resume: true })` reports a session for every agent call and accepts it back, like Claude. */
   readonly supportsResume: boolean;
   /** Every request the adapter has served, for assertions. */
-  readonly calls: { nodeId: string; attempt: number; prompt: string; readOnly: boolean; resumeSessionId?: string; budgetUsd?: number }[] = [];
+  readonly calls: { nodeId: string; attempt: number; prompt: string; readOnly: boolean; commands?: boolean; resumeSessionId?: string; budgetUsd?: number }[] = [];
 
   constructor(o: { resume?: boolean } = {}) {
     this.supportsResume = !!o.resume;
@@ -30,7 +30,7 @@ export class MockAdapter implements AgentAdapter {
   }
 
   async run(req: AgentRequest): Promise<AgentResult> {
-    this.calls.push({ nodeId: req.nodeId, attempt: req.attempt, prompt: req.prompt, readOnly: req.readOnly, ...(req.resumeSessionId ? { resumeSessionId: req.resumeSessionId } : {}), ...(req.budgetUsd !== undefined ? { budgetUsd: req.budgetUsd } : {}) });
+    this.calls.push({ nodeId: req.nodeId, attempt: req.attempt, prompt: req.prompt, readOnly: req.readOnly, commands: req.commands, ...(req.resumeSessionId ? { resumeSessionId: req.resumeSessionId } : {}), ...(req.budgetUsd !== undefined ? { budgetUsd: req.budgetUsd } : {}) });
     let m = req.mock ?? {};
     const when = m.whenPrompt?.find((w) => req.prompt.includes(w.includes));
     if (when) m = { ...m, ...when.then };

@@ -78,7 +78,7 @@ describe('resolveInWorkspace: one gate for every code path', () => {
 describe('secrets and languages', () => {
   it('knows secrets files by name', () => {
     for (const p of ['.env', 'api/.env.local', 'certs/server.pem', 'tls.key', '.ssh/id_ed25519', 'id_rsa.pub']) expect(isSecretPath(p), p).toBe(true);
-    for (const p of ['env.ts', 'src/environment.ts', 'keys.ts', 'idea.md', 'monkey.json']) expect(isSecretPath(p), p).toBe(false);
+    for (const p of ['env.ts', 'src/environment.ts', 'keys.ts', 'idea.md', 'monkey.json', '.env.example', 'api/.env.sample', '.env.template', 'id_token.test.ts']) expect(isSecretPath(p), p).toBe(false);
   });
   it('names the language CodeMirror should use', () => {
     expect([langOf('a.ts'), langOf('a.tsx'), langOf('a.mjs'), langOf('a.json'), langOf('README.md'), langOf('a.css'), langOf('a.html'), langOf('a.py'), langOf('Makefile')]).toEqual(['typescript', 'tsx', 'javascript', 'json', 'markdown', 'css', 'html', 'python', 'text']);
@@ -152,6 +152,8 @@ describe('readCode', () => {
   });
   it('opens secrets and files it cannot write read-only', () => {
     expect(readCode(root, '.env')).toMatchObject({ secret: true, readOnly: true, text: 'KEY=1\n' });
+    writeFileSync(join(root, '.env.example'), 'KEY=\n');
+    expect(readCode(root, '.env.example').secret).toBeFalsy();
     expect(readCode(root, 'locked.ts')).toMatchObject({ readOnly: true });
   });
   it('says 404 for a missing file and 400 for a folder', () => {
