@@ -14,7 +14,7 @@ const H = 3_600_000;
 const rows = [
   makeRow({ id: 'r1', task: 'Sign-in returns people to where they were', status: 'paused', live: false, added: 42, deleted: 9, origin: { kind: 'goal', id: 'g1', team: 'web' }, steps: [{ id: 'fix', status: 'done', bot: 'coder', kind: 'agent' }, { id: 'ok', status: 'awaiting', bot: 'approval', kind: 'approval', title: 'You approve' }] }),
   makeRow({ id: 'r2', task: 'Dark mode for settings', live: true, bots: ['coder', 'reviewer'], current: { node: 'b', bot: 'Bolt', title: 'Implement' }, steps: [{ id: 'a', status: 'done', bot: 'coder' }, { id: 'b', status: 'running', bot: 'coder' }] }),
-  makeRow({ id: 'r3', task: 'Upgrade vite', status: 'error', live: false, startedAt: Date.now() - H, steps: [{ id: 'a', status: 'done', bot: 'coder' }, { id: 't', status: 'error', bot: 'tester', title: 'Tests' }] }),
+  makeRow({ id: 'r3', task: 'Upgrade vite', status: 'error', live: false, startedAt: Date.now(), steps: [{ id: 'a', status: 'done', bot: 'coder' }, { id: 't', status: 'error', bot: 'tester', title: 'Tests' }] }),
   makeRow({ id: 'r4', task: 'Billing empty state', status: 'done', live: false, startedAt: Date.now() - 3 * 24 * H, ship: { url: 'u', number: 138, merged: true }, costUsd: 0.51 }),
 ];
 const setup = (o: { data?: RunRow[]; schedules?: boolean; onShip?: (id: string) => Promise<void> } = {}) => {

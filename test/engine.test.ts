@@ -328,7 +328,7 @@ describe('commands', () => {
   });
 
   it('the command hook takes the step folder from its cwd', () => {
-    const root = tmp();
+    const root = '/srv/project'; // not a real temp folder: on Linux that is /tmp, which the rule lets any command use
     expect(hook({ cwd: root, tool_input: { command: `cat ${root}/a.txt` } }).status).toBe(0);
     expect(hook({ tool_input: { command: `cat ${root}/a.txt` } }).status).toBe(2);
     expect(hook({ cwd: `${root}/a/b`, tool_input: { command: 'echo hi > ../../../marker' } }).status).toBe(2);
