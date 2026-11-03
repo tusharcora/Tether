@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { git, gitEnv, gitTop, isAncestor, must } from './git.js';
@@ -119,27 +119,54 @@ function survey(root: string, maxFiles: number): { files: string[]; leftOut: str
 
 /**
  * A plain folder run's files, as its disk spells them, so a case or Unicode-form rename is seen and a .gitignore hides nothing.
- * `linked`: the links to what the folder left out. `made`: left-out names the run made itself, which never land.
+ * Links to what the folder left out are skipped. `made`: left-out names the run made itself, which never land.
  */
-export function workFiles(root: string, linked: string[] = []): { files: string[]; made: string[] } {
-  const skip = new Set(['.git', ...linked]);
+export function workFiles(root: string): { files: string[]; made: string[] } {
   const files: string[] = [];
   const made: string[] = [];
   const walk = (dir: string, rel: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (skip.has(r)) continue;
+      const p = join(dir, e.name);
+      if (r === '.git') continue;
       if (SKIP_NAMES.includes(e.name)) {
         if (e.name !== '.DS_Store' && !e.isSymbolicLink()) made.push(r);
         continue;
       }
+      // how linkLeftOut makes them: an absolute link to the same path in the folder
+      if (e.isSymbolicLink()) {
+        const to = readlinkSync(p);
+        if (to.startsWith('/') && to.endsWith(`/${r}`)) continue;
+      }
       // a project inside stays one entry, as `add -A` keeps it, so landing can refuse it by name
-      if (e.isDirectory() && !existsSync(join(dir, e.name, '.git'))) walk(join(dir, e.name), r);
+      if (e.isDirectory() && !existsSync(join(p, '.git'))) walk(p, r);
       else files.push(r);
     }
   };
   walk(root, '');
   return { files, made };
+}
+
+/** In a plain folder run's own git dir: what its last step left out of the work, NUL-separated. */
+export const NOT_LANDED = 'tether-not-landed';
+
+/** True when `common` is a plain folder's hidden history: where historyDir puts one, set up by keepExact. Real repos never look like this. */
+export function isHistory(common: string): boolean {
+  if (!/[\\/]history[\\/][0-9a-f]{16}\.git$/.test(common)) return false;
+  try {
+    return readFileSync(join(common, 'info', 'attributes'), 'utf8') === EXACT;
+  } catch {
+    return false;
+  }
+}
+
+/** What a plain folder run's last step left out of its work (left-out names, files too big, files past the count), or none. */
+export async function notLanded(workdir: string): Promise<string[]> {
+  try {
+    return readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8').split('\0').filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 const anchored = (p: string) => '/' + p.replace(/[\\*?[]/g, '\\$&');
@@ -172,6 +199,8 @@ async function commitTree(cwd: string, env: Record<string, string>, parent: stri
   return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
 }
 
+const EXACT = '* -text -filter -ident -eol -working-tree-encoding\n';
+
 /** Store a folder's names and bytes untouched. Without this a folder's .gitattributes rewrites line endings, and undo restores the altered bytes. */
 async function keepExact(history: string): Promise<void> {
   // macOS sets precompose on, then `add` from stdin silently drops decomposed names (é as e + accent)
@@ -179,7 +208,7 @@ async function keepExact(history: string): Promise<void> {
   await must(history, ['config', 'core.autocrlf', 'false']);
   mkdirSync(join(history, 'info'), { recursive: true });
   // written last: its presence means this history is done
-  writeFileSync(join(history, 'info', 'attributes'), '* -text -filter -ident -eol -working-tree-encoding\n');
+  writeFileSync(join(history, 'info', 'attributes'), EXACT);
 }
 
 /** Commit the folder's current files into its hidden history. Nothing is written inside the folder. */

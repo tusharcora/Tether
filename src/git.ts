@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { historyDir, insideGit, linkLeftOut, snapshotDirty, snapshotFolder, workFiles } from './history.js';
+import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { historyDir, insideGit, isHistory, linkLeftOut, MAX_FILE_BYTES, MAX_FOLDER_FILES, NOT_LANDED, snapshotDirty, snapshotFolder, workFiles } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -79,10 +79,7 @@ export async function createWorktree(repo: string, home: string, runId: string, 
   const workdir = join(home, 'worktrees', runId);
   mkdirSync(join(home, 'worktrees'), { recursive: true });
   await must(top, ['worktree', 'add', '-b', branch, workdir, baseSha]);
-  if (plain) {
-    linkLeftOut(workdir, resolve(repo), plain.leftOut);
-    writeFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), PLAIN), plain.leftOut.join('\0'));
-  }
+  if (plain) linkLeftOut(workdir, resolve(repo), plain.leftOut);
   return { workdir, baseSha, branch, ...plain, ...(dirty ? { dirty } : {}) };
 }
 
@@ -137,41 +134,51 @@ export async function revertEntries(workdir: string, entries: string[]): Promise
   }
 }
 
-/** In a plain folder run's own git dir: marks it, and holds the links to what the folder left out, NUL-separated. */
-const PLAIN = 'tether-left-out';
-
-/** The links a plain folder run's worktree holds to what its folder left out, or undefined in a real repo. */
-async function plainLinks(workdir: string): Promise<string[] | undefined> {
-  try {
-    return readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), PLAIN), 'utf8').split('\0').filter(Boolean);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * Stage a plain folder run's files exactly as its disk has them, by force, as the folder's snapshot does: its .gitignore must not
- * hide work from the folder, and git's case guess must not hide a rename. Removals go first, so a renamed name is added fresh.
+ * Stage a plain folder run's files as its disk has them. `add -A` does the bulk; then, as the folder's snapshot does, what it
+ * missed is added by force (files the folder's .gitignore names, and a case or Unicode-form rename git's case guess hides), and
+ * what the disk no longer spells that way is dropped. Ignored files past the snapshot's limits stay out, and are recorded with
+ * the left-out names the run made, so landing can say what it didn't put in the folder.
  */
-async function stageAll(workdir: string, linked: string[], exclude: string[]): Promise<void> {
+async function stageAll(workdir: string, gitDir: string, exclude: string[]): Promise<void> {
+  await must(workdir, ['add', '-A', ...specs(exclude)]);
   const outside = (p: string) => exclude.some((e) => p === e.replace(/\/$/, '') || p.startsWith(e.replace(/\/$/, '') + '/'));
-  const { files } = workFiles(workdir, linked);
-  const on = new Set(files);
+  const { files, made } = workFiles(workdir);
   const ls = await git(workdir, ['ls-files', '-z']);
   if (ls.code !== 0) throw new Error(`git ls-files failed: ${ls.stderr.trim()}`);
-  const gone = ls.stdout.split('\0').filter((p) => p && !on.has(p) && !outside(p));
-  const lit = { GIT_LITERAL_PATHSPECS: '1' };
-  for (const [args, list] of [[['rm', '--cached', '-q', '-r'], gone], [['add', '-f'], files.filter((p) => !outside(p))]] as const) {
-    if (!list.length) continue;
-    const r = await gitEnv(workdir, [...args, '--pathspec-from-file=-', '--pathspec-file-nul'], lit, list.join('\0'));
-    if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr.trim()}`);
+  const had = new Set(ls.stdout.split('\0').filter(Boolean));
+  const on = new Set(files);
+  const gone = [...had].filter((p) => !on.has(p) && !outside(p));
+  let extra = files.filter((p) => !had.has(p) && !outside(p));
+  const big = extra.filter((p) => lstatSync(join(workdir, p)).size > MAX_FILE_BYTES);
+  extra = extra.filter((p) => !big.includes(p));
+  let over: string[] = [];
+  if (had.size - gone.length + extra.length > MAX_FOLDER_FILES) {
+    // named by the top folder that holds none of the work, as `target`, not each of its files
+    const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
+    const kept = new Set([...had].filter((p) => on.has(p)).flatMap((p) => up(p).slice(0, -1)));
+    over = [...new Set(extra.map((p) => up(p).find((a) => !kept.has(a))!))];
+    extra = [];
   }
+  // exact paths, not pathspecs: matching a long pathspec list is slow. Removals first, so a renamed name is added fresh
+  for (const [flag, list] of [['--force-remove', gone], ['--add', extra]] as const) {
+    if (!list.length) continue;
+    const r = await gitEnv(workdir, ['update-index', '-z', flag, '--stdin'], {}, list.join('\0') + '\0');
+    if (r.code !== 0) throw new Error(`git update-index failed: ${r.stderr.trim()}`);
+  }
+  writeFileSync(join(gitDir, NOT_LANDED), [...made, ...big, ...over].join('\0'));
+}
+
+/** A plain folder run's own git dir, or undefined in a real repo. */
+async function plainGitDir(workdir: string): Promise<string | undefined> {
+  const [own, common] = (await must(workdir, ['rev-parse', '--absolute-git-dir', '--path-format=absolute', '--git-common-dir'])).split('\n');
+  return isHistory(common!) ? own : undefined;
 }
 
 /** Commit everything in the worktree except `exclude`. Returns the new sha, or undefined if nothing changed. */
 export async function commitAll(workdir: string, message: string, exclude: string[] = []): Promise<string | undefined> {
-  const linked = await plainLinks(workdir);
-  if (linked) await stageAll(workdir, linked, exclude);
+  const plain = await plainGitDir(workdir);
+  if (plain) await stageAll(workdir, plain, exclude);
   else await must(workdir, ['add', '-A', ...specs(exclude)]);
   const quiet = await git(workdir, ['diff', '--cached', '--quiet']);
   if (quiet.code === 0) return undefined;

@@ -3,7 +3,7 @@ import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSy
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { commitAll, createWorktree } from '../src/git.js';
-import { historyDir, landBranch, MAX_FILE_BYTES, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
+import { historyDir, landBranch, MAX_FILE_BYTES, MAX_FOLDER_FILES, notLanded, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
 import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 const read = (folder: string, f: string) => readFileSync(join(folder, f), 'utf8');
@@ -163,6 +163,34 @@ describe('landing', () => {
       });
       expect(landed(await landBranch(home, folder, head)).files).toEqual(['a.txt']);
     });
+
+    it('leaves out a file too big to undo under an ignored path, lands the rest, and undo works', async () => {
+      const { home, folder, workdir, head } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' }, []);
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'big')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual(['out/model.bin']);
+      const r = landed(await landBranch(home, folder, head));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(existsSync(join(folder, 'out/model.bin'))).toBe(false);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(existsSync(join(folder, 'out'))).toBe(false);
+    });
+
+    it('leaves out an ignored folder of more files than undo can keep, names it, lands the rest, and undo works', async () => {
+      const { home, folder, workdir, head } = await run({ '.gitignore': 'target/\n', 'a.txt': '1' }, { 'a.txt': '2' });
+      for (let d = 0; d * 1000 <= MAX_FOLDER_FILES; d++) {
+        mkdirSync(join(workdir, `target/d${d}`), { recursive: true });
+        for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), '');
+      }
+      expect(await commitAll(workdir, 'many')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual(['target']);
+      const r = landed(await landBranch(home, folder, head));
+      expect(r.files).toEqual(['a.txt']);
+      expect(existsSync(join(folder, 'target'))).toBe(false);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+    }, 300_000);
 
     it('a real repo keeps its ignores', async () => {
       const repo = makeRepo();

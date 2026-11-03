@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../src/exec.js';
 import { buildPrompt, CAREFUL } from '../src/prompt.js';
+import { MAX_FILE_BYTES } from '../src/history.js';
 import { landRun, RunShip } from '../src/runShip.js';
 import { soloPipeline } from '../src/solo.js';
 import type { MockScript, StoredEvent } from '../src/types.js';
@@ -162,6 +163,26 @@ describe('a solo run', () => {
     expect(ship.landed).toBeUndefined();
     expect(ship.error).toBe("It changed node_modules, which Undo can't restore, so it wasn't put in your folder.");
     expect(existsSync(join(r.folder, 'node_modules'))).toBe(false);
+  });
+
+  it('a solo run that also made a file too big to undo lands the rest and says what it left out', async () => {
+    const r = await soloRun({ 'out/report.txt': 'r\n' }, {
+      folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }),
+      during: (e, s) => {
+        if (e.event.type !== 'node.started') return;
+        const wd = s.store.state(e.runId)!.workdir;
+        mkdirSync(join(wd, 'out'), { recursive: true });
+        writeFileSync(join(wd, 'out/model.bin'), '');
+        truncateSync(join(wd, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      },
+    });
+    await r.ship.idle();
+    const s = r.store.state(r.id)!;
+    expect(s.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
+    expect(s.notices?.map((n) => n.text)).toContain("It changed out/model.bin, which Undo can't restore, so it wasn't put in your folder.");
+    expect(existsSync(join(r.folder, 'out/model.bin'))).toBe(false);
+    await r.ship.undo(r.id);
+    expect(existsSync(join(r.folder, 'out'))).toBe(false);
   });
 
   it('a file a person makes while the work is being put in stops it, by name', async () => {
