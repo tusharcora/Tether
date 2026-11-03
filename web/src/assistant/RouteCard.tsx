@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NOT_TRUSTED, TRUST_BODY } from '../../../src/runLabels';
+import { NOT_TRUSTED } from '../../../src/runLabels';
 import { api, ApiError, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { usePoll, type Route } from '../hooks';
 import { planRows } from '../runs/planModel';
 import { NOT_IN_FOLDER, nothingToLand } from '../runs/storyModel';
@@ -11,6 +10,7 @@ import { useNotify } from '../ui/notify';
 import { viewDesc } from '../ui/studio/status';
 import type { RouteCard, RouteKind } from './api';
 import { taskState } from './taskCards';
+import { TrustDialog } from './TrustDialog';
 import type { Assistant } from './useAssistant';
 
 const ROW: Record<RouteKind, string> = { solo: 'Do it myself', ticket: 'Make a ticket', workflow: 'Workflow', team: 'Team' };
@@ -177,26 +177,7 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
         Don't ask for small jobs
       </label>
       <p className="m-0 mt-0.5 text-xs text-muted-foreground">Small jobs then start without asking in folders you trust.</p>
-      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(undefined)}>
-        <DialogContent title="Trust this folder?">
-          {ask?.ownShell ? <p className="m-0 mb-2 font-medium">This agent runs commands on its own, so it needs this folder trusted.</p> : null}
-          <p className="m-0">{TRUST_BODY}</p>
-          {ask?.folder ? <code className="mt-2 block truncate text-xs text-muted-foreground">{ask.folder}</code> : null}
-          {ask?.refused ? <p className="m-0 mt-2">You said no to this folder before. Change it in Settings.</p> : null}
-          <div className="row end mt-4">
-            {ask?.ownShell ? null : (
-              <Button variant="secondary" onClick={() => ask && void start(ask.choice, false)}>
-                Not now
-              </Button>
-            )}
-            {ask?.refused ? null : (
-              <Button variant="primary" onClick={() => ask && void start(ask.choice, true)}>
-                Trust
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TrustDialog ask={ask} onClose={() => setAsk(undefined)} onNotNow={() => ask && void start(ask.choice, false)} onTrust={() => ask && void start(ask.choice, true)} />
     </Card>
   );
 }

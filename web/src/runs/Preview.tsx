@@ -1,6 +1,7 @@
 import { ExternalLink, RotateCw, X } from 'lucide-react';
 import { useState } from 'react';
-import { api, type PreviewView, type RunView } from '../api';
+import { api, ApiError, type PreviewView, type RunView } from '../api';
+import { TrustDialog, type TrustAsk } from '../assistant/TrustDialog';
 import { Button } from '../components/beui/kit/Button';
 import { usePoll } from '../hooks';
 import { cn } from '../ui/cn';
@@ -25,20 +26,30 @@ export function Preview({ run: r, onClose }: { run: RunView; /** The side pane's
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [reload, setReload] = useState(0);
+  const [ask, setAsk] = useState<TrustAsk>();
   const p = poll.data?.preview;
   const on = p && (p.status === 'starting' || p.status === 'running');
   const command = cmd ?? p?.command ?? poll.data?.command ?? '';
   const call = async (method: 'POST' | 'DELETE', body?: unknown) => {
     setBusy(true);
     setError(undefined);
+    setAsk(undefined);
     try {
       await api(method, path, body);
       await poll.refresh();
     } catch (e) {
-      setError((e as Error).message);
+      const b = e instanceof ApiError ? (e.body as (TrustAsk & { needsTrust?: boolean }) | undefined) : undefined;
+      if (b?.needsTrust) setAsk(b);
+      else setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const start = (trust?: true) => call('POST', { ...(command.trim() ? { command: command.trim() } : {}), ...(trust ? { trust } : {}) });
+  const notNow = () => {
+    setAsk(undefined);
+    setError("This folder isn't trusted, so the preview didn't start.");
   };
 
   return (
@@ -90,7 +101,7 @@ export function Preview({ run: r, onClose }: { run: RunView; /** The side pane's
           className="rpv-start"
           onSubmit={(e) => {
             e.preventDefault();
-            void call('POST', command.trim() ? { command: command.trim() } : {});
+            void start();
           }}
         >
           <p>See the app as this run left it: Tether starts its dev server inside the run’s worktree.</p>
@@ -104,6 +115,7 @@ export function Preview({ run: r, onClose }: { run: RunView; /** The side pane's
           </Button>
         </form>
       )}
+      <TrustDialog ask={ask} onClose={() => setAsk(undefined)} onNotNow={notNow} onTrust={() => void start(true)} />
     </section>
   );
 }

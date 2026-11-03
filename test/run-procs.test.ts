@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkCommand, cleanEnv, detectUrl, devCommand, RunProcs, STREAM_CAP, type ProcMessage } from '../src/runProcs.js';
 import { Store } from '../src/store.js';
+import { setTrust } from '../src/trust.js';
 import { pipe, tmp } from './helpers.js';
 
 const alive = (pid: number) => {
@@ -148,8 +149,29 @@ describe('Preview', () => {
     expect(devCommand(d)).toBe('npm run dev');
   });
 
+  it('in a folder not yet trusted, the project script does not run until the person says yes', async () => {
+    const r = rig();
+    const marker = join(r.dir, 'ran');
+    const cmd = `touch ran; sleep 30`;
+    await expect(r.procs.startPreview('r1', cmd)).rejects.toMatchObject({ status: 409, extra: { needsTrust: true, folder: r.dir } });
+    await expect(r.procs.startPreview('r1', cmd, false)).rejects.toMatchObject({ status: 409 });
+    await new Promise((x) => setTimeout(x, 200));
+    expect(existsSync(marker)).toBe(false);
+    expect((await r.procs.startPreview('r1', cmd, true)).status).toBe('starting');
+    await until(() => existsSync(marker));
+    r.procs.stopPreview('r1');
+  });
+
+  it('a refused folder never starts, even with a yes', async () => {
+    const r = rig();
+    setTrust(r.home, r.dir, false);
+    await expect(r.procs.startPreview('r1', 'touch ran', true)).rejects.toMatchObject({ status: 409, extra: { needsTrust: true, refused: true } });
+    expect(existsSync(join(r.dir, 'ran'))).toBe(false);
+  });
+
   it('starts the command with PORT set, reads its URL, and stops it', async () => {
     const r = rig();
+    setTrust(r.home, r.dir, true);
     await expect(r.procs.startPreview('r1')).rejects.toMatchObject({ status: 400 });
     const v = await r.procs.startPreview('r1', 'echo "Local: http://localhost:$PORT/"; sleep 30');
     expect(v).toMatchObject({ status: 'starting', command: 'echo "Local: http://localhost:$PORT/"; sleep 30' });
@@ -167,6 +189,7 @@ describe('Preview', () => {
 
   it('a run’s delete ends its command and its preview', async () => {
     const r = rig();
+    setTrust(r.home, r.dir, true);
     const e = r.procs.exec('r1', 'sleep 30');
     await r.procs.startPreview('r1', 'sleep 30');
     await r.procs.stopRun('r1');

@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { saveSpill } from './codemode/spill.js';
 import { runProcess } from './proc.js';
 import { HttpError } from './serverkit.js';
+import { setTrust, trustState } from './trust.js';
 import type { Store } from './store.js';
 import type { ExecEntry, PreviewView, ProcMessage } from './types.js';
 
@@ -250,8 +251,13 @@ export class RunProcs {
    * Start the run's preview (or return the one going): `command`, else the worktree's dev or start script, with PORT set
    * to a free port. Its URL is the first loopback URL it prints, else localhost:PORT after 20 s.
    */
-  async startPreview(runId: string, command?: string): Promise<PreviewView> {
+  async startPreview(runId: string, command?: string, trust?: boolean): Promise<PreviewView> {
     const dir = this.worktree(runId);
+    // the project's own script runs only in a folder the person trusts: the run's real folder, not its worktree
+    const repo = this.o.store.state(runId)!.repo;
+    const state = trustState(this.o.home, repo);
+    if (state === 'unknown' && trust === true) setTrust(this.o.home, repo, true);
+    else if (state !== 'trusted') throw new HttpError(409, "This folder isn't trusted, so the preview didn't start.", { needsTrust: true, folder: repo, ...(state === 'refused' ? { refused: true } : {}) });
     const cur = this.previews.get(runId);
     if (cur && (cur.view.status === 'starting' || cur.view.status === 'running')) return { ...cur.view };
     const cmd = command ?? devCommand(dir);

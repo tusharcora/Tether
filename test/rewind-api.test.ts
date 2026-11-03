@@ -2,6 +2,7 @@ import { request } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GoalStore } from '../src/goals/store.js';
 import { startServer } from '../src/server.js';
+import { setTrust } from '../src/trust.js';
 import { Vault } from '../src/vault.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 
@@ -143,6 +144,7 @@ describe('Terminal and Preview routes', () => {
 
   it('preview: the detected command, input checks, stop', async () => {
     const r = await rig();
+    setTrust(r.home, r.repo, true);
     expect((await r.call('GET', `/api/runs/${r.id}/preview`)).json).toEqual({ preview: null, command: null });
     expect((await r.call('POST', `/api/runs/${r.id}/preview`, {})).status).toBe(400);
     expect((await r.call('POST', `/api/runs/${r.id}/preview`, { command: 3 })).status).toBe(400);

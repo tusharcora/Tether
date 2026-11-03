@@ -119,7 +119,7 @@ export async function runToolsRoute(d: RunToolsDeps, req: IncomingMessage, res: 
   if (what === 'preview' && m === 'POST') {
     const b = reqObject(await readJson(req));
     const command = b.command === undefined || b.command === null || b.command === '' ? undefined : checkCommand(b.command);
-    return send(res, 200, await d.procs.startPreview(id, command)), true;
+    return send(res, 200, await d.procs.startPreview(id, command, b.trust === true ? true : undefined)), true;
   }
   if (what === 'preview' && m === 'DELETE') return send(res, 200, { stopped: d.procs.stopPreview(id) }), true;
   return false;
