@@ -3,8 +3,8 @@ import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSy
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { commitAll, createWorktree } from '../src/git.js';
-import { historyDir, landBranch, MAX_FILE_BYTES, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
-import { plainFolder, tmp } from './helpers.js';
+import { historyDir, landBranch, MAX_FILE_BYTES, MAX_FOLDER_FILES, notLanded, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
+import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 const read = (folder: string, f: string) => readFileSync(join(folder, f), 'utf8');
 const put = (dir: string, f: string, c: string) => {
@@ -50,6 +50,17 @@ describe('landing', () => {
     expect(read(folder, 'keep.txt')).toBe('k');
     expect(await undoLanding(home, folder, r)).toBe(true);
     for (const n of names) expect(read(folder, n)).toBe('1');
+  });
+
+  it('lands names git would read as pathspecs, and Undo is exact', async () => {
+    const names = [':(x)y', ':out'];
+    const { home, folder, head } = await run({ 'keep.txt': 'k' }, Object.fromEntries(names.map((n) => [n, '2'])));
+    const r = landed(await landBranch(home, folder, head));
+    expect([...r.files].sort()).toEqual([...names].sort());
+    for (const n of names) expect(read(folder, n)).toBe('2');
+    expect(await undoLanding(home, folder, r)).toBe(true);
+    for (const n of names) expect(existsSync(join(folder, n))).toBe(false);
+    expect(read(folder, 'keep.txt')).toBe('k');
   });
 
   it('deletes and restores a file whose name has a newline', async () => {
@@ -108,6 +119,241 @@ describe('landing', () => {
     const { home, folder, head } = await run({ '.gitignore': 'secret.env\n', 'secret.env': '1' }, { 'secret.env': '2' });
     landed(await landBranch(home, folder, head));
     expect(read(folder, 'secret.env')).toBe('2');
+  });
+
+  describe('all of a run\'s work', () => {
+    it('lands a new file under a path the folder\'s .gitignore names, and undo takes it out', async () => {
+      const { home, folder, head } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' });
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(read(folder, 'out/report.txt')).toBe('r');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(existsSync(join(folder, 'out'))).toBe(false);
+    });
+
+    it('lands a case-only rename made on disk, and undo brings the old name back', async () => {
+      const { home, folder, workdir } = await run({ 'Readme.md': '1' });
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      const head = await commitAll(workdir, 'rename');
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head!));
+      expect(readdirSync(folder)).toEqual(['README.md']);
+      expect(read(folder, 'README.md')).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(folder)).toEqual(['Readme.md']);
+      expect(read(folder, 'Readme.md')).toBe('1');
+    });
+
+    it('lands a rename to the other Unicode form, and undo keeps the file', async () => {
+      const nfc = 'café.txt';
+      const nfd = 'café.txt';
+      const { home, folder, workdir } = await run({ [nfc]: '1' });
+      renameSync(join(workdir, nfc), join(workdir, nfd));
+      const head = await commitAll(workdir, 'rename');
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head!));
+      expect(readdirSync(folder)).toEqual([nfd]);
+      expect(read(folder, nfd)).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(folder)).toEqual([nfc]);
+      expect(read(folder, nfc)).toBe('1');
+    });
+
+    it('leaves out dependencies, caches and Finder files at any depth', async () => {
+      const { head } = await run({ 'a.txt': '1' }, { 'node_modules/x': 'x', 'sub/node_modules/y': 'y', '.venv/z': 'z', 'venv/z': 'z', 'p/__pycache__/m.pyc': 'c', 'd/.DS_Store': 'f', '.DS_Store': 'f' });
+      expect(head).toBeUndefined();
+    });
+
+    it('commits nothing from the links to what the folder left out', async () => {
+      const { home, folder, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2' }, [], (f) => {
+        put(f, 'big.bin', '');
+        truncateSync(join(f, 'big.bin'), MAX_FILE_BYTES + 1);
+        put(f, 'nested/file.txt', 'n');
+        execFileSync('git', ['init', '-q'], { cwd: join(f, 'nested') });
+      });
+      expect(landed(await landBranch(home, folder, head)).files).toEqual(['a.txt']);
+    });
+
+    it('leaves out a file too big to undo under an ignored path, lands the rest, and undo works', async () => {
+      const { home, folder, workdir, head } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' }, []);
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'big')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
+      const r = landed(await landBranch(home, folder, head));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(existsSync(join(folder, 'out/model.bin'))).toBe(false);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(existsSync(join(folder, 'out'))).toBe(false);
+    });
+
+    it('leaves out every ignored-path change when one folder has more files than undo can keep, names the folders, lands the rest, and undo works', async () => {
+      const start = { '.gitignore': 'target/\nout/\n', 'a.txt': '1', 'empty.txt': '', 'twin.md': 'abcd', 'Readme.md': 'r', 'out/Readme.md': 'o', 'out/Guide.md': 'g', 'out/notes.md': 'n', 'target/Keep.md': 'k' };
+      const { home, folder, workdir } = await run(start, { 'a.txt': '2' });
+      // a case-only rename outside the ignored paths lands with its old spelling; under them, nothing lands this step
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      renameSync(join(workdir, 'out/Readme.md'), join(workdir, 'out/README.md'));
+      renameSync(join(workdir, 'target/Keep.md'), join(workdir, 'target/KEEP.md'));
+      renameSync(join(workdir, 'out/notes.md'), join(workdir, 'out/notes2.md'));
+      renameSync(join(workdir, 'out/Guide.md'), join(workdir, 'out/GUIDE.md'));
+      truncateSync(join(workdir, 'out/GUIDE.md'), MAX_FILE_BYTES + 1);
+      // a deleted empty file lands; a deleted 4-byte file beside a hundred thousand 4-byte build files is kept, and finding that costs nothing
+      rmSync(join(workdir, 'empty.txt'));
+      rmSync(join(workdir, 'twin.md'));
+      for (let d = 0; d * 1000 <= MAX_FOLDER_FILES; d++) {
+        mkdirSync(join(workdir, `target/d${d}`), { recursive: true });
+        for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), 'abcd');
+      }
+      const t = Date.now();
+      const head = await commitAll(workdir, 'many');
+      const took = Date.now() - t;
+      console.log(`commitAll with ${MAX_FOLDER_FILES + 1000} ignored 4-byte files and a ${MAX_FILE_BYTES + 1}-byte one: ${took} ms`);
+      expect(took).toBeLessThan(10_000);
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out', 'target'], nested: [], kept: ['twin.md'] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt', 'empty.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'README.md', 'a.txt', 'out', 'target', 'twin.md']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'Readme.md', 'notes.md']);
+      expect(readdirSync(join(folder, 'target'))).toEqual(['Keep.md']);
+      expect(read(folder, 'README.md')).toBe('r');
+      expect(read(folder, 'out/Readme.md')).toBe('o');
+      expect(read(folder, 'out/Guide.md')).toBe('g');
+      expect(read(folder, 'out/notes.md')).toBe('n');
+      expect(read(folder, 'target/Keep.md')).toBe('k');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'Readme.md', 'a.txt', 'empty.txt', 'out', 'target', 'twin.md']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'Readme.md', 'notes.md']);
+      expect(readdirSync(join(folder, 'target'))).toEqual(['Keep.md']);
+      rmSync(join(workdir, 'target'), { recursive: true, force: true });
+    }, 600_000);
+
+    it('a move with an edit under an ignored path waits while a file there is too big, then lands whole, and undo is exact', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'out/notes.md': 'n' }, { 'a.txt': '2' });
+      renameSync(join(workdir, 'out/notes.md'), join(workdir, 'out/notes2.md'));
+      writeFileSync(join(workdir, 'out/notes2.md'), 'edited');
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'big')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
+      let r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes.md']);
+      expect(read(folder, 'out/notes.md')).toBe('n');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      // once the big file is gone, the move lands as the agent made it
+      rmSync(join(workdir, 'out/model.bin'));
+      const head = await commitAll(workdir, 'move');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [], nested: [], kept: [] });
+      r = landed(await landBranch(home, folder, head!));
+      expect([...r.files].sort()).toEqual(['a.txt', 'out/notes.md', 'out/notes2.md']);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes2.md']);
+      expect(read(folder, 'out/notes2.md')).toBe('edited');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(join(folder, 'out'))).toEqual(['notes.md']);
+      expect(read(folder, 'out/notes.md')).toBe('n');
+    });
+
+    it('a rename chain under an ignored path keeps every file the person had while a file there is too big', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'out/a': 'A', 'out/b': 'B', 'out/c': 'C' }, { 'a.txt': '2' });
+      renameSync(join(workdir, 'out/b'), join(workdir, 'out/c'));
+      renameSync(join(workdir, 'out/a'), join(workdir, 'out/b'));
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      expect(await commitAll(workdir, 'chain')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: [] });
+      const r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['a', 'b', 'c']);
+      expect([read(folder, 'out/a'), read(folder, 'out/b'), read(folder, 'out/c')]).toEqual(['A', 'B', 'C']);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect([read(folder, 'a.txt'), read(folder, 'out/a'), read(folder, 'out/b'), read(folder, 'out/c')]).toEqual(['1', 'A', 'B', 'C']);
+    });
+
+    it('lands a deletion beside a file too big to keep, but keeps and names one that may have moved into it', async () => {
+      const { home, folder, workdir } = await run({ '.gitignore': 'out/\n', 'a.txt': '1', 'notes.md': 'n', 'model.bin': 'm' });
+      rmSync(join(workdir, 'notes.md'));
+      rmSync(join(workdir, 'model.bin'));
+      put(workdir, 'out/model.bin', '');
+      truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      const head = await commitAll(workdir, 'big');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out'], nested: [], kept: ['model.bin'] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['notes.md']);
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'a.txt', 'model.bin']);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'notes.md')).toBe('n');
+    });
+
+    it('leaves out a rename to the other Unicode form whose new file is too big, and undo works', async () => {
+      const nfc = 'caf\u00e9.bin';
+      const nfd = 'cafe\u0301.bin';
+      const { home, folder, workdir } = await run({ [nfc]: '1', 'a.txt': '1' });
+      renameSync(join(workdir, nfc), join(workdir, nfd));
+      truncateSync(join(workdir, nfd), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [nfd], nested: [], kept: [nfc] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['a.txt', nfc]);
+      expect(read(folder, nfc)).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(read(folder, nfc)).toBe('1');
+    });
+
+    it('keeps and names a file moved to a new name that grew too big, and undo is exact', async () => {
+      const { home, folder, workdir } = await run({ 'notes.md': 'n', 'a.txt': '1' });
+      renameSync(join(workdir, 'notes.md'), join(workdir, 'notes2.md'));
+      truncateSync(join(workdir, 'notes2.md'), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big move');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['notes2.md'], nested: [], kept: ['notes.md'] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['a.txt', 'notes.md']);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(read(folder, 'notes.md')).toBe('n');
+    });
+
+    it('keeps the old spelling of a case-only rename whose new one is too big, so nothing is deleted', async () => {
+      const { home, folder, workdir } = await run({ 'Readme.md': 'r', 'a.txt': '1' });
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      truncateSync(join(workdir, 'README.md'), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big rename');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['README.md'], nested: [], kept: ['Readme.md'] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['Readme.md', 'a.txt']);
+      expect(read(folder, 'Readme.md')).toBe('r');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+    });
+
+    it('skips and names a project with no commit made under an ignored path, and lands the rest', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' });
+      put(workdir, 'out/sub/x.txt', 'x');
+      execFileSync('git', ['init', '-q'], { cwd: join(workdir, 'out/sub') });
+      expect(await commitAll(workdir, 'nested')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [], nested: ['out/sub'], kept: [] });
+      const r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(existsSync(join(folder, 'out/sub'))).toBe(false);
+    });
+
+    it('a real repo keeps its ignores', async () => {
+      const repo = makeRepo();
+      writeFileSync(join(repo, '.gitignore'), 'out/\n');
+      execFileSync('git', ['add', '.gitignore'], { cwd: repo });
+      execFileSync('git', ['commit', '-qm', 'ignore'], { cwd: repo });
+      const wt = await createWorktree(repo, tmp('home-'), 'r1');
+      put(wt.workdir, 'out/report.txt', 'r');
+      expect(await commitAll(wt.workdir, 'work')).toBeUndefined();
+    });
   });
 
   it('lands nothing when the run changed nothing', async () => {
@@ -269,8 +515,18 @@ describe('landing', () => {
     expect(existsSync(join(folder, 'a.txt'))).toBe(false);
   });
 
+  /** A run's commit that holds a file too big for undo: a step no longer makes one, but work committed before that can. */
+  const bigCommit = (workdir: string, files: Record<string, string>) => {
+    for (const [f, c] of Object.entries(files)) put(workdir, f, c);
+    const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: workdir, encoding: 'utf8' }).trim();
+    g('add', '-f', '--', ...Object.keys(files));
+    g('commit', '-qm', 'big');
+    return g('rev-parse', 'HEAD');
+  };
+
   it('undo stops rather than delete a landed file too big to compare', async () => {
-    const { home, folder, head } = await run({ 'a.txt': '1' }, { 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
+    const { home, folder, workdir } = await run({ 'a.txt': '1' });
+    const head = bigCommit(workdir, { 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
     const r = landed(await landBranch(home, folder, head));
     appendFileSync(join(folder, 'data.bin'), 'mine');
     expect(await undoLanding(home, folder, r)).toEqual({ conflicts: ['data.bin'] });
@@ -410,7 +666,8 @@ describe('landing', () => {
   });
 
   it('undo goes through when a person deleted a landed file too big for the history', async () => {
-    const { home, folder, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2', 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
+    const { home, folder, workdir } = await run({ 'a.txt': '1' });
+    const head = bigCommit(workdir, { 'a.txt': '2', 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
     const r = landed(await landBranch(home, folder, head));
     rmSync(join(folder, 'data.bin'));
     expect(await undoLanding(home, folder, r)).toBe(true);

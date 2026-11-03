@@ -9,6 +9,7 @@ import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import { loadPrefs, savePrefs } from '../prefs.js';
 import { trustState } from '../trust.js';
+import { OWN_SHELL_NEEDS_TRUST } from '../runLabels.js';
 import { HttpError, readJson, reqObject, send } from '../serverkit.js';
 import { checkDraft, draftContext, draftPatch, firstTask } from './goalDraft.js';
 import { artifactsDir, deleteArtifact, ensureIgnored, listArtifacts, readArtifact } from './artifacts.js';
@@ -17,7 +18,7 @@ import { createPrompt, deletePrompt, listPrompts, promptsFile, updatePrompt } fr
 import { latestContext } from './context.js';
 import { deleteChat, isChatId, listChats, loadAllow, readChat, saveAllow, saveChat, setRoute, TITLE_MAX, type Chat } from './history.js';
 import { matches, summarize } from './summary.js';
-import { assistantAgent, mid, runTurn, START_FAILED, startRoute, type AssistantCtx, type TurnBody } from './turn.js';
+import { assistantAgent, mid, runTurn, runsOwnShell, START_FAILED, startRoute, type AssistantCtx, type TurnBody } from './turn.js';
 import { ATTACH_MAX_BYTES, ATTACH_MAX_FILES, MESSAGE_MAX, ROUTE_KINDS, type ChatMessage, type ChatView, type Proposal, type RouteCard, type RouteKind, type StreamEvent } from './types.js';
 
 const wsOf = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
@@ -245,6 +246,9 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
       else if (!root) {
         prop.status = 'failed';
         prop.note = 'Open a project first: a run needs a project folder.';
+      } else if (trustState(c.home, root) !== 'trusted' && runsOwnShell(c, { task: prop.task, workflow: prop.workflow } as RouteCard, prop.kind === 'workflow' ? 'workflow' : 'team')) {
+        // same gate as a route card: an agent with its own shell starts only in a trusted folder; nothing is decided, so the card stays
+        return send(res, 409, { needsTrust: true, folder: root, ownShell: true, error: OWN_SHELL_NEEDS_TRUST, ...(trustState(c.home, root) === 'refused' ? { refused: true } : {}) }), true;
       } else {
         try {
           prop.runId =
@@ -281,7 +285,13 @@ export async function assistantRoute(c: AssistantCtx, req: IncomingMessage, res:
     if (choice === 'dismiss') return send(res, 200, { route: save({ ...route, status: 'dismissed' }) }), true;
     if (!route.rows.some((r) => r.kind === choice)) throw new HttpError(400, 'that route is not on this card');
     if (!ws || !root) throw new HttpError(400, 'Open a project first.');
-    if (choice !== 'ticket' && b.trust === undefined && trustState(c.home, root) === 'unknown') return send(res, 409, { needsTrust: true, folder: root }), true;
+    if (choice !== 'ticket') {
+      const state = trustState(c.home, root);
+      // an agent with its own shell can't be told to hold off, so only a trusted folder (or a yes right now, in an unasked one) lets it start
+      if (state !== 'trusted' && runsOwnShell(c, route, choice, msg.by?.bot)) {
+        if (state !== 'unknown' || b.trust !== true) return send(res, 409, { needsTrust: true, folder: root, ownShell: true, error: OWN_SHELL_NEEDS_TRUST, ...(state === 'refused' ? { refused: true } : {}) }), true;
+      } else if (b.trust === undefined && state === 'unknown') return send(res, 409, { needsTrust: true, folder: root }), true;
+    }
     // saved before the run exists: a crash in between leaves a card that won't start a second run
     save({ ...route, status: 'started', chose: choice });
     const run = startRoute(c, { ws, root, chat: chat.id, message: msg.id, messages: chat.messages, ...(msg.by ? { bot: msg.by.bot } : {}) }, route, choice, b.trust as boolean | undefined)

@@ -167,13 +167,17 @@ Ask in chat and Tether answers with a **route card**: Do it myself, Make a ticke
 
 Limits, plainly:
 
-- Codex, OpenCode and custom CLI agents keep their own shells, outside the command rule and outside trust, including in a folder you refused. Codex is sandboxed to the folder. OpenCode and custom agents aren't.
+- Codex keeps its own shell, outside the command rule, sandboxed to its folder. OpenCode and custom CLI agents need a trusted folder: in one you refused or haven't been asked about, they don't start until you trust it.
+- Claude's process gets no secrets from Tether's environment. Cloud keys reach it only in Bedrock, Vertex or Foundry mode, set in the shell Tether starts from; a mode set only in Claude's `settings.json` `env` isn't seen, so cloud keys are kept out in that setup.
 - The command rule matches text. It stops mistakes, not a hostile project.
 - A yes rests on the folder's device, inode and birth time, and a no on device and inode alone. On a filesystem with no real birth time a yes rests on those two as well, so on Linux a folder recreated at the same path can keep either answer.
 - A folder you refused runs no gates, setup or checks, and neither does a job you said Not now to, until the folder is trusted: it stops and says so, and resuming after a yes picks it up. Not now saves nothing, so a folder counts as refused only through a saved no: an earlier version's Not now, or `PUT /api/trust`. **Ask again** in Settings clears one.
 - A folder you were never asked about keeps today's gates, setup and checks for runs started outside chat, but Claude has no Bash there, so a workflow that ran `npm test` through it now says "not checked". Trust the folder in Settings to give it back.
-- Files an agent writes under ignored paths or `node_modules`, and case-only renames, don't land. If that leaves nothing, the run says no files came out.
-- The run page's Terminal and Preview still run on a click in a folder you refused.
+- Work under ignored paths and case or Unicode renames land. Changes in an ignored folder land whole or not at all: past 25 MB for a file or 100,000 files, none of that step's changes there land, and the folders are named. Outside ignored paths, a file over 25 MB stays out, and a file the step removed stays too, named, in case it moved there.
+- Landing a one-file change takes about a minute at 50,000 files and about 4 minutes at 100,000 on macOS. That predates this branch.
+- Preview in a folder that isn't trusted asks "Trust this folder?" first. Terminal still runs on a click in a refused folder.
+- A card says "not checked" only while no check has run; once one passes, the line goes.
+- Tests made through the shared helper clean up their temp folders and no longer touch the real checkout. Old leftovers (many in the temp folder, 50 stray worktrees) stay until the owner clears them.
 - Claude's command check is a hook and needs a recent Claude Code: `onFailure` was added in 2.1.295. On an older one the hook may be dropped while Bash stays allowed.
 
 ## Meet the crew

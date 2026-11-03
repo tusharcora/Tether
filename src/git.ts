@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { historyDir, insideGit, linkLeftOut, snapshotDirty, snapshotFolder } from './history.js';
+import { lstatSync, mkdirSync, writeFileSync, type Stats } from 'node:fs';
+import { fold, historyDir, insideGit, isHistory, linkLeftOut, MAX_FILE_BYTES, MAX_FOLDER_FILES, NOT_LANDED, snapshotDirty, snapshotFolder, workFiles, type NotLanded } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -134,9 +134,110 @@ export async function revertEntries(workdir: string, entries: string[]): Promise
   }
 }
 
+/** NUL-separated `git` output, untrimmed: a name may start with a space. */
+async function zList(workdir: string, args: string[]): Promise<string[]> {
+  const r = await git(workdir, args);
+  if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr.trim()}`);
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+/** `path -> blob` from `ls-tree` or `ls-files -s` lines. */
+const entries = (lines: string[], blobAt: number) => new Map(lines.map((l) => [l.slice(l.indexOf('\t') + 1), l.slice(0, l.indexOf('\t')).split(' ')[blobAt]!] as const));
+
+/** Which of `paths` the folder's .gitignore names, tracked or not. */
+async function ignored(workdir: string, paths: string[]): Promise<string[]> {
+  if (!paths.length) return [];
+  const r = await gitEnv(workdir, ['check-ignore', '--no-index', '-z', '--stdin'], {}, paths.map((p) => './' + p).join('\0') + '\0');
+  if (r.code > 1) throw new Error(`git check-ignore failed: ${r.stderr.trim()}`);
+  // './' keeps a name like ':(x)y' from being read as a pathspec
+  return r.stdout.split('\0').filter(Boolean).map((p) => p.replace(/^\.\//, ''));
+}
+
+/**
+ * Stage a plain folder run's files as its disk has them. `add -A` does the bulk; then, as the folder's snapshot does, what it
+ * missed is added by force (files the folder's .gitignore names, and a case or Unicode-form rename git's case guess hides), and
+ * what the disk no longer spells that way is dropped. The step's changes under ignored paths land whole, or, when one is too
+ * big or they are too many, not at all: the files there keep their base entries, and the folders are named. Elsewhere a file
+ * too big stays out, and a file the step removed stays as it was when a left-out file could be where it went, so the limits
+ * never take a person's file away. What stays out is recorded with the left-out names the run made, for landing to say.
+ */
+async function stageAll(workdir: string, gitDir: string, exclude: string[]): Promise<void> {
+  // the step's base, read before `add -A` drops what is gone from disk
+  const base = entries(await zList(workdir, ['ls-tree', '-r', '-z', 'HEAD']), 2);
+  await must(workdir, ['add', '-A', ...specs(exclude)]);
+  const outside = (p: string) => exclude.some((e) => p === e.replace(/\/$/, '') || p.startsWith(e.replace(/\/$/, '') + '/'));
+  const { files, made } = workFiles(workdir);
+  const idx = entries(await zList(workdir, ['ls-files', '-s', '-z']), 1);
+  const on = new Set(files);
+  const gone = [...base.keys()].filter((p) => !on.has(p) && !outside(p));
+  const forced = files.filter((p) => !idx.has(p) && !outside(p));
+  // one lstat per path: each pass below asks again, and a hundred thousand build files make that the slow part
+  const stats = new Map<string, Stats | undefined>();
+  const stat = (p: string) => (stats.has(p) ? stats : stats.set(p, lstatSync(join(workdir, p), { throwIfNoEntry: false }))).get(p);
+  // new or changed by the step: what the size limit applies to
+  const changed = new Set([...forced, ...files.filter((p) => idx.has(p) && idx.get(p) !== base.get(p))]);
+  // a project inside, under an ignored path, is skipped as `add -A` skips it; a file deleted since the walk is just gone
+  const nested = forced.filter((p) => stat(p)?.isDirectory());
+  const tooBig = [...changed].filter((p) => !stat(p)?.isDirectory() && (stat(p)?.size ?? 0) > MAX_FILE_BYTES);
+  const out = new Set([...nested, ...tooBig]);
+  let extra = forced.filter((p) => !out.has(p) && stat(p));
+  const over = base.size - gone.length + extra.length > MAX_FOLDER_FILES;
+  // the step's changes under ignored paths, with their folders, so each is named by the top one the folder ignores
+  const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
+  const touched = [...changed, ...gone];
+  const ign = new Set(await ignored(workdir, [...new Set(touched.flatMap(up))]));
+  // one too big there, or too many in all: none of them lands, and what the step started with under them stays as it was
+  const held = over || tooBig.some((p) => ign.has(p)) ? touched.filter((p) => ign.has(p)) : [];
+  const heldSet = new Set(held);
+  if (held.length) extra = extra.filter((p) => !ign.has(p));
+  // elsewhere, a file the step removed stays as it was when a left-out file could be where it went: the same size, or the same name in another case or
+  // form; unless its re-spelling goes in, which is the one move that is certain
+  const leftOut = [...out, ...held.filter((p) => on.has(p))];
+  const name = (p: string) => fold(p.slice(p.lastIndexOf('/') + 1));
+  const leftSizes = new Set(leftOut.filter((p) => stat(p)?.isFile()).map((p) => stat(p)!.size));
+  const leftNames = new Set(leftOut.map(name));
+  const going = new Set([...changed].filter((p) => !heldSet.has(p) && !out.has(p)).map(fold));
+  const unsure = gone.filter((g) => !heldSet.has(g) && !going.has(fold(g)) && leftOut.length);
+  const sized = unsure.length ? await gitEnv(workdir, ['cat-file', '--batch-check=%(objectsize)'], {}, unsure.map((g) => base.get(g)).join('\n') + '\n') : { code: 0, stdout: '', stderr: '' };
+  if (sized.code !== 0) throw new Error(`git cat-file failed: ${sized.stderr.trim()}`);
+  const sizes = sized.stdout.split('\n').map(Number);
+  // a file too big outside ignored paths may be where a removed one went: every removal stays, and `kept` names it
+  const bigOutside = tooBig.some((p) => !ign.has(p));
+  const stays = unsure.filter((g, i) => bigOutside || (sizes[i]! > 0 && leftSizes.has(sizes[i]!)) || leftNames.has(name(g)));
+  const staying = new Set(stays);
+  const leaves = gone.filter((g) => !heldSet.has(g) && !staying.has(g));
+  // what `add -A` took that stays out: new ones come out, changed ones go back to how the step began
+  const drop = [...leaves, ...[...held, ...tooBig].filter((p) => idx.has(p) && !base.has(p))];
+  const restore = [...held.filter((p) => base.has(p)), ...stays, ...tooBig.filter((p) => base.has(p) && !heldSet.has(p))];
+  const tooMuch = [...new Set([...held.map((p) => up(p).find((a) => ign.has(a))!), ...tooBig.filter((p) => !ign.has(p))])].sort();
+  // exact paths, not pathspecs: matching a long pathspec list is slow. Removals first, so a renamed name is added fresh
+  const update = async (flag: string, list: string[]) => {
+    if (!list.length) return;
+    const r = await gitEnv(workdir, ['update-index', '-z', flag, '--stdin'], {}, list.join('\0') + '\0');
+    if (r.code !== 0) throw new Error(`git update-index failed: ${r.stderr.trim()}`);
+  };
+  await update('--force-remove', drop);
+  // back as the step began: where case is ignored, `add -A` may have read a new spelling's content into an old one
+  if (restore.length) {
+    const r = await gitEnv(workdir, ['reset', '-q', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'], { GIT_LITERAL_PATHSPECS: '1' }, restore.join('\0'));
+    if (r.code !== 0) throw new Error(`git reset failed: ${r.stderr.trim()}`);
+  }
+  await update('--add', extra);
+  const left: NotLanded = { made, tooMuch, nested, kept: stays };
+  writeFileSync(join(gitDir, NOT_LANDED), JSON.stringify(left));
+}
+
+/** A plain folder run's own git dir, or undefined in a real repo. */
+async function plainGitDir(workdir: string): Promise<string | undefined> {
+  const [own, common] = (await must(workdir, ['rev-parse', '--absolute-git-dir', '--path-format=absolute', '--git-common-dir'])).split('\n');
+  return isHistory(common!) ? own : undefined;
+}
+
 /** Commit everything in the worktree except `exclude`. Returns the new sha, or undefined if nothing changed. */
 export async function commitAll(workdir: string, message: string, exclude: string[] = []): Promise<string | undefined> {
-  await must(workdir, ['add', '-A', ...specs(exclude)]);
+  const plain = await plainGitDir(workdir);
+  if (plain) await stageAll(workdir, plain, exclude);
+  else await must(workdir, ['add', '-A', ...specs(exclude)]);
   const quiet = await git(workdir, ['diff', '--cached', '--quiet']);
   if (quiet.code === 0) return undefined;
   await must(workdir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--no-verify', '-m', message]);

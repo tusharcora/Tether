@@ -2,7 +2,7 @@ import type { Answer, Edge, NodeState, Pipeline, Question, RunRowExtras, RunStat
 
 export type { Answer, Edge, NodeState, Pipeline, Question, RunState, StoredEvent, TeamMode, TeamPlan };
 export type { ActivityLine, AgentPick, AttemptsReply, AttemptView, AttentionAction, AttentionItem, ExecEntry, Pin, PreviewView, ProcMessage, RosterPreview, RunStep, VaultActivityItem } from '../../src/types.js';
-export type RunView = RunState & { live: boolean };
+export type RunView = RunState & { live: boolean; /** The run's folder is trusted now. */ trusted?: boolean };
 export interface RunRow extends RunRowExtras {
   id: string;
   pipeline: string;

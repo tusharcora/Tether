@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { git, gitEnv, gitTop, isAncestor, must } from './git.js';
@@ -117,6 +117,79 @@ function survey(root: string, maxFiles: number): { files: string[]; leftOut: str
   return { files: kept, leftOut };
 }
 
+/**
+ * A plain folder run's files, as its disk spells them, so a case or Unicode-form rename is seen and a .gitignore hides nothing.
+ * Links to what the folder left out are skipped. `made`: left-out names the run made itself, which never land.
+ */
+export function workFiles(root: string): { files: string[]; made: string[] } {
+  const files: string[] = [];
+  const made: string[] = [];
+  // a folder or link deleted while this walks is just gone, as a file is; so is a link that became a file meanwhile (EINVAL)
+  const gone = <T>(f: () => T): T | undefined => {
+    try {
+      return f();
+    } catch (e) {
+      if (['ENOENT', 'EINVAL'].includes((e as NodeJS.ErrnoException).code ?? '')) return undefined;
+      throw e;
+    }
+  };
+  const walk = (dir: string, rel: string) => {
+    for (const e of gone(() => readdirSync(dir, { withFileTypes: true })) ?? []) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      const p = join(dir, e.name);
+      if (r === '.git') continue;
+      if (SKIP_NAMES.includes(e.name)) {
+        if (e.name !== '.DS_Store' && !e.isSymbolicLink()) made.push(r);
+        continue;
+      }
+      // how linkLeftOut makes them: an absolute link to the same path in the folder
+      if (e.isSymbolicLink()) {
+        const to = gone(() => readlinkSync(p));
+        if (to === undefined || (to.startsWith('/') && to.endsWith(`/${r}`))) continue;
+      }
+      // a project inside stays one entry, as `add -A` keeps it, so landing can refuse it by name
+      if (e.isDirectory() && !existsSync(join(p, '.git'))) walk(p, r);
+      else files.push(r);
+    }
+  };
+  walk(root, '');
+  return { files, made };
+}
+
+/** In a plain folder run's own git dir: what its last step left out of the work, as JSON. */
+export const NOT_LANDED = 'tether-not-landed';
+
+/**
+ * What a step left out: left-out names it made (dependencies, caches), ignored folders (or files elsewhere) whose changes were too big
+ * or too many to keep, projects inside, and files the run removed that were kept because they may have moved into something left out.
+ */
+export interface NotLanded {
+  made: string[];
+  tooMuch: string[];
+  nested: string[];
+  kept: string[];
+}
+
+/** True when `common` is a plain folder's hidden history: where historyDir puts one, set up by keepExact. Real repos never look like this. */
+export function isHistory(common: string): boolean {
+  if (!/[\\/]history[\\/][0-9a-f]{16}\.git$/.test(common)) return false;
+  try {
+    return readFileSync(join(common, 'info', 'attributes'), 'utf8') === EXACT;
+  } catch {
+    return false;
+  }
+}
+
+/** What a plain folder run's last step left out of its work, or nothing. */
+export async function notLanded(workdir: string): Promise<NotLanded> {
+  try {
+    // `kept` is newer than some runs' files
+    return { kept: [], ...(JSON.parse(readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8')) as Partial<NotLanded>) } as NotLanded;
+  } catch {
+    return { made: [], tooMuch: [], nested: [], kept: [] };
+  }
+}
+
 const anchored = (p: string) => '/' + p.replace(/[\\*?[]/g, '\\$&');
 
 /** Run `fn` with git env pointing the history at `folder` through a throwaway index. */
@@ -147,6 +220,8 @@ async function commitTree(cwd: string, env: Record<string, string>, parent: stri
   return out(cwd, env, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
 }
 
+const EXACT = '* -text -filter -ident -eol -working-tree-encoding\n';
+
 /** Store a folder's names and bytes untouched. Without this a folder's .gitattributes rewrites line endings, and undo restores the altered bytes. */
 async function keepExact(history: string): Promise<void> {
   // macOS sets precompose on, then `add` from stdin silently drops decomposed names (é as e + accent)
@@ -154,7 +229,7 @@ async function keepExact(history: string): Promise<void> {
   await must(history, ['config', 'core.autocrlf', 'false']);
   mkdirSync(join(history, 'info'), { recursive: true });
   // written last: its presence means this history is done
-  writeFileSync(join(history, 'info', 'attributes'), '* -text -filter -ident -eol -working-tree-encoding\n');
+  writeFileSync(join(history, 'info', 'attributes'), EXACT);
 }
 
 /** Commit the folder's current files into its hidden history. Nothing is written inside the folder. */
@@ -216,10 +291,12 @@ async function listed(history: string, args: string[]): Promise<string[]> {
 /** Paths that differ between two commits. */
 const changed = (history: string, from: string, to: string) => listed(history, ['diff', '--no-renames', '--name-only', '-z', from, to]);
 
+/** One spelling for all the names APFS treats as one file (see `clashes`). */
+export const fold = (p: string) => p.normalize('NFC').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
+
 /** The `others` that sit on, above or below one of `paths`. Above and below count: git replaces a file or folder in a landed path's way. */
 function clashes(paths: string[], others: string[]): string[] {
   // APFS treats many spellings as one file: each step catches some (ẞ, ß, ς, ﬁ, accented Greek capitals). Swept against APFS for every code point to U+31FFF with no miss; elsewhere this only stops more often.
-  const fold = (p: string) => p.normalize('NFC').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
   const lineage = (p: string) => fold(p).split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
   const exact = new Set(paths.map(fold));
   const within = new Set(paths.flatMap(lineage));

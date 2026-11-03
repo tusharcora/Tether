@@ -12,6 +12,8 @@ const MAX_NAMES = 50;
 const WALK_MS = 2000;
 const MAX_WALK = 20_000;
 const RG_MS = 5000;
+/** ripgrep reads up to this many hits before the fair share picks 200. shortcut: past it the pick depends on ripgrep's order; raise it if big repos need exact results. */
+const RG_COLLECT = MAX_HITS * 10;
 const LINE_MAX = 300;
 
 /** Every file of the project: git's list in a repo (ignored files left out), else a capped walk that skips .git. */
@@ -66,7 +68,32 @@ function hit(path: string, line: number, text: string, col: number): TextHit {
   return { path, line, col: col - start, text: text.slice(start, start + LINE_MAX) };
 }
 
-/** ripgrep: smart case, fixed strings, hidden files but never .git or secrets, files up to 2 MB, at most 200 hits. */
+/** At most `cap` hits, the same whatever order they came in: an even share per file, a file with fewer passing the rest on, then sorted by path and line. With more matching files than `cap`, the files last by path get none. */
+export function fairShare(hits: TextHit[], cap = MAX_HITS): TextHit[] {
+  const by = new Map<string, TextHit[]>();
+  for (const h of hits) {
+    const fh = by.get(h.path);
+    if (fh) fh.push(h);
+    else by.set(h.path, [h]);
+  }
+  const files = [...by.entries()].sort(([a, x], [b, y]) => x.length - y.length || (a < b ? -1 : 1));
+  let left = cap;
+  const out: TextHit[] = [];
+  files.forEach(([, fh], i) => {
+    const take = Math.min(fh.length, Math.ceil(left / (files.length - i)));
+    out.push(...fh.sort((a, b) => a.line - b.line).slice(0, take));
+    left -= take;
+  });
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
+}
+
+/** A file at ripgrep's --max-count may have had more matches than it reported. */
+const capped = (hits: TextHit[]) => {
+  const n = new Map<string, number>();
+  return hits.some((h) => n.set(h.path, (n.get(h.path) ?? 0) + 1).get(h.path)! >= MAX_HITS);
+};
+
+/** ripgrep: smart case, fixed strings, hidden files but never .git or secrets, files up to 2 MB, at most 200 hits shared fairly between files. */
 function searchRg(rg: string, root: string, q: string): Promise<{ hits: TextHit[]; truncated: boolean }> {
   const args = ['--json', '--max-count', String(MAX_HITS), '--max-filesize', '2M', '--hidden', '--fixed-strings', '--smart-case', '-g', '!.git', '-g', '!.env', '-g', '!.env.*', '-g', '!*.pem', '-g', '!*.key', '-g', '!id_*', '--', q, '.'];
   return new Promise((resolve, reject) => {
@@ -94,11 +121,11 @@ function searchRg(rg: string, root: string, q: string): Promise<{ hits: TextHit[
         const text = m.data.lines.text.replace(/\r?\n$/, '');
         const col = Buffer.from(text).subarray(0, m.data.submatches?.[0]?.start ?? 0).toString('utf8').length;
         hits.push(hit(path, m.data.line_number ?? 0, text, col));
-        if (hits.length >= MAX_HITS) stop();
+        if (hits.length >= RG_COLLECT) stop();
       }
     });
     child.on('error', (e) => (clearTimeout(timer), reject(e)));
-    child.on('close', () => (clearTimeout(timer), resolve({ hits, truncated })));
+    child.on('close', () => (clearTimeout(timer), resolve({ hits: fairShare(hits), truncated: truncated || hits.length > MAX_HITS || capped(hits) })));
   });
 }
 

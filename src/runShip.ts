@@ -7,11 +7,11 @@
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding, whileLanding } from './history.js';
+import { landBranch, NOTHING_TO_LAND, realOr, shippable, notLanded, undoLanding, whileLanding } from './history.js';
 import { NO_FILES } from './runLabels.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
-import type { Landed } from './history.js';
+import type { Landed, NotLanded } from './history.js';
 import type { RunState } from './types.js';
 import { mergePr, prChecks, shipBranch } from './teams/ship.js';
 
@@ -45,6 +45,22 @@ function plainFailure(e: Error): string {
   return e.message.startsWith('git ') || (e as NodeJS.ErrnoException).code ? "This work couldn't be put in the folder, so nothing was changed." : e.message;
 }
 
+/** What a run says about the work it left out of the folder, or undefined. */
+function leftOutSay(n: NotLanded): string | undefined {
+  const say = (names: string[], text: (list: string, many: boolean) => string) => {
+    if (!names.length) return [];
+    return [text(names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : ''), names.length > 1)];
+  };
+  const not = (many: boolean) => `so ${many ? "they weren't" : "it wasn't"} put in your folder.`;
+  const parts = [
+    ...say(n.made, (l, many) => `It changed ${l}, which Undo can't restore, ${not(many)}`),
+    ...say(n.tooMuch, (l) => `Changes in ${l} were too big or too many to keep, ${not(true)}`),
+    ...say(n.nested, (l, many) => `${l} ${many ? 'are separate projects' : 'is a separate project'}, ${not(many)}`),
+    ...say(n.kept, (l, many) => `${l} ${many ? 'were' : 'was'} removed by the agent but kept in your folder, because ${many ? 'they' : 'it'} may have moved into something too big to keep.`),
+  ];
+  return parts.length ? parts.join(' ') : undefined;
+}
+
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
 export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string; conflicts?: string[] }> {
   const s = d.store.state(runId)!;
@@ -57,8 +73,10 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
     try {
       const r = await landBranch(d.home, s.repo, s.branch, landingBase(d.store, s));
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.`, conflicts: r.conflicts };
-      if (!r.files.length) return { error: NOTHING_TO_LAND };
+      const left = leftOutSay(await notLanded(now.workdir));
+      if (!r.files.length) return { error: left ?? NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
+      if (left) d.store.append(runId, { type: 'run.notice', text: left });
       return { landed: r };
     } catch (e) {
       console.error(`[ship] ${(e as Error).message}`, (e as Error).cause ?? '');

@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 import { toolChunk } from '../activity.js';
 import { claudeCodeModeArgs } from '../codemode/delivery.js';
 import { commandHookLine } from '../codemode/launch.js';
+import { SECRET_NAME, SECRET_VALUE } from '../permissions.js';
 import { runProcess } from '../proc.js';
 import type { AgentAdapter, AgentRequest, AgentResult, AgentUsage } from '../types.js';
 import { detectBin } from './cli.js';
@@ -81,6 +82,19 @@ export function parseClaudeLine(
 // Monitor runs shell under Bash's permission rules, with the same `command` field
 const commandSettings = () => JSON.stringify({ disableAllHooks: false, hooks: { PreToolUse: [{ matcher: 'Bash|Monitor', hooks: [{ type: 'command', command: commandHookLine(), onFailure: 'block' }] }] } });
 
+// Kept for Claude Code's own login and config. ANTHROPIC_/CLAUDE_ always; a cloud's variables only when Claude is told to use that cloud,
+// so a developer's ordinary AWS/GCP/Azure secrets stay out. Proxies are kept by name (their URLs may hold a password).
+const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_)|^((https?|all|no)_proxy|ssl_cert_file|requests_ca_bundle|ssh_auth_sock)$/i;
+const on = (v: string | undefined) => !!v && !/^(0|false|no|off)$/i.test(v);
+
+/** The environment of a Claude step with commands: Tether's own secrets left out, Claude Code's login kept. */
+export function claudeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const clouds = [on(env.CLAUDE_CODE_USE_BEDROCK) || on(env.CLAUDE_CODE_USE_VERTEX) ? /^(AWS_|GOOGLE_|GCLOUD_|CLOUDSDK_)/ : undefined, on(env.CLAUDE_CODE_USE_FOUNDRY) ? /^AZURE_/ : undefined];
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) if (KEEP_NAME.test(k) || clouds.some((re) => re?.test(k)) || (!SECRET_NAME.test(k) && !SECRET_VALUE.test(v ?? ''))) out[k] = v;
+  return out;
+}
+
 const hasBash = (req: Pick<AgentRequest, 'readOnly'> & Partial<AgentRequest>) => !!req.commands && !req.readOnly;
 
 /** The CLI's flags for one call. Pure, but for the per-run MCP config Code Mode writes. */
@@ -146,7 +160,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args,
       cwd: req.cwd,
       // keeps Claude's own login, and keeps it out of what its commands inherit
-      ...(hasBash(req) ? { env: { ...process.env, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' } } : {}),
+      ...(hasBash(req) ? { env: { ...claudeEnv(process.env), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' } } : {}),
       stdin: prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
       onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool, req.onToolResult),

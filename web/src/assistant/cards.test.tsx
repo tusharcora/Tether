@@ -9,6 +9,7 @@ import { RunTaskCard, taskState } from './taskCards';
 import { Thread } from './Thread';
 import { useAssistant } from './useAssistant';
 import { calls, makeAwaitingRun, makeRun, routeApi } from '../test/fixtures';
+import { NOT_TRUSTED } from '../../../src/runLabels';
 import { renderApp } from '../test/render';
 
 beforeEach(() => {
@@ -173,6 +174,25 @@ describe('the route card', () => {
     expect(await screen.findByRole('button', { name: button })).toBeTruthy();
   });
 
+  it('an own-shell agent needs the folder trusted: Trust only, no Not now', async () => {
+    open(card(), {}, () => new ApiError('{}', 409, { needsTrust: true, folder: '/x', ownShell: true }));
+    await click('Do it myself');
+    const d = await screen.findByRole('dialog', { name: 'Trust this folder?' });
+    expect(d.textContent).toContain('This agent runs commands on its own, so it needs this folder trusted.');
+    expect(screen.getByRole('button', { name: 'Trust' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+  });
+
+  it('in a folder already refused, it says to change that in Settings and offers no Trust', async () => {
+    open(card(), {}, () => new ApiError('{}', 409, { needsTrust: true, folder: '/x', ownShell: true, refused: true }));
+    await click('Do it myself');
+    const d = await screen.findByRole('dialog');
+    expect(d.textContent).toContain('This agent runs commands on its own, so it needs this folder trusted.');
+    expect(d.textContent).toContain('Change it in Settings.');
+    expect(screen.queryByRole('button', { name: 'Trust' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+  });
+
   it('a ticket never asks, and opens the ticket it made', async () => {
     open(card(), {}, () => ({ route: card({ status: 'started', chose: 'ticket', goalId: 'g1' }) }));
     await click('Make a ticket');
@@ -208,6 +228,32 @@ describe('the route card', () => {
     // the stop already says it, once is enough
     open(started(), { 'GET /api/runs/r1': plainRun({ status: 'stopped', error: "This folder isn't trusted, so the check didn't run." } as Partial<RunView>) });
     expect(await screen.findByText("This folder isn't trusted, so the check didn't run.")).toBeTruthy();
+    expect(screen.queryByText(line)).toBeNull();
+  });
+
+  it('after a yes and a resume with a passing gate, the card no longer says it wasn\'t checked', async () => {
+    const started = () => card({ status: 'started', chose: 'solo', runId: 'r1', noCommands: true });
+    const line = 'It ran without commands, so this wasn\'t checked.';
+    const cant = "It can't run commands here, because this folder isn't trusted.";
+    const gate = (o: Partial<RunView['nodes'][string]>) => ({ pipeline: { ...makeRun().pipeline, nodes: [{ id: 'work', kind: 'agent', role: 'coder', title: 'Finish question 3', x: 0, y: 0 }, { id: 'check', kind: 'gate', command: 'npm test', x: 0, y: 0 }], edges: [] }, nodes: { work: { status: 'done', attempts: 1, costUsd: 0, loops: 0 }, check: { status: 'done', attempts: 1, costUsd: 0, loops: 0, ...o } } }) as Partial<RunView>;
+    // resumed after a yes: no "can't run commands"
+    const a = open(started(), { 'GET /api/runs/r1': { ...running(), trusted: true } });
+    await screen.findByText('Doing it myself · saved a checkpoint first');
+    expect(screen.queryByText(cant)).toBeNull();
+    a.unmount();
+    // trusted, but the gate still holds the trust stop: unchecked
+    const b = open(started(), { 'GET /api/runs/r1': { ...landed(), ...gate({ status: 'error', error: NOT_TRUSTED }), ship: landed().ship, trusted: true } });
+    await screen.findByText('hw3.py');
+    expect(screen.getByText(line)).toBeTruthy();
+    b.unmount();
+    // a solo run with no gate: nothing ever checked it
+    const c = open(started(), { 'GET /api/runs/r1': { ...landed(), trusted: true } });
+    await screen.findByText('hw3.py · +12 −3');
+    expect(screen.getByText(line)).toBeTruthy();
+    c.unmount();
+    // trusted and the gate passed
+    open(started(), { 'GET /api/runs/r1': { ...landed(), ...gate({}), trusted: true } });
+    await screen.findByText('hw3.py');
     expect(screen.queryByText(line)).toBeNull();
   });
 
@@ -382,6 +428,19 @@ describe('the route card', () => {
     await act(async () => fireEvent.click(box));
     expect(calls('PUT', '/api/prefs')[0]![2]).toEqual({ soloWithoutAsking: true });
     expect(screen.getByText('Small jobs then start without asking in folders you trust.')).toBeTruthy();
+  });
+
+  it('an old proposal refused for trust says it plainly, with no JSON or path', async () => {
+    const msg = 'This agent runs commands on its own, so it needs this folder trusted. Trust it in Settings.';
+    routeApi({
+      'GET /api/assistant': { messages: [{ id: 'm1', role: 'tether', text: 'Old.', at: 1, proposals: [{ id: 'p', kind: 'team', task: 'x', status: 'proposed' }] }], agent: 'claude', models: [], asksToGoals: true },
+      'POST /api/assistant/proposals/p': new ApiError(msg, 409, { needsTrust: true, folder: '/home/me/secret', error: msg }),
+    });
+    renderApp(<Host />);
+    await click('Start run');
+    expect(await screen.findByText(msg)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('/home/me/secret');
+    expect(document.body.textContent).not.toContain('needsTrust');
   });
 
   it('an old chat with a run proposal and no route card still renders', async () => {

@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../src/exec.js';
 import { buildPrompt, CAREFUL } from '../src/prompt.js';
+import { MAX_FILE_BYTES } from '../src/history.js';
 import { landRun, RunShip } from '../src/runShip.js';
 import { soloPipeline } from '../src/solo.js';
 import type { MockScript, StoredEvent } from '../src/types.js';
@@ -144,6 +145,61 @@ describe('a solo run', () => {
     const ship = r.store.state(r.id)!.ship!;
     expect(ship.landed).toBeUndefined();
     expect(ship.error).toBe('No files came out of this run.');
+  });
+
+  it('a solo run lands a file under a path the folder ignores, with Undo', async () => {
+    const r = await soloRun({ 'out/report.txt': 'r\n' }, { folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }) });
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
+    expect(read(r.folder, 'out/report.txt')).toBe('r\n');
+    await r.ship.undo(r.id);
+    expect(existsSync(join(r.folder, 'out'))).toBe(false);
+  });
+
+  it('a solo run that only changed dependencies names them and lands nothing', async () => {
+    const r = await soloRun({ 'node_modules/x': 'x\n' });
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.landed).toBeUndefined();
+    expect(ship.error).toBe("It changed node_modules, which Undo can't restore, so it wasn't put in your folder.");
+    expect(existsSync(join(r.folder, 'node_modules'))).toBe(false);
+  });
+
+  it('a solo run that also made a file too big to undo lands the rest and says what it left out', async () => {
+    const r = await soloRun({ 'b.txt': 'two\n' }, {
+      folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n', 'model.bin': 'old\n' }),
+      during: (e, s) => {
+        if (e.event.type !== 'node.started') return;
+        const wd = s.store.state(e.runId)!.workdir;
+        // the big file may be where the person's model.bin went, so that deletion is kept back and named
+        rmSync(join(wd, 'model.bin'));
+        mkdirSync(join(wd, 'out'), { recursive: true });
+        writeFileSync(join(wd, 'out/model.bin'), '');
+        truncateSync(join(wd, 'out/model.bin'), MAX_FILE_BYTES + 1);
+      },
+    });
+    await r.ship.idle();
+    const s = r.store.state(r.id)!;
+    expect(s.ship).toMatchObject({ merged: true, landed: { files: ['b.txt'] } });
+    expect(s.notices?.map((n) => n.text)).toContain("Changes in out were too big or too many to keep, so they weren't put in your folder. model.bin was removed by the agent but kept in your folder, because it may have moved into something too big to keep.");
+    expect(existsSync(join(r.folder, 'out/model.bin'))).toBe(false);
+    expect(read(r.folder, 'model.bin')).toBe('old\n');
+    await r.ship.undo(r.id);
+    expect(existsSync(join(r.folder, 'out'))).toBe(false);
+  });
+
+  it('a file a person makes while the work is being put in stops it, by name', async () => {
+    let release!: () => void;
+    held.gate = new Promise((res) => (release = res));
+    const r = await soloRun({ 'out/report.txt': 'r\n' }, { folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }) }).finally(() => (held.gate = undefined));
+    mkdirSync(join(r.folder, 'out'));
+    writeFileSync(join(r.folder, 'out/report.txt'), 'mine\n');
+    release();
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.landed).toBeUndefined();
+    expect(ship.error).toBe(CONFLICT('out/report.txt'));
+    expect(read(r.folder, 'out/report.txt')).toBe('mine\n');
   });
 
   it('a solo run in a real repo finishes on the ordinary decision and pushes nothing', async () => {

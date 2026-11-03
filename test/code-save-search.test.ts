@@ -3,12 +3,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CREW } from '../src/bots.js';
 import { saveCode } from '../src/code.js';
-import { searchNames, searchText } from '../src/codeSearch.js';
+import { fairShare, searchNames, searchText } from '../src/codeSearch.js';
 import { HttpError } from '../src/serverkit.js';
 import { rgVersion } from '../src/tools.js';
 import { initWorkspace } from '../src/workspace.js';
 import { enc, startHttpTestServer } from './http-helpers.js';
-import { pipe, tmp } from './helpers.js';
+import { pipe, plainFolder, tmp } from './helpers.js';
 
 const status = (fn: () => unknown): { status?: number; [k: string]: unknown } | undefined => {
   try {
@@ -120,6 +120,24 @@ describe('search', () => {
   };
   it.skipIf(!rgVersion())('searches text with ripgrep, skipping secrets and stopping at 200', textSearch('rg'));
   it('searches text without ripgrep the same way', textSearch(null));
+
+  it.skipIf(!rgVersion())('says truncated when one file has more matches than ripgrep reports', async () => {
+    const one = plainFolder({ 'many.txt': 'hit\n'.repeat(250) });
+    const r = await searchText(one, 'hit', { rg: 'rg' });
+    expect(r.hits).toHaveLength(200);
+    expect(r.truncated).toBe(true);
+    const few = await searchText(plainFolder({ 'few.txt': 'hit\n'.repeat(3) }), 'hit', { rg: 'rg' });
+    expect(few).toMatchObject({ truncated: false });
+  });
+
+  it('shares the cap fairly, whatever order the hits came in', () => {
+    const h = (path: string, line: number) => ({ path, line, col: 0, text: '' });
+    const hits = [...Array.from({ length: 250 }, (_, i) => h('many.txt', i + 1)), h('b.ts', 2), h('b.ts', 1), h('a.md', 1)];
+    const one = fairShare(hits, 10);
+    expect(one).toEqual(fairShare([...hits].reverse(), 10));
+    expect(one.slice(0, 3).map((x) => `${x.path}:${x.line}`)).toEqual(['a.md:1', 'b.ts:1', 'b.ts:2']);
+    expect(one.filter((x) => x.path === 'many.txt').map((x) => x.line)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
 
   it('answers through the route', async () => {
     const s = await startHttpTestServer({ register: false });

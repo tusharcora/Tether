@@ -407,7 +407,7 @@ export function startServer(o: ServerOptions): Promise<{ server: Server; url: st
   const runView = (id: string) => {
     const s = store.state(id);
     if (!s) throw new HttpError(404, `unknown run ${id}`);
-    return { ...s, live: live({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }, store.lastTs(id)) };
+    return { ...s, trusted: trustState(cfg.home, s.repo) === 'trusted', live: live({ id, kind: s.kind, status: s.status, pending: s.pending.length, planReady: planWaiting(s) }, store.lastTs(id)) };
   };
 
 

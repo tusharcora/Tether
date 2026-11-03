@@ -70,3 +70,6 @@ export const teamWaits = (engine: LiveProbe, r: LiveRow): boolean =>
  */
 export const rowLive = (engine: LiveProbe, r: LiveRow & { lastTs: number }, now = Date.now()): boolean =>
   engine.isLive(r.id) || teamWaits(engine, r) || (r.status === 'running' && now - r.lastTs < RECENT_ACTIVITY_MS);
+
+/** The plain line for a start refused because an agent with its own shell needs a trusted folder. */
+export const OWN_SHELL_NEEDS_TRUST = 'This agent runs commands on its own, so it needs this folder trusted. Trust it in Settings.';

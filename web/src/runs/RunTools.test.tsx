@@ -260,6 +260,47 @@ describe('Terminal', () => {
   });
 });
 
+describe('Preview trust', () => {
+  const NOTICE = "Agents can run commands here, like tests and installs. Undo restores files, but it can't reverse everything a command does. Some things always stop and ask first. Files in a downloaded project can try to steer an agent, so only trust folders you know.";
+  const rig = (first: ApiError) => {
+    let n = 0;
+    routeApi({ 'GET /api/runs/r1/preview': { preview: null, command: 'npm run dev' }, 'POST /api/runs/r1/preview': () => (n++ ? {} : first) });
+    renderApp(<Preview run={makeRun()} />);
+  };
+  it('asks before running the script; Trust starts it, Not now does not', async () => {
+    rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x' }));
+    await screen.findByDisplayValue('npm run dev');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start preview' })));
+    expect(await screen.findByText(NOTICE)).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Trust' })));
+    expect(calls('POST', '/api/runs/r1/preview')[1]![2]).toEqual({ command: 'npm run dev', trust: true });
+  });
+  it('Not now says why and starts nothing', async () => {
+    rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x' }));
+    await screen.findByDisplayValue('npm run dev');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start preview' })));
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Not now' })));
+    expect((await screen.findByRole('alert')).textContent).toContain("isn't trusted");
+    expect(calls('POST', '/api/runs/r1/preview')).toHaveLength(1);
+  });
+  it('Escape closes the dialog and starts nothing', async () => {
+    rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x' }));
+    await screen.findByDisplayValue('npm run dev');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start preview' })));
+    await screen.findByText(NOTICE);
+    await act(async () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }));
+    await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
+    expect(calls('POST', '/api/runs/r1/preview')).toHaveLength(1);
+  });
+  it('a refused folder has no Trust button and points to Settings', async () => {
+    rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x', refused: true }));
+    await screen.findByDisplayValue('npm run dev');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start preview' })));
+    expect(await screen.findByText(/Change it in Settings/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Trust' })).toBeNull();
+  });
+});
+
 describe('Preview', () => {
   it('starts the detected command, then shows the page with reload, open in browser and Stop', async () => {
     let state: unknown = { preview: null, command: 'npm run dev' };

@@ -3,6 +3,7 @@ import { FINISHED, isFinished, RECENT_ACTIVITY_MS, rowLive, runMeta, runTitle, s
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { realRepo, rowExtras } from '../src/runRows.js';
+import { setTrust } from '../src/trust.js';
 import { tmp } from './helpers.js';
 import { Store } from '../src/store.js';
 import { seedRun } from './home-helpers.js';
@@ -152,6 +153,18 @@ describe('GET /api/runs', () => {
     expect(rows.find((x) => x.id === 'rq')!.live).toBe(false);
     expect((await srv.api('GET', '/api/runs/rl')).json.live).toBe(true);
     expect((await srv.api('GET', '/api/runs/rq')).json.live).toBe(false);
+  });
+
+  it('says a run is trusted by its folder\'s real path, even when started on a symlinked path', async () => {
+    const real = join(realpathSync(tmp('tr-')), 'proj');
+    mkdirSync(real);
+    const link = join(realpathSync(tmp('tl-')), 'link');
+    symlinkSync(real, link);
+    seedRun(srv.store, 'rt0');
+    srv.store.append('rt', { ...srv.store.events('rt0')[0]!.event, repo: link } as never);
+    expect((await srv.api('GET', '/api/runs/rt')).json.trusted).toBe(false);
+    setTrust(srv.home, real, true);
+    expect((await srv.api('GET', '/api/runs/rt')).json.trusted).toBe(true);
   });
 
   it('carries no task text, prompts or outputs beyond the existing row fields', async () => {

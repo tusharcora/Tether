@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NOT_TRUSTED, TRUST_BODY } from '../../../src/runLabels';
+import { NOT_TRUSTED } from '../../../src/runLabels';
 import { api, ApiError, type RunView } from '../api';
 import { Button } from '../components/beui/kit/Button';
-import { Dialog, DialogContent } from '../components/beui/kit/overlays';
 import { usePoll, type Route } from '../hooks';
 import { planRows } from '../runs/planModel';
 import { NOT_IN_FOLDER, nothingToLand } from '../runs/storyModel';
@@ -11,6 +10,7 @@ import { useNotify } from '../ui/notify';
 import { viewDesc } from '../ui/studio/status';
 import type { RouteCard, RouteKind } from './api';
 import { taskState } from './taskCards';
+import { TrustDialog } from './TrustDialog';
 import type { Assistant } from './useAssistant';
 
 const ROW: Record<RouteKind, string> = { solo: 'Do it myself', ticket: 'Make a ticket', workflow: 'Workflow', team: 'Team' };
@@ -74,7 +74,11 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
       {label}
     </Button>
   );
-  const unchecked = card.noCommands ? <p className="m-0 mt-1 text-xs text-muted-foreground">{UNCHECKED}</p> : null;
+  const trusted = !!run?.trusted;
+  // unchecked until a gate that stopped for trust has since passed; a run with no gate never gets one
+  const unrun = !!run && Object.values(run.nodes).some((n) => n.error === NOT_TRUSTED);
+  const gated = !!run && run.pipeline.nodes.some((n) => n.kind === 'gate' && run.nodes[n.id]?.status === 'done');
+  const unchecked = card.noCommands && (!trusted || unrun || !gated) ? <p className="m-0 mt-1 text-xs text-muted-foreground">{UNCHECKED}</p> : null;
   const ending = (say: ReactNode, bad?: boolean) => (
     <Card>
       <Say bad={bad}>{say}</Say>
@@ -119,7 +123,7 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
   return (
     <Card title={WORKING[chose]}>
       {line ? <p className="m-0 mt-1 truncate text-sm">{line}</p> : null}
-      {card.noCommands ? <p className="m-0 mt-1 text-xs text-muted-foreground">It can't run commands here, because this folder isn't trusted.</p> : null}
+      {card.noCommands && !trusted ? <p className="m-0 mt-1 text-xs text-muted-foreground">It can't run commands here, because this folder isn't trusted.</p> : null}
     </Card>
   );
 }
@@ -128,7 +132,7 @@ function RunState({ card, runId, onGo }: { card: RouteCard; runId: string; onGo:
 function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
   const notify = useNotify();
   const [busy, setBusy] = useState<RouteKind>();
-  const [ask, setAsk] = useState<{ choice: RouteKind; folder?: string }>();
+  const [ask, setAsk] = useState<{ choice: RouteKind; folder?: string; ownShell?: boolean; refused?: boolean }>();
   const prefs = usePoll<{ soloWithoutAsking?: boolean }>('/api/health', 60_000);
   // a ref: the closing dialog keeps its buttons, with their old props, until it has animated out
   const going = useRef(false);
@@ -140,8 +144,8 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
     try {
       await chat.route(card, choice, trust);
     } catch (e) {
-      const b = e instanceof ApiError ? (e.body as { needsTrust?: boolean; folder?: string } | undefined) : undefined;
-      if (b?.needsTrust) setAsk({ choice, folder: b.folder });
+      const b = e instanceof ApiError ? (e.body as { needsTrust?: boolean; folder?: string; ownShell?: boolean; refused?: boolean } | undefined) : undefined;
+      if (b?.needsTrust) setAsk({ choice, folder: b.folder, ownShell: b.ownShell, refused: b.refused });
       else notify.fail(e as Error);
     } finally {
       going.current = false;
@@ -177,20 +181,7 @@ function Proposed({ card, chat }: { card: RouteCard; chat: Assistant }) {
         Don't ask for small jobs
       </label>
       <p className="m-0 mt-0.5 text-xs text-muted-foreground">Small jobs then start without asking in folders you trust.</p>
-      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(undefined)}>
-        <DialogContent title="Trust this folder?">
-          <p className="m-0">{TRUST_BODY}</p>
-          {ask?.folder ? <code className="mt-2 block truncate text-xs text-muted-foreground">{ask.folder}</code> : null}
-          <div className="row end mt-4">
-            <Button variant="secondary" onClick={() => ask && void start(ask.choice, false)}>
-              Not now
-            </Button>
-            <Button variant="primary" onClick={() => ask && void start(ask.choice, true)}>
-              Trust
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TrustDialog ask={ask} onClose={() => setAsk(undefined)} onNotNow={() => ask && void start(ask.choice, false)} onTrust={() => ask && void start(ask.choice, true)} />
     </Card>
   );
 }

@@ -2,6 +2,7 @@ import { request } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GoalStore } from '../src/goals/store.js';
 import { startServer } from '../src/server.js';
+import { setTrust } from '../src/trust.js';
 import { Vault } from '../src/vault.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 
@@ -143,6 +144,7 @@ describe('Terminal and Preview routes', () => {
 
   it('preview: the detected command, input checks, stop', async () => {
     const r = await rig();
+    setTrust(r.home, r.repo, true);
     expect((await r.call('GET', `/api/runs/${r.id}/preview`)).json).toEqual({ preview: null, command: null });
     expect((await r.call('POST', `/api/runs/${r.id}/preview`, {})).status).toBe(400);
     expect((await r.call('POST', `/api/runs/${r.id}/preview`, { command: 3 })).status).toBe(400);
@@ -150,6 +152,19 @@ describe('Terminal and Preview routes', () => {
     expect(p.json).toMatchObject({ status: 'starting', command: 'sleep 30' });
     expect((await r.call('DELETE', `/api/runs/${r.id}/preview`)).json).toEqual({ stopped: true });
     expect((await r.call('GET', `/api/runs/${r.id}/preview`)).json.preview).toMatchObject({ status: 'stopped' });
+  });
+
+  it('preview in an untrusted folder answers 409, and trust:true is forwarded', async () => {
+    const r = await rig();
+    const url = `/api/runs/${r.id}/preview`;
+    const no = await r.call('POST', url, { command: 'sleep 30' });
+    expect(no.status).toBe(409);
+    expect(no.json).toMatchObject({ needsTrust: true, folder: r.repo });
+    expect((await r.call('GET', url)).json.preview).toBeNull();
+    const yes = await r.call('POST', url, { command: 'sleep 30', trust: true });
+    expect(yes.status).toBe(200);
+    expect(yes.json).toMatchObject({ status: 'starting' });
+    await r.call('DELETE', url);
   });
 
   it('deleting a run ends its command first', async () => {
