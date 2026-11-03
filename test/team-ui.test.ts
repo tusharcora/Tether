@@ -324,7 +324,10 @@ describe('Tui chat wiring', () => {
     expect(ui.sess.log.at(-1).st).not.toBe('pending');
     expect(store.state(id)!.pending).toHaveLength(1);
     ui.sess.log.push({ k: 'offer', r: { text: '', warnings: [], proposal: { kind: 'team', task: 't' } }, st: 'pending' });
+    // accepting the offer would start a team run in the current folder, which is this repo: only check it was asked for
+    const start = vi.spyOn(ui, 'startTeamRun').mockImplementation(() => undefined);
     ui.chatKey(ui.screen, 'enter');
+    expect(start).toHaveBeenCalledWith('t', expect.any(String), 'live', expect.any(Function));
     expect(store.state(id)!.pending).toHaveLength(1);
   });
 

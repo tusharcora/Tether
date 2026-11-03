@@ -59,6 +59,7 @@ describe('engine', () => {
     engine.approve(id, 'ok', true);
     letGo();
     await vi.waitFor(() => expect(store.state(id)?.status).toBe('done'));
+    await vi.waitFor(() => expect(engine.isLive(id)).toBe(false)); // its notes are written before this file's temp folders go
   });
 
   it('records what each step’s commit changed and where the run was started from', async () => {

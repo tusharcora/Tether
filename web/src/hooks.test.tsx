@@ -79,7 +79,12 @@ const browserGoes = (hash: string) =>
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   });
 /** Lets jsdom run its queued history traversals and hashchange events. */
-const settle = () => act(() => new Promise<void>((r) => setTimeout(r, 10)));
+/** jsdom runs each history step and hashchange as a setImmediate, so a chain of them drains by count, not by a clock that load can outrun. */
+const settle = () =>
+  act(async () => {
+    await new Promise<void>((r) => setTimeout(r, 10));
+    for (let i = 0; i < 30; i++) await new Promise<void>((r) => setImmediate(r));
+  });
 
 describe('hash routes', () => {
   it('old screens redirect (spec 2026-10-30-squads-tickets): #/goals is Tickets, #/teams is Squads; Tickets takes a squad filter', () => {
