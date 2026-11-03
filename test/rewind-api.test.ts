@@ -154,6 +154,19 @@ describe('Terminal and Preview routes', () => {
     expect((await r.call('GET', `/api/runs/${r.id}/preview`)).json.preview).toMatchObject({ status: 'stopped' });
   });
 
+  it('preview in an untrusted folder answers 409, and trust:true is forwarded', async () => {
+    const r = await rig();
+    const url = `/api/runs/${r.id}/preview`;
+    const no = await r.call('POST', url, { command: 'sleep 30' });
+    expect(no.status).toBe(409);
+    expect(no.json).toMatchObject({ needsTrust: true, folder: r.repo });
+    expect((await r.call('GET', url)).json.preview).toBeNull();
+    const yes = await r.call('POST', url, { command: 'sleep 30', trust: true });
+    expect(yes.status).toBe(200);
+    expect(yes.json).toMatchObject({ status: 'starting' });
+    await r.call('DELETE', url);
+  });
+
   it('deleting a run ends its command first', async () => {
     const r = await rig();
     const stream = r.procs(r.id, (m) => m.type === 'exec.end');

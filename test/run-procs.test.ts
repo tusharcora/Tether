@@ -29,15 +29,16 @@ afterEach(async () => {
 function rig() {
   const home = tmp('home-');
   const dir = tmp('wt-');
+  const repo = tmp('repo-');
   const store = Store.open(':memory:');
-  store.append('r1', { type: 'run.started', pipeline: pipe([], []), task: 't', repo: dir, workdir: dir, baseSha: 'x', branch: 'aorch/r1' });
+  store.append('r1', { type: 'run.started', pipeline: pipe([], []), task: 't', repo, workdir: dir, baseSha: 'x', branch: 'aorch/r1' });
   const procs = new RunProcs({ home, store });
   open.push(procs);
   const msgs: ProcMessage[] = [];
   procs.on('r1', (m) => msgs.push(m));
   const ended = (id: number) => msgs.find((m): m is Extract<ProcMessage, { type: 'exec.end' }> => m.type === 'exec.end' && m.id === id);
   const text = (id: number) => msgs.flatMap((m) => (m.type === 'exec.output' && m.id === id ? [m.text] : [])).join('');
-  return { home, dir, store, procs, msgs, ended, text };
+  return { home, dir, repo, store, procs, msgs, ended, text };
 }
 
 describe('Terminal', () => {
@@ -153,7 +154,7 @@ describe('Preview', () => {
     const r = rig();
     const marker = join(r.dir, 'ran');
     const cmd = `touch ran; sleep 30`;
-    await expect(r.procs.startPreview('r1', cmd)).rejects.toMatchObject({ status: 409, extra: { needsTrust: true, folder: r.dir } });
+    await expect(r.procs.startPreview('r1', cmd)).rejects.toMatchObject({ status: 409, extra: { needsTrust: true, folder: r.repo } });
     await expect(r.procs.startPreview('r1', cmd, false)).rejects.toMatchObject({ status: 409 });
     await new Promise((x) => setTimeout(x, 200));
     expect(existsSync(marker)).toBe(false);
@@ -162,16 +163,28 @@ describe('Preview', () => {
     r.procs.stopPreview('r1');
   });
 
+  it('trust is read on the run’s real folder, not its worktree', async () => {
+    const r = rig();
+    setTrust(r.home, r.dir, true);
+    await expect(r.procs.startPreview('r1', 'touch ran; sleep 30')).rejects.toMatchObject({ status: 409, extra: { folder: r.repo } });
+    expect(existsSync(join(r.dir, 'ran'))).toBe(false);
+    setTrust(r.home, r.dir, false);
+    setTrust(r.home, r.repo, true);
+    expect((await r.procs.startPreview('r1', 'touch ran; sleep 30')).status).toBe('starting');
+    await until(() => existsSync(join(r.dir, 'ran')));
+    r.procs.stopPreview('r1');
+  });
+
   it('a refused folder never starts, even with a yes', async () => {
     const r = rig();
-    setTrust(r.home, r.dir, false);
+    setTrust(r.home, r.repo, false);
     await expect(r.procs.startPreview('r1', 'touch ran', true)).rejects.toMatchObject({ status: 409, extra: { needsTrust: true, refused: true } });
     expect(existsSync(join(r.dir, 'ran'))).toBe(false);
   });
 
   it('starts the command with PORT set, reads its URL, and stops it', async () => {
     const r = rig();
-    setTrust(r.home, r.dir, true);
+    setTrust(r.home, r.repo, true);
     await expect(r.procs.startPreview('r1')).rejects.toMatchObject({ status: 400 });
     const v = await r.procs.startPreview('r1', 'echo "Local: http://localhost:$PORT/"; sleep 30');
     expect(v).toMatchObject({ status: 'starting', command: 'echo "Local: http://localhost:$PORT/"; sleep 30' });
@@ -189,7 +202,7 @@ describe('Preview', () => {
 
   it('a run’s delete ends its command and its preview', async () => {
     const r = rig();
-    setTrust(r.home, r.dir, true);
+    setTrust(r.home, r.repo, true);
     const e = r.procs.exec('r1', 'sleep 30');
     await r.procs.startPreview('r1', 'sleep 30');
     await r.procs.stopRun('r1');

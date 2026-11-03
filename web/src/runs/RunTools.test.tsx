@@ -283,6 +283,15 @@ describe('Preview trust', () => {
     expect((await screen.findByRole('alert')).textContent).toContain("isn't trusted");
     expect(calls('POST', '/api/runs/r1/preview')).toHaveLength(1);
   });
+  it('Escape closes the dialog and starts nothing', async () => {
+    rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x' }));
+    await screen.findByDisplayValue('npm run dev');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Start preview' })));
+    await screen.findByText(NOTICE);
+    await act(async () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }));
+    await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
+    expect(calls('POST', '/api/runs/r1/preview')).toHaveLength(1);
+  });
   it('a refused folder has no Trust button and points to Settings', async () => {
     rig(new ApiError('{}', 409, { needsTrust: true, folder: '/x', refused: true }));
     await screen.findByDisplayValue('npm run dev');
