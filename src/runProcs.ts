@@ -214,8 +214,10 @@ export class RunProcs {
     const shown = (text: string) => ((entry.output += text), this.emit(runId, { type: 'exec.output', id: entry.id, text }));
     const onText = (t: string) => {
       if (full.length < KEEP_MAX) full += t.slice(0, KEEP_MAX - full.length);
-      if (entry.output.length < STREAM_CAP) shown(t.slice(0, STREAM_CAP - entry.output.length));
-      else if (!capped) {
+      const room = STREAM_CAP - entry.output.length;
+      if (room > 0) shown(t.slice(0, room));
+      // on what's left over, not the next chunk: the chunk that crosses the limit can be the last
+      if (t.length > room && !capped) {
         capped = true;
         shown(`\n[the output goes on past ${STREAM_CAP / 1000}k characters; all of it is saved when the command ends]\n`);
       }

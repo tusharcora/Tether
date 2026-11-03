@@ -4,7 +4,8 @@
  * A bare chat model cannot touch files, so this adapter runs a small tool loop of its own. With Code Mode (the default)
  * it offers one tool, run_code, answered in-process by the step's Code Mode session (no MCP hop). Direct, the tools are
  * deliberately few and confined to the run's worktree: list_files, read_file, search, and (for steps that may modify
- * code) write_file. There is no shell tool; tests run in gate steps, outside the model's control.
+ * code) write_file. In a folder the person trusted, a step that may modify code also gets run_command (repo.run in Code
+ * Mode), under the one command rule in permissions.ts. Anywhere else nothing runs; tests stay in gate steps, outside the model's control.
  * Prompts and file contents go to the configured endpoint, so only point it at servers you trust.
  */
 import { toolChunk } from '../activity.js';
@@ -15,6 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { accountKey } from '../accounts/keys.js';
 import { RUN_CODE_SCHEMA } from '../codemode/prompt.js';
 import { NV_LIMIT, chatModels, isNvidia } from '../nvidia.js';
+import { runStepCommand } from '../permissions.js';
 import { OR_HEADERS, isOpenRouter, limitKind, limitMessage, nextUtcMidnight } from '../openrouter.js';
 import { pruneToolResults } from './prune.js';
 import { RepeatGuard } from './repeatGuard.js';
@@ -60,11 +62,12 @@ interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-const TOOLS = (writable: boolean) => [
+const TOOLS = (writable: boolean, commands: boolean) => [
   fn('list_files', 'List files and folders in a directory of the repository.', { path: { type: 'string', description: 'Directory, relative to the repo root. Default "."' } }, []),
   fn('read_file', 'Read a text file from the repository.', { path: { type: 'string' } }, ['path']),
   fn('search', 'Find lines containing a text snippet (case-insensitive) in the repository.', { pattern: { type: 'string' }, path: { type: 'string', description: 'Limit to this directory' } }, ['pattern']),
   ...(writable ? [fn('write_file', 'Create or overwrite a file with the full new content.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
+  ...(commands ? [fn('run_command', 'Run a shell command in the repository root, like tests or an install, and get its output. A refused command comes back saying why.', { command: { type: 'string' } }, ['command'])] : []),
 ];
 /** Code Mode: the one tool. */
 const CODE_TOOLS = (cm: CodeModeRequest) => [fn('run_code', cm.runner.description(), RUN_CODE_SCHEMA.properties, [...RUN_CODE_SCHEMA.required])];
@@ -107,7 +110,7 @@ async function walk(root: string, dir: string, out: string[], limit: number): Pr
   }
 }
 
-async function runTool(root: string, name: string, args: Record<string, unknown>, writable: boolean): Promise<string> {
+async function runTool(root: string, name: string, args: Record<string, unknown>, writable: boolean, commands: boolean, signal: AbortSignal): Promise<string> {
   switch (name) {
     case 'list_files': {
       const dir = safePath(root, String(args.path ?? '.'));
@@ -155,6 +158,9 @@ async function runTool(root: string, name: string, args: Record<string, unknown>
       await writeFile(p, content);
       return `wrote ${relative(root, p)} (${content.length} characters)`;
     }
+    case 'run_command':
+      if (!commands) throw new Error('run_command is not available in this step');
+      return runStepCommand(root, String(args.command ?? ''), signal);
     default:
       throw new Error(`unknown tool "${name}"`);
   }
@@ -255,14 +261,15 @@ export class OpenAICompatAdapter implements AgentAdapter {
       }
       const writable = !req.readOnly;
       const cm = req.codeMode;
+      const commands = writable && !!req.commands;
       const messages: Msg[] = [
         {
           role: 'system',
-          content: `You are a coding agent working in a repository. Use the tools to explore${writable ? ' and to write files' : ' (this step is read-only: do not try to change files)'}. Paths are relative to the repository root. Finish with a plain-text answer that follows the task's instructions.${cm ? `\n\n${cm.note}` : ''}`,
+          content: `You are a coding agent working in a repository. Use the tools to explore${writable ? ' and to write files' : ' (this step is read-only: do not try to change files)'}.${commands ? ` You can run commands, like tests and installs, with ${cm ? 'repo.run' : 'run_command'}.` : ''} Paths are relative to the repository root. Finish with a plain-text answer that follows the task's instructions.${cm ? `\n\n${cm.note}` : ''}`,
         },
         { role: 'user', content: await userContent(req.prompt, req.images) },
       ];
-      let tools: unknown[] | undefined = cm ? CODE_TOOLS(cm) : TOOLS(writable);
+      let tools: unknown[] | undefined = cm ? CODE_TOOLS(cm) : TOOLS(writable, commands);
       let last = '';
       const usage: { inputTokens: number; outputTokens: number; toolCalls: number; turns: number; promptTokens?: number } = { inputTokens: 0, outputTokens: 0, toolCalls: 0, turns: 0 };
       const done = (r: AgentResult): AgentResult => ({ ...r, usage });
@@ -314,7 +321,7 @@ export class OpenAICompatAdapter implements AgentAdapter {
             req.onChunk(toolChunk(c.function.name, args));
             if (cm && c.function.name === 'run_code') result = (await cm.runner.runCode(String(args.code ?? ''))).text;
             else if (cm) throw new Error(`unknown tool "${c.function.name}": the only tool is run_code`);
-            else result = await runTool(req.cwd, c.function.name, args, writable);
+            else result = await runTool(req.cwd, c.function.name, args, writable, commands, req.signal);
           } catch (e) {
             result = `error: ${(e as Error).message}`;
           }

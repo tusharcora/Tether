@@ -42,6 +42,7 @@ export class CliAdapter implements AgentAdapter {
   readonly reportsCost: boolean;
   readonly supportsResume: boolean;
   readonly codeMode?: 'mcp';
+  readonly ownShell = true;
   constructor(private spec: CliSpec) {
     this.id = spec.id;
     this.reportsCost = !!spec.reportsCost;

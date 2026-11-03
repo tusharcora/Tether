@@ -14,10 +14,12 @@ import { assistantAgent } from '../assistant/turn.js';
 import { projectRoot } from '../codeRoutes.js';
 import { readPipeline } from '../config.js';
 import type { Engine } from '../engine.js';
+import { NOTHING_TO_LAND } from '../history.js';
 import { runProcess } from '../proc.js';
 import { isFinished } from '../runLabels.js';
 import { HttpError } from '../serverkit.js';
 import type { Store } from '../store.js';
+import { NOT_TRUSTED, trustState } from '../trust.js';
 import { TEAM_MAX_BUDGET_USD } from '../team.js';
 import type { StoredEvent } from '../types.js';
 import { GoalStore } from './store.js';
@@ -165,6 +167,7 @@ export class Goals {
   /** Run the finish check in the workspace (or `dir`, a run's worktree) and keep the result. */
   async runCheck(g: Goal, dir?: string): Promise<CheckResult> {
     if (!g.check) throw new HttpError(400, 'this goal has no finish check');
+    if (this.refused(g)) return { ok: false, at: Date.now(), tail: NOT_TRUSTED };
     const cwd = dir && existsSync(dir) ? dir : projectRoot(this.d.home, g.workspace);
     const r = await runProcess({ cmd: '/bin/sh', args: ['-c', g.check.command], cwd, signal: AbortSignal.timeout(CHECK_MS), env: { ...process.env, CI: '1' } });
     const out = `${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`.trim() || r.spawnError || '';
@@ -172,10 +175,21 @@ export class Goals {
     return { ...j, at: Date.now(), ...(g.check.kind === 'tests' ? parseCounts(out) : {}), tail: tail(out) };
   }
 
+  /** The goal's folder said no to commands. A workspace that is gone has no answer: the check goes on as it always did. */
+  private refused(g: Goal): boolean {
+    try {
+      return trustState(this.d.home, projectRoot(this.d.home, g.workspace)) === 'refused';
+    } catch {
+      return false;
+    }
+  }
+
   /** Record a check result: a pass ends the goal `met`; returns the goal as it now stands. */
   private settle(id: string, r: CheckResult): Goal {
     const g = this.db.must(id);
     if (r.ok && g.kind === 'loop' && g.status !== 'met') return this.save({ ...g, lastCheck: r, status: 'met', pending: undefined, reason: undefined });
+    // a loop would only try again and again: only the person can change this answer
+    if (r.tail === NOT_TRUSTED && g.kind === 'loop' && g.status === 'active') return this.save({ ...g, lastCheck: r, status: 'stopped', reason: NOT_TRUSTED, pending: undefined });
     return this.save({ ...g, lastCheck: r });
   }
 
@@ -280,8 +294,8 @@ export class Goals {
         g.team && this.d.hooks
           ? await this.d.hooks.start(g, plan)
           : g.workflow === 'team'
-          ? await this.d.engine.startTeam({ task: plan.task, repo, ...(budgetUsd !== undefined ? { budgetUsd } : {}), background: true, ...(auto ? { mode: 'autonomous' as const } : {}), origin: { kind: 'goal', id: g.id } })
-          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, autoApprove: auto, origin: { kind: 'goal', id: g.id } });
+          ? await this.d.engine.startTeam({ task: plan.task, repo, ...(g.context ? { context: g.context } : {}), ...(budgetUsd !== undefined ? { budgetUsd } : {}), background: true, ...(auto ? { mode: 'autonomous' as const } : {}), origin: { kind: 'goal', id: g.id } })
+          : await this.d.engine.start({ pipeline: readPipeline(this.d.home, g.workflow), task: plan.task, repo, ...(g.context ? { context: g.context } : {}), autoApprove: auto, origin: { kind: 'goal', id: g.id } });
     } catch (e) {
       return this.stop(g, `Could not start the run: ${(e as Error).message.split('\n')[0]!.slice(0, 160)}`);
     }
@@ -470,6 +484,7 @@ export class Goals {
   private pr(id: string, runId: string, ev: Extract<StoredEvent['event'], { type: 'run.shipped' }>): void {
     const g = this.db.get(id);
     if (!g) return;
+    if (ev.undone) return void this.ticketEvent(id, { kind: 'asked', what: 'ship' }, { who: TETHER, text: 'took the changes back out of the folder', runId });
     const prs = [...(g.prs ?? [])];
     const at = prs.findIndex((p) => p.runId === runId || (ev.number !== undefined && p.number === ev.number));
     if (ev.url && ev.number !== undefined) {
@@ -477,8 +492,8 @@ export class Goals {
     } else if (ev.merged && at >= 0) prs[at] = { ...prs[at]!, merged: true };
     const n = ev.number ?? prs[at]?.number;
     this.save({ ...g, prs });
-    if (ev.error) return void this.note(id, { who: TETHER, text: `could not ship: ${ev.error.slice(0, 200)}`, runId });
-    if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
+    if (ev.error) return void this.note(id, { who: TETHER, text: ev.error === NOTHING_TO_LAND ? ev.error : `could not ship: ${ev.error.slice(0, 200)}`, runId });
+    if (ev.url || ev.merged) this.ticketEvent(id, { kind: 'pr', merged: !!ev.merged && !ev.url }, { who: TETHER, text: ev.landed ? 'put the changes in the folder' : ev.merged ? `PR #${n} merged` : `opened PR #${n}`, runId });
   }
   /** A ticket's run moved: its approvals, its PR, how it ended (failures say so; a fixable one waits for auto-fix). */
   private track(runId: string, ev: StoredEvent['event']): void {

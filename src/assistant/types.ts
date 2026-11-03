@@ -50,6 +50,30 @@ export interface Proposal {
   goalId?: string;
 }
 
+export const ROUTE_KINDS = ['solo', 'ticket', 'workflow', 'team'] as const;
+export type RouteKind = (typeof ROUTE_KINDS)[number];
+
+/** How to do what was asked: the ways on offer, one recommended. Nothing starts until the person clicks (POST /api/assistant/routes/:id). */
+export interface RouteCard {
+  id: string;
+  task: string;
+  recommend: RouteKind;
+  /** `cost` reads "about …", or is empty when there is no usable number. */
+  rows: { kind: RouteKind; why: string; cost: string }[];
+  /** The saved workflow its workflow row runs. */
+  workflow?: string;
+  /** The ticket its ticket row makes. */
+  draft?: GoalDraft;
+  status: 'proposed' | 'started' | 'dismissed' | 'failed';
+  chose?: RouteKind;
+  runId?: string;
+  goalId?: string;
+  /** What went wrong when it could not start. */
+  note?: string;
+  /** Started in a folder that said no: its agents can't run commands. */
+  noCommands?: true;
+}
+
 /** Questions before Tether goes on: one card, several steps; a single choice moves on by itself. */
 export interface AskCard {
   id: string;
@@ -189,6 +213,7 @@ export interface ChatMessage {
   at: number;
   cites?: Cite[];
   proposals?: Proposal[];
+  route?: RouteCard;
   ask?: AskCard;
   toolAsks?: ToolAsk[];
   tools?: ToolRun[];

@@ -112,10 +112,10 @@ export function RunPage(p: { run: RunView; events: StoredEvent[]; streamError?: 
             )}
           />
           <StepPane key={row?.id} run={r} row={row} comments={comments} onAct={p.onAct} onOpenFile={p.onOpenFile} tab={tab} onTab={setTab} onProc={p.onProc} previewPane={wide && previewPane} onPreview={wide ? () => setPreviewPane(!previewPane) : undefined} />
-          {wide && previewPane ? <Preview run={r} onClose={() => setPreviewPane(false)} /> : <OutcomeRail run={r} goal={goal} teamName={teamName} cost={costParts(r, botOf, nameOf)} onGo={p.onGo} onOpenFile={p.onOpenFile} onEvents={() => setEvents(true)} />}
+          {wide && previewPane ? <Preview run={r} onClose={() => setPreviewPane(false)} /> : <OutcomeRail run={r} goal={goal} teamName={teamName} cost={costParts(r, botOf, nameOf)} onAct={p.onAct} onGo={p.onGo} onOpenFile={p.onOpenFile} onEvents={() => setEvents(true)} />}
         </div>
         {rewinding ? <RewindDialog run={r} node={rewinding.node} name={rewinding.name} onAct={p.onAct} onClose={() => setRewinding(undefined)} /> : null}
-        {trying ? <TryMore runId={r.id} onClose={() => setTrying(false)} onStarted={(s) => (setTrying(false), p.onGo?.({ tab: 'attempts', id: s }))} /> : null}
+        {trying ? <TryMore runId={r.id} plain={!!r.history} onClose={() => setTrying(false)} onStarted={(s) => (setTrying(false), p.onGo?.({ tab: 'attempts', id: s }))} /> : null}
       </div>
       <AnimatePresence>
         {inspect ? <StepInspector key="insp" run={r} events={p.events} target={inspect} onTarget={(t) => (t.mode === 'step' ? (setEvents(false), setPicked(t.node), p.onSelectNode(t.node)) : undefined)} onClose={() => setEvents(false)} onAct={p.onAct} onOpenFile={p.onOpenFile} /> : null}

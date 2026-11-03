@@ -21,6 +21,7 @@ const EVENTS: VoiceEvent[] = [
   { kind: 'shipped', pr: 142 },
   { kind: 'merged', pr: 142 },
   { kind: 'ship_failed', reason: 'gh is not signed in' },
+  { kind: 'ship_failed', reason: 'a file changed', plain: true },
 ];
 
 describe('voice rules', () => {
@@ -33,6 +34,7 @@ describe('voice rules', () => {
     expect(template({ kind: 'finished', facts, review: 'Lens' })).toBe('Done, 3 files changed, 24 tests pass. @Lens mind reviewing it?');
     expect(template({ kind: 'failed', reason: 'npm test exited 1\nmore' })).toBe("I couldn't finish this: npm test exited 1.");
     expect(template({ kind: 'ready', who: 'you' })).toBe('@you ready when you are.');
+    expect(template({ kind: 'ship_failed', reason: 'a file changed', plain: true })).toBe("I couldn't put it in the folder: a file changed.");
   });
 
   it('refuses reports, markdown, long text, a third sentence and strangers', () => {

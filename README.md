@@ -145,6 +145,37 @@ flowchart LR
 - In **live** mode you see every report and question. In **autonomous** mode Tether answers with the recommended options and reports once at the end.
 - Budgets and time limits cover the whole run. Team runs default to a `$5` cap.
 
+### Any folder, git or not
+
+Workflows, squads and tickets work in any folder you register, with or without git. In a folder without git, Tether keeps a hidden history under your Tether home, never in the folder, and a run works in its own worktree, where your files are copied in. Nothing is added to the folder: no `.git`, no `.aorch`, no `.tether`.
+
+- **Putting it in the folder.** When you choose **Put it in the folder**, the run's files are put in the folder, and a run shows how many. If you changed one of those files since the run started, nothing is put in and the file is named. If the folder already has all of the work, nothing is recorded and Tether says so. A fork of work already in the folder brings in only the work that isn't there yet: what the fork changed, plus the work of any run between it and the landed one that was never put in. Whatever else happened in the folder stays as it is. A fork from an earlier step leaves what the parent added after that step; if it changes one of those files, nothing is put in and the file is named.
+- **Undo.** Takes back exactly what that run put in, restoring the files as they were, and the ticket goes back to In review so you can ship it again. If you edited a file since, Undo stops, names the file and changes nothing.
+- **Left out.** Files over 25 MB, and `node_modules`, `.venv`, `venv`, `__pycache__` and `.DS_Store` at any depth, are not copied into the history. A run sees them linked to the real folder, so a change it makes to them lands in the folder at once and Undo can't reverse it. A git repo inside the folder is linked the same way. A run shows a notice naming everything linked.
+- **Refused.** A folder is refused if it is `/`, your home folder, a folder that holds Tether's own home, or has over 100,000 files. Pick a project folder inside it.
+- **A git repo's uncommitted work.** In a real repo, a run starts from your files as they are, uncommitted and untracked ones included, so it sees what you see. Tether keeps them in one commit on the run's local `aorch/<run>` branch. They don't ship: a run goes out as `aorch/<run>-pr`, with that commit taken out, and a fork or a run started from another run goes out the same way. If the work depends on those files, shipping stops and asks you to commit them first. If an agent rewrote that commit, or the files would go out anyway, shipping stops and pushes nothing. Shipping again replaces the run's own `aorch/<run>-pr` branch on the remote; no other branch is ever forced. The local branch still holds them, so `git push --all` or `git push --mirror` would publish them. Push branches by name.
+- **A repo at your home folder.** A `.git` at your home folder or `/`, such as a dotfiles repo, doesn't count. A folder under it is treated as a folder without git. Your home folder itself is refused.
+- **Not yet.** Saving an API request or running `workspace init` still writes `.aorch` into the folder. The history is never pruned.
+
+### Agents do the work from chat
+
+Ask in chat and Tether answers with a **route card**: Do it myself, Make a ticket, Run a workflow or Send a team, with a rough cost ("about 8k tokens") on each and one recommended. A chat turn itself never edits files or runs commands; the card does.
+
+- **Trust this folder?** The first time a card would start work in a folder, Tether asks. "Agents can run commands here, like tests and installs. Undo restores files, but it can't reverse everything a command does. Some things always stop and ask first. Files in a downloaded project can try to steer an agent, so only trust folders you know." A yes holds for that folder and every agent. **Not now** does this one job without commands, saves nothing, and the next card asks again. **Settings → Trusted folders** lists your projects not yet asked about, with a **Trust** button that shows the same words first, and withdraws a yes.
+- **What commands may do.** In a trusted folder an agent can run tests, installs and the like. Refused even then: `sudo` and system settings; `git push`, merges and history rewrites; anything acting outside the folder; anything that publishes, sends or spends; `aorch evolve` and `harness ... rollback`. A command is stopped for 120 seconds of running and its output is cut to the last 20,000 characters. In a folder you refused, or on a job you said Not now to, nothing runs and the agent says "not checked".
+- **Where it ends.** In a folder without git, Do it myself works on a hidden copy and lands by itself when it finishes; Undo takes it back. In a real git repo it works in a worktree and ends on the usual Merge or Open PR choice. Each job starts fresh, not from the chat's session.
+
+Limits, plainly:
+
+- Codex, OpenCode and custom CLI agents keep their own shells, outside the command rule and outside trust, including in a folder you refused. Codex is sandboxed to the folder. OpenCode and custom agents aren't.
+- The command rule matches text. It stops mistakes, not a hostile project.
+- A yes rests on the folder's device, inode and birth time, and a no on device and inode alone. On a filesystem with no real birth time a yes rests on those two as well, so on Linux a folder recreated at the same path can keep either answer.
+- A folder you refused runs no gates, setup or checks, and neither does a job you said Not now to, until the folder is trusted: it stops and says so, and resuming after a yes picks it up. Not now saves nothing, so a folder counts as refused only through a saved no: an earlier version's Not now, or `PUT /api/trust`. **Ask again** in Settings clears one.
+- A folder you were never asked about keeps today's gates, setup and checks for runs started outside chat, but Claude has no Bash there, so a workflow that ran `npm test` through it now says "not checked". Trust the folder in Settings to give it back.
+- Files an agent writes under ignored paths or `node_modules`, and case-only renames, don't land. If that leaves nothing, the run says no files came out.
+- The run page's Terminal and Preview still run on a click in a folder you refused.
+- Claude's command check is a hook and needs a recent Claude Code: `onFailure` was added in 2.1.295. On an older one the hook may be dropped while Bash stays allowed.
+
 ## Meet the crew
 
 | Bot | Role | What it does |

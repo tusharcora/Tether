@@ -1,8 +1,11 @@
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatAdapter } from '../src/adapters/openai.js';
 import { accountKey, setAccountKey } from '../src/accounts/keys.js';
 import type { SecretStore } from '../src/accounts/secretStore.js';
 import { limitMessage, nextUtcMidnight } from '../src/openrouter.js';
+import { MAX_COMMAND_MS, MAX_COMMAND_OUTPUT, runStepCommand } from '../src/permissions.js';
 import type { AgentRequest } from '../src/types.js';
 import { tmp } from './helpers.js';
 
@@ -128,5 +131,110 @@ describe('images (a teammate’s photo)', () => {
     expect(bodies[0]!.messages[1]).toEqual({ role: 'user', content: [{ type: 'text', text: 'why is this red?' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } }] });
     await a.run(req({ prompt: 'plain' }));
     expect(bodies[1]!.messages[1]).toEqual({ role: 'user', content: 'plain' });
+  });
+});
+
+/** A model that makes these tool calls, one turn each, then answers. What it was offered and what came back. */
+async function fakeOpenAI(o: { commands?: boolean; readOnly?: boolean; calls: Record<string, unknown>[] }) {
+  const cwd = tmp();
+  const bodies: { tools?: { function: { name: string } }[]; messages: { role: string; content: string }[] }[] = [];
+  const turns = [...o.calls];
+  vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    const call = turns.shift();
+    if (!call) return answer('done');
+    const [name, args] = Object.entries(call)[0]!;
+    return json({ choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] });
+  });
+  await new OpenAICompatAdapter('local', { baseUrl: 'http://127.0.0.1:9/v1' }).run(req({ model: 'm', cwd, readOnly: o.readOnly ?? false, ...(o.commands ? { commands: true } : {}) }));
+  const last = bodies[bodies.length - 1]!;
+  return { cwd, tools: (bodies[0]!.tools ?? []).map((t) => t.function.name), system: bodies[0]!.messages[0]!.content, result: last.messages.filter((m) => m.role === 'tool').map((m) => m.content).join('\n') };
+}
+
+describe('run_command', () => {
+  it('offers run_command only in a trusted writable step, and runs it in the step folder', async () => {
+    const seen = await fakeOpenAI({ commands: true, calls: [{ run_command: { command: 'echo hi > made.txt && cat made.txt' } }] });
+    expect(seen.tools).toContain('run_command');
+    expect(seen.system).toContain('run_command');
+    expect(seen.result).toContain('hi');
+    expect(existsSync(join(seen.cwd, 'made.txt'))).toBe(true);
+  });
+
+  it('has no run_command without trust, or on a read-only step', async () => {
+    const untrusted = await fakeOpenAI({ calls: [{ run_command: { command: 'echo hi > made.txt' } }] });
+    expect(untrusted.tools).not.toContain('run_command');
+    expect(untrusted.system).not.toContain('run_command');
+    expect(existsSync(join(untrusted.cwd, 'made.txt'))).toBe(false);
+    expect(untrusted.result).toMatch(/error/);
+    const readOnly = await fakeOpenAI({ commands: true, readOnly: true, calls: [{ run_command: { command: 'echo hi > made.txt' } }] });
+    expect(readOnly.tools).not.toContain('run_command');
+    expect(existsSync(join(readOnly.cwd, 'made.txt'))).toBe(false);
+  });
+
+  it('tells the model why a refused command did not run', async () => {
+    const seen = await fakeOpenAI({ commands: true, calls: [{ run_command: { command: 'npm test && git push' } }] });
+    expect(seen.result).toMatch(/not run/i);
+    expect(seen.result).toMatch(/tell the person/i);
+    expect(seen.result).not.toMatch(/^error/);
+  });
+
+  it('allows an absolute path inside the step folder, and never throws at the model', async () => {
+    const root = tmp();
+    writeFileSync(join(root, 'a.txt'), 'inside\n');
+    expect(await runStepCommand(root, `cat ${join(root, 'a.txt')}`, new AbortController().signal)).toContain('inside');
+    expect(await runStepCommand(root, 'echo a\0b', new AbortController().signal)).toMatch(/not run/i);
+    expect(await runStepCommand(join(root, 'gone'), 'echo hi', new AbortController().signal)).toMatch(/could not start/);
+  });
+
+  it('cuts long output to its tail and stops at the time limit', async () => {
+    const root = tmp();
+    const long = await runStepCommand(root, 'seq 1 20000', new AbortController().signal);
+    expect(long).toContain('20000');
+    expect(long).not.toContain('\n1\n');
+    expect(long.length).toBeLessThan(MAX_COMMAND_OUTPUT + 200);
+    expect(long).toMatch(/cut/);
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const run = runStepCommand(root, 'sleep 30', new AbortController().signal);
+      vi.advanceTimersByTime(MAX_COMMAND_MS);
+      expect(await run).toMatch(/stopped/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves no backgrounded command behind', async () => {
+    const out = await runStepCommand(tmp(), 'sleep 77 >/dev/null 2>&1 & echo $!', new AbortController().signal);
+    const pid = Number(out.trim());
+    expect(pid).toBeGreaterThan(0);
+    const alive = () => {
+      try {
+        return process.kill(pid, 0);
+      } catch {
+        return false;
+      }
+    };
+    await expect.poll(alive, { timeout: 3000 }).toBe(false);
+  });
+
+  it('never returns a secrets file', async () => {
+    const root = tmp();
+    writeFileSync(join(root, '.env'), 'API=hunter2\n');
+    const out = await runStepCommand(root, 'cat .env', new AbortController().signal);
+    expect(out).toMatch(/not run/i);
+    expect(out).not.toContain('hunter2');
+  });
+
+  it('stops a running command when the step is cancelled, and starts none once it is', async () => {
+    const root = tmp();
+    const stop = new AbortController();
+    const run = runStepCommand(root, 'sleep 30', stop.signal);
+    const t0 = Date.now();
+    stop.abort();
+    expect(await run).toMatch(/stopped/i);
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(await runStepCommand(root, 'echo hi > late.txt', stop.signal)).toMatch(/not run/i);
+    expect(existsSync(join(root, 'late.txt'))).toBe(false);
   });
 });

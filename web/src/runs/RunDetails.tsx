@@ -50,7 +50,7 @@ export function RunDetails({ run: r, events, tab, onTab, onOpenFile }: { run: Ru
         <TabsTrigger value="timeline">{`Timeline (${events.length})`}</TabsTrigger>
       </TabsList>
       <TabsContent value="changes" className="insp-body">
-        <DiffView diff={diff} empty="No committed changes on this branch yet." onOpenFile={onOpenFile} />
+        <DiffView diff={diff} empty={r.history ? 'No changes yet.' : 'No committed changes on this branch yet.'} onOpenFile={onOpenFile} />
       </TabsContent>
       <TabsContent value="timeline" className="insp-body">
         <TimelineOf run={r} events={events} label="Run events" />

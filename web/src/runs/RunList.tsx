@@ -109,7 +109,7 @@ function NeedsCard({ r, team, onOpen, onShip }: { r: RunRow; team?: string; onOp
       {approval && onShip ? (
         <>
           <Button size="sm" variant="primary" loading={busy} onClick={() => (setBusy(true), void onShip().finally(() => setBusy(false)))}>
-            Approve &amp; open PR
+            {r.plain ? 'Put it in the folder' : <>Approve &amp; open PR</>}
           </Button>
           <Button size="sm" variant="secondary" onClick={onOpen}>
             Review diff

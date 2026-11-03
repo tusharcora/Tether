@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve as resolvePath, sep } from 'node:path';
 import type { AdapterRegistry } from './adapters/index.js';
 import { computeCoach } from './coach.js';
+import { gitRoot, isLanding } from './history.js';
 import { cloneShared, commitAll, commitFiles, commitStat, createWorktree, headSha, isAncestor, refsUnder, removeBranch, removeWorktree, resetTo, diffAgainst, entryPaths, revertEntries, setRef, statusEntries } from './git.js';
 import { answersBlock, askable, consultPrompt, parseAsks, parseUserAsks, resolveTarget, stripAsks, stripUserAsks, type Ask } from './consult.js';
 import { ancestorsOf, childrenOf, normalizePipeline, parentsOf, preflight, topoLayers } from './pipeline.js';
@@ -17,6 +18,7 @@ import { buildRoster, entryFor, loadRouting, routingHints, type RosterEntry } fr
 import { runProcess } from './proc.js';
 import { deleteSession, sessionIdForRun } from './sessions.js';
 import type { Store } from './store.js';
+import { commandsOff, NOT_TRUSTED } from './trust.js';
 import { planWaiting, type StoredEvent, type HarnessRef, type ProbeTag, type AgentResult, type Answer, type MockScript, type Pipeline, type PipelineNode, type Question, type Rating, type RunKind, type RunOrigin, type RunState, type DiffStat, type TeamMode } from './types.js';
 
 let harnessWarned = false; // log a broken harness store once per process, not once per step
@@ -55,6 +57,8 @@ export interface StartInput {
   task: string;
   repo: string;
   ref?: string;
+  /** `ref` is another run's work: the uncommitted-work snapshot below that run. */
+  dirty?: string;
   autoApprove?: boolean;
   /** Run kind; absent means a workflow. */
   kind?: RunKind;
@@ -68,6 +72,12 @@ export interface StartInput {
   origin?: RunOrigin;
   /** true: the pipeline's maxCostUsd is an explicit cap (a goal's own $ limit, a probe) and holds with Spending caps off. Default: the setting. */
   capsOn?: boolean;
+  /** "Do it myself": in a plain folder the run lands by itself when it finishes (see `soloPipeline`). */
+  solo?: boolean;
+  /** Recent text of the chat it came from, untrusted: the prompt fences it. `task` stays the short title. */
+  context?: string;
+  /** The person said Not now: run without commands, this run only, until the folder is trusted. */
+  noCommands?: boolean;
 }
 
 /** How a probe replay runs: which bot's harness is replaced (never saved as a version), the probe tag, and its spend cap. */
@@ -142,6 +152,10 @@ export interface TeamStartInput {
   yes?: boolean;
   /** Spend cap in USD; replaces the plan's own cap. */
   budgetUsd?: number;
+  /** Recent text of the chat it came from, untrusted: the prompts fence it. */
+  context?: string;
+  /** The person said Not now: run without commands, this run only, until the folder is trusted. */
+  noCommands?: boolean;
   /** Planning rounds before Tether must plan (default 3, 1..6). */
   maxRounds?: number;
   workspace?: string | false;
@@ -283,10 +297,11 @@ export class Engine {
     const s = this.store.state(runId);
     if (!s) throw new Error(`unknown run ${runId}`);
     if (!o.keepWork) {
-      for (const ref of await refsUnder(s.repo, `refs/tether/rewind/${runId}/`).catch(() => [])) await setRef(s.repo, ref).catch(() => {});
-      await removeWorktree(s.repo, s.workdir).catch(() => {});
+      for (const ref of await refsUnder(s.history ?? s.repo, `refs/tether/rewind/${runId}/`).catch(() => [])) await setRef(s.history ?? s.repo, ref).catch(() => {});
+      await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
       if (existsSync(s.workdir)) rmSync(s.workdir, { recursive: true, force: true });
-      if (s.branch) await removeBranch(s.repo, s.branch).catch(() => {});
+      if (s.branch) await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
+      if (s.branch) await removeBranch(s.history ?? s.repo, `${s.branch}-pr`).catch(() => {});
     }
     this.planAbort.get(runId)?.abort();
     this.teams.delete(runId);
@@ -351,15 +366,16 @@ export class Engine {
       rmSync(marker, { force: true });
     };
     try {
-      await cloneShared(input.repo, dir);
+      await cloneShared(await gitRoot(input.repo, this.opts.home), dir);
     } catch (e) {
       drop();
       throw e;
     }
     const run: ProbeRun = { tag: probe.tag, bot: probe.bot, harness: probe.harness, nodeEstimateUsd: Math.max(0, probe.nodeEstimateUsd ?? 0), maxSeen: 0 };
     try {
+      // a sha, not HEAD: the no-checkout clone looks all-deleted, which must not be read as uncommitted work
       return await this.startRun(
-        { pipeline, task: input.task, repo: dir, ...(input.ref ? { ref: input.ref } : {}), autoApprove: true, workspace: false, reflect: false, capsOn: true },
+        { pipeline, task: input.task, repo: dir, ref: input.ref ?? (await headSha(dir)), autoApprove: true, workspace: false, reflect: false, capsOn: true },
         {
           probe: run,
           onId: (runId) => mark(runId),
@@ -412,6 +428,8 @@ export class Engine {
     }
     if (extra.probe) this.probes.set(runId, extra.probe);
     extra.onId?.(runId);
+    const fromRun = /^aorch\/(.+)$/.exec(input.ref ?? '')?.[1];
+    const dirty = wt.dirty ?? rawInput.dirty ?? (fromRun ? this.store.state(fromRun)?.dirty : undefined);
     this.store.append(runId, {
       type: 'run.started',
       pipeline: input.pipeline,
@@ -420,6 +438,8 @@ export class Engine {
       workdir: wt.workdir,
       baseSha: wt.baseSha,
       branch: wt.branch,
+      ...(wt.history ? { history: wt.history } : {}),
+      ...(dirty ? { dirty } : {}),
       vault: this.opts.vault?.root,
       autoApprove: input.autoApprove,
       workspace: ws ? snapshot(ws, { endpoints: rawInput.endpoints, dir: wt.workdir }) : undefined,
@@ -427,8 +447,12 @@ export class Engine {
       ...(input.mode ? { mode: input.mode } : {}),
       ...(extra.probe ? { probe: extra.probe.tag } : {}),
       ...(rawInput.origin ? { origin: rawInput.origin } : {}),
+      ...(rawInput.solo ? { solo: true as const } : {}),
+      ...(rawInput.context ? { context: rawInput.context } : {}),
+      ...(rawInput.noCommands ? { noCommands: true as const } : {}),
       capsOn: caps,
     });
+    this.noticeLeftOut(runId, wt.leftOut);
     for (const id of extra.inherit?.nodes ?? []) {
       const was = extra.inherit!.from.nodes[id];
       this.store.append(runId, { type: 'node.finished', node: id, status: 'done', output: `From run ${extra.inherit!.from.id}.`, durationMs: 0, attempt: 0, ...(was?.commit ? { commit: was.commit } : {}), ...(was?.stat ? { stat: was.stat } : {}) });
@@ -466,7 +490,9 @@ export class Engine {
       if (o.switchTo) this.amend(runId, id, o.switchTo, 'switched model after the free limit');
       if (n.status === 'awaiting') this.store.append(runId, { type: 'node.requeued', node: id, reason: 'resumed after the free limit' });
     }
-    this.store.append(runId, { type: 'run.resumed', retryFailed: o.retryFailed ?? s.status === 'error' });
+    // a step the folder's answer stopped goes again once the answer changed; nothing else could have changed it
+    const answered = Object.values(s.nodes).some((n) => n.error === NOT_TRUSTED) && !commandsOff(this.opts.home, s);
+    this.store.append(runId, { type: 'run.resumed', retryFailed: (o.retryFailed ?? s.status === 'error') || answered });
     this.launch(runId);
   }
 
@@ -494,6 +520,8 @@ export class Engine {
   async rewind(runId: string, node: string): Promise<RunState> {
     const s = this.rewindable(runId, node, 'rewind');
     if (s.ship?.url) throw new Error(`already shipped as PR #${s.ship.number}: fork from a step instead`);
+    if (s.ship?.landed) throw new Error('This work is already in the folder. Undo that first.');
+    if (isLanding(runId)) throw new Error('This work is being put in the folder. Try again in a moment.');
     this.moving.add(runId);
     try {
       const base = rewindBase(s, node);
@@ -544,7 +572,7 @@ export class Engine {
     if (!start.nodes.some((n) => n.id === node)) throw new Error(`"${node}" was handed out by a manager: fork from one of the run's own steps`);
     const inherit = [...ancestorsOf(start, node), node];
     return this.startRun(
-      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node } },
+      { pipeline: start, task: s.task, repo: s.repo, ref: s.nodes[node]?.commit ?? rewindBase(s, node), dirty: s.dirty, autoApprove: s.autoApprove, workspace: s.workspace?.id ?? false, origin: { kind: 'fork', id: runId, node }, ...(s.context ? { context: s.context } : {}), ...(s.noCommands ? { noCommands: true } : {}) },
       { inherit: { from: s, nodes: inherit } },
     );
   }
@@ -607,6 +635,8 @@ export class Engine {
       workdir: wt.workdir,
       baseSha: wt.baseSha,
       branch: wt.branch,
+      ...(wt.history ? { history: wt.history } : {}),
+      ...(wt.dirty ? { dirty: wt.dirty } : {}),
       vault: this.opts.vault?.root,
       workspace: ws ? snapshot(ws, { endpoints: i.endpoints, dir: wt.workdir }) : undefined,
       kind: 'team',
@@ -616,9 +646,12 @@ export class Engine {
       yes: !!i.yes,
       ...(i.budgetUsd !== undefined && i.budgetUsd > 0 ? { budgetUsd: Math.min(TEAM_MAX_BUDGET_USD, i.budgetUsd) } : {}),
       ...(i.origin ? { origin: i.origin } : {}),
+      ...(i.context ? { context: i.context } : {}),
+      ...(i.noCommands ? { noCommands: true as const } : {}),
       // an explicit --budget is a cap the person asked for: it holds with the setting off
       capsOn: capsOn(this.opts.home) || (i.budgetUsd !== undefined && i.budgetUsd > 0),
     });
+    this.noticeLeftOut(runId, wt.leftOut);
     if (i.background) this.continuePlanningInBackground(runId);
     else await this.planRound(runId, 1);
     return runId;
@@ -875,7 +908,7 @@ export class Engine {
     const hints = routingHints(routing, entries);
     const final = round > maxRounds;
     const asked = this.store.events(runId).flatMap((e) => (e.event.type === 'plan.question' ? e.event.questions : []));
-    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints);
+    const base = planningPrompt(s.task, bots, s.answers, round, maxRounds, asked, hints, s.context);
     let raw = '';
     let questions: Question[] = [];
     let plan: ReturnType<typeof parseTeamPlan>['plan'];
@@ -985,6 +1018,8 @@ export class Engine {
     const ac = this.active.get(runId);
     if (ac) {
       ac.abort();
+      // a run that just paused only has its notes left to write, so nothing would notice the signal, and an approval could still carry it on
+      if (this.store.state(runId)?.status === 'paused') this.store.append(runId, { type: 'run.finished', status: 'stopped' });
       return true;
     }
     const s = this.store.state(runId);
@@ -1024,6 +1059,8 @@ export class Engine {
     if (!s) throw new Error(`unknown run ${runId}`);
     if (s.nodes[node]?.status !== 'awaiting') throw new Error(`node "${node}" is not awaiting approval`);
     this.store.append(runId, { type: 'approval.resolved', node, approved, by });
+    // a run that just paused stays live while it writes its notes, and it won't look at this answer on its way out
+    if (this.active.has(runId)) void this.running.get(runId)?.then(() => this.carryOn(runId)).catch((e: unknown) => console.error(`[run ${runId}] approved, but could not resume: ${(e as Error).message}`));
   }
 
   /** The person's thumbs up/down on a step's output. The note is data: control characters stripped, capped at 500 characters. */
@@ -1067,7 +1104,9 @@ export class Engine {
     // Defence in depth: preflight already refused this, but the engine is callable without it.
     if (pipe.mode !== 'pipeline') throw new Error(`mode "${pipe.mode}" has no scheduler in this build`);
 
-    if (st.setup && !state.setupDone) {
+    if (st.setup && !state.setupDone && commandsOff(this.opts.home, state)) {
+      this.store.append(runId, { type: 'setup.result', ok: false, skipped: true, output: '', durationMs: 0 });
+    } else if (st.setup && !state.setupDone) {
       const t0 = Date.now();
       const r = await runProcess({ cmd: '/bin/sh', args: ['-c', st.setup], cwd: state.workdir, signal, env: { ...process.env, CI: '1' } });
       if (signal.aborted) return this.finish(runId, 'stopped');
@@ -1116,6 +1155,8 @@ export class Engine {
       this.armLimit(runId);
       return this.finish(runId, 'paused');
     }
+    // not a failure to fix: only the person can change this answer, so nothing here retries it
+    if (nodes.some((n) => n.error === NOT_TRUSTED)) return this.finish(runId, 'stopped', NOT_TRUSTED);
     if (nodes.some((n) => n.status === 'error' || n.status === 'skipped')) {
       const failed = state.pipeline.nodes.find((n) => !ignored.has(n.id) && state.nodes[n.id]?.status === 'error');
       return this.finish(runId, 'error', failed ? `node "${failed.id}" failed: ${state.nodes[failed.id]?.error ?? 'unknown error'}` : undefined);
@@ -1389,6 +1430,10 @@ export class Engine {
           out = tail(r.output, 20_000);
           exitCode = ok ? 0 : 1;
           failureText = out;
+        } else if (commandsOff(this.opts.home, st)) {
+          this.store.append(runId, { type: 'gate.result', node: node.id, ok: false, exitCode: null, output: NOT_TRUSTED, durationMs: 0 });
+          finishGate(false, NOT_TRUSTED, NOT_TRUSTED);
+          return { ok: false };
         } else {
           const r = await runProcess({ cmd: '/bin/sh', args: ['-c', node.command!], cwd: st.workdir, signal: gateSignal, env: { ...process.env, CI: '1' } });
           if (signal.aborted) return { ok: false, aborted: true };
@@ -1696,6 +1741,12 @@ export class Engine {
   }
 
   /** A prompt carried long text as a spill file (passOn): say so once per file. */
+  private noticeLeftOut(runId: string, leftOut?: string[]): void {
+    if (!leftOut?.length) return;
+    const list = leftOut.slice(0, 5).join(', ') + (leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : '');
+    this.notice(runId, `Left out of undo: ${list}. A change to these can't be undone.`);
+  }
+
   private noticeSpills(runId: string, node: string, prompt: string): void {
     const seen = new Set((this.state(runId).notices ?? []).map((n) => n.text));
     for (const m of prompt.matchAll(/(\d+) characters not shown here\. Read the full text before acting on it: (\S+\.txt)/g)) {
@@ -1917,6 +1968,7 @@ export class Engine {
       home: this.opts.home,
       store: this.store,
       vault: this.opts.vault,
+      signal: runSignal,
       onNote: (text) => this.store.append(runId, { type: 'node.chunk', node: node.id, text: `[note] ${text}\n` }),
     });
     try {
@@ -2004,7 +2056,7 @@ export class Engine {
     const diff = node.includeDiff ? await diffAgainst(state.workdir, state.baseSha, state.setupArtifacts) : undefined;
     // What was already dirty when this node began (setup output, a gate's artifacts): not this node's doing.
     const dirtyBefore = new Set(await statusEntries(state.workdir));
-    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona });
+    const prompt = buildPrompt({ pipeline: state.pipeline, node, state: this.state(runId), vaultContext, diff, failure, resumed: abandoned || afterLimit, harnessGuidance, harnessPersona, noCommands: !cm.commands && !adapter.ownShell });
     this.noticeSpills(runId, node.id, prompt);
 
     let buf = '';
@@ -2054,6 +2106,7 @@ export class Engine {
           model: node.model,
           readOnly: !!node.readOnly,
           permissionMode: node.permissionMode,
+          commands: cm.commands,
           attempt,
           timeoutMs,
           budgetUsd,
@@ -2186,7 +2239,7 @@ export class Engine {
     if (runSignal.aborted) return { ok: false, aborted: true, output: res.output };
     // out of free requests: the step waits (the run pauses); a writing step's edits so far are committed, so they show and stay
     if (res.limit) {
-      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit`, state.setupArtifacts).catch(() => undefined);
+      if (!node.readOnly) await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) paused on the free limit\n\nrun ${runId}`, state.setupArtifacts).catch(() => undefined);
       this.store.append(runId, { type: 'node.limited', node: node.id, resetsAt: res.limit.resetsAt });
       return { ok: false, paused: true, output: res.output };
     }
@@ -2207,7 +2260,8 @@ export class Engine {
           error = `read-only node modified files (${entryPaths(touched).slice(0, 3).join(', ')}); changes were reverted`;
         }
       } else {
-        commit = await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) attempt ${attempt}`, state.setupArtifacts);
+        // the run id keeps a fork's re-run its own commit: same parent, tree and message in the same second would be the same sha, and landing would start too high
+        commit = await commitAll(state.workdir, `aorch: ${node.id} (${node.role ?? 'agent'}) attempt ${attempt}\n\nrun ${runId}`, state.setupArtifacts);
         if (commit) stat = await commitStat(state.workdir, commit).catch(() => undefined);
       }
     } catch (err) {

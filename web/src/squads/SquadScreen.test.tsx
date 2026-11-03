@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: vi.fn() }));
@@ -61,6 +61,7 @@ function setup(v: TeamView = view()) {
     'POST /api/squads/web/messages': { id: 'm9' },
     'POST /api/squads/web/cards/m4': (b: unknown) => ({ ...v.messages[5], b }),
     'POST /api/squads/web/cards/m4/undo': v.messages[5],
+    'POST /api/runs/r1/undo-land': {},
     'POST /api/squads/web/messages/m2/react': v.messages[1],
     'POST /api/squads/web/messages/m2/pin': v.messages[1],
     'GET /api/squads/web/diff/m4': { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n', truncated: false },
@@ -185,6 +186,19 @@ describe('the ship card (board 8)', () => {
     const done = await screen.findByText(/^Shipped by You · PR #142 open, merging once checks pass/);
     fireEvent.click(within(done).getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(calls('POST', '/api/squads/web/cards/m4/undo')).toHaveLength(1));
+  });
+
+  it('a plain folder card reads "It\'s in the folder." with an Undo on the run, and has no PR or merge words', async () => {
+    setup(view(shipCard({ plain: true })));
+    const pending = await screen.findByRole('group', { name: 'Ship “Sign-in fix”?' });
+    expect(pending.textContent).not.toMatch(/\bPR\b|merge/i);
+    cleanup();
+    setup(view(shipCard({ plain: true, status: 'approved', by: 'you', ship: { state: 'merged', landed: true } })));
+    const done = await screen.findByText(/^Shipped by You · It's in the folder\./);
+    expect(done.textContent).not.toMatch(/\bPR\b|merge/i);
+    fireEvent.click(within(done).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(calls('POST', '/api/runs/r1/undo-land')).toHaveLength(1));
+    expect(calls('POST', '/api/squads/web/cards/m4/undo')).toHaveLength(0);
   });
 
   it('merged: no Undo', async () => {

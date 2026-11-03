@@ -109,6 +109,14 @@ describe('Terminal', () => {
     expect(r.text(e.id)).toContain('saved when the command ends');
   });
 
+  it('saves an output that ends in the chunk that crosses the limit', async () => {
+    const r = rig();
+    const e = r.procs.exec('r1', "head -c 120000 /dev/zero | tr '\\0' a");
+    await until(() => !!r.ended(e.id));
+    expect(readFileSync(join(r.dir, r.ended(e.id)!.spill!), 'utf8')).toHaveLength(120_000);
+    expect(r.text(e.id)).toContain('saved when the command ends');
+  });
+
   it('refuses an unknown run and a run whose worktree is gone', () => {
     const r = rig();
     expect(() => r.procs.exec('rnope', 'true')).toThrow(/unknown run/);

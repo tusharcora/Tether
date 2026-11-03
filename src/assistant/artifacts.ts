@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { folderState, insideGit } from '../history.js';
 import { HttpError } from '../serverkit.js';
 import { wordCount, type ArtifactBlock } from './artifactBlocks.js';
 import type { ArtifactMeta, ArtifactRef, ArtifactView } from './types.js';
@@ -25,9 +26,13 @@ const isLink = (p: string): boolean => {
   }
 };
 
-/** The artifacts folder: the project's, or with no project Tether's home's. */
+/**
+ * The artifacts folder: a git project's `.aorch/artifacts`, or with no project Tether's home's. A plain folder gets
+ * nothing of ours, so its artifacts live under home, unless it already has `.aorch/artifacts` (kept in use).
+ */
 export function artifactsDir(home: string, root?: string): string {
-  const dir = root ? join(root, '.aorch', 'artifacts') : join(home, 'artifacts');
+  const mine = root ? join(root, '.aorch', 'artifacts') : '';
+  const dir = !root ? join(home, 'artifacts') : insideGit(root) || existsSync(mine) || isLink(mine) ? mine : join(folderState(home, root), 'artifacts');
   if ((root && isLink(join(root, '.aorch'))) || isLink(dir)) throw new HttpError(400, 'refusing a symlinked artifacts folder');
   return dir;
 }
@@ -49,6 +54,7 @@ function fileIn(f: string, name: string): string {
  * or the missing lines appended; no other line is touched, and a symlinked .aorch or .gitignore is refused.
  */
 export function ensureIgnored(root: string): void {
+  if (!insideGit(root)) return; // a plain folder gets no .aorch from us
   const aorch = join(root, '.aorch');
   const file = join(aorch, '.gitignore');
   if (isLink(aorch) || isLink(file)) throw new HttpError(400, 'refusing a symlinked .aorch/.gitignore');

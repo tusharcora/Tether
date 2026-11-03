@@ -82,14 +82,14 @@ describe('endpoints in agent prompts', () => {
     expect(mock.calls.at(-1)!.prompt).not.toContain('<api-endpoints>');
   });
 
-  it("lists the run's worktree requests (what `aorch http run` there finds), not uncommitted ones in the checkout", async () => {
+  it("lists the run's worktree requests (what `aorch http run` there finds), uncommitted ones in the checkout included", async () => {
     const { engine, mock } = setup();
     const repo = project();
     writeRequest(repo, 'draft/only-here', { name: 'Uncommitted', method: 'GET', url: '{{base}}/draft' });
     await engine.wait(await engine.start({ pipeline: one(), task: 't', repo }));
     const prompt = mock.calls.at(-1)!.prompt;
     expect(prompt).toContain('runs/list');
-    expect(prompt).not.toContain('draft/only-here');
+    expect(prompt).toContain('draft/only-here');
   });
 
   it('a requests folder that cannot be listed leaves the block out and logs why; the run still goes', async () => {

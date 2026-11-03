@@ -5,6 +5,7 @@
  */
 import { CREW } from '../bots.js';
 import type { Store } from '../store.js';
+import { trustState } from '../trust.js';
 import type { AgentAdapter, AgentResult, CodeModeRequest, PipelineNode, RunState, ToolStyle } from '../types.js';
 import type { Vault } from '../vault.js';
 import type { CodeModeHost } from './host.js';
@@ -16,6 +17,8 @@ export interface StepCodeMode {
   toolStyle: ToolStyle;
   /** Code Mode was wanted but this agent has no route for it: the step runs direct. */
   fallback: boolean;
+  /** The step may run commands: writable, in a folder the person trusted. Decided once here, for its whole attempt. */
+  commands: boolean;
   request?: CodeModeRequest;
   /** Adds the call's usage to the step's and the session's follow-up lines to its answer. */
   record(r: AgentResult): AgentResult;
@@ -40,8 +43,9 @@ export function approvedUpstream(state: RunState, nodeId: string): boolean {
   return false;
 }
 
-export async function openStepCodeMode(o: { host: CodeModeHost; adapter: AgentAdapter; node: PipelineNode; state: RunState; home: string; store: Store; vault?: Vault; onNote: (text: string) => void }): Promise<StepCodeMode> {
+export async function openStepCodeMode(o: { host: CodeModeHost; adapter: AgentAdapter; node: PipelineNode; state: RunState; home: string; store: Store; vault?: Vault; signal?: AbortSignal; onNote: (text: string) => void }): Promise<StepCodeMode> {
   const { node, state, adapter } = o;
+  const commands = !node.readOnly && trustState(o.home, state.repo) === 'trusted';
   const wanted: ToolStyle = node.toolStyle ?? 'code';
   const usage = { inputTokens: 0, outputTokens: 0, toolCalls: 0, reported: false };
   const record = (r: AgentResult) => {
@@ -59,6 +63,7 @@ export async function openStepCodeMode(o: { host: CodeModeHost; adapter: AgentAd
     return {
       toolStyle: 'direct',
       fallback,
+      commands,
       record,
       // a fallback with nothing measured says nothing (the Crew card explains it)
       metrics: (n) => (usage.reported ? { type: 'node.metrics', node: n, toolStyle: 'direct', ...(fallback ? { fallback } : {}), runCode: 0, connectorCalls: 0, ...tokens() } : undefined),
@@ -74,6 +79,7 @@ export async function openStepCodeMode(o: { host: CodeModeHost; adapter: AgentAd
       bot,
       workdir: state.workdir,
       writable: !node.readOnly,
+      commands,
       base: state.baseSha,
       kind: state.kind === 'team' ? 'team' : 'workflow',
       approved: !!state.autoApprove || approvedUpstream(state, node.id),
@@ -81,12 +87,13 @@ export async function openStepCodeMode(o: { host: CodeModeHost; adapter: AgentAd
       handoff: (state.pipeline.settings.handoff ?? 0) > 0 && !node.manager,
       workspace: state.workspace?.id && state.workspace.id !== 'local' ? state.workspace.id : undefined,
     },
-    { store: o.store, vault: o.vault, db: o.store.raw(), mcpServers: loadMcpServers(o.home), onNote: o.onNote },
+    { store: o.store, vault: o.vault, db: o.store.raw(), mcpServers: loadMcpServers(o.home), onNote: o.onNote, signal: o.signal },
   );
   const opened = adapter.codeMode === 'mcp' ? await o.host.open(session) : undefined;
   return {
     toolStyle: 'code',
     fallback: false,
+    commands,
     request: { runner: session, note: CODE_MODE_NOTE, ...(opened ? { mcp: opened.launch } : {}), ...(node.codeReads ? { readsOnly: true } : {}) },
     record: (r) => {
       record(r);

@@ -171,9 +171,11 @@ export class Attempts {
           task: original.task,
           repo: original.repo,
           ref: original.baseSha,
+          dirty: original.dirty,
           autoApprove: original.autoApprove,
           workspace: original.workspace?.id ?? false,
           ...(original.origin ? { origin: original.origin } : {}),
+          ...(original.noCommands ? { noCommands: true as const } : {}),
         });
         // the run becomes A once a sibling exists (a start that fails leaves it as it was)
         if (!ids.length && !s.attemptSet) this.d.store.append(s.id, { type: 'attempt.set', set, label: 'A' });
@@ -204,6 +206,7 @@ export class Attempts {
       const metric = this.d.metric?.(s);
       runs.push({
         id: s.id,
+        ...(s.history ? { plain: true as const } : {}),
         label: s.attemptLabel ?? '?',
         status: s.status,
         live: this.d.engine.isLive(s.id),
@@ -232,7 +235,7 @@ export class Attempts {
     if (!members.length) throw new HttpError(404, `unknown attempt set ${set}`);
     if (!members.some((m) => m.id === runId)) throw new HttpError(400, `${runId} is not an attempt in this set`);
     if (members.some((m) => m.attemptPicked)) throw new HttpError(409, 'an attempt was already picked from this set');
-    await this.d.ship.decide(runId, merge);
+    await this.d.ship.decide(runId, merge, true); // a ticket's own attempts are picked here, not by the banner
     for (const m of members) this.d.store.append(m.id, { type: 'attempt.picked', run: runId });
     for (const m of members) if (m.id !== runId) this.d.engine.stop(m.id);
   }
@@ -243,8 +246,9 @@ export class Attempts {
     for (const { state: s } of this.d.store.listRows()) {
       const p = s.attemptPicked;
       if (!p || p.run === s.id || now - p.at < KEEP_MS || this.d.engine.isLive(s.id) || !existsSync(s.workdir)) continue;
-      await removeWorktree(s.repo, s.workdir).catch(() => {});
-      await removeBranch(s.repo, s.branch).catch(() => {});
+      await removeWorktree(s.history ?? s.repo, s.workdir).catch(() => {});
+      await removeBranch(s.history ?? s.repo, s.branch).catch(() => {});
+      await removeBranch(s.history ?? s.repo, `${s.branch}-pr`).catch(() => {});
       n++;
     }
     return n;

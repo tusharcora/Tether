@@ -85,6 +85,4 @@
 .gc-open { margin-left: auto; }
 .gc-note { color: var(--bad); }
 @media (max-width: 560px) { .gc-rows { grid-template-columns: minmax(0, 1fr); row-gap: 6px; } .gc-rows dd { margin-bottom: 8px; } }
-.gc .mut, .aic-goals { color: var(--mut); }
-.aic-goals { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; cursor: pointer; white-space: nowrap; }
-.aic-goals input { accent-color: var(--acc); margin: 0; }
+.gc .mut { color: var(--mut); }

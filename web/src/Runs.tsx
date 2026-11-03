@@ -54,7 +54,7 @@ export function Runs(props: RunsProps) {
   };
 
   // no run open: the list alone, full width (spec §7: no "No run selected" pane)
-  const ship = (id: string) => api('POST', `/api/runs/${id}/ship`, { merge: false }).then(() => notify.ok('Approved: the PR opens when the run finishes'), notify.fail);
+  const ship = (id: string) => api('POST', `/api/runs/${id}/ship`, { merge: false }).then(() => notify.ok(list.data?.find((r) => r.id === id)?.plain ? 'Putting it in the folder' : 'Approved: the PR opens when the run finishes'), notify.fail);
   if (!props.selected) return <div className="runs-list-page"><RunList poll={list} probes={probes} onProbes={setProbes} onSelect={props.onSelect} onStart={props.onStart} project={props.project} goals={props.goals} onShip={ship} onCompare={props.onGo && ((set) => props.onGo!({ tab: 'attempts', id: set }))} /></div>;
   if (!run) return <div className="run-page">{error ? <InlineError message={error} onRetry={retry} /> : <Loading loading lines={4} label="Loading run" />}</div>;
   return (

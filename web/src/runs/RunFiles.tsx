@@ -13,12 +13,12 @@ export const commitsKey = (r: RunView) => Object.values(r.nodes).map((n) => n.co
 export function RunFiles({ run: r, onOpen }: { run: RunView; onOpen: () => void }) {
   const d = useDiff(`/api/runs/${r.id}/diff`, commitsKey(r));
   return (
-    <Section title={`Files · branch ${r.branch}`} className="run-files">
+    <Section title={r.history ? 'Files' : `Files · branch ${r.branch}`} className="run-files">
       {d.error ? (
         <InlineError message={d.error} onRetry={d.retry} />
       ) : (
         <Loading loading={d.loading} lines={3} label="Loading changed files">
-          {d.text ? <FileBars diff={d.text} onOpen={() => onOpen()} openTitle="Open the run's changes" /> : <QuietLine>No committed changes yet.</QuietLine>}
+          {d.text ? <FileBars diff={d.text} onOpen={() => onOpen()} openTitle="Open the run's changes" /> : <QuietLine>{r.history ? 'No changes yet.' : 'No committed changes yet.'}</QuietLine>}
         </Loading>
       )}
       {limitedSteps(r).length ? <QuietLine>Kept in the worktree. Nothing is lost.</QuietLine> : null}

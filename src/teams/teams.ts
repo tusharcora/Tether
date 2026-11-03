@@ -20,7 +20,9 @@ import { AGENT_KINDS, loadCrew, type BotDef } from '../crew.js';
 import type { Engine } from '../engine.js';
 import type { Exec } from '../exec.js';
 import { fence } from '../fence.js';
-import { git } from '../git.js';
+import { git, gitTop } from '../git.js';
+import { NOTHING_TO_LAND, shippable } from '../history.js';
+import { landRun } from '../runShip.js';
 import { recent } from '../activity.js';
 import { isFree } from '../attempts.js';
 import { parseCounts, type Goals } from '../goals/loop.js';
@@ -572,7 +574,7 @@ export class Teams {
   /** A review hand-off: a read-only answer over the run chain's diff, ending in a verdict. No run starts. */
   private async review(team: Team, bot: string, task: TeamTask, m: TeamMessage, hops: number, asker?: string, thread?: string): Promise<void> {
     const s = this.d.store.state(task.runId);
-    const text = s ? (await git(projectRoot(this.d.home, team.project), ['diff', '--no-color', task.base, s.branch])).stdout : '';
+    const text = s ? (await git(this.repoOf(team, task.runId), ['diff', '--no-color', task.base, s.branch])).stdout : '';
     return this.answer(team, bot, `Review ${short(task.runId)}.`, m, { hops, ...(asker ? { asker } : {}), diff: { task, text: text.slice(0, DIFF_MAX) || '(no changes)' }, ...(thread ? { thread } : {}) });
   }
 
@@ -600,7 +602,9 @@ export class Teams {
     let runId: string;
     try {
       const pipeline = taskPipeline({ bot: def, level: team.level, gates: this.gates(team), budgetUsd: this.budget(team), ship: true });
-      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(prev ? { ref: prev.branch } : {}), workspace: team.project, origin: { kind: 'team', id: team.id, team: team.id } });
+      const handed = o.ticket ?? o.ref?.ticket;
+      const context = handed ? this.d.goals.db.get(handed)?.context : undefined;
+      runId = await this.d.engine.start({ pipeline, task: said, repo: projectRoot(this.d.home, team.project), ...(context ? { context } : {}), ...(prev ? { ref: prev.branch } : {}), workspace: team.project, origin: { kind: 'team', id: team.id, team: team.id } });
     } catch (e) {
       return void this.say(team.id, this.agentFrom(bot), template({ kind: 'failed', reason: `I could not start a run: ${firstLine((e as Error).message, 160)}` }), where);
     }
@@ -645,6 +649,17 @@ export class Teams {
       });
       const task = approved && node === 'approve-plan' ? this.taskOf(teamId, e.runId) : undefined;
       if (task) this.say(teamId, this.agentFrom(task.agent), template({ kind: 'plan_ok' }), { run: e.runId, ...(task.ticket ? { ticket: task.ticket } : {}), ...(task.thread ? { thread: task.thread } : {}) });
+    } else if (t === 'run.shipped' && e.event.undone) {
+      // taken back out of the folder: the card waits for Ship it again
+      const card = this.shipCard(teamId, e.runId);
+      if (card?.card?.kind === 'approval' && card.card.ship?.landed) {
+        // the same reset as undoShip: without node, by and at, approving again takes the path that ships a finished run
+        this.patch(teamId, card.id, (x) => {
+          if (x.card?.kind !== 'approval') return;
+          const { by: _by, at: _at, ship: _ship, node: _node, ...rest } = x.card;
+          x.card = { ...rest, status: 'pending' };
+        });
+      }
     } else if (t === 'run.finished') {
       this.syncCard(teamId, e.runId);
       // a run waiting on an approval also "finishes" its pass, as paused: that is not its end
@@ -678,8 +693,12 @@ export class Teams {
     });
   }
 
+  /** Where the run's commits live: its history for a plain folder, else the project's repo. */
+  private repoOf(team: Team, runId: string): string {
+    return this.d.store.state(runId)?.history ?? projectRoot(this.d.home, team.project);
+  }
   private async stat(team: Team, task: TeamTask, branch: string): Promise<{ files: number; plus: number; minus: number }> {
-    const r = await git(projectRoot(this.d.home, team.project), ['diff', '--shortstat', task.base, branch]).catch(() => undefined);
+    const r = await git(this.repoOf(team, task.runId), ['diff', '--shortstat', task.base, branch]).catch(() => undefined);
     const m = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(r?.stdout ?? '');
     return { files: Number(m?.[1] ?? 0), plus: Number(m?.[2] ?? 0), minus: Number(m?.[3] ?? 0) };
   }
@@ -689,7 +708,7 @@ export class Teams {
   }
   /** What I did (board 9): the files the chain changed, its size, the gates with their results, how long, on what model. */
   private async workOf(team: Team, task: TeamTask, s: RunState): Promise<{ work: Work; facts: Facts; tests?: { ok: boolean; line: string } }> {
-    const names = (await git(projectRoot(this.d.home, team.project), ['diff', '--name-only', task.base, s.branch]).catch(() => undefined))?.stdout.split('\n').map((l) => l.trim()).filter(Boolean) ?? [];
+    const names = (await git(this.repoOf(team, task.runId), ['diff', '--name-only', task.base, s.branch]).catch(() => undefined))?.stdout.split('\n').map((l) => l.trim()).filter(Boolean) ?? [];
     const st = await this.stat(team, task, s.branch);
     const ran = s.pipeline.nodes.flatMap((n) => {
       const g = s.nodes[n.id]?.gate;
@@ -744,7 +763,7 @@ export class Teams {
         const detail = [...gates, await this.diffStat(team, task, s.branch)].join(' · ');
         const asker = team.people.find((p) => p.id === task.by) ?? OWNER;
         const title = (task.ticket && this.d.goals.db.get(task.ticket)?.title) || firstLine(task.task);
-        this.say(teamId, from, template({ kind: 'ready', who: asker.name }), { run: runId, ...ticket, card: { kind: 'approval', what: 'ship', title: `Ship “${title}”?`, detail, runId, node, status: 'pending', files: done.facts.files, plus: done.facts.plus, minus: done.facts.minus, ...(done.tests ? { tests: done.tests } : {}), ...(done.reviewer ? { review: { by: done.reviewer.name } } : {}) } });
+        this.say(teamId, from, template({ kind: 'ready', who: asker.name }), { run: runId, ...ticket, card: { kind: 'approval', what: 'ship', title: `Ship “${title}”?`, detail, runId, node, status: 'pending', ...(s.history ? { plain: true as const } : {}), files: done.facts.files, plus: done.facts.plus, minus: done.facts.minus, ...(done.tests ? { tests: done.tests } : {}), ...(done.reviewer ? { review: { by: done.reviewer.name } } : {}) } });
         this.dispatch(team, done.msg, task.hops + 1, { ...(task.by ? { asker: task.by } : {}) });
         await this.pump(team, task.agent);
       })(),
@@ -790,7 +809,7 @@ export class Teams {
     }
     if (rejected('approve-plan')) return void this.say(team.id, from, `The plan was rejected, so I stopped. Tell me what to change and I'll plan again.`, { run: runId, ...where });
     if (this.d.autofixing?.(runId)) return; // its rounds speak for it, and it says so if it gives up
-    const reason = s.status === 'stopped' ? 'the run was stopped' : (s.error ?? 'a step failed');
+    const reason = s.status === 'stopped' ? (s.error ?? 'the run was stopped') : (s.error ?? 'a step failed');
     const report = [s.error, s.nodes.work?.output].filter(Boolean).join('\n\n').slice(-REPORT_MAX);
     await this.speak(team, task.agent, { kind: 'failed', reason }, { run: runId, ...where, ...(report ? { report } : {}) });
     await this.learn(team, task, 'failed', s.error ?? '');
@@ -818,7 +837,21 @@ export class Teams {
       const from = this.agentFrom(task.agent);
       const title = firstLine(task.task, 70);
       if (card) this.setShip(team.id, card, { state: 'shipping' });
-      const r = await shipBranch({ repo: projectRoot(this.d.home, team.project), branch: s.branch, base: task.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
+      const repo = projectRoot(this.d.home, team.project);
+      if (s.history) {
+        // a plain folder has no PR: the work goes into the folder and the card says so
+        if (s.ship?.landed) return;
+        const l = await landRun(this.d, task.runId);
+        if ('error' in l) {
+          this.setShip(team.id, card, { state: 'failed', error: l.error });
+          return void this.say(team.id, from, l.error === NOTHING_TO_LAND ? l.error : template({ kind: 'ship_failed', reason: l.error, plain: true }), { run: task.runId, report: l.error, ...where });
+        }
+        if (card) this.setShip(team.id, card, { state: 'merged', landed: true });
+        else this.say(team.id, from, "It's in the folder.", { run: task.runId, ...where });
+        return;
+      }
+      const out = await shippable(await gitTop(repo), this.d.home, task.runId, s.branch, task.base, s.dirty);
+      const r = 'error' in out ? out : await shipBranch({ repo, branch: out.branch, base: out.base, title, body: `Opened by ${from.name} from the Tether squad “${team.name}” (run ${task.runId}).\n\n${task.task}`, exec: this.d.exec });
       if ('error' in r) {
         this.setShip(team.id, card, { state: 'failed', error: r.error });
         return void this.say(team.id, from, template({ kind: 'ship_failed', reason: r.error }), { run: task.runId, report: r.error, ...where });
@@ -844,7 +877,8 @@ export class Teams {
     if (!mayApprove(team, by.id)) throw new HttpError(403, `Only ${approverNames(team)} can undo a ship here.`);
     const m = readState(this.d.home, teamId).messages.find((x) => x.id === msgId);
     const c = m?.card;
-    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, 'There is nothing to undo here: it is already merged, or it never shipped.');
+    if (c?.kind !== 'approval' || c.what !== 'ship' || !c.runId || !c.ship || c.ship.state === 'merged' || c.ship.state === 'failed') throw new HttpError(409, c?.kind === 'approval' && c.ship?.landed ? "It's in the folder: use Undo on its run to take it back out." : this.d.store.state(c?.kind === 'approval' ? (c.runId ?? '') : '')?.history ? 'There is nothing to undo here: it never went in the folder.' : 'There is nothing to undo here: it is already merged, or it never shipped.');
+    if (c.ship.state === 'shipping' && this.d.store.state(c.runId)?.history) throw new HttpError(409, "It's being put in the folder. Try Undo in a moment.");
     const pr = c.ship.pr;
     if (pr) {
       const why = await closePr(pr.url, this.d.exec);
@@ -934,7 +968,7 @@ export class Teams {
     // caps off: a goal's own $ limit is the only cap its runs get (an explicit cap, so the run enforces it)
     const budgetUsd = caps ? this.budget(team, left ?? Infinity) : left === undefined ? undefined : Math.min(Math.max(left, 0.01), TEAM_MAX_BUDGET_USD);
     const pipeline = taskPipeline({ bot: def, level: 'loose', gates: this.gates(team), budgetUsd, ship: false });
-    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id }, capsOn: caps || left !== undefined });
+    const runId = await this.d.engine.start({ pipeline, task: plan.task, repo: projectRoot(this.d.home, team.project), ...(g.context ? { context: g.context } : {}), ...(prevState ? { ref: prevState.branch } : {}), workspace: team.project, origin: { kind: 'goal', id: g.id, team: team.id }, capsOn: caps || left !== undefined });
     const s = this.d.store.state(runId)!;
     // a goal made elsewhere (a chat's goal card) gets its card in the channel on its first run, so the team sees it
     const msg = this.loopMsg(team.id, g.id)?.id ?? this.say(team.id, TETHER, `Goal: ${g.title}`, { card: { kind: 'loop', goalId: g.id } }).id;
@@ -982,7 +1016,7 @@ export class Teams {
     if (team.level === 'loose') return this.ship(team, last);
     const detail = [...(g.check ? [`${g.check.command} passed`] : []), await this.diffStat(team, last, s.branch)].join(' · ');
     const st = await this.stat(team, last, s.branch);
-    this.say(team.id, from, template({ kind: 'ready', who: OWNER.name }), { run: last.runId, ticket: g.id, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending', ...st, ...(g.check ? { tests: { ok: true, line: `${g.check.command} passes` } } : {}) } });
+    this.say(team.id, from, template({ kind: 'ready', who: OWNER.name }), { run: last.runId, ticket: g.id, card: { kind: 'approval', what: 'ship', title: `Ship “${firstLine(g.title)}”?`, detail, goalId: g.id, runId: last.runId, status: 'pending', ...(this.d.store.state(last.runId)?.history ? { plain: true as const } : {}), ...st, ...(g.check ? { tests: { ok: true, line: `${g.check.command} passes` } } : {}) } });
   }
 
   /** Goals hook: a waiting run was decided (the Inbox, Goals): the team's card says so, unless it was decided on the card. */
@@ -1044,6 +1078,9 @@ export class Teams {
     if (card.status !== 'pending') throw new HttpError(409, `already ${card.status}${card.by ? ` by ${card.by}` : ''}`);
     if (o.action !== 'approve' && o.action !== 'reject') throw new HttpError(400, '"action" must be "approve" or "reject"');
     const approved = o.action === 'approve';
+    const run = card.runId ? this.d.store.state(card.runId) : undefined;
+    // no step waits on a card without a node, so only this stops a rewound run landing half its work
+    if (approved && card.what === 'ship' && !card.node && run?.history && run.status !== 'done') throw new HttpError(409, "This work isn't finished, so it can't go in the folder yet.");
     if (card.runId && card.node) {
       // an engine approval: the run decides once (a second click, or one from the Inbox, gets 409)
       try {
@@ -1079,7 +1116,7 @@ export class Teams {
     const task = st.tasks.find((k) => k.runId === runId);
     const s = runId ? this.d.store.state(runId) : undefined;
     if (!task || !s) throw new HttpError(404, 'no run behind this message');
-    return (await git(projectRoot(this.d.home, team.project), ['diff', '--no-color', task.base, s.branch])).stdout;
+    return (await git(this.repoOf(team, task.runId), ['diff', '--no-color', task.base, s.branch])).stdout;
   }
 
   // ---------- memory ----------
@@ -1266,7 +1303,7 @@ export class Teams {
     const card = this.shipCard(team.id, runId);
     if (card?.card?.kind === 'approval' && card.card.status === 'pending') return void (await this.decide(team.id, card.id, { action: 'approve', by }));
     if (!mayApprove(team, by.id)) throw new HttpError(403, `Only ${approverNames(team)} can ship here.`);
-    if (!task.pr) throw new HttpError(409, 'Nothing is ready to ship yet.');
+    if (!task.pr) throw new HttpError(409, this.d.store.state(runId)?.ship?.landed ? 'This work is already in the folder.' : 'Nothing is ready to ship yet.');
     this.say(team.id, this.agentFrom(task.agent), `I'll merge PR #${task.pr.number} once its checks pass.`, task.ticket ? { ticket: task.ticket } : {});
     this.job(this.watchMerge(team.id, task.agent, task.pr, 0, card?.id));
   }

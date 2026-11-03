@@ -1,6 +1,6 @@
 import { ArrowUp, CornerUpLeft, ExternalLink, Pin, Plus, Settings, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { fmtDur, fmtUsd } from '../api';
+import { api, fmtDur, fmtUsd } from '../api';
 import { TeamRunCard } from '../assistant/taskCards';
 import { useCaps } from '../caps';
 import { LinkPreview } from '../components/assistant-ui/elements/link-preview';
@@ -107,7 +107,7 @@ export function SquadScreen(p: { id: string; tickets?: GoalView[]; agents: Teams
       names={names}
       compact={compact}
       summary={compact ? undefined : threadSummary(v.messages, m.id)}
-      card={m.card ? <CardView msg={m} card={m.card} team={v} ticket={ticketOf(m.ticket)} onAct={act} onDiff={showDiff} onGo={p.onGo} onUndo={() => teamsApi.undo(t.id, m.id).then(refresh, fail)} /> : null}
+      card={m.card ? <CardView msg={m} card={m.card} team={v} ticket={ticketOf(m.ticket)} onAct={act} onDiff={showDiff} onGo={p.onGo} onUndo={() => (m.card?.kind === 'approval' && m.card.ship?.landed && m.card.runId ? api('POST', `/api/runs/${m.card.runId}/undo-land`, {}) : teamsApi.undo(t.id, m.id)).then(refresh, fail)} /> : null}
       onReact={(r) => void teamsApi.react(t.id, m.id, r).then(refresh, fail)}
       onPin={() => void teamsApi.pin(t.id, m.id, !m.pinned).then(refresh, fail)}
       onThread={compact ? undefined : () => setThread(m.id)}
@@ -452,7 +452,7 @@ function CardView(p: { msg: TeamMessage; card: Card; team: TeamView; ticket?: Go
 /**
  * The ship card (board 8): the change's size as a +/− bar, chips for the tests, the review and the ticket's criteria;
  * Ship it / See the diff / Not yet (a reason, then the agent reworks once). After Ship it: who shipped it and the PR
- * opening, open, merged; Undo until it merges.
+ * opening, open, merged; Undo until it merges. A plain folder's card says "It's in the folder.", and Undo takes it back out.
  */
 export function ShipCard({ msg, card: c, ticket, team, onAct, onDiff, onUndo }: { msg: TeamMessage; card: Extract<Card, { kind: 'approval' }>; ticket?: GoalView; team: TeamView; onAct: Act; onDiff: (m: TeamMessage, title: string) => void; onUndo: () => Promise<void> }) {
   const [why, setWhy] = useState<string>();
@@ -471,8 +471,8 @@ export function ShipCard({ msg, card: c, ticket, team, onAct, onDiff, onUndo }: 
   if (c.status === 'approved') {
     const sh = c.ship;
     const pr = sh?.pr ? `PR #${sh.pr.number}` : 'the PR';
-    const state = !sh ? 'approved' : sh.state === 'merged' ? `${pr} merged` : sh.state === 'open' ? `${pr} open, merging once checks pass` : sh.state === 'failed' ? `not shipped: ${sh.error ?? 'it failed'}` : 'opening the PR';
-    const undo = sh && (sh.state === 'shipping' || sh.state === 'open');
+    const state = c.plain ? (sh?.state === 'failed' ? `not put in the folder: ${sh.error ?? 'it failed'}` : sh?.landed ? "It's in the folder." : sh ? 'putting it in the folder' : 'approved') : !sh ? 'approved' : sh.state === 'merged' ? `${pr} merged` : sh.state === 'open' ? `${pr} open, merging once checks pass` : sh.state === 'failed' ? `not shipped: ${sh.error ?? 'it failed'}` : 'opening the PR';
+    const undo = sh && (sh.state === 'shipping' || sh.state === 'open' || sh.landed);
     return (
       <div className={cn('sq-shipped', { bad: sh?.state === 'failed' })} role="status">
         {`Shipped by ${who(c.by ?? 'someone')} · ${state}${c.at ? ` · ${time(c.at)}` : ''}`}

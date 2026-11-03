@@ -12,7 +12,7 @@ import { aliasPath, startServer } from '../src/server.js';
 import { Store } from '../src/store.js';
 import { Vault } from '../src/vault.js';
 import { initWorkspace } from '../src/workspace.js';
-import { makeRepo, tmp } from './helpers.js';
+import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 /** The goals table as it was before tickets (2026-10-29): every column up to `origin`. */
 function oldDb() {
@@ -149,6 +149,29 @@ describe('the ticket service', () => {
     expect(r.goals.db.must('g2')).toMatchObject({ stage: 'in_review' });
     expect(r.goals.db.must('g2').prs).toBeUndefined();
   });
+
+  it('a landing with nothing to change leaves the ticket where it is, and says so', () => {
+    const r = rig();
+    r.goals.create({ id: 'g4', workspace: r.ws.id, title: 'Fix sign-in', kind: 'tracker', status: 'active', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, stage: 'in_progress' });
+    r.store.append('r9', { type: 'run.started', pipeline: { name: 'p', version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 1 } }, task: 't', repo: '/x', workdir: '/x', baseSha: 'a', branch: 'b' } as never);
+    r.goals.addItem('g4', { text: 'fix it', runId: 'r9' });
+    r.store.append('r9', { type: 'run.shipped', error: 'Nothing to put in the folder: it already has this work.' });
+    expect(r.goals.db.must('g4').stage).toBe('in_progress');
+    expect(r.goals.db.must('g4').activity!.map((a) => a.text)).toEqual(['Nothing to put in the folder: it already has this work.']);
+  });
+
+  it('a landed run moves its ticket to Done, and undo moves it back to In review', () => {
+    const r = rig();
+    r.goals.create({ id: 'g3', workspace: r.ws.id, title: 'Fix sign-in', kind: 'tracker', status: 'active', approval: 'ask', workflow: 'team', createdAt: Date.now(), spentUsd: 0, stage: 'in_progress' });
+    r.store.append('r8', { type: 'run.started', pipeline: { name: 'p', version: 1, mode: 'pipeline', nodes: [], edges: [], settings: { parallel: 1 } }, task: 't', repo: '/x', workdir: '/x', baseSha: 'a', branch: 'b' } as never);
+    r.goals.addItem('g3', { text: 'fix it', runId: 'r8' });
+    r.store.append('r8', { type: 'run.shipped', merged: true, landed: { pre: 'a', post: 'b', files: ['x.txt'] } });
+    expect(r.goals.db.must('g3')).toMatchObject({ stage: 'done' });
+    r.store.append('r8', { type: 'run.shipped', undone: true });
+    expect(r.goals.db.must('g3').stage).toBe('in_review');
+    expect(r.goals.db.must('g3').activity!.map((a) => a.text)).toEqual(['put the changes in the folder', 'took the changes back out of the folder']);
+    expect(r.store.state('r8')!.ship).toBeUndefined();
+  });
 });
 
 async function serve(r: ReturnType<typeof rig>) {
@@ -229,5 +252,24 @@ describe('ideas from your chats (board 10, Backlog)', () => {
     } finally {
       await s.close();
     }
+  });
+});
+
+describe('a ticket knows whether its folder is plain', () => {
+  async function ticketOn(folder: string) {
+    const r = rig();
+    const ws = initWorkspace(r.home, folder, { id: 'other', name: 'other' }).workspace;
+    const { s, call } = await serve(r);
+    try {
+      return (await call('POST', '/api/tickets', { title: 'x', workspace: ws.id })).json;
+    } finally {
+      await s.close();
+    }
+  }
+  it('a ticket on a plain Workspace is plain before it has a run', async () => {
+    expect((await ticketOn(plainFolder({ 'a.txt': '1' }))).plain).toBe(true);
+  });
+  it('a ticket in a real repo is not', async () => {
+    expect((await ticketOn(makeRepo())).plain).toBeUndefined();
   });
 });

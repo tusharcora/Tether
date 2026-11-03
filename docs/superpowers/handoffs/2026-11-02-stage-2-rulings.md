@@ -1,0 +1,81 @@
+# Stage 2 rulings
+
+Every decision taken on the owner's behalf while building stage 2, in order, from the build ledger. Each reads: what was decided, why, and what it costs if wrong.
+
+- Ruling: T2 commandRule carries its own refused list beyond BLOCKED and needsApproval (git push/merge/rebase/reset --hard/filter-branch and force history rewrites, gh, npm/yarn/pnpm publish, curl/wget that send data, ssh/scp/rsync to a host, defaults write, systemsetup, launchctl, sudo) — the plan's tests and spec 6.9 require them — a too-wide pattern refuses an ordinary command, and the agent says why.
+- Ruling: T2 `~`, `$HOME` and absolute paths count as outside the folder; `..` is judged by depth inside the path text alone — commandRule has no root and stays pure — `cd a && cat ../b` style is judged per part, so some legal climbs may be refused, which is the safe side.
+- Ruling: T3 the hook uses launchContext's execPath, loader flags and ELECTRON_RUN_AS_NODE, like codeModeMcpCommand — it already works in dev and the packaged app — none known.
+- Ruling: T5 needsTrust applies to solo, workflow and team when the folder is unknown; ticket does not, as it only makes a paused ticket — spec 6.9 is binding — one extra dialog.
+- Ruling: T5 the model estimates only the solo row; the server sets the others from past runs of that workflow where there are some, otherwise a fixed multiple of solo (ticket 1x, workflow 3x, team 4x), all reading "about" — spec 6.3 is binding — the multiples are guesses, labelled about.
+- Ruling: T5 a bad cost becomes an empty string, the row stays, and the card shows no cost — keeps the plan's type — a row without a number.
+- Ruling: T6 run web tests by path if --project web doesn't exist — no named projects seen — none.
+- Ruling: T1 ⚠️ a run's history is set only from wt.history, a plain worktree, so a real repo never had it — checked engine.ts:430,621 — none.
+- Ruling: T3 runCommand already exists as (command, cwd, o) and strips secrets from env; the plan's new (root, command, signal) signature would collide, so T3 adds a wrapper under another name that reuses it — no second runner — a name differs from the plan.
+- Task 2: Ruling: finding 11 (plan-mandated, own absolute paths refused) — commandRule gains an optional second argument `root`; an absolute path inside root is not outside, and an absolute executable in command position under /bin, /usr/bin, /usr/local/bin or /opt/homebrew/bin is judged by its basename — agents use absolute paths constantly and a false "outside" stalls them; spec 6.9 says outside the folder, not absolute — signature grows by an optional argument.
+- Task 2: Ruling: finding 12 (plan-mandated, bare word sudo) — commandRule does not use BLOCKED's sudo pattern; sudo is refused in command position through the see-through logic, and BLOCKED's other patterns run on text with quoted strings blanked — spec refuses sudo the command, not the word — a quoted-away destructive pattern could slip, only through bash -c, which is re-checked.
+- Task 2: Ruling: finding 10 — a trust entry stores the folder's dev and ino; a mismatch reads unknown — the trust notice's own warning is about downloaded folders — a network or rebuilt volume re-asks once.
+- Task 3: Ruling: finding 3 (plan-mandated test) — Claude gets --disallowedTools Bash Monitor whenever it has no commands and its permission mode isn't plan, merged with Code Mode's list; the brief's `not.toContain('Bash')` test changes — spec 6.9 "nothing runs" is binding; a pipeline's explicit bypass mode would otherwise run Bash unhooked — a Claude workflow relying on owner allow rules in an untrusted folder loses Bash until trusted.
+- Task 3: Ruling: Codex, OpenCode and custom CLI agents keep their own shells, outside commandRule and trust — no way to turn them off from args; Codex's workspace-write sandbox is a real boundary, OpenCode has none here — surfaced to the owner, written in README in T7 — OpenCode can run anything in an untrusted folder, as it can today.
+- Task 3: Ruling: finding 2 — Claude keeps its own auth env, so set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 on the Claude process when commands is on, refuse bare env, printenv, set, export -p in commandRule, and widen the deny-list — one scrubbed env would break CLI login — text rule, so `echo $X` of an unscrubbed name still reads it.
+- Task 3: Ruling: finding 1 — commandRule refuses paths matching isSecretPath and .git/config-style reads of secrets stay out of scope beyond that — same text-match caveat — `grep -r K .` still reads a .env.
+- Task 3: Ruling: finding 5 — the line follows the brief for all steps with commands false, and is left out for adapters with their own shell — a false sentence is worse than none — read-only prompts change by one line.
+- Task 3: Ruling: ⚠️ onFailure on old CLIs parked, no version floor — owner runs 2.1.316; unknown keys are unverified — an old CLI might drop the hook while Bash stays allowed. Packaged-app hook path checked in T7's app build.
+- Task 4: Ruling: spec 6.7 has six bullets, brief five — CAREFUL gains the sixth ("Keep tool output small") and stays on writable steps as the plan's test says, though the spec says every agent — read-only steps spend nothing on edit rules — a read-only agent lacks the care rules.
+- Task 4: Ruling: finding 2 — wording only: "No files came out of this run"; the agent's step commit dropping ignored paths, node_modules and case-only renames is parked as a known limit for the owner — stage 1 keeps step commits as they are and landing code stays untouched — a person sees no files where an agent wrote some, and is told so.
+- Task 4: Ruling: ⚠️ a done solo run has no decide button in the app — T6 shows the decision banner for any done, unshipped solo run (real repo, or a plain run that crashed before landing), using POST ship — owner's difference 2 promises that banner — one more banner state.
+- Task 5: Ruling: critical 1 — only a folder the person refused stops the engine's own commands (gates, workspace setup, goal checks): a gate there doesn't run and never counts as passing, the run stops with plain text; setup is skipped with a note. `unknown` folders keep today's behaviour outside the route card, which always asks first — skipping or failing gates on every unknown folder would break every existing workflow, trigger, schedule and CLI run in real repos, and a skipped gate must not read as passed — a workflow started outside chat in a never-asked folder still runs its gates; surfaced to the owner.
+- Task 5: Ruling: important 1 — runs get the chat's recent text, capped and fenced as chat content, separate from the short task shown in the UI — plan's owner-confirmed term — more prompt tokens per run.
+- Task 5: Ruling: important 2 — reconcile at read time: started with no runId, no goalId and no in-flight start reads failed with the plain note — server is the only side that can tell — a restart during a slow start shows failed though nothing ran, which is true.
+- Task 5: Ruling: important 3 — asksToGoals no longer gates cards; T6 removes the checkbox and the pref is ignored by route turns — spec 6.3 says the card replaces it — anyone who turned it off gets cards again.
+- Task 5: Ruling: ticket chat context moves off the description onto its own capped goal field, passed as run context — description has a 2,000 cap and shows in the UI — one more goal field.
+- Task 6: Ruling: finding 1 — the banner widens to any done, unshipped run with history (plain folder), and the card reads "This work isn't in your folder yet" with Open the run instead of Ready; Ready stays for real repos — POST ship already accepts it, and a plain run must not end with no way to get its work — a plain run with a deliberate decision step could show two prompts only if it isn't done, which can't happen.
+- Task 6: Ruling: the banner and POST ship by hand exclude origin.kind 'goal', with a server guard like the team one — a ticket keeps its own checks and flow as today — a ticket run that ends done with no ship step stays where stage 1 left it.
+- Task 6: Ruling: any done plain run's conflict uses the solo wording, not "send this back" — sendBack refuses done runs and the wider banner reaches this — test at run-ship.test.ts:421 changes; squads keep theirs if their run can be sent back.
+- Ruling: Final 2 — Not now doesn't persist: it starts the run with a per-run noCommands flag and asks again next time; `refused` stays for a saved no; the engine treats a noCommands run like refused until the folder is trusted — "Not now" must not lock a folder for squads and tickets, and must not run a gate the person just declined — one more field on run.started. Changes T5's ruling that trust:false saves refused.
+- Ruling: Final 3 — Settings lists known Workspaces with a Trust button through PUT /api/trust; README says never-asked folders give Claude no Bash — smallest door outside chat — a never-asked real repo's Claude step stays without Bash until the owner trusts it, by T3's ruling; surfaced to the owner.
+- Ruling: Final 4, 5, 1 and minors 6, 7, 8, 12, 13, the proposals drop and the card's noCommands line go in the fix wave. Minors 9, 10, 11 stay deferred; 10 goes in Known limits.
+- Ruling: no second real Claude run — the owner approved one, and it's spent — the hook, deny list and scrub go in HANDOFF as the owner's app check — unproved on a real model until then.
+- Ruling: fix by adding run id to the step commit body, landingBase and landBranch unchanged — smallest fix, keeps the one-base rule — run ids appear in step commit bodies.
+- Ruling: Try more ways — load-bearing; one-line fix with a test, by a fresh agent, in place of a second fix wave — it runs a gate the person declined, opened by this wave's own change — none.
+- Final: parked — Ruling: card still says "not checked" after a yes, a resume and a passing gate; errs cautious, needs a run view of gate results — real, deferred — an untrue caution on workflow and team cards.
+- Final: parked — Ruling: rule gaps: piped to wrapped or other shells, builtin kill, kill -9 0, docker --context, docker image push, cargo -Z, python -m twine, pnpm dlx gh, bunx gh — text rule, stops mistakes — a less common form still runs.
+- Final: parked — Ruling: ripgrep globs still hide .env.example and id_token.test.ts in text search; errs safe.
+- Final: parked — Ruling: URL mask misses unencoded passwords; rare, logs only.
+- Final: parked — Ruling: an HTTP gate runs on a refused or Not now run; no shell or repo code.
+- Final: parked — Ruling: old-chat proposal starts run in an unknown folder with no trust question; pre-existing.
+- Final: parked — Ruling: phone layout check not in the handoff; list it for the owner.
+
+## Deferred minors
+
+- Task 1: minor (deferred): routes.ts:220 SSE onChange runs insideGit per event
+- Task 1: minor (deferred): no test for the missing-Workspace fallback
+- Task 2: minor (deferred): wrong reason text for empty inner command; plain git reflog refused; reason wording for git pull, merge --abort, needsApproval, curl -X GET
+- Task 2: minor (deferred): rarer wrapper escapes: env -u/-C, exec -a, \git, dash/fish -c, npx gh
+- Task 2: minor (deferred): cargo publish, twine upload, docker push, sftp, nc, defaults delete pass
+- Task 2: minor (deferred): path gaps: tar -C.., -I/opt, $PWD/../x, curl file://, a=b=/c, /dev/stderr
+- Task 2: minor (deferred): fixed temp name trust.json.tmp; test gaps for symlink via trustState, non-boolean file, relative PUT
+- Task 2: minor (deferred): /tmp and /tmp/* exempt from outside rule per the plan's exception; a text match can't tell run scratch from other /tmp files
+- Task 2: minor (deferred): commandRule and helpers about 186 lines, over the 150 guide
+- Task 2: minor (deferred): `cat <<EOF | bash` may not be caught, unprobed
+- Task 3: minor (deferred): signal-killed command reads as success (r.exit null); hook refusals show runtime paths; hook test uses unreal cwd; false cut note at exactly 20,000 chars
+- Task 3: minor (deferred, fix in final wave): AUTH deny strips SSH_AUTH_SOCK for all runCommand callers, TUI git over ssh can lose its agent
+- Task 3: minor (deferred): `^id_` refuses id_token.test.ts; .env.example refused by git add; cat .env*, node -p process.env, git log -p gaps
+- Task 3: minor (deferred): setsid escapes group kill; Claude's own background Bash isn't reaped; scrub leaves GitHub tokens and proxy settings
+- Task 3: minor (deferred): Bash|Monitor, deny list and scrub unproved on a real model; owner approved one real run only, and it predates them
+- Task 3: minor (deferred): test/code-save-search.test.ts:112 flaked 1 in 6 on d3fb92a; diff can't reach it; recheck at T7
+- Task 4: minor (deferred): landRun's status guard says "still changing" for error and stopped runs, and a squad's met goal after a non-done last run now refuses where it landed before
+- Task 4: minor (deferred): Undo surfaces raw git text with home path on a broken history
+- Task 4: minor (deferred): two RunShip listeners record a false error; stale want entry; no-changes text on ship.error, shown as dd.bad and prefixed on ticket runs
+- Task 4: minor (deferred): three tests prove less than their names; void [_loops, _fix] in solo.ts
+- Task 4: minor (deferred): crash between finish and landing isn't retried; edit landing between pre-snapshot and checkout untested
+- Task 4: minor (deferred): decide starting a landing while a rewind is moving the run is unguarded; solo conflict text "Keep your version, or rewind" is loose, rewind only helps once the file is clear; "No files" also shows when files already match
+- Task 5: minor (deferred): planner stderr noise in the ticket test; ticket forgets card.task on Start (use description || task); failed start logs no cause; old-chats test over-claims; goal proposals still live on route turns; cost parsing edges; soloWithoutAsking starts with no click, say so in Settings; T6 needs a read path for soloWithoutAsking; @mentioned agent's ticket follows draft agents
+- Task 5: minor (deferred): corrupt trust.json loses a refused answer, reads unknown, and re-asks; cli.ts:171 shows a red setup for a skipped one; a subfolder of a refused folder reads unknown
+- Task 5: minor (deferred, owner decision): Preview's default command is the repo's own script and runs on a click in a refused folder; TUI commands 'always' has no trust check
+- Task 5: minor (deferred): plain resume after a yes retries any other failed step in that run too; web Duplicate drops context; model-emitted goal proposal now kept with asksToGoals off
+- Task 6: minor (deferred, investigate before final): test/run-ship.test.ts "a fork of an unlanded fork, from a step they share" failed 7 of 14 on untouched 2efb329
+- Task 6: minor (deferred): deleted-run card text and stale Undo; Undo failure can carry a raw path; focus after dialog closes; kit dialog focus jump on rerender; stale quiet read after a rewind; no Escape, focus or stop-polling tests; noCommands shows only while working; real-repo failed card hides server text; NOTHING_TO_LAND styled as failure on plain non-solo; stale comments on the composer switch
+- Task 6: minor (deferred): waiting or paused card stale until reopened; solo card stale if landing queues past 60 s; phone layout unmeasured in a browser
+- Task 6: minor (deferred): Attempts.pick still lands a ticket's plain run without its approval, as before; hand POST on a real repo's done ticket run allowed; full suites to run at T7
+- Task 7: minor (deferred): packaged hook proof is from a hand-built context, not the app's own launchContext; real Claude with onFailure unproved until the owner's app check
+- Task 7: minor (deferred): agent-first handoff "Where things stand" is stale

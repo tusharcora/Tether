@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
-import { assistantApi, streamTurn, type AssistantContext, type ChatMessage, type GoalDraft, type Proposal, type StreamEvent, type ToolRun } from './api';
+import { assistantApi, streamTurn, type AssistantContext, type ChatMessage, type GoalDraft, type Proposal, type RouteCard, type RouteKind, type StreamEvent, type ToolRun } from './api';
 
 /** The reply being written: its text so far and the Code Mode scripts it ran. */
 export interface Streaming {
@@ -49,9 +49,8 @@ export interface Assistant {
   rename(title: string): Promise<void>;
   /** A goal card's Start carries its edits (`draft`). */
   decide(proposal: Proposal, decision: 'start' | 'dismiss', draft?: GoalDraft): Promise<Proposal>;
-  /** Asks to build, fix or do something come back as goal cards (the composer's switch). */
-  asksToGoals: boolean;
-  setAsksToGoals(on: boolean): Promise<void>;
+  /** A route card's click; throws the server's 409 when the folder hasn't been asked about. */
+  route(card: RouteCard, choice: RouteKind, trust?: boolean): Promise<void>;
   tool(messageId: string, askId: string, decision: 'once' | 'always' | 'deny'): Promise<void>;
   feedback(messageId: string, value: 'up' | 'down' | null, why?: { reasons: string[]; note?: string }): void;
   turnIntoRun(messageId: string): Promise<void>;
@@ -89,7 +88,7 @@ const keyOf = (ws: string | undefined, chat: string | undefined) => `${ws ?? ''}
 export function useAssistant(ws: string | undefined, chatId: string | undefined, enabled: boolean, on: { created?: (id: string) => void; gone?: (id: string) => void } = {}): Assistant {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [title, setTitle] = useState<string>();
-  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean; nvidia?: boolean; asksToGoals: boolean }>({ models: [], asksToGoals: true });
+  const [meta, setMeta] = useState<{ agent?: string; model?: string; models: string[]; openrouter?: boolean; nvidia?: boolean }>({ models: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [streaming, setStreaming] = useState<Streaming>();
@@ -119,7 +118,7 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
         if (!live) return;
         setMessages(v.messages);
         setTitle(v.title);
-        setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter, nvidia: v.nvidia, asksToGoals: v.asksToGoals !== false });
+        setMeta({ agent: v.agent, model: v.model, models: v.models, openrouter: v.openrouter, nvidia: v.nvidia });
         setLoading(false);
       },
       (e: Error) => {
@@ -251,19 +250,14 @@ export function useAssistant(ws: string | undefined, chatId: string | undefined,
       const r = await assistantApi.rename(ref.current.ws, id, t);
       if (chat() === id) setTitle(r.chat.title);
     },
-    setAsksToGoals: async (on) => {
-      setMeta((m) => ({ ...m, asksToGoals: on }));
-      try {
-        await assistantApi.settings(on);
-      } catch (e) {
-        setMeta((m) => ({ ...m, asksToGoals: !on }));
-        throw e;
-      }
-    },
     decide: async (proposal, decision, draft) => {
       const { proposal: next } = await assistantApi.decide(ref.current.ws, chat(), proposal.id, decision, draft);
       setMessages((l) => l.map((m) => (m.proposals?.some((x) => x.id === next.id) ? { ...m, proposals: m.proposals.map((x) => (x.id === next.id ? next : x)) } : m)));
       return next;
+    },
+    route: async (card, choice, trust) => {
+      const { route } = await assistantApi.route(ref.current.ws, chat(), card.id, choice, trust);
+      setMessages((l) => l.map((m) => (m.route?.id === route.id ? { ...m, route } : m)));
     },
     tool: async (messageId, askId, decision) => {
       const { ask } = await assistantApi.tool(ref.current.ws, chat(), askId, decision);

@@ -1,6 +1,7 @@
 import { dirname } from 'node:path';
 import { toolChunk } from '../activity.js';
 import { claudeCodeModeArgs } from '../codemode/delivery.js';
+import { commandHookLine } from '../codemode/launch.js';
 import { runProcess } from '../proc.js';
 import type { AgentAdapter, AgentRequest, AgentResult, AgentUsage } from '../types.js';
 import { detectBin } from './cli.js';
@@ -73,6 +74,46 @@ export function parseClaudeLine(
   }
 }
 
+/**
+ * Every Bash call goes through `commandRule`. `--settings` outranks a project's own settings, so a downloaded folder can't
+ * turn hooks off, and `onFailure` refuses when the hook hangs, which `|| exit 2` can't see.
+ */
+// Monitor runs shell under Bash's permission rules, with the same `command` field
+const commandSettings = () => JSON.stringify({ disableAllHooks: false, hooks: { PreToolUse: [{ matcher: 'Bash|Monitor', hooks: [{ type: 'command', command: commandHookLine(), onFailure: 'block' }] }] } });
+
+const hasBash = (req: Pick<AgentRequest, 'readOnly'> & Partial<AgentRequest>) => !!req.commands && !req.readOnly;
+
+/** The CLI's flags for one call. Pure, but for the per-run MCP config Code Mode writes. */
+export function claudeArgs(req: Partial<AgentRequest> & Pick<AgentRequest, 'readOnly'>): string[] {
+  const mode = req.permissionMode ?? (req.readOnly ? 'plan' : 'acceptEdits');
+  const code = req.codeMode ? claudeCodeModeArgs(req.codeMode) : [];
+  const bash = hasBash(req);
+  const tools = code.indexOf('--allowedTools');
+  if (bash && tools >= 0) code[tools + 1] += ',Bash'; // the CLI takes one list, so Code Mode's is the one
+  // explicit, so the owner's own allow rules or a bypass mode can't run anything in a step without commands
+  const deny = !bash && mode !== 'plan' ? ['Bash', 'Monitor'] : [];
+  const denied = code.indexOf('--disallowedTools');
+  if (denied >= 0) code.splice(denied + 1, 0, ...deny);
+  return [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--permission-mode',
+    mode,
+    ...(req.model ? ['--model', req.model] : []),
+    ...(req.budgetUsd !== undefined && req.budgetUsd > 0 ? ['--max-budget-usd', req.budgetUsd.toFixed(4)] : []),
+    ...(req.resumeSessionId ? ['--resume', req.resumeSessionId] : []),
+    ...(req.onDelta ? ['--include-partial-messages'] : []),
+    ...(req.lean ? ['--setting-sources', 'project', '--disable-slash-commands'] : []),
+    ...(bash ? [...(tools < 0 ? ['--allowedTools', 'Bash'] : []), '--settings', commandSettings()] : []),
+    ...(deny.length && denied < 0 ? ['--disallowedTools', ...deny] : []),
+    ...code,
+    // a teammate's photo: Claude Code reads images with its Read tool, from a folder it may read
+    ...[...new Set((req.images ?? []).map((f) => dirname(f)))].flatMap((d) => ['--add-dir', d]),
+  ];
+}
+
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly reportsCost = true;
@@ -96,23 +137,7 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async run(req: AgentRequest): Promise<AgentResult> {
-    const mode = req.permissionMode ?? (req.readOnly ? 'plan' : 'acceptEdits');
-    const args = [
-      '-p',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--permission-mode',
-      mode,
-      ...(req.model ? ['--model', req.model] : []),
-      ...(req.budgetUsd !== undefined && req.budgetUsd > 0 ? ['--max-budget-usd', req.budgetUsd.toFixed(4)] : []),
-      ...(req.resumeSessionId ? ['--resume', req.resumeSessionId] : []),
-      ...(req.onDelta ? ['--include-partial-messages'] : []),
-      ...(req.lean ? ['--setting-sources', 'project', '--disable-slash-commands'] : []),
-      ...(req.codeMode ? claudeCodeModeArgs(req.codeMode) : []),
-      // a teammate's photo: Claude Code reads images with its Read tool, from a folder it may read
-      ...[...new Set((req.images ?? []).map((f) => dirname(f)))].flatMap((d) => ['--add-dir', d]),
-    ];
+    const args = claudeArgs(req);
     const images = req.images ?? [];
     const prompt = images.length ? `${req.prompt}\n\nThe person attached ${images.length === 1 ? 'an image' : `${images.length} images`}. Look at ${images.length === 1 ? 'it' : 'them'} with your Read tool before you answer:\n${images.map((f) => `- ${f}`).join('\n')}` : req.prompt;
     const acc: Parameters<typeof parseClaudeLine>[1] = { text: '' };
@@ -120,6 +145,8 @@ export class ClaudeAdapter implements AgentAdapter {
       cmd: 'claude',
       args,
       cwd: req.cwd,
+      // keeps Claude's own login, and keeps it out of what its commands inherit
+      ...(hasBash(req) ? { env: { ...process.env, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' } } : {}),
       stdin: prompt, // via stdin: no argv size limit, and the prompt stays out of `ps`
       signal: req.signal,
       onStdoutLine: (l) => parseClaudeLine(l, acc, req.onChunk, req.onSession, req.onDelta, req.onTool, req.onToolResult),
