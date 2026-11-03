@@ -9,6 +9,7 @@ import { RunTaskCard, taskState } from './taskCards';
 import { Thread } from './Thread';
 import { useAssistant } from './useAssistant';
 import { calls, makeAwaitingRun, makeRun, routeApi } from '../test/fixtures';
+import { NOT_TRUSTED } from '../../../src/runLabels';
 import { renderApp } from '../test/render';
 
 beforeEach(() => {
@@ -233,13 +234,26 @@ describe('the route card', () => {
   it('after a yes and a resume with a passing gate, the card no longer says it wasn\'t checked', async () => {
     const started = () => card({ status: 'started', chose: 'solo', runId: 'r1', noCommands: true });
     const line = 'It ran without commands, so this wasn\'t checked.';
-    const yes = { 'GET /api/trust': { folders: [{ folder: '/repo', trusted: true, exists: true }] } };
-    const a = open(started(), { ...yes, 'GET /api/runs/r1': running() });
+    const cant = "It can't run commands here, because this folder isn't trusted.";
+    const gate = (o: Partial<RunView['nodes'][string]>) => ({ pipeline: { ...makeRun().pipeline, nodes: [{ id: 'work', kind: 'agent', role: 'coder', title: 'Finish question 3', x: 0, y: 0 }, { id: 'check', kind: 'gate', command: 'npm test', x: 0, y: 0 }], edges: [] }, nodes: { work: { status: 'done', attempts: 1, costUsd: 0, loops: 0 }, check: { status: 'done', attempts: 1, costUsd: 0, loops: 0, ...o } } }) as Partial<RunView>;
+    // resumed after a yes: no "can't run commands"
+    const a = open(started(), { 'GET /api/runs/r1': { ...running(), trusted: true } });
     await screen.findByText('Doing it myself · saved a checkpoint first');
-    expect(screen.queryByText("It can't run commands here, because this folder isn't trusted.")).toBeNull();
+    expect(screen.queryByText(cant)).toBeNull();
     a.unmount();
-    open(started(), { ...yes, 'GET /api/runs/r1': landed() });
+    // trusted, but the gate still holds the trust stop: unchecked
+    const b = open(started(), { 'GET /api/runs/r1': { ...landed(), ...gate({ status: 'error', error: NOT_TRUSTED }), ship: landed().ship, trusted: true } });
+    await screen.findByText('hw3.py');
+    expect(screen.getByText(line)).toBeTruthy();
+    b.unmount();
+    // a solo run with no gate: nothing ever checked it
+    const c = open(started(), { 'GET /api/runs/r1': { ...landed(), trusted: true } });
     await screen.findByText('hw3.py · +12 −3');
+    expect(screen.getByText(line)).toBeTruthy();
+    c.unmount();
+    // trusted and the gate passed
+    open(started(), { 'GET /api/runs/r1': { ...landed(), ...gate({}), trusted: true } });
+    await screen.findByText('hw3.py');
     expect(screen.queryByText(line)).toBeNull();
   });
 
