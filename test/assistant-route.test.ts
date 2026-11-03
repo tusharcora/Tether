@@ -501,6 +501,17 @@ describe('route card', () => {
     expect(r.json.route).toMatchObject({ status: 'failed', note: "This couldn't start, and nothing in the folder changed." });
   });
 
+  it('a resolve that throws in an untrusted folder asks for trust, and starts nothing', async () => {
+    const t = await boot();
+    const { card, chat } = await t.offer(good);
+    vi.spyOn(t.engine, 'resolve').mockImplementation(() => {
+      throw new Error('cannot resolve');
+    });
+    const r = await t.click(card!, chat, { choice: 'workflow' });
+    expect(r.status).toBe(409);
+    expect(t.store.list()).toHaveLength(0);
+  });
+
   it('a start that fails says so plainly, with no home path, and a second click does not retry', async () => {
     const t = await boot();
     const { card, chat } = await t.offer(good);

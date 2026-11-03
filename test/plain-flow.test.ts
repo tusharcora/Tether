@@ -112,7 +112,8 @@ describe('a ticket in a plain folder', () => {
 
       const ship = await call('POST', `/api/tickets/${made.json.id}/ship`);
       expect(ship.status, JSON.stringify(ship.json)).toBe(200);
-      await until(async () => hw3() === 'print("done")\n');
+      await until(async () => (await call('GET', `/api/runs/${runId}`)).json.ship?.landed);
+      expect(hw3()).toBe('print("done")\n');
     } finally {
       await s.close();
     }

@@ -147,22 +147,24 @@ export const START_FAILED = "This couldn't start, and nothing in the folder chan
  */
 export function runsOwnShell(c: AssistantCtx, card: RouteCard, choice: RouteKind, bot?: string): boolean {
   let pipeline: Pipeline;
-  let resolved: Pipeline;
   try {
     // a team is its manager, which follows the orchestrator's binding
     pipeline = choice === 'team' ? normalizePipeline({ name: 'team', nodes: [{ id: 'boss', kind: 'agent', role: 'orchestrator', manager: true, x: 0, y: 0 }], edges: [], settings: {} }) : choice === 'workflow' ? readPipeline(c.home, card.workflow!) : soloPipeline({ task: card.task, ...(bot ? { bot } : {}) });
-    resolved = c.engine.resolve(pipeline);
   } catch {
-    return false; // a workflow that can't be read or resolved fails to start by itself, as a failed card
+    return false; // a workflow that can't be read fails to start by itself, as a failed card
   }
   const own = (id: string) => id !== 'codex' && (!c.registry.has(id) || !!c.registry.get(id).ownShell);
-  return resolved.nodes.some((n) => {
-    if (n.kind !== 'agent') return false;
-    const agent = n.agent ?? 'claude';
-    if (own(agent)) return true;
-    // a manager's workers take their bot's binding, else follow the manager
-    return !!n.manager && c.engine.resolve({ ...pipeline, nodes: rosterOf(n).map((id) => ({ id, kind: 'agent' as const, role: id, x: 0, y: 0 })) }).nodes.some((w) => own(w.agent ?? agent));
-  });
+  try {
+    return c.engine.resolve(pipeline).nodes.some((n) => {
+      if (n.kind !== 'agent') return false;
+      const agent = n.agent ?? 'claude';
+      if (own(agent)) return true;
+      // a manager's workers take their bot's binding, else follow the manager
+      return !!n.manager && c.engine.resolve({ ...pipeline, nodes: rosterOf(n).map((id) => ({ id, kind: 'agent' as const, role: id, x: 0, y: 0 })) }).nodes.some((w) => own(w.agent ?? agent));
+    });
+  } catch {
+    return true; // one that can't be resolved counts as own-shell
+  }
 }
 
 /**
