@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
-import { historyDir, insideGit, isHistory, linkLeftOut, MAX_FILE_BYTES, MAX_FOLDER_FILES, NOT_LANDED, snapshotDirty, snapshotFolder, workFiles } from './history.js';
+import { fold, historyDir, insideGit, isHistory, linkLeftOut, MAX_FILE_BYTES, MAX_FOLDER_FILES, NOT_LANDED, snapshotDirty, snapshotFolder, workFiles, type NotLanded } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -148,17 +148,33 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
   if (ls.code !== 0) throw new Error(`git ls-files failed: ${ls.stderr.trim()}`);
   const had = new Set(ls.stdout.split('\0').filter(Boolean));
   const on = new Set(files);
-  const gone = [...had].filter((p) => !on.has(p) && !outside(p));
-  let extra = files.filter((p) => !had.has(p) && !outside(p));
-  const big = extra.filter((p) => lstatSync(join(workdir, p)).size > MAX_FILE_BYTES);
-  extra = extra.filter((p) => !big.includes(p));
-  let over: string[] = [];
+  let gone = [...had].filter((p) => !on.has(p) && !outside(p));
+  // a rename's new spelling: past the count it still goes in, as its old spelling goes out, or the file would be lost
+  const renamed = new Set(gone.map(fold));
+  const forced = files.filter((p) => !had.has(p) && !outside(p));
+  const size = (p: string) => lstatSync(join(workdir, p), { throwIfNoEntry: false });
+  // a project inside, under an ignored path, is skipped as `add -A` skips it; a file deleted since the walk is just gone
+  const nested = forced.filter((p) => size(p)?.isDirectory());
+  const tooBig = forced.filter((p) => (size(p)?.size ?? 0) > MAX_FILE_BYTES);
+  const out = new Set([...nested, ...tooBig]);
+  let extra = forced.filter((p) => !out.has(p) && size(p));
+  let tooMany: string[] = [];
   if (had.size - gone.length + extra.length > MAX_FOLDER_FILES) {
     // named by the top folder that holds none of the work, as `target`, not each of its files
     const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
     const kept = new Set([...had].filter((p) => on.has(p)).flatMap((p) => up(p).slice(0, -1)));
-    over = [...new Set(extra.map((p) => up(p).find((a) => !kept.has(a))!))];
-    extra = [];
+    const dropped = extra.filter((p) => !renamed.has(fold(p)));
+    tooMany = [...new Set(dropped.map((p) => up(p).find((a) => !kept.has(a))!))];
+    extra = extra.filter((p) => renamed.has(fold(p)));
+  }
+  // an old spelling whose new one stays out (too big, a project) stays in, so nothing is deleted
+  const outFolded = new Set([...out].map(fold));
+  const keep = gone.filter((p) => outFolded.has(fold(p)));
+  gone = gone.filter((p) => !outFolded.has(fold(p)));
+  // and as it was: where case is ignored, `add -A` read the new spelling's content into it
+  if (keep.length) {
+    const r = await gitEnv(workdir, ['reset', '-q', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'], { GIT_LITERAL_PATHSPECS: '1' }, keep.join('\0'));
+    if (r.code !== 0) throw new Error(`git reset failed: ${r.stderr.trim()}`);
   }
   // exact paths, not pathspecs: matching a long pathspec list is slow. Removals first, so a renamed name is added fresh
   for (const [flag, list] of [['--force-remove', gone], ['--add', extra]] as const) {
@@ -166,7 +182,8 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
     const r = await gitEnv(workdir, ['update-index', '-z', flag, '--stdin'], {}, list.join('\0') + '\0');
     if (r.code !== 0) throw new Error(`git update-index failed: ${r.stderr.trim()}`);
   }
-  writeFileSync(join(gitDir, NOT_LANDED), [...made, ...big, ...over].join('\0'));
+  const left: NotLanded = { made, tooMuch: [...tooBig, ...tooMany], nested };
+  writeFileSync(join(gitDir, NOT_LANDED), JSON.stringify(left));
 }
 
 /** A plain folder run's own git dir, or undefined in a real repo. */

@@ -169,7 +169,7 @@ describe('landing', () => {
       put(workdir, 'out/model.bin', '');
       truncateSync(join(workdir, 'out/model.bin'), MAX_FILE_BYTES + 1);
       expect(await commitAll(workdir, 'big')).toBeUndefined();
-      expect(await notLanded(workdir)).toEqual(['out/model.bin']);
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out/model.bin'], nested: [] });
       const r = landed(await landBranch(home, folder, head));
       expect(r.files).toEqual(['out/report.txt']);
       expect(existsSync(join(folder, 'out/model.bin'))).toBe(false);
@@ -178,19 +178,52 @@ describe('landing', () => {
     });
 
     it('leaves out an ignored folder of more files than undo can keep, names it, lands the rest, and undo works', async () => {
-      const { home, folder, workdir, head } = await run({ '.gitignore': 'target/\n', 'a.txt': '1' }, { 'a.txt': '2' });
+      const { home, folder, workdir } = await run({ '.gitignore': 'target/\n', 'a.txt': '1', 'Readme.md': 'r' }, { 'a.txt': '2' });
+      // a case-only rename beside them still lands, or its old spelling would be deleted with nothing in its place
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
       for (let d = 0; d * 1000 <= MAX_FOLDER_FILES; d++) {
         mkdirSync(join(workdir, `target/d${d}`), { recursive: true });
         for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), '');
       }
-      expect(await commitAll(workdir, 'many')).toBeUndefined();
-      expect(await notLanded(workdir)).toEqual(['target']);
-      const r = landed(await landBranch(home, folder, head));
-      expect(r.files).toEqual(['a.txt']);
+      const head = await commitAll(workdir, 'many');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['target'], nested: [] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt']);
       expect(existsSync(join(folder, 'target'))).toBe(false);
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'README.md', 'a.txt']);
+      expect(read(folder, 'README.md')).toBe('r');
       expect(await undoLanding(home, folder, r)).toBe(true);
       expect(read(folder, 'a.txt')).toBe('1');
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'Readme.md', 'a.txt']);
+      rmSync(join(workdir, 'target'), { recursive: true, force: true });
     }, 300_000);
+
+    // where case counts, the new spelling is a new file `add -A` takes as it always did
+    it.skipIf(process.platform !== 'darwin')('keeps the old spelling of a case-only rename whose new one is too big, so nothing is deleted', async () => {
+      const { home, folder, workdir } = await run({ 'Readme.md': 'r', 'a.txt': '1' });
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      truncateSync(join(workdir, 'README.md'), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big rename');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['README.md'], nested: [] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['Readme.md', 'a.txt']);
+      expect(read(folder, 'Readme.md')).toBe('r');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+    });
+
+    it('skips and names a project with no commit made under an ignored path, and lands the rest', async () => {
+      const { home, folder, workdir, head: first } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' });
+      put(workdir, 'out/sub/x.txt', 'x');
+      execFileSync('git', ['init', '-q'], { cwd: join(workdir, 'out/sub') });
+      expect(await commitAll(workdir, 'nested')).toBeUndefined();
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [], nested: ['out/sub'] });
+      const r = landed(await landBranch(home, folder, first));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(existsSync(join(folder, 'out/sub'))).toBe(false);
+    });
 
     it('a real repo keeps its ignores', async () => {
       const repo = makeRepo();

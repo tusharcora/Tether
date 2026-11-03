@@ -11,7 +11,7 @@ import { landBranch, NOTHING_TO_LAND, realOr, shippable, notLanded, undoLanding,
 import { NO_FILES } from './runLabels.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
-import type { Landed } from './history.js';
+import type { Landed, NotLanded } from './history.js';
 import type { RunState } from './types.js';
 import { mergePr, prChecks, shipBranch } from './teams/ship.js';
 
@@ -45,11 +45,20 @@ function plainFailure(e: Error): string {
   return e.message.startsWith('git ') || (e as NodeJS.ErrnoException).code ? "This work couldn't be put in the folder, so nothing was changed." : e.message;
 }
 
-/** What a run says about the work it left out of the folder (dependencies, caches, files too big or too many to undo), or undefined. */
-function leftOutSay(names: string[]): string | undefined {
-  if (!names.length) return undefined;
-  const list = names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
-  return `It changed ${list}, which Undo can't restore, so ${names.length > 1 ? "they weren't" : "it wasn't"} put in your folder.`;
+/** What a run says about the work it left out of the folder, or undefined. */
+function leftOutSay(n: NotLanded): string | undefined {
+  const say = (names: string[], why: (many: boolean) => string) => {
+    if (!names.length) return [];
+    const list = names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
+    const many = names.length > 1;
+    return [`${why(many).replace('%', list)}, so ${many ? "they weren't" : "it wasn't"} put in your folder.`];
+  };
+  const parts = [
+    ...say(n.made, () => "It changed %, which Undo can't restore"),
+    ...say(n.tooMuch, (many) => `% ${many ? 'were' : 'was'} too big or too many to keep`),
+    ...say(n.nested, (many) => `% ${many ? 'are separate projects' : 'is a separate project'}`),
+  ];
+  return parts.length ? parts.join(' ') : undefined;
 }
 
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */

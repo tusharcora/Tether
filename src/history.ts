@@ -147,8 +147,15 @@ export function workFiles(root: string): { files: string[]; made: string[] } {
   return { files, made };
 }
 
-/** In a plain folder run's own git dir: what its last step left out of the work, NUL-separated. */
+/** In a plain folder run's own git dir: what its last step left out of the work, as JSON. */
 export const NOT_LANDED = 'tether-not-landed';
+
+/** What a step left out: left-out names it made (dependencies, caches), ignored files too big or too many to keep, and projects inside. */
+export interface NotLanded {
+  made: string[];
+  tooMuch: string[];
+  nested: string[];
+}
 
 /** True when `common` is a plain folder's hidden history: where historyDir puts one, set up by keepExact. Real repos never look like this. */
 export function isHistory(common: string): boolean {
@@ -160,12 +167,12 @@ export function isHistory(common: string): boolean {
   }
 }
 
-/** What a plain folder run's last step left out of its work (left-out names, files too big, files past the count), or none. */
-export async function notLanded(workdir: string): Promise<string[]> {
+/** What a plain folder run's last step left out of its work, or nothing. */
+export async function notLanded(workdir: string): Promise<NotLanded> {
   try {
-    return readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8').split('\0').filter(Boolean);
+    return JSON.parse(readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8')) as NotLanded;
   } catch {
-    return [];
+    return { made: [], tooMuch: [], nested: [] };
   }
 }
 
@@ -270,10 +277,12 @@ async function listed(history: string, args: string[]): Promise<string[]> {
 /** Paths that differ between two commits. */
 const changed = (history: string, from: string, to: string) => listed(history, ['diff', '--no-renames', '--name-only', '-z', from, to]);
 
+/** One spelling for all the names APFS treats as one file (see `clashes`). */
+export const fold = (p: string) => p.normalize('NFC').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
+
 /** The `others` that sit on, above or below one of `paths`. Above and below count: git replaces a file or folder in a landed path's way. */
 function clashes(paths: string[], others: string[]): string[] {
   // APFS treats many spellings as one file: each step catches some (ẞ, ß, ς, ﬁ, accented Greek capitals). Swept against APFS for every code point to U+31FFF with no miss; elsewhere this only stops more often.
-  const fold = (p: string) => p.normalize('NFC').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
   const lineage = (p: string) => fold(p).split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/'));
   const exact = new Set(paths.map(fold));
   const within = new Set(paths.flatMap(lineage));

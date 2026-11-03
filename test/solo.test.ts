@@ -179,7 +179,7 @@ describe('a solo run', () => {
     await r.ship.idle();
     const s = r.store.state(r.id)!;
     expect(s.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
-    expect(s.notices?.map((n) => n.text)).toContain("It changed out/model.bin, which Undo can't restore, so it wasn't put in your folder.");
+    expect(s.notices?.map((n) => n.text)).toContain("out/model.bin was too big or too many to keep, so it wasn't put in your folder.");
     expect(existsSync(join(r.folder, 'out/model.bin'))).toBe(false);
     await r.ship.undo(r.id);
     expect(existsSync(join(r.folder, 'out'))).toBe(false);
