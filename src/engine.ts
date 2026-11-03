@@ -1018,6 +1018,8 @@ export class Engine {
     const ac = this.active.get(runId);
     if (ac) {
       ac.abort();
+      // a run that just paused only has its notes left to write, so nothing would notice the signal, and an approval could still carry it on
+      if (this.store.state(runId)?.status === 'paused') this.store.append(runId, { type: 'run.finished', status: 'stopped' });
       return true;
     }
     const s = this.store.state(runId);

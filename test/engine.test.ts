@@ -26,6 +26,26 @@ const fullPipeline = () =>
   );
 
 describe('engine', () => {
+  for (const first of ['approve', 'stop'] as const) {
+    it(`Stop wins over an approval while a paused run writes its notes, ${first} first`, async () => {
+      const vault = new Vault(tmp('vault-'));
+      let letGo = () => {};
+      const notes = new Promise<void>((r) => (letGo = r));
+      const recording = vi.spyOn(vault, 'recordRun').mockImplementationOnce(async () => (await notes, []));
+      const { engine, store, mock } = setup(vault);
+      const id = await engine.start({ pipeline: pipe([{ id: 'ok', kind: 'approval' }, { id: 'next', role: 'coder', mock: { output: 'ran' } }], [['ok', 'next']]), task: 't', repo: makeRepo() });
+      await vi.waitFor(() => expect(recording).toHaveBeenCalled());
+      if (first === 'approve') engine.approve(id, 'ok', true);
+      expect(engine.stop(id)).toBe(true);
+      if (first === 'stop') engine.approve(id, 'ok', true);
+      letGo();
+      await vi.waitFor(() => expect(engine.isLive(id)).toBe(false));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(store.state(id)?.status).toBe('stopped');
+      expect(mock.calls).toEqual([]);
+    });
+  }
+
   it('an approval that lands while a paused run still writes its notes is not lost', async () => {
     const vault = new Vault(tmp('vault-'));
     let letGo = () => {};
