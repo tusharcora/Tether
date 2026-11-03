@@ -484,6 +484,23 @@ describe('landing', () => {
       expect(mode(folder, 'a.txt')).toBe(0o600);
     });
 
+    it('stays private through a rename to another name, edited or not', async () => {
+      const text = Array.from({ length: 20 }, (_, i) => `KEY_${i}=value`).join('\n');
+      const { home, folder, workdir } = await run({ 'creds.txt': text, 'k.pem': 'x' }, {}, [], (f) => {
+        chmodSync(join(f, 'creds.txt'), 0o600);
+        chmodSync(join(f, 'k.pem'), 0o400);
+      });
+      execFileSync('git', ['mv', 'creds.txt', 'new-creds.txt'], { cwd: workdir });
+      execFileSync('git', ['mv', 'k.pem', 'moved.pem'], { cwd: workdir });
+      writeFileSync(join(workdir, 'new-creds.txt'), `${text}\nKEY_20=value`);
+      const r = landed(await landBranch(home, folder, (await commitAll(workdir, 'rename'))!));
+      expect(mode(folder, 'new-creds.txt')).toBe(0o600);
+      expect(mode(folder, 'moved.pem')).toBe(0o400);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(mode(folder, 'creds.txt')).toBe(0o600);
+      expect(mode(folder, 'k.pem')).toBe(0o400);
+    });
+
     it('a private file the run deletes comes back private on undo', async () => {
       const { home, folder, head } = await run({ '.env': 'A=1', 'a.txt': '1' }, { 'a.txt': '2' }, ['.env'], (f) => chmodSync(join(f, '.env'), 0o600));
       const r = landed(await landBranch(home, folder, head));

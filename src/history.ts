@@ -278,13 +278,16 @@ function setModes(real: string, modes: Record<string, number>): string[] {
 }
 
 /** Make `files` in the folder match commit `to`: what it holds is written, what it doesn't is removed. Tries every file before reporting a failure, so a put-back does all it can. */
-async function matchFiles(history: string, real: string, to: string, files: string[]): Promise<void> {
+async function matchFiles(history: string, real: string, from: string, to: string, files: string[]): Promise<void> {
   const held = new Set(await listed(history, ['ls-tree', '-r', '-z', '--name-only', to]));
   const present = files.filter((p) => held.has(p));
-  // read before removals: on a case-only rename the old file is the one this finds
+  // shortcut: a rename is what git can see (half the content kept), so one rewritten further comes out new and at git's mode; upgrade if a run's private files ever need it
+  const moved = await listed(history, ['diff-tree', '-r', '-z', '-M', '--diff-filter=R', '--name-status', from, to]);
+  const was = new Map(moved.flatMap((_, i): [string, string][] => (i % 3 ? [] : [[moved[i + 2]!, moved[i + 1]!]])));
+  // read before removals: a renamed file keeps its permissions from the old name, which is also the file this finds on a case-only rename where the filesystem ignores case
   const modes = present.flatMap((p): [string, number][] => {
     try {
-      const s = lstatSync(join(real, p));
+      const s = lstatSync(join(real, p), { throwIfNoEntry: false }) ?? lstatSync(join(real, was.get(p) ?? p));
       return s.isFile() ? [[p, s.mode]] : [];
     } catch {
       return []; // new here, or a file stands where this path needs a folder
@@ -327,7 +330,7 @@ async function move(home: string, real: string, from: string, to: string, files:
   // a put-back recreates what this removes, and only this remembers how private it was
   const before = unusualModes(real, files);
   try {
-    await matchFiles(history, real, to, files);
+    await matchFiles(history, real, from, to, files);
     const unset = setModes(real, modes);
     if (unset.length) throw new Error(`Could not set permissions on: ${unset.join(', ')}`);
     return (await snapshotFolder(home, real)).sha;
@@ -335,7 +338,7 @@ async function move(home: string, real: string, from: string, to: string, files:
     let left: string[];
     try {
       // checkout reports a file it could not rewrite even if that file never changed: judge by what is there now
-      await matchFiles(history, real, from, files).catch(() => {});
+      await matchFiles(history, real, to, from, files).catch(() => {});
       const unset = setModes(real, before);
       const check = await snapshotFolder(home, real);
       left = [...new Set([...clashes(files, [...(await changed(history, from, check.sha)), ...check.leftOut]), ...unset])];
