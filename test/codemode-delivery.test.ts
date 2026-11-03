@@ -175,11 +175,21 @@ describe('claude.ts command environment', () => {
   it('with commands, drops Tether secrets and keeps what Claude needs to log in', async () => {
     const { dir, log } = fakeClaude();
     vi.stubEnv('PATH', `${dir}:${process.env.PATH}`);
-    for (const [k, v] of Object.entries({ GITHUB_TOKEN: 'x', MY_SECRET: 'x', DATABASE_URL: 'postgres://u:p@h/d', ANTHROPIC_API_KEY: 'k', CLAUDE_CONFIG_DIR: '/c', CLAUDE_CODE_OAUTH_TOKEN: 't', AWS_SECRET_ACCESS_KEY: 'a', HTTPS_PROXY: 'http://u:p@h:1', SSH_AUTH_SOCK: '/s' })) vi.stubEnv(k, v);
-    await new ClaudeAdapter().run(baseReq({ readOnly: false, commands: true }));
-    const { env } = JSON.parse(readFileSync(log, 'utf8')) as { env: Record<string, string> };
-    for (const k of ['GITHUB_TOKEN', 'MY_SECRET', 'DATABASE_URL']) expect(env[k]).toBeUndefined();
-    for (const k of ['ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'HTTPS_PROXY', 'PATH', 'HOME', 'SSH_AUTH_SOCK']) expect(env[k]).toBeDefined();
+    const envOf = async (extra: Record<string, string>) => {
+      for (const [k, v] of Object.entries({ GITHUB_TOKEN: 'x', MY_SECRET: 'x', DATABASE_URL: 'postgres://u:p@h/d', ANTHROPIC_API_KEY: 'k', CLAUDE_CONFIG_DIR: '/c', CLAUDE_CODE_OAUTH_TOKEN: 't', HTTPS_PROXY: 'http://u:p@h:1', SSH_AUTH_SOCK: '/s', TERM: 'xterm', TMPDIR: '/tmp', LANG: 'C', NODE_EXTRA_CA_CERTS: '/ca.pem', AWS_SECRET_ACCESS_KEY: 'a', GOOGLE_APPLICATION_CREDENTIALS: '/g.json', AZURE_CLIENT_SECRET: 'z', ...extra })) vi.stubEnv(k, v);
+      await new ClaudeAdapter().run(baseReq({ readOnly: false, commands: true }));
+      return (JSON.parse(readFileSync(log, 'utf8')) as { env: Record<string, string> }).env;
+    };
+    let env = await envOf({});
+    for (const k of ['GITHUB_TOKEN', 'MY_SECRET', 'DATABASE_URL', 'AWS_SECRET_ACCESS_KEY', 'GOOGLE_APPLICATION_CREDENTIALS', 'AZURE_CLIENT_SECRET']) expect(env[k]).toBeUndefined();
+    for (const k of ['ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN', 'HTTPS_PROXY', 'PATH', 'HOME', 'SSH_AUTH_SOCK', 'TERM', 'TMPDIR', 'LANG', 'NODE_EXTRA_CA_CERTS']) expect(env[k]).toBeDefined();
+    env = await envOf({ CLAUDE_CODE_USE_BEDROCK: '1' });
+    expect(env.AWS_SECRET_ACCESS_KEY).toBe('a');
+    env = await envOf({ CLAUDE_CODE_USE_BEDROCK: '', CLAUDE_CODE_USE_VERTEX: 'true' });
+    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBe('/g.json');
+    expect(env.AZURE_CLIENT_SECRET).toBeUndefined();
+    env = await envOf({ CLAUDE_CODE_USE_VERTEX: '', CLAUDE_CODE_USE_FOUNDRY: '1' });
+    expect(env.AZURE_CLIENT_SECRET).toBe('z');
   });
 });
 

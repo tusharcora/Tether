@@ -82,14 +82,16 @@ export function parseClaudeLine(
 // Monitor runs shell under Bash's permission rules, with the same `command` field
 const commandSettings = () => JSON.stringify({ disableAllHooks: false, hooks: { PreToolUse: [{ matcher: 'Bash|Monitor', hooks: [{ type: 'command', command: commandHookLine(), onFailure: 'block' }] }] } });
 
-// Kept for Claude Code's own login and config: its vars; Bedrock (AWS_*, incl. AWS_BEARER_TOKEN_BEDROCK), Vertex (GOOGLE_*, GCLOUD_*, CLOUDSDK_*)
-// and Foundry (AZURE_*) credentials; proxies (their URLs may hold a password). Erring toward keeping a variable it may need to log in.
-const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_|AWS_|AZURE_|GOOGLE_|GCLOUD_|CLOUDSDK_)|^((https?|all|no)_proxy|ssl_cert_file|requests_ca_bundle|ssh_auth_sock)$/i;
+// Kept for Claude Code's own login and config. ANTHROPIC_/CLAUDE_ always; a cloud's variables only when Claude is told to use that cloud,
+// so a developer's ordinary AWS/GCP/Azure secrets stay out. Proxies are kept by name (their URLs may hold a password).
+const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_)|^((https?|all|no)_proxy|ssl_cert_file|requests_ca_bundle|ssh_auth_sock)$/i;
+const on = (v: string | undefined) => !!v && !/^(0|false|no|off)$/i.test(v);
 
 /** The environment of a Claude step with commands: Tether's own secrets left out, Claude Code's login kept. */
 export function claudeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const clouds = [on(env.CLAUDE_CODE_USE_BEDROCK) || on(env.CLAUDE_CODE_USE_VERTEX) ? /^(AWS_|GOOGLE_|GCLOUD_|CLOUDSDK_)/ : undefined, on(env.CLAUDE_CODE_USE_FOUNDRY) ? /^AZURE_/ : undefined];
   const out: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(env)) if (KEEP_NAME.test(k) || (!SECRET_NAME.test(k) && !SECRET_VALUE.test(v ?? ''))) out[k] = v;
+  for (const [k, v] of Object.entries(env)) if (KEEP_NAME.test(k) || clouds.some((re) => re?.test(k)) || (!SECRET_NAME.test(k) && !SECRET_VALUE.test(v ?? ''))) out[k] = v;
   return out;
 }
 
