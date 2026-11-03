@@ -47,16 +47,16 @@ function plainFailure(e: Error): string {
 
 /** What a run says about the work it left out of the folder, or undefined. */
 function leftOutSay(n: NotLanded): string | undefined {
-  const say = (names: string[], why: (many: boolean) => string) => {
+  const say = (names: string[], text: (list: string, many: boolean) => string) => {
     if (!names.length) return [];
-    const list = names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
-    const many = names.length > 1;
-    return [`${why(many).replace('%', list)}, so ${many ? "they weren't" : "it wasn't"} put in your folder.`];
+    return [text(names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : ''), names.length > 1)];
   };
+  const not = (many: boolean) => `so ${many ? "they weren't" : "it wasn't"} put in your folder.`;
   const parts = [
-    ...say(n.made, () => "It changed %, which Undo can't restore"),
-    ...say(n.tooMuch, (many) => `% ${many ? 'were' : 'was'} too big or too many to keep`),
-    ...say(n.nested, (many) => `% ${many ? 'are separate projects' : 'is a separate project'}`),
+    ...say(n.made, (l, many) => `It changed ${l}, which Undo can't restore, ${not(many)}`),
+    ...say(n.tooMuch, (l, many) => `${l} ${many ? 'were' : 'was'} too big or too many to keep, ${not(many)}`),
+    ...say(n.nested, (l, many) => `${l} ${many ? 'are separate projects' : 'is a separate project'}, ${not(many)}`),
+    ...say(n.kept, (l, many) => `${l} ${many ? 'were' : 'was'} removed by the agent but kept in your folder, because ${many ? 'they' : 'it'} may have moved into something too big to keep.`),
   ];
   return parts.length ? parts.join(' ') : undefined;
 }

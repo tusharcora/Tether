@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, writeFileSync, type Stats } from 'node:fs';
 import { fold, historyDir, insideGit, isHistory, linkLeftOut, MAX_FILE_BYTES, MAX_FOLDER_FILES, NOT_LANDED, snapshotDirty, snapshotFolder, workFiles, type NotLanded } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
@@ -148,8 +148,8 @@ const entries = (lines: string[], blobAt: number) => new Map(lines.map((l) => [l
  * Stage a plain folder run's files as its disk has them. `add -A` does the bulk; then, as the folder's snapshot does, what it
  * missed is added by force (files the folder's .gitignore names, and a case or Unicode-form rename git's case guess hides), and
  * what the disk no longer spells that way is dropped. Files past the snapshot's limits stay out, and are recorded with the
- * left-out names the run made, so landing can say what it didn't put in the folder. A file the step started with leaves only
- * when what it became goes in: otherwise it stays as it was, so the limits never take a person's file away.
+ * left-out names the run made, so landing can say what it didn't put in the folder. A file the step started with stays as it
+ * was when what it became, or could have become, stays out, so the limits never take a person's file away.
  */
 async function stageAll(workdir: string, gitDir: string, exclude: string[]): Promise<void> {
   // the step's base, read before `add -A` drops what is gone from disk
@@ -161,7 +161,9 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
   const on = new Set(files);
   const gone = [...base.keys()].filter((p) => !on.has(p) && !outside(p));
   const forced = files.filter((p) => !idx.has(p) && !outside(p));
-  const stat = (p: string) => lstatSync(join(workdir, p), { throwIfNoEntry: false });
+  // one lstat per path: each pass below asks again, and a hundred thousand build files make that the slow part
+  const stats = new Map<string, Stats | undefined>();
+  const stat = (p: string) => (stats.has(p) ? stats : stats.set(p, lstatSync(join(workdir, p), { throwIfNoEntry: false }))).get(p);
   // new or changed by the step: what the size limit applies to
   const changed = new Set([...forced, ...files.filter((p) => idx.has(p) && idx.get(p) !== base.get(p))]);
   // a project inside, under an ignored path, is skipped as `add -A` skips it; a file deleted since the walk is just gone
@@ -170,41 +172,53 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
   const out = new Set([...nested, ...tooBig]);
   let extra = forced.filter((p) => !out.has(p) && stat(p));
   const over = base.size - gone.length + extra.length > MAX_FOLDER_FILES;
-  // where each gone file went: the same name in another case or Unicode form, or the same content under a new name
+  // where each gone file went: the same name in another case or Unicode form (`respelt`), or the same content under a new name
   const partner = new Map<string, string>();
+  const respelt = new Set<string>();
+  const goneSize = new Map<string, number>();
   if (gone.length && (over || nested.length || tooBig.length)) {
     const byFold = new Map(gone.map((g) => [fold(g), g]));
-    const byBlob = new Map(gone.map((g) => [base.get(g)!, g]));
     // sizes of the gone files only: asking for every file's is slow
     const sized = await gitEnv(workdir, ['cat-file', '--batch-check=%(objectsize)'], {}, gone.map((g) => base.get(g)).join('\n') + '\n');
     if (sized.code !== 0) throw new Error(`git cat-file failed: ${sized.stderr.trim()}`);
-    const sizes = new Set(sized.stdout.split('\n').filter(Boolean));
+    sized.stdout.split('\n').forEach((s, i) => goneSize.set(gone[i]!, Number(s)));
+    // an empty file never matches by content: any two are alike
+    const byBlob = new Map(gone.filter((g) => goneSize.get(g)! > 0).map((g) => [base.get(g)!, g]));
+    const sizes = new Set([...byBlob.values()].map((g) => goneSize.get(g)));
     const fresh = [...changed].filter((p) => !base.has(p));
     // hashed only where a size matches: a run's thousands of build files cost nothing here
-    const hashable = fresh.filter((p) => !idx.has(p) && !p.includes('\n') && sizes.has(String(stat(p)?.size)) && !stat(p)?.isDirectory());
+    const hashable = fresh.filter((p) => !idx.has(p) && !p.includes('\n') && sizes.has(stat(p)?.size) && !stat(p)?.isDirectory());
     const r = hashable.length ? await gitEnv(workdir, ['hash-object', '--no-filters', '--stdin-paths'], {}, hashable.join('\n') + '\n') : { code: 0, stdout: '', stderr: '' };
     if (r.code !== 0) throw new Error(`git hash-object failed: ${r.stderr.trim()}`);
-    const blobOf = new Map([...fresh.filter((p) => idx.has(p)).map((p) => [p, idx.get(p)!] as const), ...hashable.map((p, i) => [p, r.stdout.split('\n')[i]!] as const)]);
+    const hashes = r.stdout.split('\n');
+    const blobOf = new Map([...fresh.filter((p) => idx.has(p)).map((p) => [p, idx.get(p)!] as const), ...hashable.map((p, i) => [p, hashes[i]!] as const)]);
     for (const q of fresh) {
-      const g = byFold.get(fold(q)) ?? byBlob.get(blobOf.get(q) ?? '');
-      if (g && !partner.has(g)) partner.set(g, q);
+      const f = byFold.get(fold(q));
+      const g = f ?? byBlob.get(blobOf.get(q) ?? '');
+      if (!g || partner.has(g)) continue;
+      partner.set(g, q);
+      if (f) respelt.add(q);
     }
   }
-  const moved = new Set(partner.values());
-  let tooMany: string[] = [];
-  if (over) {
-    // named by the top folder that holds none of the work, as `target`, not each of its files
-    const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
-    const kept = new Set(files.filter((p) => idx.has(p) || moved.has(p)).flatMap((p) => up(p).slice(0, -1)));
-    tooMany = [...new Set(extra.filter((p) => !moved.has(p)).map((p) => up(p).find((a) => !kept.has(a))!))];
-    extra = extra.filter((p) => moved.has(p));
-  }
-  const landing = new Set(extra);
-  const leftOut = new Set([...out, ...(over ? forced.filter((p) => !landing.has(p)) : [])]);
-  // a gone file stays as it was when what it became stays out; one that went nowhere known stays too once anything does
-  const stays = gone.filter((g) => (partner.has(g) ? leftOut.has(partner.get(g)!) : leftOut.size > 0));
+  // past the count, only a re-spelling of a path lands, with its old one: a content match never decides what lands
+  const past = over ? extra.filter((p) => !respelt.has(p)) : [];
+  if (over) extra = extra.filter((p) => respelt.has(p));
+  const leftOut = [...out, ...past];
+  const leftSet = new Set(leftOut);
+  // a gone file stays as it was when what it became stays out, or when a left-out file could be its move: the same size, or the same name in another case or form
+  const name = (p: string) => fold(p.slice(p.lastIndexOf('/') + 1));
+  const leftSizes = new Set(leftOut.filter((p) => stat(p)?.isFile()).map((p) => stat(p)!.size));
+  const leftNames = new Set(leftOut.map(name));
+  const stays = gone.filter((g) => (partner.has(g) ? leftSet.has(partner.get(g)!) : (goneSize.get(g)! > 0 && leftSizes.has(goneSize.get(g)!)) || leftNames.has(name(g))));
   const staying = new Set(stays);
   const leaves = gone.filter((g) => !staying.has(g));
+  let tooMany: string[] = [];
+  if (over) {
+    // named by the top folder that holds none of what stays, as `target`, not each of its files
+    const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
+    const kept = new Set([...files.filter((p) => idx.has(p)), ...stays].flatMap((p) => up(p).slice(0, -1)));
+    tooMany = [...new Set(past.map((p) => up(p).find((a) => !kept.has(a))!))];
+  }
   // what `add -A` took that stays out: new ones come out, changed ones go back to how the step began
   const drop = [...leaves, ...tooBig.filter((p) => idx.has(p) && !base.has(p))];
   const restore = [...stays, ...tooBig.filter((p) => base.has(p))];
@@ -221,7 +235,7 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
     if (r.code !== 0) throw new Error(`git reset failed: ${r.stderr.trim()}`);
   }
   await update('--add', extra);
-  const left: NotLanded = { made, tooMuch: [...tooBig, ...tooMany], nested };
+  const left: NotLanded = { made, tooMuch: [...tooBig, ...tooMany], nested, kept: stays };
   writeFileSync(join(gitDir, NOT_LANDED), JSON.stringify(left));
 }
 

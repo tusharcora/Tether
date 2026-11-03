@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../src/exec.js';
@@ -167,10 +167,12 @@ describe('a solo run', () => {
 
   it('a solo run that also made a file too big to undo lands the rest and says what it left out', async () => {
     const r = await soloRun({ 'out/report.txt': 'r\n' }, {
-      folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }),
+      folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n', 'model.bin': 'old\n' }),
       during: (e, s) => {
         if (e.event.type !== 'node.started') return;
         const wd = s.store.state(e.runId)!.workdir;
+        // the big file may be where the person's model.bin went, so that deletion is kept back and named
+        rmSync(join(wd, 'model.bin'));
         mkdirSync(join(wd, 'out'), { recursive: true });
         writeFileSync(join(wd, 'out/model.bin'), '');
         truncateSync(join(wd, 'out/model.bin'), MAX_FILE_BYTES + 1);
@@ -179,8 +181,9 @@ describe('a solo run', () => {
     await r.ship.idle();
     const s = r.store.state(r.id)!;
     expect(s.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
-    expect(s.notices?.map((n) => n.text)).toContain("out/model.bin was too big or too many to keep, so it wasn't put in your folder.");
+    expect(s.notices?.map((n) => n.text)).toContain("out/model.bin was too big or too many to keep, so it wasn't put in your folder. model.bin was removed by the agent but kept in your folder, because it may have moved into something too big to keep.");
     expect(existsSync(join(r.folder, 'out/model.bin'))).toBe(false);
+    expect(read(r.folder, 'model.bin')).toBe('old\n');
     await r.ship.undo(r.id);
     expect(existsSync(join(r.folder, 'out'))).toBe(false);
   });

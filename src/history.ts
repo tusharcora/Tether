@@ -124,12 +124,12 @@ function survey(root: string, maxFiles: number): { files: string[]; leftOut: str
 export function workFiles(root: string): { files: string[]; made: string[] } {
   const files: string[] = [];
   const made: string[] = [];
-  // a folder or link deleted while this walks is just gone, as a file is
+  // a folder or link deleted while this walks is just gone, as a file is; so is a link that became a file meanwhile (EINVAL)
   const gone = <T>(f: () => T): T | undefined => {
     try {
       return f();
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      if (['ENOENT', 'EINVAL'].includes((e as NodeJS.ErrnoException).code ?? '')) return undefined;
       throw e;
     }
   };
@@ -159,11 +159,15 @@ export function workFiles(root: string): { files: string[]; made: string[] } {
 /** In a plain folder run's own git dir: what its last step left out of the work, as JSON. */
 export const NOT_LANDED = 'tether-not-landed';
 
-/** What a step left out: left-out names it made (dependencies, caches), ignored files too big or too many to keep, and projects inside. */
+/**
+ * What a step left out: left-out names it made (dependencies, caches), ignored files too big or too many to keep, projects inside,
+ * and files the run removed that were kept because they may have moved into something left out.
+ */
 export interface NotLanded {
   made: string[];
   tooMuch: string[];
   nested: string[];
+  kept: string[];
 }
 
 /** True when `common` is a plain folder's hidden history: where historyDir puts one, set up by keepExact. Real repos never look like this. */
@@ -179,9 +183,10 @@ export function isHistory(common: string): boolean {
 /** What a plain folder run's last step left out of its work, or nothing. */
 export async function notLanded(workdir: string): Promise<NotLanded> {
   try {
-    return JSON.parse(readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8')) as NotLanded;
+    // `kept` is newer than some runs' files
+    return { kept: [], ...(JSON.parse(readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), NOT_LANDED), 'utf8')) as Partial<NotLanded>) } as NotLanded;
   } catch {
-    return { made: [], tooMuch: [], nested: [] };
+    return { made: [], tooMuch: [], nested: [], kept: [] };
   }
 }
 
