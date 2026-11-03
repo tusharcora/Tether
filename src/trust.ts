@@ -2,8 +2,8 @@
 import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-/** dev and ino pin the folder itself: a new folder at the same path is not the one that was trusted. */
-type Entry = { trusted: boolean; dev: number; ino: number };
+/** dev, ino and birth pin the folder itself: a new folder at the same path is not the one that was trusted, even when Linux hands it the old inode. */
+type Entry = { trusted: boolean; dev: number; ino: number; birth?: number };
 type Book = Record<string, Entry>;
 
 export { NOT_TRUSTED } from './runLabels.js';
@@ -40,7 +40,9 @@ const real = (folder: string): string | undefined => {
 const same = (folder: string, e: Entry) => {
   try {
     const st = statSync(folder);
-    return st.dev === e.dev && st.ino === e.ino;
+    // shortcut: birth ticks every few ms, so a folder deleted and remade within one tick of its own creation passes; nobody says yes that fast, and commandRule stops mistakes, not a hostile project
+    // birth is 0 on a filesystem without one, so there dev and ino decide. A record from before birth was kept can't prove a yes, but its no still stands.
+    return st.dev === e.dev && st.ino === e.ino && (e.birth === undefined ? !e.trusted : st.birthtimeMs === e.birth);
   } catch {
     return false;
   }
@@ -61,8 +63,8 @@ export function commandsOff(home: string, run: { repo: string; noCommands?: true
 
 export function setTrust(home: string, folder: string, trusted: boolean): void {
   const r = realpathSync(folder);
-  const { dev, ino } = statSync(r);
-  save(home, { ...load(home), [r]: { trusted, dev, ino } });
+  const { dev, ino, birthtimeMs: birth } = statSync(r);
+  save(home, { ...load(home), [r]: { trusted, dev, ino, birth } });
 }
 
 export function clearTrust(home: string, folder: string): void {
