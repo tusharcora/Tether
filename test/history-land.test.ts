@@ -501,6 +501,107 @@ describe('landing', () => {
       expect(mode(folder, 'k.pem')).toBe(0o400);
     });
 
+    describe('a rename', () => {
+      const text = (word: string) => Array.from({ length: 30 }, (_, i) => `${word} line ${i} ${word.repeat(3)}`).join('\n');
+      /** Land work done on a folder holding `start`, with `secret` at 0600. */
+      const land = async (start: Record<string, string>, secret: string[], work: (w: string) => void, prepare?: (folder: string, home: string) => void) => {
+        const { home, folder, workdir } = await run(start, {}, [], (f) => secret.forEach((p) => chmodSync(join(f, p), 0o600)));
+        work(workdir);
+        const sha = (await commitAll(workdir, 'work'))!;
+        prepare?.(folder, home);
+        return { home, folder, r: landed(await landBranch(home, folder, sha)) };
+      };
+      const mv = (w: string, a: string, b: string) => renameSync(join(w, a), join(w, b));
+
+      it('takes no mode from a public copy a person added meanwhile', async () => {
+        const { folder } = await land({ 'k.txt': text('key') }, ['k.txt'], (w) => mv(w, 'k.txt', 'new.txt'), (f) => writeFileSync(join(f, 'copy.txt'), text('key')));
+        expect(mode(folder, 'new.txt')).toBe(0o600);
+        expect(mode(folder, 'copy.txt')).toBe(0o644);
+      });
+
+      it('takes no mode from a similar file a person added meanwhile', async () => {
+        const { folder } = await land({ 'o.txt': 'other' }, [], (w) => writeFileSync(join(w, 'new.txt'), text('scratch')), (f) => {
+          writeFileSync(join(f, 'scratch.txt'), text('scratch'));
+          chmodSync(join(f, 'scratch.txt'), 0o666);
+        });
+        expect(mode(folder, 'new.txt')).toBe(0o644);
+      });
+
+      it('takes no mode from a file the person already took to where the work did', async () => {
+        const fresh = '0123456789\n'.repeat(100);
+        const { folder } = await land({ a: text('old') }, [], (w) => (writeFileSync(join(w, 'b'), text('old')), writeFileSync(join(w, 'a'), fresh)), (f) => {
+          writeFileSync(join(f, 'a'), fresh);
+          chmodSync(join(f, 'a'), 0o600);
+        });
+        expect(mode(folder, 'b')).toBe(0o644);
+      });
+
+      it('to a backup, while a new file takes the name', async () => {
+        const fresh = '0123456789\n'.repeat(100);
+        const { folder } = await land({ key: text('secret') }, ['key'], (w) => (mv(w, 'key', 'key.old'), writeFileSync(join(w, 'key'), fresh)));
+        expect(read(folder, 'key.old')).toBe(text('secret'));
+        expect(mode(folder, 'key.old')).toBe(0o600);
+        expect(mode(folder, 'key')).toBe(0o600);
+      });
+
+      it('never starts wider than git would write it', async () => {
+        const { folder } = await land({ 'wide.txt': text('wide') }, [], (w) => mv(w, 'wide.txt', 'new.txt'), (f) => chmodSync(join(f, 'wide.txt'), 0o666));
+        expect(mode(folder, 'new.txt')).toBe(0o644);
+      });
+
+      it('onto a public file stays private, and undo stays private', async () => {
+        const { home, folder, r } = await land({ 's.txt': text('secret'), 'pub.txt': text('public') }, ['s.txt'], (w) => mv(w, 's.txt', 'pub.txt'));
+        expect(read(folder, 'pub.txt')).toBe(text('secret'));
+        expect(mode(folder, 'pub.txt')).toBe(0o600);
+        expect(await undoLanding(home, folder, r)).toBe(true);
+        expect(read(folder, 's.txt')).toBe(text('secret'));
+        expect(mode(folder, 's.txt')).toBe(0o600);
+      });
+
+      it('in a swap stays private both ways', async () => {
+        const { home, folder, r } = await land({ a: text('secret'), b: text('public') }, ['a'], (w) => (mv(w, 'a', 't'), mv(w, 'b', 'a'), mv(w, 't', 'b')));
+        expect(read(folder, 'b')).toBe(text('secret'));
+        expect(mode(folder, 'b')).toBe(0o600);
+        expect(await undoLanding(home, folder, r)).toBe(true);
+        expect(read(folder, 'a')).toBe(text('secret'));
+        expect(mode(folder, 'a')).toBe(0o600);
+      });
+
+      it('in a rotation follows the content', async () => {
+        const { folder } = await land({ a: text('secret'), b: text('public'), c: text('open') }, ['a'], (w) => (mv(w, 'c', 't'), mv(w, 'b', 'c'), mv(w, 'a', 'b'), mv(w, 't', 'a')));
+        expect(read(folder, 'b')).toBe(text('secret'));
+        expect(mode(folder, 'b')).toBe(0o600);
+        expect(mode(folder, 'c')).toBe(0o644);
+      });
+
+      it('from a file into a folder of its name', async () => {
+        const { home, folder, r } = await land({ key: text('secret') }, ['key'], (w) => (mv(w, 'key', 't'), mkdirSync(join(w, 'key')), mv(w, 't', 'key/key')));
+        expect(mode(folder, 'key/key')).toBe(0o600);
+        expect(await undoLanding(home, folder, r)).toBe(true);
+        expect(mode(folder, 'key')).toBe(0o600);
+      });
+
+      it('from a folder to a file of its name', async () => {
+        const { home, folder, r } = await land({ 'conf/secret': text('secret') }, ['conf/secret'], (w) => (mv(w, 'conf/secret', 't'), rmSync(join(w, 'conf'), { recursive: true }), mv(w, 't', 'conf')));
+        expect(mode(folder, 'conf')).toBe(0o600);
+        expect(await undoLanding(home, folder, r)).toBe(true);
+        expect(mode(folder, 'conf/secret')).toBe(0o600);
+      });
+
+      it('onto a name that differs from an old file only by case', async () => {
+        const { folder } = await land({ 'secret.txt': text('secret'), 'a.txt': text('public') }, ['secret.txt'], (w) => (rmSync(join(w, 'a.txt')), mv(w, 'secret.txt', 'A.txt')));
+        expect(read(folder, 'A.txt')).toBe(text('secret'));
+        expect(mode(folder, 'A.txt')).toBe(0o600);
+      });
+
+      it('is seen past a rename limit set in git config', async () => {
+        const names = ['a', 'b', 'c', 'd'];
+        const start = Object.fromEntries(names.map((n) => [n, text(n)]));
+        const { folder } = await land(start, names, (w) => names.forEach((n) => (writeFileSync(join(w, n), `${text(n)}\nmore`), mv(w, n, `${n}.new`))), (f, home) => execFileSync('git', ['--git-dir', historyDir(home, f), 'config', 'diff.renameLimit', '1']));
+        for (const n of names) expect(mode(folder, `${n}.new`)).toBe(0o600);
+      });
+    });
+
     it('a private file the run deletes comes back private on undo', async () => {
       const { home, folder, head } = await run({ '.env': 'A=1', 'a.txt': '1' }, { 'a.txt': '2' }, ['.env'], (f) => chmodSync(join(f, '.env'), 0o600));
       const r = landed(await landBranch(home, folder, head));

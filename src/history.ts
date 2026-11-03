@@ -250,6 +250,16 @@ function keepMode(path: string, before: number): void {
   chmodSync(path, plain | (after.mode & 0o100 ? before & 0o111 || (plain & 0o444) >> 2 : 0));
 }
 
+/** Mode of the regular file at `path`: nothing for a folder, a link, or a path that can't be reached, as under a file. */
+function fileMode(path: string): number | undefined {
+  try {
+    const s = lstatSync(path);
+    return s.isFile() ? s.mode : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Permissions of the regular files among `files` that aren't git's own 0644 or 0755. */
 function unusualModes(real: string, files: string[]): Record<string, number> {
   return Object.fromEntries(
@@ -278,20 +288,20 @@ function setModes(real: string, modes: Record<string, number>): string[] {
 }
 
 /** Make `files` in the folder match commit `to`: what it holds is written, what it doesn't is removed. Tries every file before reporting a failure, so a put-back does all it can. */
-async function matchFiles(history: string, real: string, from: string, to: string, files: string[]): Promise<void> {
+async function matchFiles(history: string, real: string, since: string, to: string, files: string[]): Promise<void> {
   const held = new Set(await listed(history, ['ls-tree', '-r', '-z', '--name-only', to]));
   const present = files.filter((p) => held.has(p));
-  // shortcut: a rename is what git can see (half the content kept), so one rewritten further comes out new and at git's mode; upgrade if a run's private files ever need it
-  const moved = await listed(history, ['diff-tree', '-r', '-z', '-M', '--diff-filter=R', '--name-status', from, to]);
-  const was = new Map(moved.flatMap((_, i): [string, string][] => (i % 3 ? [] : [[moved[i + 2]!, moved[i + 1]!]])));
-  // read before removals: a renamed file keeps its permissions from the old name, which is also the file this finds on a case-only rename where the filesystem ignores case
+  // shortcut: a rename is what git can see, about half the content kept, so a file rewritten further under a new name, or a second copy of it, comes out at git's mode; upgrade if a run's private files ever need more than a rename
+  // from `since`, not the folder, and only among `files`, so a person's own files lend no mode; -B finds a rename onto a file that stays, or off one a new file then took the name of (git calls that a copy), and -l0 outranks any limit in git config
+  const moved = await listed(history, ['diff-tree', '-r', '-z', '-B', '-M', '-l0', '--diff-filter=RC', '--name-status', since, to]);
+  const touched = new Set(files);
+  const was = new Map(moved.flatMap((_, i): [string, string][] => (i % 3 === 0 && touched.has(moved[i + 1]!) ? [[moved[i + 2]!, moved[i + 1]!]] : [])));
+  // read before removals: a renamed file keeps its permissions from the old name, and landing on another file takes what both allow, so its content is never wider than it was; where the filesystem ignores case the two can be one file
   const modes = present.flatMap((p): [string, number][] => {
-    try {
-      const s = lstatSync(join(real, p), { throwIfNoEntry: false }) ?? lstatSync(join(real, was.get(p) ?? p));
-      return s.isFile() ? [[p, s.mode]] : [];
-    } catch {
-      return []; // new here, or a file stands where this path needs a folder
-    }
+    const own = fileMode(join(real, p));
+    const old = fileMode(join(real, was.get(p) ?? p));
+    const mode = own !== undefined && old !== undefined ? own & old : own ?? (old === undefined ? undefined : old & 0o755); // a new name never starts wider than git would write it
+    return mode === undefined ? [] : [[p, mode]];
   });
   let failure: unknown;
   // removals first: a case-only rename or a file swapped for a folder needs the old path gone before the new one is written
@@ -322,15 +332,15 @@ async function matchFiles(history: string, real: string, from: string, to: strin
 }
 
 /**
- * Take `files` from `from` to `to`, give `modes` back, and return a snapshot of the result.
+ * Take `files` from `from` to `to`, give `modes` back, and return a snapshot of the result. `since`: the commit the renames to `to` are read from.
  * On failure put them back and throw, saying what could not be.
  */
-async function move(home: string, real: string, from: string, to: string, files: string[], modes: Record<string, number> = {}): Promise<string> {
+async function move(home: string, real: string, from: string, to: string, files: string[], since: string, modes: Record<string, number> = {}): Promise<string> {
   const history = historyDir(home, real);
   // a put-back recreates what this removes, and only this remembers how private it was
   const before = unusualModes(real, files);
   try {
-    await matchFiles(history, real, from, to, files);
+    await matchFiles(history, real, since, to, files);
     const unset = setModes(real, modes);
     if (unset.length) throw new Error(`Could not set permissions on: ${unset.join(', ')}`);
     return (await snapshotFolder(home, real)).sha;
@@ -373,7 +383,7 @@ export async function landBranch(home: string, folder: string, head: string, bas
   // regular entries only: git brings a file the work swapped for a symlink back without its permissions, as it does a deleted one
   const held = new Set(tree.filter((e) => e.startsWith('100')).map((e) => e.slice(e.indexOf('\t') + 1)));
   const modes = unusualModes(real, files.filter((p) => !held.has(p)));
-  const post = await move(home, real, pre.sha, head, files);
+  const post = await move(home, real, pre.sha, head, files, root);
   return { pre: pre.sha, post, files, ...(Object.keys(modes).length ? { modes } : {}) };
 }
 
@@ -384,7 +394,7 @@ export async function undoLanding(home: string, folder: string, l: Landed): Prom
   // a landed file now too big for the history can't be compared, so it can't be called unchanged
   const conflicts = clashes(l.files, [...(await changed(historyDir(home, real), l.post, now.sha)), ...now.leftOut]);
   if (conflicts.length) return { conflicts };
-  await move(home, real, now.sha, l.pre, l.files, l.modes);
+  await move(home, real, now.sha, l.pre, l.files, l.post, l.modes);
   return true;
 }
 
