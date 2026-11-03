@@ -177,29 +177,57 @@ describe('landing', () => {
       expect(existsSync(join(folder, 'out'))).toBe(false);
     });
 
-    it('leaves out an ignored folder of more files than undo can keep, names it, lands the rest, and undo works', async () => {
-      const { home, folder, workdir } = await run({ '.gitignore': 'target/\n', 'a.txt': '1', 'Readme.md': 'r' }, { 'a.txt': '2' });
-      // a case-only rename beside them still lands, or its old spelling would be deleted with nothing in its place
+    it('leaves out an ignored folder of more files than undo can keep, names it, lands the rest and every move, and undo works', async () => {
+      const start = { '.gitignore': 'target/\nout/\n', 'a.txt': '1', 'Readme.md': 'r', 'out/Readme.md': 'o', 'out/Guide.md': 'g', 'out/notes.md': 'n' };
+      const { home, folder, workdir } = await run(start, { 'a.txt': '2' });
+      // beside them: case-only renames, at the top and under an ignored path, and a plain move; each lands, or its old name would go with nothing in its place
       renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      renameSync(join(workdir, 'out/Readme.md'), join(workdir, 'out/README.md'));
+      renameSync(join(workdir, 'out/notes.md'), join(workdir, 'out/notes2.md'));
+      // and a case-only rename whose new file is too big: its old name stays as it was
+      renameSync(join(workdir, 'out/Guide.md'), join(workdir, 'out/GUIDE.md'));
+      truncateSync(join(workdir, 'out/GUIDE.md'), MAX_FILE_BYTES + 1);
       for (let d = 0; d * 1000 <= MAX_FOLDER_FILES; d++) {
         mkdirSync(join(workdir, `target/d${d}`), { recursive: true });
         for (let f = 0; f < 1000; f++) writeFileSync(join(workdir, `target/d${d}/${f}`), '');
       }
       const head = await commitAll(workdir, 'many');
-      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['target'], nested: [] });
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['out/GUIDE.md', 'target'], nested: [] });
       const r = landed(await landBranch(home, folder, head!));
-      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt']);
+      expect([...r.files].sort()).toEqual(['README.md', 'Readme.md', 'a.txt', 'out/README.md', 'out/Readme.md', 'out/notes.md', 'out/notes2.md']);
       expect(existsSync(join(folder, 'target'))).toBe(false);
-      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'README.md', 'a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'README.md', 'a.txt', 'out']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'README.md', 'notes2.md']);
       expect(read(folder, 'README.md')).toBe('r');
+      expect(read(folder, 'out/README.md')).toBe('o');
+      expect(read(folder, 'out/Guide.md')).toBe('g');
+      expect(read(folder, 'out/notes2.md')).toBe('n');
       expect(await undoLanding(home, folder, r)).toBe(true);
       expect(read(folder, 'a.txt')).toBe('1');
-      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'Readme.md', 'a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['.gitignore', 'Readme.md', 'a.txt', 'out']);
+      expect(readdirSync(join(folder, 'out')).sort()).toEqual(['Guide.md', 'Readme.md', 'notes.md']);
       rmSync(join(workdir, 'target'), { recursive: true, force: true });
     }, 300_000);
 
-    // where case counts, the new spelling is a new file `add -A` takes as it always did
-    it.skipIf(process.platform !== 'darwin')('keeps the old spelling of a case-only rename whose new one is too big, so nothing is deleted', async () => {
+    it('leaves out a rename to the other Unicode form whose new file is too big, and undo works', async () => {
+      const nfc = 'caf\u00e9.bin';
+      const nfd = 'cafe\u0301.bin';
+      const { home, folder, workdir } = await run({ [nfc]: '1', 'a.txt': '1' });
+      renameSync(join(workdir, nfc), join(workdir, nfd));
+      truncateSync(join(workdir, nfd), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: [nfd], nested: [] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['a.txt', nfc]);
+      expect(read(folder, nfc)).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(read(folder, nfc)).toBe('1');
+    });
+
+    it('keeps the old spelling of a case-only rename whose new one is too big, so nothing is deleted', async () => {
       const { home, folder, workdir } = await run({ 'Readme.md': 'r', 'a.txt': '1' });
       renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
       truncateSync(join(workdir, 'README.md'), MAX_FILE_BYTES + 1);
@@ -395,8 +423,18 @@ describe('landing', () => {
     expect(existsSync(join(folder, 'a.txt'))).toBe(false);
   });
 
+  /** A run's commit that holds a file too big for undo: a step no longer makes one, but work committed before that can. */
+  const bigCommit = (workdir: string, files: Record<string, string>) => {
+    for (const [f, c] of Object.entries(files)) put(workdir, f, c);
+    const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: workdir, encoding: 'utf8' }).trim();
+    g('add', '-f', '--', ...Object.keys(files));
+    g('commit', '-qm', 'big');
+    return g('rev-parse', 'HEAD');
+  };
+
   it('undo stops rather than delete a landed file too big to compare', async () => {
-    const { home, folder, head } = await run({ 'a.txt': '1' }, { 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
+    const { home, folder, workdir } = await run({ 'a.txt': '1' });
+    const head = bigCommit(workdir, { 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
     const r = landed(await landBranch(home, folder, head));
     appendFileSync(join(folder, 'data.bin'), 'mine');
     expect(await undoLanding(home, folder, r)).toEqual({ conflicts: ['data.bin'] });
@@ -536,7 +574,8 @@ describe('landing', () => {
   });
 
   it('undo goes through when a person deleted a landed file too big for the history', async () => {
-    const { home, folder, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2', 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
+    const { home, folder, workdir } = await run({ 'a.txt': '1' });
+    const head = bigCommit(workdir, { 'a.txt': '2', 'data.bin': 'x'.repeat(MAX_FILE_BYTES + 1) });
     const r = landed(await landBranch(home, folder, head));
     rmSync(join(folder, 'data.bin'));
     expect(await undoLanding(home, folder, r)).toBe(true);

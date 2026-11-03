@@ -124,8 +124,17 @@ function survey(root: string, maxFiles: number): { files: string[]; leftOut: str
 export function workFiles(root: string): { files: string[]; made: string[] } {
   const files: string[] = [];
   const made: string[] = [];
+  // a folder or link deleted while this walks is just gone, as a file is
+  const gone = <T>(f: () => T): T | undefined => {
+    try {
+      return f();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw e;
+    }
+  };
   const walk = (dir: string, rel: string) => {
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
+    for (const e of gone(() => readdirSync(dir, { withFileTypes: true })) ?? []) {
       const r = rel ? `${rel}/${e.name}` : e.name;
       const p = join(dir, e.name);
       if (r === '.git') continue;
@@ -135,8 +144,8 @@ export function workFiles(root: string): { files: string[]; made: string[] } {
       }
       // how linkLeftOut makes them: an absolute link to the same path in the folder
       if (e.isSymbolicLink()) {
-        const to = readlinkSync(p);
-        if (to.startsWith('/') && to.endsWith(`/${r}`)) continue;
+        const to = gone(() => readlinkSync(p));
+        if (to === undefined || (to.startsWith('/') && to.endsWith(`/${r}`))) continue;
       }
       // a project inside stays one entry, as `add -A` keeps it, so landing can refuse it by name
       if (e.isDirectory() && !existsSync(join(p, '.git'))) walk(p, r);

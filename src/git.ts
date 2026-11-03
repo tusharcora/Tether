@@ -134,54 +134,93 @@ export async function revertEntries(workdir: string, entries: string[]): Promise
   }
 }
 
+/** NUL-separated `git` output, untrimmed: a name may start with a space. */
+async function zList(workdir: string, args: string[]): Promise<string[]> {
+  const r = await git(workdir, args);
+  if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr.trim()}`);
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+/** `path -> blob` from `ls-tree` or `ls-files -s` lines. */
+const entries = (lines: string[], blobAt: number) => new Map(lines.map((l) => [l.slice(l.indexOf('\t') + 1), l.slice(0, l.indexOf('\t')).split(' ')[blobAt]!] as const));
+
 /**
  * Stage a plain folder run's files as its disk has them. `add -A` does the bulk; then, as the folder's snapshot does, what it
  * missed is added by force (files the folder's .gitignore names, and a case or Unicode-form rename git's case guess hides), and
- * what the disk no longer spells that way is dropped. Ignored files past the snapshot's limits stay out, and are recorded with
- * the left-out names the run made, so landing can say what it didn't put in the folder.
+ * what the disk no longer spells that way is dropped. Files past the snapshot's limits stay out, and are recorded with the
+ * left-out names the run made, so landing can say what it didn't put in the folder. A file the step started with leaves only
+ * when what it became goes in: otherwise it stays as it was, so the limits never take a person's file away.
  */
 async function stageAll(workdir: string, gitDir: string, exclude: string[]): Promise<void> {
+  // the step's base, read before `add -A` drops what is gone from disk
+  const base = entries(await zList(workdir, ['ls-tree', '-r', '-z', 'HEAD']), 2);
   await must(workdir, ['add', '-A', ...specs(exclude)]);
   const outside = (p: string) => exclude.some((e) => p === e.replace(/\/$/, '') || p.startsWith(e.replace(/\/$/, '') + '/'));
   const { files, made } = workFiles(workdir);
-  const ls = await git(workdir, ['ls-files', '-z']);
-  if (ls.code !== 0) throw new Error(`git ls-files failed: ${ls.stderr.trim()}`);
-  const had = new Set(ls.stdout.split('\0').filter(Boolean));
+  const idx = entries(await zList(workdir, ['ls-files', '-s', '-z']), 1);
   const on = new Set(files);
-  let gone = [...had].filter((p) => !on.has(p) && !outside(p));
-  // a rename's new spelling: past the count it still goes in, as its old spelling goes out, or the file would be lost
-  const renamed = new Set(gone.map(fold));
-  const forced = files.filter((p) => !had.has(p) && !outside(p));
-  const size = (p: string) => lstatSync(join(workdir, p), { throwIfNoEntry: false });
+  const gone = [...base.keys()].filter((p) => !on.has(p) && !outside(p));
+  const forced = files.filter((p) => !idx.has(p) && !outside(p));
+  const stat = (p: string) => lstatSync(join(workdir, p), { throwIfNoEntry: false });
+  // new or changed by the step: what the size limit applies to
+  const changed = new Set([...forced, ...files.filter((p) => idx.has(p) && idx.get(p) !== base.get(p))]);
   // a project inside, under an ignored path, is skipped as `add -A` skips it; a file deleted since the walk is just gone
-  const nested = forced.filter((p) => size(p)?.isDirectory());
-  const tooBig = forced.filter((p) => (size(p)?.size ?? 0) > MAX_FILE_BYTES);
+  const nested = forced.filter((p) => stat(p)?.isDirectory());
+  const tooBig = [...changed].filter((p) => !stat(p)?.isDirectory() && (stat(p)?.size ?? 0) > MAX_FILE_BYTES);
   const out = new Set([...nested, ...tooBig]);
-  let extra = forced.filter((p) => !out.has(p) && size(p));
+  let extra = forced.filter((p) => !out.has(p) && stat(p));
+  const over = base.size - gone.length + extra.length > MAX_FOLDER_FILES;
+  // where each gone file went: the same name in another case or Unicode form, or the same content under a new name
+  const partner = new Map<string, string>();
+  if (gone.length && (over || nested.length || tooBig.length)) {
+    const byFold = new Map(gone.map((g) => [fold(g), g]));
+    const byBlob = new Map(gone.map((g) => [base.get(g)!, g]));
+    // sizes of the gone files only: asking for every file's is slow
+    const sized = await gitEnv(workdir, ['cat-file', '--batch-check=%(objectsize)'], {}, gone.map((g) => base.get(g)).join('\n') + '\n');
+    if (sized.code !== 0) throw new Error(`git cat-file failed: ${sized.stderr.trim()}`);
+    const sizes = new Set(sized.stdout.split('\n').filter(Boolean));
+    const fresh = [...changed].filter((p) => !base.has(p));
+    // hashed only where a size matches: a run's thousands of build files cost nothing here
+    const hashable = fresh.filter((p) => !idx.has(p) && !p.includes('\n') && sizes.has(String(stat(p)?.size)) && !stat(p)?.isDirectory());
+    const r = hashable.length ? await gitEnv(workdir, ['hash-object', '--no-filters', '--stdin-paths'], {}, hashable.join('\n') + '\n') : { code: 0, stdout: '', stderr: '' };
+    if (r.code !== 0) throw new Error(`git hash-object failed: ${r.stderr.trim()}`);
+    const blobOf = new Map([...fresh.filter((p) => idx.has(p)).map((p) => [p, idx.get(p)!] as const), ...hashable.map((p, i) => [p, r.stdout.split('\n')[i]!] as const)]);
+    for (const q of fresh) {
+      const g = byFold.get(fold(q)) ?? byBlob.get(blobOf.get(q) ?? '');
+      if (g && !partner.has(g)) partner.set(g, q);
+    }
+  }
+  const moved = new Set(partner.values());
   let tooMany: string[] = [];
-  if (had.size - gone.length + extra.length > MAX_FOLDER_FILES) {
+  if (over) {
     // named by the top folder that holds none of the work, as `target`, not each of its files
     const up = (p: string) => p.split('/').map((_, i, d) => d.slice(0, i + 1).join('/'));
-    const kept = new Set([...had].filter((p) => on.has(p)).flatMap((p) => up(p).slice(0, -1)));
-    const dropped = extra.filter((p) => !renamed.has(fold(p)));
-    tooMany = [...new Set(dropped.map((p) => up(p).find((a) => !kept.has(a))!))];
-    extra = extra.filter((p) => renamed.has(fold(p)));
+    const kept = new Set(files.filter((p) => idx.has(p) || moved.has(p)).flatMap((p) => up(p).slice(0, -1)));
+    tooMany = [...new Set(extra.filter((p) => !moved.has(p)).map((p) => up(p).find((a) => !kept.has(a))!))];
+    extra = extra.filter((p) => moved.has(p));
   }
-  // an old spelling whose new one stays out (too big, a project) stays in, so nothing is deleted
-  const outFolded = new Set([...out].map(fold));
-  const keep = gone.filter((p) => outFolded.has(fold(p)));
-  gone = gone.filter((p) => !outFolded.has(fold(p)));
-  // and as it was: where case is ignored, `add -A` read the new spelling's content into it
-  if (keep.length) {
-    const r = await gitEnv(workdir, ['reset', '-q', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'], { GIT_LITERAL_PATHSPECS: '1' }, keep.join('\0'));
-    if (r.code !== 0) throw new Error(`git reset failed: ${r.stderr.trim()}`);
-  }
+  const landing = new Set(extra);
+  const leftOut = new Set([...out, ...(over ? forced.filter((p) => !landing.has(p)) : [])]);
+  // a gone file stays as it was when what it became stays out; one that went nowhere known stays too once anything does
+  const stays = gone.filter((g) => (partner.has(g) ? leftOut.has(partner.get(g)!) : leftOut.size > 0));
+  const staying = new Set(stays);
+  const leaves = gone.filter((g) => !staying.has(g));
+  // what `add -A` took that stays out: new ones come out, changed ones go back to how the step began
+  const drop = [...leaves, ...tooBig.filter((p) => idx.has(p) && !base.has(p))];
+  const restore = [...stays, ...tooBig.filter((p) => base.has(p))];
   // exact paths, not pathspecs: matching a long pathspec list is slow. Removals first, so a renamed name is added fresh
-  for (const [flag, list] of [['--force-remove', gone], ['--add', extra]] as const) {
-    if (!list.length) continue;
+  const update = async (flag: string, list: string[]) => {
+    if (!list.length) return;
     const r = await gitEnv(workdir, ['update-index', '-z', flag, '--stdin'], {}, list.join('\0') + '\0');
     if (r.code !== 0) throw new Error(`git update-index failed: ${r.stderr.trim()}`);
+  };
+  await update('--force-remove', drop);
+  // back as the step began: where case is ignored, `add -A` may have read a new spelling's content into an old one
+  if (restore.length) {
+    const r = await gitEnv(workdir, ['reset', '-q', 'HEAD', '--pathspec-from-file=-', '--pathspec-file-nul'], { GIT_LITERAL_PATHSPECS: '1' }, restore.join('\0'));
+    if (r.code !== 0) throw new Error(`git reset failed: ${r.stderr.trim()}`);
   }
+  await update('--add', extra);
   const left: NotLanded = { made, tooMuch: [...tooBig, ...tooMany], nested };
   writeFileSync(join(gitDir, NOT_LANDED), JSON.stringify(left));
 }
