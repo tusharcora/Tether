@@ -22,7 +22,7 @@ import { initWorkspace } from '../src/workspace.js';
 import { pipe, plainFolder, tmp } from './helpers.js';
 
 class Scripted implements AgentAdapter {
-  readonly id: string = 'scripted';
+  id: string = 'scripted';
   readonly reportsCost = false;
   readonly supportsResume = false;
   readonly codeMode = 'native' as const;
