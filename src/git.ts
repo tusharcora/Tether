@@ -201,7 +201,9 @@ async function stageAll(workdir: string, gitDir: string, exclude: string[]): Pro
   const sized = unsure.length ? await gitEnv(workdir, ['cat-file', '--batch-check=%(objectsize)'], {}, unsure.map((g) => base.get(g)).join('\n') + '\n') : { code: 0, stdout: '', stderr: '' };
   if (sized.code !== 0) throw new Error(`git cat-file failed: ${sized.stderr.trim()}`);
   const sizes = sized.stdout.split('\n').map(Number);
-  const stays = unsure.filter((g, i) => (sizes[i]! > 0 && leftSizes.has(sizes[i]!)) || leftNames.has(name(g)));
+  // a file too big outside ignored paths may be where a removed one went: every removal stays, and `kept` names it
+  const bigOutside = tooBig.some((p) => !ign.has(p));
+  const stays = unsure.filter((g, i) => bigOutside || (sizes[i]! > 0 && leftSizes.has(sizes[i]!)) || leftNames.has(name(g)));
   const staying = new Set(stays);
   const leaves = gone.filter((g) => !heldSet.has(g) && !staying.has(g));
   // what `add -A` took that stays out: new ones come out, changed ones go back to how the step began

@@ -488,6 +488,19 @@ describe('route card', () => {
     expect(t.store.list()).toHaveLength(0);
   });
 
+  it('a workflow that reads but will not resolve gives a failed card, not a 500', async () => {
+    const t = await boot();
+    const { card, chat } = await t.offer(good);
+    vi.spyOn(t.engine, 'resolve').mockImplementation(() => {
+      throw new Error('cannot resolve');
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await t.click(card!, chat, { choice: 'workflow', trust: true });
+    log.mockRestore();
+    expect(r.status).toBe(200);
+    expect(r.json.route).toMatchObject({ status: 'failed', note: "This couldn't start, and nothing in the folder changed." });
+  });
+
   it('a start that fails says so plainly, with no home path, and a second click does not retry', async () => {
     const t = await boot();
     const { card, chat } = await t.offer(good);

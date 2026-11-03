@@ -304,6 +304,21 @@ describe('landing', () => {
       expect(read(folder, nfc)).toBe('1');
     });
 
+    it('keeps and names a file moved to a new name that grew too big, and undo is exact', async () => {
+      const { home, folder, workdir } = await run({ 'notes.md': 'n', 'a.txt': '1' });
+      renameSync(join(workdir, 'notes.md'), join(workdir, 'notes2.md'));
+      truncateSync(join(workdir, 'notes2.md'), MAX_FILE_BYTES + 1);
+      writeFileSync(join(workdir, 'a.txt'), '2');
+      const head = await commitAll(workdir, 'big move');
+      expect(await notLanded(workdir)).toEqual({ made: [], tooMuch: ['notes2.md'], nested: [], kept: ['notes.md'] });
+      const r = landed(await landBranch(home, folder, head!));
+      expect(r.files).toEqual(['a.txt']);
+      expect(readdirSync(folder).sort()).toEqual(['a.txt', 'notes.md']);
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(read(folder, 'a.txt')).toBe('1');
+      expect(read(folder, 'notes.md')).toBe('n');
+    });
+
     it('keeps the old spelling of a case-only rename whose new one is too big, so nothing is deleted', async () => {
       const { home, folder, workdir } = await run({ 'Readme.md': 'r', 'a.txt': '1' });
       renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
