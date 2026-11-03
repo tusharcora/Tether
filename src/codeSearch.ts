@@ -68,10 +68,14 @@ function hit(path: string, line: number, text: string, col: number): TextHit {
   return { path, line, col: col - start, text: text.slice(start, start + LINE_MAX) };
 }
 
-/** At most `cap` hits, sorted by path and line: each file gets an even share, and a file with fewer gives the rest to the others, so one busy file can't push the rest out. */
+/** At most `cap` hits, the same whatever order they came in: an even share per file, a file with fewer passing the rest on, then sorted by path and line. With more matching files than `cap`, the files last by path get none. */
 export function fairShare(hits: TextHit[], cap = MAX_HITS): TextHit[] {
   const by = new Map<string, TextHit[]>();
-  for (const h of hits) by.set(h.path, [...(by.get(h.path) ?? []), h]);
+  for (const h of hits) {
+    const fh = by.get(h.path);
+    if (fh) fh.push(h);
+    else by.set(h.path, [h]);
+  }
   const files = [...by.entries()].sort(([a, x], [b, y]) => x.length - y.length || (a < b ? -1 : 1));
   let left = cap;
   const out: TextHit[] = [];
@@ -82,6 +86,12 @@ export function fairShare(hits: TextHit[], cap = MAX_HITS): TextHit[] {
   });
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
 }
+
+/** A file at ripgrep's --max-count may have had more matches than it reported. */
+const capped = (hits: TextHit[]) => {
+  const n = new Map<string, number>();
+  return hits.some((h) => n.set(h.path, (n.get(h.path) ?? 0) + 1).get(h.path)! >= MAX_HITS);
+};
 
 /** ripgrep: smart case, fixed strings, hidden files but never .git or secrets, files up to 2 MB, at most 200 hits shared fairly between files. */
 function searchRg(rg: string, root: string, q: string): Promise<{ hits: TextHit[]; truncated: boolean }> {
@@ -115,7 +125,7 @@ function searchRg(rg: string, root: string, q: string): Promise<{ hits: TextHit[
       }
     });
     child.on('error', (e) => (clearTimeout(timer), reject(e)));
-    child.on('close', () => (clearTimeout(timer), resolve({ hits: fairShare(hits), truncated: truncated || hits.length > MAX_HITS })));
+    child.on('close', () => (clearTimeout(timer), resolve({ hits: fairShare(hits), truncated: truncated || hits.length > MAX_HITS || capped(hits) })));
   });
 }
 

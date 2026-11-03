@@ -8,7 +8,7 @@ import { HttpError } from '../src/serverkit.js';
 import { rgVersion } from '../src/tools.js';
 import { initWorkspace } from '../src/workspace.js';
 import { enc, startHttpTestServer } from './http-helpers.js';
-import { pipe, tmp } from './helpers.js';
+import { pipe, plainFolder, tmp } from './helpers.js';
 
 const status = (fn: () => unknown): { status?: number; [k: string]: unknown } | undefined => {
   try {
@@ -120,6 +120,15 @@ describe('search', () => {
   };
   it.skipIf(!rgVersion())('searches text with ripgrep, skipping secrets and stopping at 200', textSearch('rg'));
   it('searches text without ripgrep the same way', textSearch(null));
+
+  it.skipIf(!rgVersion())('says truncated when one file has more matches than ripgrep reports', async () => {
+    const one = plainFolder({ 'many.txt': 'hit\n'.repeat(250) });
+    const r = await searchText(one, 'hit', { rg: 'rg' });
+    expect(r.hits).toHaveLength(200);
+    expect(r.truncated).toBe(true);
+    const few = await searchText(plainFolder({ 'few.txt': 'hit\n'.repeat(3) }), 'hit', { rg: 'rg' });
+    expect(few).toMatchObject({ truncated: false });
+  });
 
   it('shares the cap fairly, whatever order the hits came in', () => {
     const h = (path: string, line: number) => ({ path, line, col: 0, text: '' });
