@@ -1057,6 +1057,8 @@ export class Engine {
     if (!s) throw new Error(`unknown run ${runId}`);
     if (s.nodes[node]?.status !== 'awaiting') throw new Error(`node "${node}" is not awaiting approval`);
     this.store.append(runId, { type: 'approval.resolved', node, approved, by });
+    // a run that just paused stays live while it writes its notes, and it won't look at this answer on its way out
+    if (this.active.has(runId)) void this.running.get(runId)?.then(() => this.carryOn(runId)).catch((e: unknown) => console.error(`[run ${runId}] approved, but could not resume: ${(e as Error).message}`));
   }
 
   /** The person's thumbs up/down on a step's output. The note is data: control characters stripped, capped at 500 characters. */

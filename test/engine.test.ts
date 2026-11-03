@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { claudeArgs } from '../src/adapters/claude.js';
 import { CliAdapter, codexSpec, customSpec, opencodeSpec } from '../src/adapters/cli.js';
 import { CLAUDE_TOOL } from '../src/codemode/delivery.js';
@@ -10,6 +10,7 @@ import { commandHookLine } from '../src/codemode/launch.js';
 import { savePrefs } from '../src/prefs.js';
 import { setTrust } from '../src/trust.js';
 import type { CodeModeRequest } from '../src/types.js';
+import { Vault } from '../src/vault.js';
 import { makeRepo, pipe, setup, tmp } from './helpers.js';
 
 const fullPipeline = () =>
@@ -25,6 +26,21 @@ const fullPipeline = () =>
   );
 
 describe('engine', () => {
+  it('an approval that lands while a paused run still writes its notes is not lost', async () => {
+    const vault = new Vault(tmp('vault-'));
+    let letGo = () => {};
+    const notes = new Promise<void>((r) => (letGo = r));
+    const recording = vi.spyOn(vault, 'recordRun').mockImplementationOnce(async () => (await notes, []));
+    const { engine, store } = setup(vault);
+    const id = await engine.start({ pipeline: pipe([{ id: 'ok', kind: 'approval' }], []), task: 't', repo: makeRepo() });
+    await vi.waitFor(() => expect(recording).toHaveBeenCalled());
+    expect(store.state(id)?.status).toBe('paused');
+    expect(engine.isLive(id)).toBe(true);
+    engine.approve(id, 'ok', true);
+    letGo();
+    await vi.waitFor(() => expect(store.state(id)?.status).toBe('done'));
+  });
+
   it('records what each step’s commit changed and where the run was started from', async () => {
     const { engine } = setup();
     const p = pipe([{ id: 'code', role: 'coder', mock: { writeFile: { path: 'a.txt', content: 'one\ntwo\n' } } }], []);
