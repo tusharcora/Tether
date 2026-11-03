@@ -87,8 +87,8 @@ export const MAX_COMMAND_MS = 120_000;
 export const MAX_COMMAND_OUTPUT = 20_000;
 
 // PAT, AUTH and DSN only as a whole part of the name: PATH and GIT_AUTHOR_NAME stay. SSH_AUTH_SOCK is a path, and ssh needs it
-const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|(^|_)(PAT|AUTH|AUTHORIZATION|DSN)(_|$)/i;
-const SECRET_VALUE = /:\/\/[^/\s@]*:[^/\s]*@/; // a URL holding a user and password
+export const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|(^|_)(PAT|AUTH|AUTHORIZATION|DSN)(_|$)/i;
+export const SECRET_VALUE = /:\/\/[^/\s@]*:[^/\s]*@/; // a URL holding a user and password
 
 /** Run one command in `cwd` with a timeout and a size cap, without secrets from the environment. */
 export function runCommand(command: string, cwd: string, o: { timeoutMs?: number; maxBytes?: number } = {}): Promise<CommandResult> {

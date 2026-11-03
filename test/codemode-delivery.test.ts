@@ -113,7 +113,7 @@ function fakeClaude(): { dir: string; log: string } {
 const fs = require('fs');
 const a = process.argv.slice(2);
 const i = a.indexOf('--mcp-config');
-fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ scrub: process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, argv: a, config: i >= 0 ? fs.readFileSync(a[i + 1], 'utf8') : null, stdin: fs.readFileSync(0, 'utf8') }));
+fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ scrub: process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, env: process.env, argv: a, config: i >= 0 ? fs.readFileSync(a[i + 1], 'utf8') : null, stdin: fs.readFileSync(0, 'utf8') }));
 console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's1', tools: ['Read', 'Edit', '${CLAUDE_TOOL}'] }));
 console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: '${CLAUDE_TOOL}', input: { code: 'return 1' } }] } }));
 console.log(JSON.stringify({ type: 'result', result: 'done', total_cost_usd: 0.01, num_turns: 2, usage: { input_tokens: 100, cache_read_input_tokens: 50, output_tokens: 20 } }));
@@ -170,6 +170,16 @@ describe('claude.ts command environment', () => {
     expect(await scrub({ readOnly: false, commands: true })).toBe('1');
     expect(await scrub({ readOnly: false })).toBeUndefined();
     expect(await scrub({ readOnly: true, commands: true })).toBeUndefined();
+  });
+
+  it('with commands, drops Tether secrets and keeps what Claude needs to log in', async () => {
+    const { dir, log } = fakeClaude();
+    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`);
+    for (const [k, v] of Object.entries({ GITHUB_TOKEN: 'x', MY_SECRET: 'x', DATABASE_URL: 'postgres://u:p@h/d', ANTHROPIC_API_KEY: 'k', CLAUDE_CONFIG_DIR: '/c', CLAUDE_CODE_OAUTH_TOKEN: 't', AWS_SECRET_ACCESS_KEY: 'a', HTTPS_PROXY: 'http://u:p@h:1', SSH_AUTH_SOCK: '/s' })) vi.stubEnv(k, v);
+    await new ClaudeAdapter().run(baseReq({ readOnly: false, commands: true }));
+    const { env } = JSON.parse(readFileSync(log, 'utf8')) as { env: Record<string, string> };
+    for (const k of ['GITHUB_TOKEN', 'MY_SECRET', 'DATABASE_URL']) expect(env[k]).toBeUndefined();
+    for (const k of ['ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'HTTPS_PROXY', 'PATH', 'HOME', 'SSH_AUTH_SOCK']) expect(env[k]).toBeDefined();
   });
 });
 
