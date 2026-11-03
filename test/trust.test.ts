@@ -71,7 +71,8 @@ describe('trust', () => {
     mkdirSync(join(folder, 'sub'));
     rmSync(join(folder, 'a.txt'));
     chmodSync(folder, 0o700);
-    utimesSync(folder, new Date(), new Date());
+    const later = new Date(Date.now() + 60_000); // not now: cut to the millisecond, that can fall before a folder just born, and macOS then moves birth back
+    utimesSync(folder, later, later);
     expect(trustState(home, folder)).toBe('trusted');
     renameSync(folder, join(root, 'away'));
     renameSync(join(root, 'away'), folder);
