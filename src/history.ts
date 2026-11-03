@@ -117,6 +117,31 @@ function survey(root: string, maxFiles: number): { files: string[]; leftOut: str
   return { files: kept, leftOut };
 }
 
+/**
+ * A plain folder run's files, as its disk spells them, so a case or Unicode-form rename is seen and a .gitignore hides nothing.
+ * `linked`: the links to what the folder left out. `made`: left-out names the run made itself, which never land.
+ */
+export function workFiles(root: string, linked: string[] = []): { files: string[]; made: string[] } {
+  const skip = new Set(['.git', ...linked]);
+  const files: string[] = [];
+  const made: string[] = [];
+  const walk = (dir: string, rel: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (skip.has(r)) continue;
+      if (SKIP_NAMES.includes(e.name)) {
+        if (e.name !== '.DS_Store' && !e.isSymbolicLink()) made.push(r);
+        continue;
+      }
+      // a project inside stays one entry, as `add -A` keeps it, so landing can refuse it by name
+      if (e.isDirectory() && !existsSync(join(dir, e.name, '.git'))) walk(join(dir, e.name), r);
+      else files.push(r);
+    }
+  };
+  walk(root, '');
+  return { files, made };
+}
+
 const anchored = (p: string) => '/' + p.replace(/[\\*?[]/g, '\\$&');
 
 /** Run `fn` with git env pointing the history at `folder` through a throwaway index. */

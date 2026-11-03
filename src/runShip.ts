@@ -7,7 +7,7 @@
 import type { Engine } from './engine.js';
 import type { Exec } from './exec.js';
 import { gitTop } from './git.js';
-import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding, whileLanding } from './history.js';
+import { landBranch, NOTHING_TO_LAND, realOr, shippable, undoLanding, whileLanding, workFiles } from './history.js';
 import { NO_FILES } from './runLabels.js';
 import { HttpError } from './serverkit.js';
 import type { Store } from './store.js';
@@ -45,6 +45,18 @@ function plainFailure(e: Error): string {
   return e.message.startsWith('git ') || (e as NodeJS.ErrnoException).code ? "This work couldn't be put in the folder, so nothing was changed." : e.message;
 }
 
+/** What a run that changed only left-out names (dependencies, caches) says about them, or undefined. */
+function leftOutOnly(workdir: string): string | undefined {
+  let made: string[];
+  try {
+    made = workFiles(workdir).made;
+  } catch {
+    return undefined; // its worktree is gone: nothing to name
+  }
+  if (!made.length) return undefined;
+  return `It changed ${made.join(', ')}, which Undo can't restore, so ${made.length > 1 ? "they weren't" : "it wasn't"} put in your folder.`;
+}
+
 /** Put a plain-folder run's work in its folder and record it on the run. Shared with the squad path. */
 export async function landRun(d: { store: Store; home: string }, runId: string): Promise<{ landed: Landed } | { error: string; conflicts?: string[] }> {
   const s = d.store.state(runId)!;
@@ -57,7 +69,7 @@ export async function landRun(d: { store: Store; home: string }, runId: string):
     try {
       const r = await landBranch(d.home, s.repo, s.branch, landingBase(d.store, s));
       if ('conflicts' in r) return { error: `${r.conflicts.join(', ')} changed since this work started, so nothing was put in the folder. Keep your version, or send this back.`, conflicts: r.conflicts };
-      if (!r.files.length) return { error: NOTHING_TO_LAND };
+      if (!r.files.length) return { error: leftOutOnly(now.workdir) ?? NOTHING_TO_LAND };
       d.store.append(runId, { type: 'run.shipped', merged: true, landed: r });
       return { landed: r };
     } catch (e) {

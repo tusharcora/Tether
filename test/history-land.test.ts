@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { commitAll, createWorktree } from '../src/git.js';
 import { historyDir, landBranch, MAX_FILE_BYTES, snapshotFolder, undoLanding, type Landed } from '../src/history.js';
-import { plainFolder, tmp } from './helpers.js';
+import { makeRepo, plainFolder, tmp } from './helpers.js';
 
 const read = (folder: string, f: string) => readFileSync(join(folder, f), 'utf8');
 const put = (dir: string, f: string, c: string) => {
@@ -108,6 +108,71 @@ describe('landing', () => {
     const { home, folder, head } = await run({ '.gitignore': 'secret.env\n', 'secret.env': '1' }, { 'secret.env': '2' });
     landed(await landBranch(home, folder, head));
     expect(read(folder, 'secret.env')).toBe('2');
+  });
+
+  describe('all of a run\'s work', () => {
+    it('lands a new file under a path the folder\'s .gitignore names, and undo takes it out', async () => {
+      const { home, folder, head } = await run({ '.gitignore': 'out/\n', 'a.txt': '1' }, { 'out/report.txt': 'r' });
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head));
+      expect(r.files).toEqual(['out/report.txt']);
+      expect(read(folder, 'out/report.txt')).toBe('r');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(existsSync(join(folder, 'out'))).toBe(false);
+    });
+
+    it('lands a case-only rename made on disk, and undo brings the old name back', async () => {
+      const { home, folder, workdir } = await run({ 'Readme.md': '1' });
+      renameSync(join(workdir, 'Readme.md'), join(workdir, 'README.md'));
+      const head = await commitAll(workdir, 'rename');
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head!));
+      expect(readdirSync(folder)).toEqual(['README.md']);
+      expect(read(folder, 'README.md')).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(folder)).toEqual(['Readme.md']);
+      expect(read(folder, 'Readme.md')).toBe('1');
+    });
+
+    it('lands a rename to the other Unicode form, and undo keeps the file', async () => {
+      const nfc = 'café.txt';
+      const nfd = 'café.txt';
+      const { home, folder, workdir } = await run({ [nfc]: '1' });
+      renameSync(join(workdir, nfc), join(workdir, nfd));
+      const head = await commitAll(workdir, 'rename');
+      expect(head).toBeDefined();
+      const r = landed(await landBranch(home, folder, head!));
+      expect(readdirSync(folder)).toEqual([nfd]);
+      expect(read(folder, nfd)).toBe('1');
+      expect(await undoLanding(home, folder, r)).toBe(true);
+      expect(readdirSync(folder)).toEqual([nfc]);
+      expect(read(folder, nfc)).toBe('1');
+    });
+
+    it('leaves out dependencies, caches and Finder files at any depth', async () => {
+      const { head } = await run({ 'a.txt': '1' }, { 'node_modules/x': 'x', 'sub/node_modules/y': 'y', '.venv/z': 'z', 'venv/z': 'z', 'p/__pycache__/m.pyc': 'c', 'd/.DS_Store': 'f', '.DS_Store': 'f' });
+      expect(head).toBeUndefined();
+    });
+
+    it('commits nothing from the links to what the folder left out', async () => {
+      const { home, folder, head } = await run({ 'a.txt': '1' }, { 'a.txt': '2' }, [], (f) => {
+        put(f, 'big.bin', '');
+        truncateSync(join(f, 'big.bin'), MAX_FILE_BYTES + 1);
+        put(f, 'nested/file.txt', 'n');
+        execFileSync('git', ['init', '-q'], { cwd: join(f, 'nested') });
+      });
+      expect(landed(await landBranch(home, folder, head)).files).toEqual(['a.txt']);
+    });
+
+    it('a real repo keeps its ignores', async () => {
+      const repo = makeRepo();
+      writeFileSync(join(repo, '.gitignore'), 'out/\n');
+      execFileSync('git', ['add', '.gitignore'], { cwd: repo });
+      execFileSync('git', ['commit', '-qm', 'ignore'], { cwd: repo });
+      const wt = await createWorktree(repo, tmp('home-'), 'r1');
+      put(wt.workdir, 'out/report.txt', 'r');
+      expect(await commitAll(wt.workdir, 'work')).toBeUndefined();
+    });
   });
 
   it('lands nothing when the run changed nothing', async () => {

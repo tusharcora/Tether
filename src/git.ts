@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { historyDir, insideGit, linkLeftOut, snapshotDirty, snapshotFolder } from './history.js';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { historyDir, insideGit, linkLeftOut, snapshotDirty, snapshotFolder, workFiles } from './history.js';
 import { join, resolve } from 'node:path';
 import { runProcess } from './proc.js';
 
@@ -79,7 +79,10 @@ export async function createWorktree(repo: string, home: string, runId: string, 
   const workdir = join(home, 'worktrees', runId);
   mkdirSync(join(home, 'worktrees'), { recursive: true });
   await must(top, ['worktree', 'add', '-b', branch, workdir, baseSha]);
-  if (plain) linkLeftOut(workdir, resolve(repo), plain.leftOut);
+  if (plain) {
+    linkLeftOut(workdir, resolve(repo), plain.leftOut);
+    writeFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), PLAIN), plain.leftOut.join('\0'));
+  }
   return { workdir, baseSha, branch, ...plain, ...(dirty ? { dirty } : {}) };
 }
 
@@ -134,9 +137,42 @@ export async function revertEntries(workdir: string, entries: string[]): Promise
   }
 }
 
+/** In a plain folder run's own git dir: marks it, and holds the links to what the folder left out, NUL-separated. */
+const PLAIN = 'tether-left-out';
+
+/** The links a plain folder run's worktree holds to what its folder left out, or undefined in a real repo. */
+async function plainLinks(workdir: string): Promise<string[] | undefined> {
+  try {
+    return readFileSync(join(await must(workdir, ['rev-parse', '--absolute-git-dir']), PLAIN), 'utf8').split('\0').filter(Boolean);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Stage a plain folder run's files exactly as its disk has them, by force, as the folder's snapshot does: its .gitignore must not
+ * hide work from the folder, and git's case guess must not hide a rename. Removals go first, so a renamed name is added fresh.
+ */
+async function stageAll(workdir: string, linked: string[], exclude: string[]): Promise<void> {
+  const outside = (p: string) => exclude.some((e) => p === e.replace(/\/$/, '') || p.startsWith(e.replace(/\/$/, '') + '/'));
+  const { files } = workFiles(workdir, linked);
+  const on = new Set(files);
+  const ls = await git(workdir, ['ls-files', '-z']);
+  if (ls.code !== 0) throw new Error(`git ls-files failed: ${ls.stderr.trim()}`);
+  const gone = ls.stdout.split('\0').filter((p) => p && !on.has(p) && !outside(p));
+  const lit = { GIT_LITERAL_PATHSPECS: '1' };
+  for (const [args, list] of [[['rm', '--cached', '-q', '-r'], gone], [['add', '-f'], files.filter((p) => !outside(p))]] as const) {
+    if (!list.length) continue;
+    const r = await gitEnv(workdir, [...args, '--pathspec-from-file=-', '--pathspec-file-nul'], lit, list.join('\0'));
+    if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr.trim()}`);
+  }
+}
+
 /** Commit everything in the worktree except `exclude`. Returns the new sha, or undefined if nothing changed. */
 export async function commitAll(workdir: string, message: string, exclude: string[] = []): Promise<string | undefined> {
-  await must(workdir, ['add', '-A', ...specs(exclude)]);
+  const linked = await plainLinks(workdir);
+  if (linked) await stageAll(workdir, linked, exclude);
+  else await must(workdir, ['add', '-A', ...specs(exclude)]);
   const quiet = await git(workdir, ['diff', '--cached', '--quiet']);
   if (quiet.code === 0) return undefined;
   await must(workdir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--no-verify', '-m', message]);

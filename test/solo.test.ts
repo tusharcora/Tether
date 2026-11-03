@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Exec } from '../src/exec.js';
@@ -144,6 +144,38 @@ describe('a solo run', () => {
     const ship = r.store.state(r.id)!.ship!;
     expect(ship.landed).toBeUndefined();
     expect(ship.error).toBe('No files came out of this run.');
+  });
+
+  it('a solo run lands a file under a path the folder ignores, with Undo', async () => {
+    const r = await soloRun({ 'out/report.txt': 'r\n' }, { folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }) });
+    await r.ship.idle();
+    expect(r.store.state(r.id)!.ship).toMatchObject({ merged: true, landed: { files: ['out/report.txt'] } });
+    expect(read(r.folder, 'out/report.txt')).toBe('r\n');
+    await r.ship.undo(r.id);
+    expect(existsSync(join(r.folder, 'out'))).toBe(false);
+  });
+
+  it('a solo run that only changed dependencies names them and lands nothing', async () => {
+    const r = await soloRun({ 'node_modules/x': 'x\n' });
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.landed).toBeUndefined();
+    expect(ship.error).toBe("It changed node_modules, which Undo can't restore, so it wasn't put in your folder.");
+    expect(existsSync(join(r.folder, 'node_modules'))).toBe(false);
+  });
+
+  it('a file a person makes while the work is being put in stops it, by name', async () => {
+    let release!: () => void;
+    held.gate = new Promise((res) => (release = res));
+    const r = await soloRun({ 'out/report.txt': 'r\n' }, { folder: plainFolder({ '.gitignore': 'out/\n', 'a.txt': 'one\n' }) }).finally(() => (held.gate = undefined));
+    mkdirSync(join(r.folder, 'out'));
+    writeFileSync(join(r.folder, 'out/report.txt'), 'mine\n');
+    release();
+    await r.ship.idle();
+    const ship = r.store.state(r.id)!.ship!;
+    expect(ship.landed).toBeUndefined();
+    expect(ship.error).toBe(CONFLICT('out/report.txt'));
+    expect(read(r.folder, 'out/report.txt')).toBe('mine\n');
   });
 
   it('a solo run in a real repo finishes on the ordinary decision and pushes nothing', async () => {
